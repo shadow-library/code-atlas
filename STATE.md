@@ -28,6 +28,18 @@
 
 ## Capabilities (by task)
 
+### Task 005 — Logging setup (structlog)
+- Runtime dep: `structlog>=24.1,<26.0` (first non-dev dep).
+- `code_atlas.utils` package; re-exports `configure_logging`, `get_logger`.
+- `configure_logging(level, *, json=True, stream=None)`:
+  - level via `logging.getLevelNamesMapping()`.
+  - Resets stdlib root handler so reconfigure is idempotent; attaches `StreamHandler(stream or sys.stderr)`.
+  - Processor chain: `merge_contextvars` → `add_log_level` → `StackInfoRenderer()` → (`set_exc_info` only when console) → `TimeStamper(fmt="iso", utc=True)` → `JSONRenderer()` or `ConsoleRenderer(colors=False)`.
+  - `wrapper_class=make_filtering_bound_logger(level)`. `logger_factory=PrintLoggerFactory(file=target)`. `cache_logger_on_first_use=True`.
+- `get_logger(name=None)` → `structlog.stdlib.BoundLogger` (via `cast`).
+- ConsoleRenderer colors=False so test output is stable. Re-enable via env when wiring dev.
+- 6 tests pass: JSON parseable, console human, ISO timestamp, bound-logger shape, level filter drops, reconfigure swaps stream.
+
 ### Task 004 — Errors module (typed exception hierarchy)
 - `src/code_atlas/errors.py`. Base `CodeAtlasError(Exception)` carries `message: str` and `context: dict[str, Any]` (per-instance, defaults to `{}`).
 - `__str__`: bare message when context empty; `"{message} | context={ctx!r}"` otherwise.

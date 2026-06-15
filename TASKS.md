@@ -38,9 +38,9 @@
 **desc:** Hierarchy rooted at `CodeAtlasError`. Subclasses: `ConfigError`, `IngestionError`, `IndexingError`, `RepositoryNotIndexed`, `ProviderError`, `RetrievalError`, `AgentError`, `EvaluationError`. Each can carry an optional `context: dict[str, Any]`. `__str__` includes context summary.
 **accept:** All classes importable. Test verifies inheritance chain and that context survives `raise` / `except`.
 
-## 005 — Logging setup (structlog) [pending]
+## 005 — Logging setup (structlog) [done]
 **deps:** 001
-**files:** src/code_atlas/utils/__init__.py, src/code_atlas/utils/logging.py, tests/unit/utils/test_logging.py
+**files:** pyproject.toml, src/code_atlas/utils/__init__.py, src/code_atlas/utils/logging.py, tests/unit/utils/test_logging.py
 **desc:** `configure_logging(level, json: bool)` sets up structlog with stdlib bridge, ISO timestamps, log level filter, JSON renderer in prod / ConsoleRenderer with colors in dev. Module-level `get_logger(name)` re-exports `structlog.get_logger`.
 **accept:** Test calls `configure_logging`, logs a message, asserts JSON output when `json=True` and human-readable when `json=False`.
 

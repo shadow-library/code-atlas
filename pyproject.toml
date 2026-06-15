@@ -16,7 +16,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Typing :: Typed",
 ]
-dependencies = []
+dependencies = ["structlog>=24.1,<26.0"]
 
 [project.optional-dependencies]
 dev = [
