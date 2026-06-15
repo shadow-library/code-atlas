@@ -50,7 +50,7 @@
 **desc:** `Settings` (pydantic-settings) with nested groups: `app` (log_level, log_json), `ingestion` (max_chunk_lines, ignore_patterns), `storage` (root_dir, lance_uri), `embeddings` (provider, model, dimension), `chat` (provider, model, temperature), `ollama` (base_url, timeout_s), `eval` (cost_rates_path). Loads from `config/default.yaml` first, then `.env`, then env vars (env wins). `.env.example` shows the env var names.
 **accept:** Loading `Settings()` in a tmpdir with custom yaml + .env reads the override correctly. Env var override beats yaml. Missing required fields surface a clear validation error.
 
-## 007 — Domain types [pending]
+## 007 — Domain types [done]
 **deps:** 001
 **files:** src/code_atlas/domain/__init__.py, src/code_atlas/domain/chunk.py, src/code_atlas/domain/retrieval.py, src/code_atlas/domain/answer.py, tests/unit/domain/test_types.py
 **desc:** Pydantic models (frozen + slots where supported). `CodeChunk{chunk_id, repo_id, path, language, kind, symbol, start_line, end_line, content, content_hash}`. `Symbol{name, kind, path, line, parent}`. `RetrievalQuery{text, k, filters}`. `RetrievalResult{chunk, score, source}` (`source` = "vector" | "lexical" | "fused"). `Citation{path, start_line, end_line, symbol, snippet}`. `Answer{text, citations, trace, latency_ms, token_usage}`. `TokenUsage{prompt, completion, total}`. All have JSON serialization round-trip.

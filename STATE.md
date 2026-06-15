@@ -28,6 +28,17 @@
 
 ## Capabilities (by task)
 
+### Task 007 — Domain types (frozen pydantic v2 models)
+- New pkg `code_atlas.domain`; 4 modules, zero internal deps. Pure types.
+- All models `ConfigDict(frozen=True, extra="forbid")`. Paths are `str` (JSON-stable, cross-platform).
+- `chunk.py`: Literal aliases `SymbolKind` (function/method/class/module/variable/constant/other) and `ChunkKind` (file/class/function/method/block). `Symbol{name,kind,path,line,parent}`. `CodeChunk{chunk_id,repo_id,path,language,kind,symbol,start_line,end_line,content,content_hash}`. Chunk `model_validator(after)` raises `ValueError` when `end_line < start_line`.
+- `retrieval.py`: Literal `RetrievalSource` (vector/lexical/fused). `RetrievalQuery{text,k=10,filters={}}` with `1 <= k <= 200`. `RetrievalResult{chunk,score>=0,source}`.
+- `answer.py`: `Citation{path,start_line,end_line,symbol?,snippet<=4096}` with end>=start invariant. `TokenUsage{prompt,completion,total}` auto-fills `total = prompt + completion` when `total == 0`, else rejects `total < prompt + completion`. `Answer{text,citations=[],trace=[],latency_ms=0,token_usage=TokenUsage()}`.
+- Frozen-field write inside validator uses `object.__setattr__(self, ...)` — required pydantic pattern.
+- `domain/__init__.py` re-exports 10 names. Absolute imports inside the package.
+- 20 unit tests cover round-trip (dict + JSON), validation rejects (empty/negative/out-of-range/extras), frozen-assignment, line-range invariant, k bounds, token-usage reconciliation, citation invariant, Answer defaults, nested round-trip.
+- Tests not mypy-checked (config files = src only), so test `# type: ignore` comments are cosmetic-only.
+
 ### Task 006 — Config (pydantic-settings + YAML)
 - New runtime deps: `pydantic>=2.8`, `pydantic-settings>=2.4`, `pyyaml>=6.0`. Dev: `types-pyyaml`.
 - `code_atlas.config` exports `Settings` + `load_settings`.
