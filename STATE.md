@@ -28,6 +28,15 @@
 
 ## Capabilities (by task)
 
+### Task 003 — CI pipeline (GitHub Actions)
+- `.github/workflows/ci.yml`. Triggers: push + pull_request, all branches.
+- Concurrency group cancels in-progress on same ref. Permissions: contents:read.
+- Three jobs: `lint`, `type`, `test`. `test` needs `[lint, type]`.
+- `lint` + `type` pinned to Python 3.11. `test` matrix on 3.11/3.12, fail-fast off.
+- Setup chain per job: checkout@v4 → setup-uv@v3 (uv cache keyed on uv.lock) → `uv python install <ver>` → `uv sync --extra dev`.
+- Test step tolerates ONLY pytest exit 5 (no-tests-collected) via shell wrapper.
+- Coverage artifact `coverage-py<ver>` per matrix entry; `if-no-files-found: ignore`.
+
 ### Task 002 — Dev tooling (ruff, mypy, pytest, pre-commit, editorconfig)
 - Dev extras pinned: ruff>=0.6, mypy>=1.11, pytest>=8, pytest-cov>=5, pytest-asyncio>=0.23, pre-commit>=3.7.
 - Ruff: line-length 120, py311, select E/F/I/UP/B/SIM/RUF, format double quotes + lf.

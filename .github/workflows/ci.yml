@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - run: uv python install 3.11
+      - run: uv sync --extra dev
+      - run: uv run ruff format --check
+      - run: uv run ruff check
+
+  type:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - run: uv python install 3.11
+      - run: uv sync --extra dev
+      - run: uv run mypy src/code_atlas
+
+  test:
+    runs-on: ubuntu-latest
+    needs: [lint, type]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - run: uv python install ${{ matrix.python-version }}
+      - run: uv sync --extra dev
+      - name: Test
+        shell: bash
+        run: |
+          set +e
+          uv run pytest -m "not slow and not requires_ollama" --cov=code_atlas --cov-report=xml --cov-report=term
+          code=$?
+          if [ "$code" -eq 5 ]; then
+            echo "::notice::pytest: no tests collected yet (expected before task 004)"
+            exit 0
+          fi
+          exit "$code"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-py${{ matrix.python-version }}
+          path: coverage.xml
+          if-no-files-found: ignore

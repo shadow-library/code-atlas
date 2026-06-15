@@ -26,7 +26,7 @@
 **desc:** Add `ruff` (format + lint), `mypy --strict`, and `pre-commit` to dev-deps in `pyproject.toml`. Configure ruff in `pyproject.toml` (line-length 120, target py311, select sensible rule sets: E,F,I,UP,B,SIM,RUF). Configure mypy strict over `src/code_atlas`. `.pre-commit-config.yaml` runs ruff format + check + mypy. `.editorconfig` enforces LF, utf-8, final newline, 4-space Python, 2-space yaml/json/md.
 **accept:** `uv run ruff check src tests` exits 0 (on empty tree). `uv run mypy src/code_atlas` exits 0. `uv run pre-commit run --all-files` passes.
 
-## 003 — CI pipeline (GitHub Actions) [pending]
+## 003 — CI pipeline (GitHub Actions) [done]
 **deps:** 002
 **files:** .github/workflows/ci.yml
 **desc:** Workflow on push + PR. Matrix on python 3.11/3.12. Steps: checkout, install uv, `uv sync --all-extras`, `uv run ruff format --check`, `uv run ruff check`, `uv run mypy src/code_atlas`, `uv run pytest -m "not slow and not requires_ollama" --cov=code_atlas --cov-report=xml`. Upload coverage artifact.
