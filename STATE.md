@@ -28,6 +28,26 @@
 
 ## Capabilities (by task)
 
+### Task 010 — Tree-sitter AST chunker
+- New runtime deps: `tree-sitter>=0.23,<1.0`, `tree-sitter-language-pack>=0.10,<1.0`.
+- `code_atlas.ingestion.parser.chunk_file(*, path, repo_id, language, content, max_chunk_lines=200) -> list[CodeChunk]`. Keyword-only args.
+- Re-exported from `code_atlas.ingestion`.
+- AST chunking implemented for **python only** in v1. All other languages → fixed-window fallback. Note in `parser.no_ast_extractor` debug log.
+- Python AST extraction:
+  - One chunk per top-level `function_definition` (kind=function), `class_definition` (kind=class), `decorated_definition` (uses inner def's kind/symbol).
+  - One chunk per first-level method inside a class body (kind=method).
+  - Decorated classes also emit their nested methods.
+  - Symbol extracted from first `identifier` child (UTF-8 sliced from source bytes).
+- Empty / whitespace-only content → `[]`.
+- Python file with no defs → single `kind="file"` chunk covering whole content.
+- Python parser exception → warning log + whole-file chunk.
+- Fixed-window fallback: 50-line windows, 5-line overlap. `kind="block"`, `symbol=None`. Last window may be shorter. 100 lines → 3 windows starting at [1, 46, 91].
+- `content_hash` = sha256 hex (64 chars) of chunk content.
+- `chunk_id` = first 32 chars of `sha256("{repo_id}\n{path}\n{start}-{end}\n{content_hash}")`. Deterministic across runs.
+- Tree-sitter handles typed as `Any` (no stubs). `importlib.import_module("tree_sitter_language_pack")` avoids stub-mismatch issues with `mypy --strict + warn_unused_ignores`.
+- DEFERRED (follow-up tasks): body-splitting for oversized defs (parameter accepted but unused, marked `_ = max_chunk_lines`); per-language AST extractors for JS/TS/Go/Java/Rust/C/C++; nested classes deeper than one level.
+- 11 tests cover Python def extraction, class+methods, decorated, no-defs whole-file, fixed-window math (length + start offsets), empty/whitespace, hash stability, content slicing, isinstance check.
+
 ### Task 009 — Language detection
 - `code_atlas.ingestion.language.detect_language(path, content=None) -> str | None`.
 - Re-exported from `code_atlas.ingestion`.

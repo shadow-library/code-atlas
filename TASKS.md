@@ -72,9 +72,9 @@
 **desc:** `detect_language(path: Path, content: str | None = None) -> str | None`. Extension table first (py, js, ts, tsx, jsx, go, java, rs, c, cc, cpp, h, hpp). Shebang fallback for extension-less files. Returns tree-sitter-language-pack-compatible language name or `None`.
 **accept:** Table-driven test covers all initial languages + a None case.
 
-## 010 — Tree-sitter AST chunker [pending]
+## 010 — Tree-sitter AST chunker [done]
 **deps:** 007, 009
-**files:** src/code_atlas/ingestion/parser.py, tests/unit/ingestion/test_parser.py
+**files:** pyproject.toml, src/code_atlas/ingestion/__init__.py, src/code_atlas/ingestion/parser.py, tests/unit/ingestion/test_parser.py
 **desc:** `chunk_file(path: Path, language: str, content: str) -> list[CodeChunk]`. Uses `tree-sitter-language-pack` to get parsers. Walks AST, emits one chunk per top-level function / class / method. For bodies over `max_chunk_lines`, split on inner block boundaries. `content_hash` = sha256 of normalized content. Falls back to fixed-window chunks (50 lines, 5 overlap) for unsupported languages or parser failures.
 **accept:** Python source with two functions → two chunks with correct symbol names and line ranges. Unknown-language file → fixed-window chunks. Hash is stable across runs.
 
