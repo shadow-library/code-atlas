@@ -20,7 +20,7 @@
 **desc:** Create a uv-managed Python 3.11+ project with src/ layout. `pyproject.toml` declares package name `code-atlas`, version `0.1.0`, deps placeholder (empty `dependencies = []` + dev-deps section), and console script `code-atlas = code_atlas.cli:app`. Append project-specific lines to `.gitignore` (uv venv, lance dirs, eval reports). README skeleton with title, one-line tagline, and an "Install" stub.
 **accept:** `uv sync` works on a clean checkout. `python -c "import code_atlas"` succeeds. `code-atlas --help` fails *only* because cli.py does not yet exist (that's the next task's job) — `pyproject.toml` resolves cleanly.
 
-## 002 — Dev tooling (ruff, mypy, pre-commit) [pending]
+## 002 — Dev tooling (ruff, mypy, pre-commit) [done]
 **deps:** 001
 **files:** pyproject.toml, .pre-commit-config.yaml, .editorconfig
 **desc:** Add `ruff` (format + lint), `mypy --strict`, and `pre-commit` to dev-deps in `pyproject.toml`. Configure ruff in `pyproject.toml` (line-length 120, target py311, select sensible rule sets: E,F,I,UP,B,SIM,RUF). Configure mypy strict over `src/code_atlas`. `.pre-commit-config.yaml` runs ruff format + check + mypy. `.editorconfig` enforces LF, utf-8, final newline, 4-space Python, 2-space yaml/json/md.

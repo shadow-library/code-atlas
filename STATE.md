@@ -28,6 +28,18 @@
 
 ## Capabilities (by task)
 
+### Task 002 — Dev tooling (ruff, mypy, pytest, pre-commit, editorconfig)
+- Dev extras pinned: ruff>=0.6, mypy>=1.11, pytest>=8, pytest-cov>=5, pytest-asyncio>=0.23, pre-commit>=3.7.
+- Ruff: line-length 120, py311, select E/F/I/UP/B/SIM/RUF, format double quotes + lf.
+- `[tool.ruff.lint.per-file-ignores]` empty placeholder (forward-friendly).
+- Mypy strict over `src/code_atlas`. warn_unused_ignores + warn_redundant_casts on.
+- Pytest: testpaths `tests`, pythonpath `src`, asyncio_mode auto, markers slow/network/requires_ollama, strict-markers + strict-config.
+- Coverage: branch on, source `code_atlas`, excludes pragma + TYPE_CHECKING + NotImplementedError.
+- Pre-commit hooks: ruff-format, ruff --fix, generic hygiene (trailing-ws, eof-fixer, check-yaml/toml/merge-conflict), local mypy via `uv run mypy`.
+- Editorconfig: utf-8/lf root; py 4-space cap 120; yaml/json/md/toml 2-space; Makefile tabs.
+- `uv sync --extra dev` resolves cleanly. Lockfile (`uv.lock`) committed.
+- Verified locally: `ruff format --check`, `ruff check`, `mypy src/code_atlas` all pass.
+
 ### Task 001 — Project scaffolding (uv + src layout)
 - Hatchling backend. src layout via `packages = ["src/code_atlas"]`.
 - `pyproject.toml`: name `code-atlas`, version `0.1.0`, `requires-python >=3.11`, license MIT.
