@@ -66,9 +66,9 @@
 **desc:** `walk_repo(root: Path, extra_ignores: list[str]) -> Iterable[Path]`. Honors `.gitignore`, `.git/info/exclude`, plus a hardcoded baseline (node_modules, .venv, __pycache__, dist, build, *.lock). Returns absolute paths to text files only (skip binaries via null-byte sniff).
 **accept:** Test with a tmpdir containing a .gitignore yields exactly the expected files. Binary file (random bytes) is skipped. Nested .gitignore honored.
 
-## 009 — Language detection [pending]
+## 009 — Language detection [done]
 **deps:** 008
-**files:** src/code_atlas/ingestion/language.py, tests/unit/ingestion/test_language.py
+**files:** src/code_atlas/ingestion/__init__.py, src/code_atlas/ingestion/language.py, tests/unit/ingestion/test_language.py
 **desc:** `detect_language(path: Path, content: str | None = None) -> str | None`. Extension table first (py, js, ts, tsx, jsx, go, java, rs, c, cc, cpp, h, hpp). Shebang fallback for extension-less files. Returns tree-sitter-language-pack-compatible language name or `None`.
 **accept:** Table-driven test covers all initial languages + a None case.
 

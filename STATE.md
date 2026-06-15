@@ -28,6 +28,17 @@
 
 ## Capabilities (by task)
 
+### Task 009 — Language detection
+- `code_atlas.ingestion.language.detect_language(path, content=None) -> str | None`.
+- Re-exported from `code_atlas.ingestion`.
+- Resolution order: extension table (case-insensitive) → shebang line (from `content` if given, else `path.read_text(errors="replace")`) → `None`.
+- Extension table maps to tree-sitter-language-pack names: `python` (`.py`, `.pyi`), `javascript` (`.js`, `.mjs`, `.cjs`, `.jsx`), `typescript` (`.ts`, `.mts`, `.cts`), `tsx` (`.tsx`), `go`, `java`, `rust`, `c` (`.c`, `.h`), `cpp` (`.cc`, `.cpp`, `.cxx`, `.c++`, `.hpp`, `.hh`, `.hxx`, `.h++`).
+- Shebang interpreter map: `python`/`python2`/`python3` → python, `node` → javascript, `ts-node`/`deno`/`bun` → typescript, `go`/`java`/`rustc` → respective.
+- Shebang handles `#!/usr/bin/env <interp>` and absolute paths. Strips trailing digits/dots so `python3.11` → `python` after lookup miss.
+- CRLF tolerated. `OSError` on read → `None`.
+- Extension wins over shebang (e.g., `script.py` with `#!/usr/bin/env node` → `python`).
+- 35 tests (incl. 23 parametrized table cases) all green.
+
 ### Task 008 — Repo walker (gitignore-aware)
 - New pkg `code_atlas.ingestion`. Re-exports `walk_repo`.
 - Runtime dep added: `pathspec>=0.12,<1.0` (uses `GitIgnoreSpec.from_lines`).
