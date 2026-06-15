@@ -32,7 +32,7 @@
 **desc:** Workflow on push + PR. Matrix on python 3.11/3.12. Steps: checkout, install uv, `uv sync --all-extras`, `uv run ruff format --check`, `uv run ruff check`, `uv run mypy src/code_atlas`, `uv run pytest -m "not slow and not requires_ollama" --cov=code_atlas --cov-report=xml`. Upload coverage artifact.
 **accept:** workflow file is valid (parses, action-lint clean). Job graph: `lint`, `type`, `test` — `test` depends on `lint` + `type`.
 
-## 004 — Errors module (typed exception hierarchy) [pending]
+## 004 — Errors module (typed exception hierarchy) [done]
 **deps:** 001
 **files:** src/code_atlas/errors.py, tests/unit/test_errors.py
 **desc:** Hierarchy rooted at `CodeAtlasError`. Subclasses: `ConfigError`, `IngestionError`, `IndexingError`, `RepositoryNotIndexed`, `ProviderError`, `RetrievalError`, `AgentError`, `EvaluationError`. Each can carry an optional `context: dict[str, Any]`. `__str__` includes context summary.

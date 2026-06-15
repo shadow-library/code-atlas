@@ -28,6 +28,17 @@
 
 ## Capabilities (by task)
 
+### Task 004 — Errors module (typed exception hierarchy)
+- `src/code_atlas/errors.py`. Base `CodeAtlasError(Exception)` carries `message: str` and `context: dict[str, Any]` (per-instance, defaults to `{}`).
+- `__str__`: bare message when context empty; `"{message} | context={ctx!r}"` otherwise.
+- `__repr__`: `f"{type(self).__name__}(message=..., context=...)"`.
+- 8 subclasses extend the base (one-line docstring each): `ConfigError`, `IngestionError`, `IndexingError`, `ProviderError`, `RetrievalError`, `AgentError`, `EvaluationError`.
+- `RepositoryNotIndexed` extends `IndexingError` (not base) so callers catch either.
+- `__all__` sorted alphabetically (RUF022).
+- `tests/unit/test_errors.py`: 8 tests cover str/repr, inheritance, raise/except context survival, per-instance defaults, repr-form in str.
+- `tests/` tree exists; no `__init__.py` per convention (pytest discovers via `pythonpath` + rootdir).
+- Verified locally: ruff format/check, mypy strict, 8/8 pytest pass.
+
 ### Task 003 — CI pipeline (GitHub Actions)
 - `.github/workflows/ci.yml`. Triggers: push + pull_request, all branches.
 - Concurrency group cancels in-progress on same ref. Permissions: contents:read.
