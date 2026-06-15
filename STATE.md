@@ -28,6 +28,19 @@
 
 ## Capabilities (by task)
 
+### Task 006 — Config (pydantic-settings + YAML)
+- New runtime deps: `pydantic>=2.8`, `pydantic-settings>=2.4`, `pyyaml>=6.0`. Dev: `types-pyyaml`.
+- `code_atlas.config` exports `Settings` + `load_settings`.
+- Top-level `Settings(BaseSettings)` holds 7 nested `BaseModel` groups: `app`, `ingestion`, `storage`, `embeddings`, `chat`, `ollama`, `eval`.
+- Env prefix `CODE_ATLAS_`, nested delimiter `__`, default yaml `config/default.yaml`, default env `.env`, `extra="ignore"`.
+- Source precedence (highest first): init kwargs → process env → .env → yaml → secrets. First source with a value wins.
+- `load_settings(yaml_path=None, env_file=None, **overrides)`: builds a one-off `_Scoped(Settings)` subclass when paths override; else plain `Settings(**overrides)`. Used by tests; production code calls `Settings()` directly.
+- Missing yaml/env paths are silently empty (pydantic-settings default).
+- `config/default.yaml` mirrors field defaults verbatim. `.env.example` shows one var per section with `__` nesting + env-wins comment.
+- Field-level validation: temperature bounded `[0.0, 2.0]`, integers gt=0 / gte=0 where appropriate.
+- Mypy strict required `cast("SettingsConfigDict", merged_dict)` for the `_Scoped` model_config (TypedDict can't accept `**dict[str, Any]`).
+- 7 unit tests pass: defaults, yaml override, env-beats-yaml, dotenv layering, init-beats-all, bad-type validation, out-of-range validation. All tests use `monkeypatch.chdir(tmp_path)` + `delenv` for hermeticity.
+
 ### Task 005 — Logging setup (structlog)
 - Runtime dep: `structlog>=24.1,<26.0` (first non-dev dep).
 - `code_atlas.utils` package; re-exports `configure_logging`, `get_logger`.

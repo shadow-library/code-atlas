@@ -44,9 +44,9 @@
 **desc:** `configure_logging(level, json: bool)` sets up structlog with stdlib bridge, ISO timestamps, log level filter, JSON renderer in prod / ConsoleRenderer with colors in dev. Module-level `get_logger(name)` re-exports `structlog.get_logger`.
 **accept:** Test calls `configure_logging`, logs a message, asserts JSON output when `json=True` and human-readable when `json=False`.
 
-## 006 — Config (pydantic-settings + YAML) [pending]
+## 006 — Config (pydantic-settings + YAML) [done]
 **deps:** 001
-**files:** src/code_atlas/config/__init__.py, src/code_atlas/config/settings.py, config/default.yaml, .env.example, tests/unit/config/test_settings.py
+**files:** pyproject.toml, src/code_atlas/config/__init__.py, src/code_atlas/config/settings.py, config/default.yaml, .env.example, tests/unit/config/test_settings.py
 **desc:** `Settings` (pydantic-settings) with nested groups: `app` (log_level, log_json), `ingestion` (max_chunk_lines, ignore_patterns), `storage` (root_dir, lance_uri), `embeddings` (provider, model, dimension), `chat` (provider, model, temperature), `ollama` (base_url, timeout_s), `eval` (cost_rates_path). Loads from `config/default.yaml` first, then `.env`, then env vars (env wins). `.env.example` shows the env var names.
 **accept:** Loading `Settings()` in a tmpdir with custom yaml + .env reads the override correctly. Env var override beats yaml. Missing required fields surface a clear validation error.
 

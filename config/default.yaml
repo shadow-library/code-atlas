@@ -1,0 +1,33 @@
+app:
+  log_level: INFO
+  log_json: true
+ingestion:
+  max_chunk_lines: 200
+  ignore_patterns:
+    - node_modules
+    - .venv
+    - __pycache__
+    - dist
+    - build
+    - .git
+storage:
+  root_dir: ./data
+  lance_uri: ./data/lancedb
+  sqlite_path: ./data/code_atlas.sqlite
+embeddings:
+  provider: ollama
+  model: nomic-embed-text
+  dimension: 768
+  batch_size: 32
+chat:
+  provider: ollama
+  model: llama3.1
+  temperature: 0.2
+  max_tokens: 2048
+ollama:
+  base_url: http://localhost:11434
+  timeout_s: 60.0
+  concurrency: 4
+eval:
+  cost_rates_path: config/costs.yaml
+  reports_dir: eval/reports
