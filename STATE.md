@@ -28,6 +28,19 @@
 
 ## Capabilities (by task)
 
+### Task 008 — Repo walker (gitignore-aware)
+- New pkg `code_atlas.ingestion`. Re-exports `walk_repo`.
+- Runtime dep added: `pathspec>=0.12,<1.0` (uses `GitIgnoreSpec.from_lines`).
+- `walk_repo(root: Path, extra_ignores: list[str] | None = None) -> Iterator[Path]`.
+  - Resolves root, raises `IngestionError` if not a directory.
+  - Yields absolute resolved Path objects.
+- Baseline ignore list (always applied): `.git/`, `node_modules/`, `.venv/`, `venv/`, `__pycache__/`, `dist/`, `build/`, `*.lock`, `*.pyc`, `*.pyo`, `*.so`, `*.dylib`, `*.dll`.
+- Honors root + nested `.gitignore` (nested patterns scoped to their subtree), `.git/info/exclude` (blanks/comments stripped), and caller-supplied `extra_ignores`.
+- Binary detection: null-byte scan in first 8 KB; unreadable files treated as binary (skipped) with debug log.
+- `.gitignore` files themselves ARE yielded (matches git semantics — they're tracked).
+- Validation is lazy because `walk_repo` is a generator; errors raise on first iteration.
+- 10 tests cover: text-only filtering, root + nested `.gitignore`, baseline + extra ignores, `.git/info/exclude`, missing-root + file-root error paths, absolute-path output.
+
 ### Task 007 — Domain types (frozen pydantic v2 models)
 - New pkg `code_atlas.domain`; 4 modules, zero internal deps. Pure types.
 - All models `ConfigDict(frozen=True, extra="forbid")`. Paths are `str` (JSON-stable, cross-platform).

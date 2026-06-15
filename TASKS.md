@@ -60,9 +60,9 @@
 
 ## Phase 2 — Ingestion
 
-## 008 — Repo walker (gitignore-aware) [pending]
+## 008 — Repo walker (gitignore-aware) [done]
 **deps:** 007
-**files:** src/code_atlas/ingestion/__init__.py, src/code_atlas/ingestion/walker.py, tests/unit/ingestion/test_walker.py
+**files:** pyproject.toml, src/code_atlas/ingestion/__init__.py, src/code_atlas/ingestion/walker.py, tests/unit/ingestion/test_walker.py
 **desc:** `walk_repo(root: Path, extra_ignores: list[str]) -> Iterable[Path]`. Honors `.gitignore`, `.git/info/exclude`, plus a hardcoded baseline (node_modules, .venv, __pycache__, dist, build, *.lock). Returns absolute paths to text files only (skip binaries via null-byte sniff).
 **accept:** Test with a tmpdir containing a .gitignore yields exactly the expected files. Binary file (random bytes) is skipped. Nested .gitignore honored.
 
