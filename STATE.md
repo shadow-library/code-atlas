@@ -28,7 +28,16 @@
 
 ## Capabilities (by task)
 
-<!-- Filled by the orchestrator as tasks complete. One section per task. -->
+### Task 001 — Project scaffolding (uv + src layout)
+- Hatchling backend. src layout via `packages = ["src/code_atlas"]`.
+- `pyproject.toml`: name `code-atlas`, version `0.1.0`, `requires-python >=3.11`, license MIT.
+- Console script `code-atlas = code_atlas.cli:app` stubbed; `cli` module lands in task 024.
+- `dev` extra empty placeholder; ruff/mypy/pytest deferred to task 002.
+- `[tool.uv] package = true` set.
+- `src/code_atlas/__init__.py` exports `__version__`.
+- `src/code_atlas/py.typed` present (PEP 561 typed marker).
+- README: title, tagline, install stub.
+- `.gitignore` extended with project-specific section (orchestrator backup, data, *.lance, eval/reports, config/local.yaml, .uv-cache).
 
 ## Considered but deferred
 <!-- Architectural suggestions sub-agents raised that we chose not to act on. -->

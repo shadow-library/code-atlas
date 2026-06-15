@@ -14,7 +14,7 @@
 
 ## Phase 1 — Foundation
 
-## 001 — Project scaffolding (uv + src layout) [pending]
+## 001 — Project scaffolding (uv + src layout) [done]
 **deps:** none
 **files:** pyproject.toml, src/code_atlas/__init__.py, src/code_atlas/py.typed, README.md, .gitignore
 **desc:** Create a uv-managed Python 3.11+ project with src/ layout. `pyproject.toml` declares package name `code-atlas`, version `0.1.0`, deps placeholder (empty `dependencies = []` + dev-deps section), and console script `code-atlas = code_atlas.cli:app`. Append project-specific lines to `.gitignore` (uv venv, lance dirs, eval reports). README skeleton with title, one-line tagline, and an "Install" stub.

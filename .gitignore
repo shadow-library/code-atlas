@@ -216,3 +216,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# code-atlas project-specific
+.orchestrator/backup/
+data/
+*.lance
+*.lancedb/
+eval/reports/
+config/local.yaml
+.uv-cache/
