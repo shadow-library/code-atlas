@@ -78,9 +78,9 @@
 **desc:** `chunk_file(path: Path, language: str, content: str) -> list[CodeChunk]`. Uses `tree-sitter-language-pack` to get parsers. Walks AST, emits one chunk per top-level function / class / method. For bodies over `max_chunk_lines`, split on inner block boundaries. `content_hash` = sha256 of normalized content. Falls back to fixed-window chunks (50 lines, 5 overlap) for unsupported languages or parser failures.
 **accept:** Python source with two functions → two chunks with correct symbol names and line ranges. Unknown-language file → fixed-window chunks. Hash is stable across runs.
 
-## 011 — Ingestion pipeline [pending]
+## 011 — Ingestion pipeline [done]
 **deps:** 008, 009, 010
-**files:** src/code_atlas/ingestion/pipeline.py, tests/integration/ingestion/test_pipeline.py
+**files:** src/code_atlas/ingestion/__init__.py, src/code_atlas/ingestion/pipeline.py, tests/integration/ingestion/test_pipeline.py
 **desc:** `ingest_repo(root: Path, repo_id: str) -> Iterator[CodeChunk]`. Composes walker → detect → chunk. Skips unchanged files via mtime + size cache (in-memory only for now). Emits chunks lazily.
 **accept:** Integration test over a tiny fixture repo yields expected chunk count and a chunk for a named function.
 

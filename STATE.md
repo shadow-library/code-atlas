@@ -28,6 +28,18 @@
 
 ## Capabilities (by task)
 
+### Task 011 — Ingestion pipeline — Phase 2 complete
+- `code_atlas.ingestion.pipeline.ingest_repo(root, repo_id, *, extra_ignores=None, max_chunk_lines=200, mtime_cache=None, stats=None) -> Iterator[CodeChunk]`.
+- Re-exported from `code_atlas.ingestion` along with `IngestStats`.
+- Composes walker → language detection → chunker into a lazy chunk stream.
+- **Eager validation**: bad root (non-dir) or empty repo_id raise `IngestionError` BEFORE iteration (uses an inner `_iter` generator + outer factory function).
+- `IngestStats` (slotted dataclass): counters for `files_seen`, `files_skipped_no_language`, `files_skipped_unreadable`, `files_skipped_unchanged`, `files_chunked`, `chunks_emitted`. Caller can pass an instance; mutated in place.
+- `mtime_cache: dict[str, tuple[float, int]]` — caller-managed dict mapping `rel_path` → `(mtime, size)`. Updated only after a file is fully processed (transient parse errors don't poison the cache). On match: skip + bump `files_skipped_unchanged`.
+- Per-file flow: walker yields → stat → cache check → language detect → read text → skip empty/whitespace → chunk → yield. OSError on stat or read → warn + skip (counted as `files_skipped_unreadable`).
+- `pipeline.completed` info log at end with all counters.
+- Non-detectable files (`.txt`, `.md`, `.gitignore`) → `files_skipped_no_language`.
+- 9 integration tests in `tests/integration/ingestion/test_pipeline.py` cover: chunk emission, repo_id propagation, relative-path output, all stats counters, mtime-cache skip + refresh on `os.utime` bump, eager errors for bad root + empty repo_id, lazy `next()` consumption.
+
 ### Task 010 — Tree-sitter AST chunker
 - New runtime deps: `tree-sitter>=0.23,<1.0`, `tree-sitter-language-pack>=0.10,<1.0`.
 - `code_atlas.ingestion.parser.chunk_file(*, path, repo_id, language, content, max_chunk_lines=200) -> list[CodeChunk]`. Keyword-only args.
