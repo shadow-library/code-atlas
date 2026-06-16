@@ -28,6 +28,19 @@
 
 ## Capabilities (by task)
 
+### Task 012 — Metadata store (SQLite + SQLAlchemy Core) — Phase 3 starts
+- New runtime dep: `sqlalchemy>=2.0,<3.0`.
+- New pkg `code_atlas.indexing`. Re-exports `MetadataStore`.
+- SQLAlchemy Core only (no ORM models). Module-level `MetaData` + single `chunks` table:
+  - Columns: `chunk_id PK`, `repo_id` (indexed), `path`, `language`, `kind`, `symbol` (nullable), `start_line`, `end_line`, `content`, `content_hash` (indexed), `indexed_at` (ISO 8601 UTC).
+- `MetadataStore(url="sqlite:///:memory:")` constructor creates engine + tables.
+- Methods: `upsert(chunk)`, `upsert_many(chunks) -> int`, `get(chunk_id) -> CodeChunk | None`, `get_many(chunk_ids) -> list[CodeChunk]` (preserves input order, skips missing), `delete_repo(repo_id) -> int`, `count(*, repo_id=None) -> int`, `close()`, `__enter__`/`__exit__`, `engine` property.
+- Idempotency via SQLite-dialect `insert(...).on_conflict_do_update(index_elements=["chunk_id"], set_={...})`. Re-upserting same chunk_id updates fields (incl. `indexed_at`), preserves row count.
+- All SQLAlchemy errors wrapped as `IndexingError` with context (chunk_id or batch count).
+- `RowMapping` ≠ `Mapping[str, Any]` for mypy strict — call sites convert via `dict(row)`.
+- Use `datetime.UTC` alias (Python 3.11+, per ruff UP017).
+- 12 unit tests cover round-trip, idempotent upsert, update semantics, batch + empty batch, get_many order + missing-skip, delete_repo isolation, count-by-repo, on-disk persistence via context manager, engine property.
+
 ### Task 011 — Ingestion pipeline — Phase 2 complete
 - `code_atlas.ingestion.pipeline.ingest_repo(root, repo_id, *, extra_ignores=None, max_chunk_lines=200, mtime_cache=None, stats=None) -> Iterator[CodeChunk]`.
 - Re-exported from `code_atlas.ingestion` along with `IngestStats`.
