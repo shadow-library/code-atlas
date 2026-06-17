@@ -28,6 +28,24 @@
 
 ## Capabilities (by task)
 
+### Task 013 — Lexical store (SQLite FTS5)
+- New module `code_atlas.indexing.lexical_store`; `LexicalStore` re-exported from `code_atlas.indexing`.
+- Uses **stdlib `sqlite3`**, NOT SQLAlchemy. Diverges from `MetadataStore`: `url` is a raw filename or `":memory:"` (e.g. `LexicalStore("/tmp/lex.db")`), not a `sqlite:///...` URL. Two stores share no connection.
+- Single FTS5 virtual table:
+  ```
+  CREATE VIRTUAL TABLE chunks_fts USING fts5(
+    content, symbol, repo_id UNINDEXED, chunk_id UNINDEXED,
+    tokenize = 'unicode61 remove_diacritics 2'
+  );
+  ```
+- Public API: `upsert(chunk)`, `upsert_many(chunks) -> int`, `search(query, k=10, repo_id=None) -> list[(chunk_id, score)]`, `delete_repo(repo_id) -> int`, `count(*, repo_id=None) -> int`, `close()`, ctx-mgr, `connection` property.
+- **Score convention**: returns `-bm25(chunks_fts)` so higher score = more relevant; rows ordered by raw `bm25 ASC` under the hood. Callers can compare scores naturally (`>`).
+- Idempotency: no PK on FTS5 virtual tables, so `upsert` does `DELETE WHERE chunk_id=? + INSERT`. Re-upserting same chunk_id keeps row count at 1.
+- `chunk.symbol` is `str | None`; FTS5 columns reject NULL → coerced to `""` on insert.
+- All `sqlite3.Error` (incl. `OperationalError` for malformed MATCH) wrapped as `IndexingError` with context (`chunk_id`, `query`, or `repo_id`). Empty/malformed FTS query → `IndexingError`.
+- `k < 1` → `IndexingError` (validated before SQL).
+- 15 unit tests cover round-trip, idempotency, batch + empty, repo isolation, delete_repo, count-by-repo, on-disk persistence, BM25 multi-term-repetition ordering, positive score, malformed + empty query, k<1, None symbol coercion, no-match empty list.
+
 ### Task 012 — Metadata store (SQLite + SQLAlchemy Core) — Phase 3 starts
 - New runtime dep: `sqlalchemy>=2.0,<3.0`.
 - New pkg `code_atlas.indexing`. Re-exports `MetadataStore`.

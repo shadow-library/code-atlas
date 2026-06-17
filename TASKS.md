@@ -94,7 +94,7 @@
 **desc:** SQLite-backed `MetadataStore` with table `chunks(chunk_id PK, repo_id, path, language, kind, symbol, start_line, end_line, content, content_hash, indexed_at)`. SQLAlchemy Core (no ORM). Methods: `upsert(chunk)`, `get(chunk_id)`, `get_many(ids)`, `delete_repo(repo_id)`. Idempotent on `(repo_id, path, content_hash)`.
 **accept:** Upsert is idempotent (no duplicate rows on re-upsert). `get_many` preserves input order.
 
-## 013 — Lexical store (SQLite FTS5) [pending]
+## 013 — Lexical store (SQLite FTS5) [done]
 **deps:** 012
 **files:** src/code_atlas/indexing/lexical_store.py, tests/unit/indexing/test_lexical_store.py
 **desc:** Separate FTS5 virtual table `chunks_fts(content, symbol, repo_id UNINDEXED, chunk_id UNINDEXED)`. `LexicalStore.upsert(chunk)`, `LexicalStore.search(query, k, repo_id) -> list[(chunk_id, score)]`. BM25 ranking. Tokenizer: `unicode61 remove_diacritics 2`.
