@@ -28,6 +28,24 @@
 
 ## Capabilities (by task)
 
+### Task 014 — Vector store (LanceDB + Protocol)
+- New runtime dep: `lancedb>=0.13,<1.0`. Pulls `pyarrow`, `numpy`, `tqdm`, `urllib3`, etc. (~80MB on install). Heavy but locked-in architectural choice.
+- New module `code_atlas.indexing.vector_store`. Re-exports `VectorStore` (Protocol), `VectorItem` (pydantic), `LanceVectorStore` from `code_atlas.indexing`.
+- `VectorItem` (frozen pydantic, `extra="forbid"`): `chunk_id`, `repo_id`, `vector: list[float]` (min_length=1), `metadata: dict[str, Any]` (defaults to `{}`). Lives in `vector_store.py`, NOT in `domain/` (persistence record, not pure domain).
+- `VectorStore` Protocol: `dimension: int` attr + `upsert(items) -> int`, `search(vector, k=10, filters=None) -> list[(chunk_id, score)]`, `delete_repo(repo_id) -> int`, `count(*, repo_id=None) -> int`, `close()`. **Sync** API — LanceDB embedded is local file ops; callers wrap in `asyncio.to_thread`.
+- `LanceVectorStore(uri, *, table_name="chunks_vec", dimension=768)`. `uri` is a directory path (NOT a SQLAlchemy URL). Creates/opens table on construction.
+- PyArrow schema: `chunk_id: string, repo_id: string, vector: list_<float32, dimension>, metadata: string` (JSON-encoded via `json.dumps(..., sort_keys=True)`).
+- Idempotency: `tbl.merge_insert("chunk_id").when_matched_update_all().when_not_matched_insert_all().execute(arrow_table)`. Re-upsert keeps row count at 1.
+- Search: `tbl.search(vector).metric("cosine").limit(k)` + optional `.where("repo_id = '...'")`. Score = `1.0 - _distance` so higher = more relevant. For exact-match vectors, score ≈ 1.0.
+- Filters dict: ONLY `repo_id: str` supported. Unknown keys → `IndexingError`. `repo_id` value containing single-quote → `IndexingError` (no SQL escape logic; reject the input instead). Empty filters dict treated as None.
+- `delete_repo` counts BEFORE deleting (LanceDB's delete doesn't return rowcount reliably).
+- `count(*, repo_id=...)` uses `tbl.count_rows(filter=...)` (available in lancedb >= 0.6).
+- `dimension < 1`, `k < 1`, vector-length mismatch (upsert & search) → `IndexingError` with context.
+- LanceDB/PyArrow exceptions wrapped via bare `except Exception` (LanceDB error hierarchy is messy across versions); IndexingErrors we raise ourselves are re-raised untouched.
+- Mypy strict: `lancedb` and `pyarrow` imported via `importlib.import_module(...)` and stored as `Any` to dodge stub mismatches under `warn_unused_ignores`. Matches the tree-sitter-language-pack precedent from Task 010. `cast(list[str], ...)` for arrow result extraction.
+- **lancedb 0.33 deprecation note**: `table_names()` emits a `DeprecationWarning` recommending `list_tables()`, but lancedb 0.33's `list_tables()` returns `(namespace, name)` tuples containing unhashable lists — not a string list. Don't chase the warning without checking the API; the swap is NOT a drop-in. Kept `table_names()`; warning is noise, not a bug.
+- 16 unit tests cover round-trip + positive score, idempotent upsert, empty batch returns 0, repo_id filter isolation in search, delete_repo isolation, delete_repo no-match returns 0, count by repo, on-disk persistence via ctx-mgr, wrong-dim upsert + search, unknown filter key, k<1, single-quote rejected on delete/search/count, score positive for self-match, search k-limit, metadata JSON round-trip.
+
 ### Task 013 — Lexical store (SQLite FTS5)
 - New module `code_atlas.indexing.lexical_store`; `LexicalStore` re-exported from `code_atlas.indexing`.
 - Uses **stdlib `sqlite3`**, NOT SQLAlchemy. Diverges from `MetadataStore`: `url` is a raw filename or `":memory:"` (e.g. `LexicalStore("/tmp/lex.db")`), not a `sqlite:///...` URL. Two stores share no connection.

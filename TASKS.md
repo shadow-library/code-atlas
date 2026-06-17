@@ -100,7 +100,7 @@
 **desc:** Separate FTS5 virtual table `chunks_fts(content, symbol, repo_id UNINDEXED, chunk_id UNINDEXED)`. `LexicalStore.upsert(chunk)`, `LexicalStore.search(query, k, repo_id) -> list[(chunk_id, score)]`. BM25 ranking. Tokenizer: `unicode61 remove_diacritics 2`.
 **accept:** Inserting a chunk containing "hello world" and searching `"hello"` returns it with non-zero score. Score order matches BM25 expectation across multiple chunks.
 
-## 014 — Vector store (LanceDB + Protocol) [pending]
+## 014 — Vector store (LanceDB + Protocol) [done]
 **deps:** 007
 **files:** src/code_atlas/indexing/vector_store.py, tests/unit/indexing/test_vector_store.py
 **desc:** `VectorStore` Protocol: `upsert(items: Iterable[VectorItem])`, `search(vector, k, filters) -> list[(chunk_id, score)]`, `delete_repo(repo_id)`. `VectorItem{chunk_id, repo_id, vector, metadata}`. `LanceVectorStore` impl writes to a configurable LanceDB URI. Uses cosine similarity.

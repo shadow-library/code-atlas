@@ -2,5 +2,6 @@
 
 from code_atlas.indexing.lexical_store import LexicalStore
 from code_atlas.indexing.metadata_store import MetadataStore
+from code_atlas.indexing.vector_store import LanceVectorStore, VectorItem, VectorStore
 
-__all__ = ["LexicalStore", "MetadataStore"]
+__all__ = ["LanceVectorStore", "LexicalStore", "MetadataStore", "VectorItem", "VectorStore"]
