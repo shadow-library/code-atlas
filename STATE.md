@@ -28,6 +28,21 @@
 
 ## Capabilities (by task)
 
+### Task 015 — Symbol graph (NetworkX MultiDiGraph)
+- New runtime dep: `networkx>=3.2,<4.0` (installed: 3.6.1, ~2MB).
+- New module `code_atlas.indexing.symbol_graph`. Re-exports `SymbolGraph` + `EdgeKind` (Literal) from `code_atlas.indexing`.
+- Backed by `networkx.MultiDiGraph` (not plain DiGraph) so multiple edge kinds between same `(src, dst)` are independent. `key=kind` on `add_edge` makes same-kind re-adds idempotent.
+- **Node key strategy**: tuple `(symbol.path, symbol.name)` as the networkx node id (hashable). Full `Symbol.model_dump()` stored as node attr `symbol_data`. Additional attr `node_id=[path, name]` (list copy) is the canonical key for save/load round-trip.
+- `EdgeKind = Literal["calls", "imports", "defines", "contained_in"]`. Unknown kind on `add_edge` → `IndexingError` with `{"kind": ..., "valid_kinds": [...]}`. `get_args(EdgeKind)` drives the validation set.
+- Public API: `add_symbol`, `has_symbol`, `add_edge`, `callers`, `callees`, `save`, `load` (classmethod), `__len__`, `edge_count`. Sync (matches sibling stores).
+- `callers` / `callees` filter on `key == "calls"` only (NOT all edge kinds). Dedup + sort by `(path, name)` for deterministic order. Missing symbol → `[]`, not error.
+- **Persistence**: `nx.node_link_data(g, edges="edges")` → `json.dumps(sort_keys=True)` → `gzip.compress(level=9)` → `path.write_bytes(...)`. `edges="edges"` (vs default "links") dodges nx 3.x FutureWarning. Pairs symmetric in `load`.
+- **Round-trip gotcha**: tuple node ids serialize to JSON lists. `_coerce_key` accepts both list and tuple shapes; load rebuilds the graph fresh, keying nodes by the stored `node_id` attribute (NOT the raw `nx.node_link_graph` node id, which may be coerced inconsistently across nx versions).
+- Errors: `save` / `load` wrap `Exception` → `IndexingError` with `{"path": ..., "error": str(exc)}`. `IndexingError` re-raised untouched.
+- Mypy strict: `networkx` has no shipped stubs (mypy hint suggests `types-networkx`). Imported via `importlib.import_module("networkx")` + typed `Any`, matching tree-sitter-language-pack + lancedb precedent. Module-level `nx: Any` plus `self._g: Any`. `bool(...)` wrap on `has_node` return.
+- No async, no context manager, no close — graph is in-memory; persistence is explicit.
+- 16 unit tests cover: round-trip + has_symbol, idempotent add_symbol, add_edge auto-endpoints, all-4-kinds same pair, same-kind idempotent, unknown kind raises, callers/callees filter to "calls" only, missing symbol returns [], deterministic sort order, gzip magic bytes on save, edge_count + len totals, save to missing parent dir raises, load corrupted file raises, full save/load round-trip preserves Symbol payload (incl. line numbers), **acceptance test: 5 symbols + 6 edges across all 4 kinds, save → load, all queries identical**.
+
 ### Task 014 — Vector store (LanceDB + Protocol)
 - New runtime dep: `lancedb>=0.13,<1.0`. Pulls `pyarrow`, `numpy`, `tqdm`, `urllib3`, etc. (~80MB on install). Heavy but locked-in architectural choice.
 - New module `code_atlas.indexing.vector_store`. Re-exports `VectorStore` (Protocol), `VectorItem` (pydantic), `LanceVectorStore` from `code_atlas.indexing`.

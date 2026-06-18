@@ -26,6 +26,7 @@ dependencies = [
     "tree-sitter-language-pack>=0.10,<1.0",
     "sqlalchemy>=2.0,<3.0",
     "lancedb>=0.13,<1.0",
+    "networkx>=3.2,<4.0",
 ]
 
 [project.optional-dependencies]

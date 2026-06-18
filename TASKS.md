@@ -106,7 +106,7 @@
 **desc:** `VectorStore` Protocol: `upsert(items: Iterable[VectorItem])`, `search(vector, k, filters) -> list[(chunk_id, score)]`, `delete_repo(repo_id)`. `VectorItem{chunk_id, repo_id, vector, metadata}`. `LanceVectorStore` impl writes to a configurable LanceDB URI. Uses cosine similarity.
 **accept:** Round-trip: upsert 3 items, search with the embedding of one, top-1 result is that item.
 
-## 015 — Symbol graph [pending]
+## 015 — Symbol graph [done]
 **deps:** 007
 **files:** src/code_atlas/indexing/symbol_graph.py, tests/unit/indexing/test_symbol_graph.py
 **desc:** `SymbolGraph` wraps `networkx.DiGraph`. Nodes: `Symbol`. Edges typed: `calls`, `imports`, `defines`, `contained_in`. Methods: `add_symbol`, `add_edge`, `callers(symbol)`, `callees(symbol)`, `save(path)`, `load(path)`. Persist as gzipped JSON (node-link format) for portability.
