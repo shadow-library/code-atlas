@@ -112,7 +112,7 @@
 **desc:** `SymbolGraph` wraps `networkx.DiGraph`. Nodes: `Symbol`. Edges typed: `calls`, `imports`, `defines`, `contained_in`. Methods: `add_symbol`, `add_edge`, `callers(symbol)`, `callees(symbol)`, `save(path)`, `load(path)`. Persist as gzipped JSON (node-link format) for portability.
 **accept:** Build graph with 5 symbols and 6 edges, save + load, all queries return same results.
 
-## 016 — Indexer orchestrator [pending]
+## 016 — Indexer orchestrator [done]
 **deps:** 011, 012, 013, 014, 015
 **files:** src/code_atlas/indexing/indexer.py, tests/integration/indexing/test_indexer.py
 **desc:** `Indexer` composes ingestion + the four stores. `index_repo(root, repo_id, embedder)` walks chunks through metadata + lexical + vector + symbol graph in one pass. Batches embedding calls (configurable batch size). Idempotent on `content_hash`. Symbol graph edges populated only when language has a defined extractor (tree-sitter queries per language; ship Python extractor in this task, others as follow-ups).

@@ -28,6 +28,23 @@
 
 ## Capabilities (by task)
 
+### Task 016 — Indexer orchestrator — Phase 3 complete
+- New module `code_atlas.indexing.indexer` (re-exports `Indexer`, `IndexResult`, `EmbedFunc`).
+- New helper `code_atlas.indexing.edge_extractor.extract_python_edges(chunks) -> list[(Symbol, Symbol, EdgeKind)]`. Derives `defines` (module → top-level class/function) + `contained_in` (class → method, line-range nesting) from CodeChunk metadata alone — NO tree-sitter re-parse. Module Symbol synthesized as `Symbol(name=path.stem, kind="module", path=path, line=1)`.
+- `EmbedFunc = Callable[[list[str]], list[list[float]]]` — **sync** boundary. Async embedders adapt via shim at caller boundary (Task 020 territory). Decision: indexer stays sync because all four stores are sync; wrapping every DB call in `asyncio.to_thread` would be over-engineering.
+- `Indexer(*, metadata_store, lexical_store, vector_store, symbol_graph, embed, batch_size=64)`. Stores are caller-owned — `Indexer` NEVER closes them.
+- `index_repo(root, repo_id, *, extra_ignores=None, max_chunk_lines=200, mtime_cache=None) -> IndexResult`.
+- `IndexResult` (slotted dataclass): `chunks_seen, chunks_indexed, chunks_skipped_cached, embed_batches, embed_calls, edges_added, ingest_stats`.
+- **Idempotency strategy (critical)**: per-batch, `metadata_store.get_many([c.chunk_id for c in batch])` → `{chunk_id: content_hash}`. Partition into `cached` (matching hash → skip embed + skip writes) vs `to_index` (new or hash-changed). Only `to_index` chunks pass to embedder + store upserts. Re-running `index_repo` on unchanged tree → `embed_calls == 0`, `embed_batches == 0`.
+- **Batching**: stream from `ingest_repo`, accumulate `batch: list[CodeChunk]` to `batch_size`, flush. Final partial batch flushes at end. Embedder called once per non-empty `to_index` partition.
+- **Symbol-graph build is per-file** (not per-batch), executed AFTER the chunk stream is exhausted. Maintains `per_file: dict[str, list[CodeChunk]]` for whole-run accumulation. **Memory note**: buffers all chunks in memory; acceptable v1, will need streaming on very large repos (deferred).
+- Vector items get `metadata={"path": ..., "language": ..., "kind": ...}` (JSON-encoded by LanceVectorStore on persist).
+- Error handling: embedder exception → `IndexingError("indexer: embed failed", context={"batch_size": N})`. Vector count mismatch → `IndexingError(..., {"expected": N, "got": M})`. Vector dim mismatch → `IndexingError(..., {"expected": dim, "got": got, "index": idx})`. Stores' own IndexingErrors propagate untouched.
+- Info-level milestones: `indexer.index_repo.start`, `indexer.batch.flushed`, `indexer.symbol_graph.built`, `indexer.index_repo.completed`.
+- `batch_size < 1` → `IndexingError` in `__init__`.
+- 7 integration tests in `tests/integration/indexing/test_indexer.py`: 4-store fan-out, idempotency (re-run = 0 embed calls), re-embed on content change (only changed file's chunks), batching (small batch_size → ceil(n/2) batches), Python edges extracted (defines + contained_in for Greeter→greet), embed dim mismatch raises, embed count mismatch raises.
+- Phase 3 (Indexing) is now complete. Phase 4 (Providers) unblocks next.
+
 ### Task 015 — Symbol graph (NetworkX MultiDiGraph)
 - New runtime dep: `networkx>=3.2,<4.0` (installed: 3.6.1, ~2MB).
 - New module `code_atlas.indexing.symbol_graph`. Re-exports `SymbolGraph` + `EdgeKind` (Literal) from `code_atlas.indexing`.
