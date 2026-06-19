@@ -28,6 +28,21 @@
 
 ## Capabilities (by task)
 
+### Task 018 — Ollama embedding provider
+- New runtime dep: `httpx>=0.27,<1.0` (installed 0.28.1 + anyio/h11/httpcore/certifi/idna).
+- New module `code_atlas.providers.ollama_embeddings`. Re-exported as `OllamaEmbeddingProvider` from `code_atlas.providers`. **Importing the module triggers `register_embedding("ollama", _factory)` at module bottom** — side-effect registration. `providers/__init__.py` imports the class, which is enough to run the side-effect.
+- `OllamaEmbeddingProvider(*, base_url, model, dimension, timeout_s=60.0, concurrency=4, client=None)`. Implements `EmbeddingProvider` Protocol structurally (`model`, `dimension`, `async embed`).
+- Endpoint: `POST {base_url}/api/embeddings` with body `{"model": ..., "prompt": <single text>}`. Single-input API → batches via `asyncio.gather` with a **per-call `asyncio.Semaphore(concurrency)`** (per-call avoids event-loop binding bugs). Response: `{"embedding": [...]}`.
+- Score / dim validation: returned vector len must equal `self.dimension`; mismatch → `ProviderError` with `{"expected", "got", "model"}`. Validates on every response (not just first).
+- Client ownership tracked by `_owns_client: bool`. `client=None` → builds `httpx.AsyncClient(base_url=base_url, timeout=timeout_s)`, owns it (closed by `aclose()`). Injected client → not closed by `aclose()` (caller-owned, dependency-injection pattern for tests).
+- Error wrapping: `HTTPStatusError` (4xx/5xx) → `ProviderError` with `{status_code, url, body[:200]}`. `RequestError` (connect/timeout/etc.) → `ProviderError` with `{error_type, url}`. JSON decode error → `ProviderError` with `{status_code}`. Non-dict payload or missing `embedding` key → `ProviderError` with `{keys}` or `{type}`. All wrap via `from exc`.
+- `dimension < 1` or `concurrency < 1` in `__init__` → `ProviderError`. Empty `texts` → `[]`, no HTTP calls.
+- `_factory(settings)` reads `settings.ollama.{base_url, timeout_s, concurrency}` + `settings.embeddings.{model, dimension}`. Note: cross-group composition (embedding model lives under `embeddings`, transport lives under `ollama`).
+- Logging: `info` on `ollama_embeddings.batch` (once per `embed()`), `debug` on `.request` (per text — debug to avoid log floods), `warning` on `.failed`.
+- 10 unit tests in `tests/unit/providers/test_ollama_embeddings.py` using `httpx.MockTransport(async_handler)`. Coverage: round-trip 2 inputs, empty batch → 0 calls, HTTP error wrap, network error wrap (`httpx.ConnectError`), malformed response, dim mismatch, concurrency cap (5 inputs / concurrency=2 → max-in-flight ≤ 2), auto-registration, invalid ctor args, injected-client not closed by `aclose()`.
+- Test hygiene: NO `clear_registry` autouse in this file (would defeat the auto-registration test). The `test_auto_registration` test re-registers explicitly via the imported `_factory` reference, which is robust to test ordering.
+- Quality gate clean first-try — no post-write fixes.
+
 ### Task 017 — Provider Protocols + registry — Phase 4 starts
 - New pkg `code_atlas.providers` (depends on domain/errors/utils/config only — strict layering).
 - `base.py` ships two Protocols and five frozen pydantic records:

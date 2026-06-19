@@ -128,7 +128,7 @@
 **desc:** `EmbeddingProvider` Protocol: `async embed(texts: list[str]) -> list[list[float]]`, plus `dimension: int`, `model: str`. `LLMProvider` Protocol: `async chat(messages, tools=None) -> ChatResponse`, `async chat_stream(messages, tools=None) -> AsyncIterator[ChatChunk]`. `ChatResponse{content, tool_calls, usage}`. Registry maps name → factory: `register_embedding("name", factory)`, `register_llm("name", factory)`, `make_embedding(settings) -> EmbeddingProvider`, `make_llm(settings) -> LLMProvider`.
 **accept:** Test registers a fake provider, resolves it through `make_*`, calls it, returns expected shape. Unknown name → `ProviderError`.
 
-## 018 — Ollama embedding provider [pending]
+## 018 — Ollama embedding provider [done]
 **deps:** 017
 **files:** src/code_atlas/providers/ollama_embeddings.py, tests/unit/providers/test_ollama_embeddings.py
 **desc:** `OllamaEmbeddingProvider(base_url, model, timeout_s)` calls `POST {base_url}/api/embeddings`. Batches by sequential calls (Ollama embeddings API is single-input; concurrency via `asyncio.gather` capped at N). Auto-registers under `"ollama"` on import.
