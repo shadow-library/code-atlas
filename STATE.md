@@ -28,6 +28,16 @@
 
 ## Capabilities (by task)
 
+### Task 021 — Citation hydration + Reranker Protocol — Phase 5 complete
+- New module `code_atlas.retrieval.citation`. Exports `to_citation(chunk, *, max_snippet_chars=800) -> Citation` and `DEFAULT_SNIPPET_MAX_CHARS = 800`.
+- New module `code_atlas.retrieval.reranker`. Exports `Reranker` Protocol (async `rerank(query, results) -> list[RetrievalResult]`) and `PassthroughReranker` (no-op default impl, returns shallow copy).
+- `to_citation`: snippet is a **raw prefix** of `chunk.content` (NO trailing ellipsis) so downstream tools can re-grep against the source file exactly. `max_snippet_chars < 0` → `ValueError`. `0` allowed (yields empty snippet). Pydantic `Citation` invariants (line-range, max_length=4096) propagate as `ValidationError`.
+- `PassthroughReranker.rerank` returns `list(results)` (shallow copy, not the same reference) so callers can safely mutate without affecting the input. Uses `del query` to silence unused-arg lint.
+- `Reranker` is a `Protocol` — structural subtyping. Future cross-encoder, LLM-judge, or BGE-based rerankers just need to satisfy the signature; no inheritance required.
+- 10 unit tests across two files: 6 for citation (basic field projection, None symbol, truncation, full-content-under-limit, zero-chars empty, negative raises), 4 for reranker (preserves order, returns copy not same list, empty input, query ignored).
+- Quality gate clean first-try (no post-write fixes).
+- **Phase 5 (Retrieval) complete.** The retrieval surface is now `HybridRetriever.retrieve(query) -> list[RetrievalResult]` → optional `Reranker.rerank(query, results)` → `to_citation(result.chunk)` for `Answer.citations`. Phase 6 (Agent) unblocks next.
+
 ### Task 020 — Hybrid retrieval (RRF) — Phase 5 starts
 - New pkg `code_atlas.retrieval`. Re-exports `HybridRetriever` + `RRF_K_DEFAULT` (=60).
 - `HybridRetriever(*, vector_store, lexical_store, embedder, metadata_store, rrf_k=60, oversample=2)`. All store deps are SYNC; embedder is ASYNC. Sync calls wrapped in `asyncio.to_thread` from inside the async `retrieve`.

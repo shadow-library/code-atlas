@@ -150,7 +150,7 @@
 **desc:** `HybridRetriever(vector_store, lexical_store, embedder, metadata_store)`. `async retrieve(query: RetrievalQuery) -> list[RetrievalResult]`. Runs vector + lexical in parallel via `asyncio.gather`. Fuses ranks via Reciprocal Rank Fusion (k=60). Returns top-`query.k` deduped by `chunk_id`, hydrated with `CodeChunk` via metadata store.
 **accept:** Synthetic test: 5 chunks where vector ranks A>B>C and lexical ranks B>A>D — RRF yields A & B at top, C and D follow. Test asserts deterministic order.
 
-## 021 — Citation hydration + Reranker Protocol [pending]
+## 021 — Citation hydration + Reranker Protocol [done]
 **deps:** 020
 **files:** src/code_atlas/retrieval/citation.py, src/code_atlas/retrieval/reranker.py, tests/unit/retrieval/test_citation.py
 **desc:** `to_citation(chunk: CodeChunk) -> Citation` extracts nearest enclosing symbol (already on chunk) and a snippet (configurable max chars). `Reranker` Protocol with `async rerank(query, results) -> results`. Default `PassthroughReranker` returns input as-is.
