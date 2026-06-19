@@ -28,6 +28,30 @@
 
 ## Capabilities (by task)
 
+### Task 017 — Provider Protocols + registry — Phase 4 starts
+- New pkg `code_atlas.providers` (depends on domain/errors/utils/config only — strict layering).
+- `base.py` ships two Protocols and five frozen pydantic records:
+  - `EmbeddingProvider` Protocol: `model: str`, `dimension: int`, `async embed(texts: list[str]) -> list[list[float]]`.
+  - `LLMProvider` Protocol: `model: str`, `async chat(messages, *, tools=None) -> ChatResponse`, `chat_stream(messages, *, tools=None) -> AsyncIterator[ChatChunk]`.
+  - `ChatRole = Literal["system", "user", "assistant", "tool"]`.
+  - `ChatMessage{role, content, tool_call_id?, name?}` — `content` may be empty (for assistant turns that are tool-only).
+  - `ToolSpec{name, description, parameters: dict}` — `parameters` is free-form JSON schema, NOT validated by us.
+  - `ToolCall{id, name, arguments: dict}`.
+  - `ChatResponse{content, tool_calls, usage: TokenUsage, model, finish_reason}`.
+  - `ChatChunk{content_delta, tool_call_delta?, done, usage?, finish_reason?}` — final chunk has `done=True`; `usage` populated on final chunk only (consumer-checked, not model-enforced).
+- **`chat_stream` Protocol signature is `def ... -> AsyncIterator[ChatChunk]` (NOT `async def`).** Concrete impls use `async def chat_stream(...) -> AsyncIterator[ChatChunk]` with `yield` (async-generator function). When called, this returns an `AsyncIterator` synchronously — no `await` on the call site, only on the `async for`. This is the standard Protocol+async-gen idiom; both signatures are compatible.
+- `registry.py` — two module-level dicts `_EMBEDDINGS`, `_LLMS`. Public API: `register_embedding`, `register_llm`, `make_embedding`, `make_llm`, `clear_registry`, `registered_embeddings`, `registered_llms`. Aliases: `EmbeddingFactory = Callable[[Settings], EmbeddingProvider]`, `LLMFactory = Callable[[Settings], LLMProvider]`.
+- Registry semantics:
+  - Empty/whitespace name on register → `ProviderError`.
+  - Re-register same name **silently overwrites** (so concrete providers can re-register on import without failing on test re-imports).
+  - `make_embedding(settings)` reads `settings.embeddings.provider`; `make_llm(settings)` reads `settings.chat.provider`. Unknown name → `ProviderError("... not registered", context={"name": ..., "available": sorted(...)})`.
+  - Factory exception → wrapped as `ProviderError(..., context={"name": name}) from exc` (original in `__cause__`).
+  - Info log on register (`provider.embedding_registered`/`provider.llm_registered`), warn log on factory fail.
+- **Registry ships empty.** Concrete providers will auto-register on import (Task 018: ollama embeddings, Task 019: ollama LLM).
+- 10 unit tests in `tests/unit/providers/test_registry.py`. Uses `autouse` `_reset_registry` fixture that calls `clear_registry()` before AND after each test (state never leaks).
+- Test fakes (`_FakeEmbedder`, `_FakeLLM`) are minimal Protocol-conformant classes inside the test module — duck-typed against the Protocols (no explicit `class ... (EmbeddingProvider):` inheritance needed since Protocols are structural).
+- Phase 3 (Indexing) complete; Phase 4 (Providers) seeded.
+
 ### Task 016 — Indexer orchestrator — Phase 3 complete
 - New module `code_atlas.indexing.indexer` (re-exports `Indexer`, `IndexResult`, `EmbedFunc`).
 - New helper `code_atlas.indexing.edge_extractor.extract_python_edges(chunks) -> list[(Symbol, Symbol, EdgeKind)]`. Derives `defines` (module → top-level class/function) + `contained_in` (class → method, line-range nesting) from CodeChunk metadata alone — NO tree-sitter re-parse. Module Symbol synthesized as `Symbol(name=path.stem, kind="module", path=path, line=1)`.

@@ -122,7 +122,7 @@
 
 ## Phase 4 — Providers
 
-## 017 — Provider Protocols + registry [pending]
+## 017 — Provider Protocols + registry [done]
 **deps:** 006, 007
 **files:** src/code_atlas/providers/__init__.py, src/code_atlas/providers/base.py, src/code_atlas/providers/registry.py, tests/unit/providers/test_registry.py
 **desc:** `EmbeddingProvider` Protocol: `async embed(texts: list[str]) -> list[list[float]]`, plus `dimension: int`, `model: str`. `LLMProvider` Protocol: `async chat(messages, tools=None) -> ChatResponse`, `async chat_stream(messages, tools=None) -> AsyncIterator[ChatChunk]`. `ChatResponse{content, tool_calls, usage}`. Registry maps name → factory: `register_embedding("name", factory)`, `register_llm("name", factory)`, `make_embedding(settings) -> EmbeddingProvider`, `make_llm(settings) -> LLMProvider`.
