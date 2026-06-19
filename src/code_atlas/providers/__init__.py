@@ -11,6 +11,7 @@ from code_atlas.providers.base import (
     ToolSpec,
 )
 from code_atlas.providers.ollama_embeddings import OllamaEmbeddingProvider
+from code_atlas.providers.ollama_llm import OllamaLLMProvider
 from code_atlas.providers.registry import (
     EmbeddingFactory,
     LLMFactory,
@@ -33,6 +34,7 @@ __all__ = [
     "LLMFactory",
     "LLMProvider",
     "OllamaEmbeddingProvider",
+    "OllamaLLMProvider",
     "ToolCall",
     "ToolSpec",
     "clear_registry",

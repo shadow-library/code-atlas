@@ -134,7 +134,7 @@
 **desc:** `OllamaEmbeddingProvider(base_url, model, timeout_s)` calls `POST {base_url}/api/embeddings`. Batches by sequential calls (Ollama embeddings API is single-input; concurrency via `asyncio.gather` capped at N). Auto-registers under `"ollama"` on import.
 **accept:** With a mock httpx transport, `embed(["hello", "world"])` returns two vectors of declared `dimension`. Network errors → `ProviderError`.
 
-## 019 — Ollama LLM provider (chat + stream + tools) [pending]
+## 019 — Ollama LLM provider (chat + stream + tools) [done]
 **deps:** 017
 **files:** src/code_atlas/providers/ollama_llm.py, tests/unit/providers/test_ollama_llm.py
 **desc:** `OllamaLLMProvider(base_url, model, temperature, timeout_s)` talks to `POST {base_url}/api/chat`. Supports `tools` (OpenAI-style function schema, translated to Ollama's format). `chat_stream` consumes NDJSON stream. Token usage extracted from `prompt_eval_count` + `eval_count`. Auto-registers under `"ollama"`.

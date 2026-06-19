@@ -28,6 +28,28 @@
 
 ## Capabilities (by task)
 
+### Task 019 — Ollama LLM provider — Phase 4 complete
+- New module `code_atlas.providers.ollama_llm` (re-exports `OllamaLLMProvider` from `code_atlas.providers`). Importing triggers `register_llm("ollama", _factory)` side-effect at module bottom.
+- `OllamaLLMProvider(*, base_url, model, temperature=0.2, max_tokens=2048, timeout_s=60.0, client=None)`. Implements `LLMProvider` Protocol structurally.
+- Endpoint: `POST {base_url}/api/chat`. Same `client` ownership pattern as Task 018 (`_owns_client` flag; injected clients survive `aclose()`).
+- **Request payload (`_build_payload`)**:
+  - `messages` → `[{"role", "content"}]`; `name`/`tool_call_id` included only when not None.
+  - `tools` (if non-empty) → `[{"type": "function", "function": {"name", "description", "parameters"}}]`. Omitted entirely when no tools passed.
+  - `options: {"temperature": ..., "num_predict": max_tokens}` always present.
+  - `stream: true|false` set per method.
+- **Non-streamed response → `ChatResponse`**:
+  - `content` = `payload["message"]["content"]` (defensive `or ""` for None).
+  - `tool_calls`: list comprehension over `message.tool_calls`, IDs synthesized as `f"call_{idx}"` (Ollama doesn't emit IDs). `arguments=dict(fn.get("arguments") or {})`.
+  - `usage` = `TokenUsage(prompt=prompt_eval_count, completion=eval_count)`; total auto-fills.
+  - `finish_reason` = `done_reason` (may be None on older Ollama).
+- **Streaming via `httpx.AsyncClient.stream("POST", ...)`** as async context manager. Iterate `resp.aiter_lines()`, skip blank lines, JSON-decode each. Helper `_emit_line(chunk_data) -> Iterator[ChatChunk]` handles all four streaming cases: content-only intermediate, tool-call-only intermediate, content+tools combo, and final `done: true` line (folds last tool call into terminal chunk, emits preceding tool calls as their own chunks first).
+- Async-generator `chat_stream` uses outer `try/except` wrapping the `async with stream(...)` block — captures both pre-iteration `raise_for_status()` failures AND mid-stream `RequestError` disconnects. Wraps to `ProviderError` consistently.
+- Validation in `__init__`: empty `model`, `temperature` outside `[0, 2]`, `max_tokens < 1` → `ProviderError`. Empty `messages` in `chat`/`chat_stream` → `ProviderError`.
+- Error wrapping mirrors Task 018: `HTTPStatusError` → `{status_code, url, body[:200]}`, `RequestError` → `{error_type, url}`, JSON decode → `{status_code}` for non-stream, `{line}` for stream, malformed payload (missing `message` key) → `{keys}`.
+- 14 unit tests in `tests/unit/providers/test_ollama_llm.py`: plain chat content+usage+finish_reason+model passthrough, tool-call extraction (`call_0` id), payload tools-list shape (present when given, absent when not), options/temperature/max_tokens passthrough, multi-turn message serialization (system/user/tool roles incl. tool_call_id + name), HTTP error wrap, network error wrap, malformed response, streaming chunks (2 deltas + 1 done), streaming tool_call_delta (final chunk), streaming HTTP error, empty messages raises, invalid ctor args, auto-registration.
+- Quality gate clean first try (no post-write fixes).
+- **Phase 4 (Providers) complete.** Both Ollama providers (embeddings + LLM) wired; registry has `make_embedding(settings)` + `make_llm(settings)` resolving the default `"ollama"` provider. Phase 5 (Retrieval) unblocks next.
+
 ### Task 018 — Ollama embedding provider
 - New runtime dep: `httpx>=0.27,<1.0` (installed 0.28.1 + anyio/h11/httpcore/certifi/idna).
 - New module `code_atlas.providers.ollama_embeddings`. Re-exported as `OllamaEmbeddingProvider` from `code_atlas.providers`. **Importing the module triggers `register_embedding("ollama", _factory)` at module bottom** — side-effect registration. `providers/__init__.py` imports the class, which is enough to run the side-effect.
