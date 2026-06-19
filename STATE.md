@@ -28,6 +28,26 @@
 
 ## Capabilities (by task)
 
+### Task 020 — Hybrid retrieval (RRF) — Phase 5 starts
+- New pkg `code_atlas.retrieval`. Re-exports `HybridRetriever` + `RRF_K_DEFAULT` (=60).
+- `HybridRetriever(*, vector_store, lexical_store, embedder, metadata_store, rrf_k=60, oversample=2)`. All store deps are SYNC; embedder is ASYNC. Sync calls wrapped in `asyncio.to_thread` from inside the async `retrieve`.
+- `async retrieve(query: RetrievalQuery) -> list[RetrievalResult]`. Pipeline:
+  1. Embed `[query.text]` (async).
+  2. `asyncio.gather` the vector-search and lexical-search paths. Stores are called with `k = query.k * oversample` (default 2x) for a wider fusion pool.
+  3. **RRF fusion** (k=60): score per chunk_id = `Σ 1 / (rrf_k + rank + 1)` across the two ranked lists. Rank is 0-indexed in code, +1 normalization for the 1-indexed RRF convention. Underlying scores are **discarded** — only rank position counts.
+  4. Take top `query.k` (chunk_id, score) pairs, hydrate via `metadata_store.get_many`, emit `RetrievalResult(chunk=..., score=fused_score, source="fused")`.
+- **Concurrency**: `_vector_path` chains `embed → vector.search` sequentially, but `asyncio.gather(_vector_path(), _lexical_path())` runs lexical concurrently with that chain. Tested at the surface (gather invocation, embedder call count) — not wall-clock.
+- **Filter contract v1**: ONLY `repo_id` (str) is honored. Unknown keys (`language`, `kind`, etc.) silently ignored with a `hybrid.unknown_filters` debug log — forward-friendly for future expansion. Non-str `repo_id` → `RetrievalError(context={"field": "repo_id", "got_type": ...})`.
+- Hydration drops chunk_ids missing from metadata store (with `hybrid.missing_metadata` warning log). Rank order preserved.
+- **Error propagation policy**: embedder failures (`ProviderError`) and store failures (`IndexingError`) bubble AS-IS — callers can distinguish failure source. Only filter-validation issues raise `RetrievalError` directly. Empty fused list returns `[]` (no error).
+- Ctor validation: `rrf_k < 1` or `oversample < 1` → `RetrievalError`.
+- 12 unit tests in `tests/unit/retrieval/test_hybrid.py` using `FakeVectorStore`/`FakeLexicalStore`/`FakeEmbedder` + real `MetadataStore`. Coverage: deterministic RRF order (vec A>B>C, lex B>D>A → B>A>D>C), repo_id passthrough to both stores, no-filter → None to both, unknown filter keys ignored, bad repo_id type raises, top-k limit, dedup by chunk_id with summed score, hydration skip on missing, `source="fused"`, oversample multiplies k, embedder called once with `[query.text]`, both-empty returns `[]`.
+- **Test gotcha discovered**: `MetadataStore("sqlite:///:memory:")` is NOT shareable across threads. `asyncio.to_thread` schedules `get_many` on a worker, and SQLite `:memory:` is per-connection, so the worker sees an empty DB ("no such table: chunks"). **Fix**: use `sqlite:///{tmp_path}/meta.sqlite` (file-backed) in tests that exercise async-wrapped store calls. Alternative would be `poolclass=StaticPool + check_same_thread=False`, but file-based is simpler. **Carry forward**: any future test that calls a SQLAlchemy store via `asyncio.to_thread` must use a file URL, NOT `:memory:`.
+- Two post-write fixes:
+  1. **RUF022**: ruff isort wants `["RRF_K_DEFAULT", "HybridRetriever"]` (R before H — appears to use a case-sensitive natural sort where all-caps tokens sort before mixed-case). Auto-fixed.
+  2. **Test fixture URL**: switched `:memory:` → file-backed (see above).
+- Did NOT ship `tests/unit/retrieval/__init__.py` despite sub-agent including it — project convention is no `__init__.py` in tests/ (pytest discovers via `pythonpath` + `rootdir`).
+
 ### Task 019 — Ollama LLM provider — Phase 4 complete
 - New module `code_atlas.providers.ollama_llm` (re-exports `OllamaLLMProvider` from `code_atlas.providers`). Importing triggers `register_llm("ollama", _factory)` side-effect at module bottom.
 - `OllamaLLMProvider(*, base_url, model, temperature=0.2, max_tokens=2048, timeout_s=60.0, client=None)`. Implements `LLMProvider` Protocol structurally.

@@ -55,6 +55,7 @@ All four must pass. Sub-agents are briefed to expect this.
 - **Stub-free libs** (tree-sitter-language-pack, lancedb, networkx) under `mypy --strict + warn_unused_ignores`: import via `importlib.import_module(...)` typed `Any`. `# type: ignore[import-untyped]` becomes "unused" when stubs install and mypy fails.
 - **FTS5 columns reject NULL**: coerce `chunk.symbol` to `""` on insert.
 - **SQLAlchemy `RowMapping` ≠ `Mapping[str, Any]`** under strict mypy — `dict(row)` at the boundary.
+- **SQLite `:memory:` + `asyncio.to_thread`**: worker threads see their own empty in-memory DB. In tests that call a SQLAlchemy store via `asyncio.to_thread`, use a file URL (`sqlite:///{tmp_path}/x.sqlite`), not `:memory:`.
 
 ## Sub-agent prompt skeleton
 

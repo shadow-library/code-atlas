@@ -144,7 +144,7 @@
 
 ## Phase 5 — Retrieval
 
-## 020 — Hybrid retrieval (vector + lexical, RRF) [pending]
+## 020 — Hybrid retrieval (vector + lexical, RRF) [done]
 **deps:** 013, 014, 017
 **files:** src/code_atlas/retrieval/__init__.py, src/code_atlas/retrieval/hybrid.py, tests/unit/retrieval/test_hybrid.py
 **desc:** `HybridRetriever(vector_store, lexical_store, embedder, metadata_store)`. `async retrieve(query: RetrievalQuery) -> list[RetrievalResult]`. Runs vector + lexical in parallel via `asyncio.gather`. Fuses ranks via Reciprocal Rank Fusion (k=60). Returns top-`query.k` deduped by `chunk_id`, hydrated with `CodeChunk` via metadata store.
