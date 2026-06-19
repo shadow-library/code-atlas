@@ -135,3 +135,30 @@ def test_context_manager_closes(tmp_path: Path) -> None:
 
 def test_engine_property_returns_engine(store: MetadataStore) -> None:
     assert store.engine is not None
+
+
+def test_find_by_path_returns_chunks_sorted_by_start_line(store: MetadataStore) -> None:
+    store.upsert_many(
+        [
+            _chunk("c50", start_line=50, end_line=60),
+            _chunk("c1", start_line=1, end_line=10),
+            _chunk("c25", start_line=25, end_line=30),
+        ]
+    )
+    chunks = store.find_by_path("repo1", "src/x.py")
+    assert [c.chunk_id for c in chunks] == ["c1", "c25", "c50"]
+
+
+def test_find_by_path_filters_by_repo_id(store: MetadataStore) -> None:
+    store.upsert_many(
+        [
+            _chunk("a1", repo_id="a", path="shared.py"),
+            _chunk("a2", repo_id="a", path="shared.py", start_line=20, end_line=30),
+            _chunk("b1", repo_id="b", path="shared.py"),
+        ]
+    )
+    only_a = store.find_by_path("a", "shared.py")
+    assert [c.chunk_id for c in only_a] == ["a1", "a2"]
+    only_b = store.find_by_path("b", "shared.py")
+    assert [c.chunk_id for c in only_b] == ["b1"]
+    assert store.find_by_path("a", "missing.py") == []

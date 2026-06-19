@@ -135,6 +135,20 @@ class MetadataStore:
             value = conn.execute(stmt).scalar_one()
         return int(value)
 
+    def find_by_path(self, repo_id: str, path: str) -> list[CodeChunk]:
+        """Return all chunks in ``repo_id`` whose ``path`` matches, ordered by start_line ASC."""
+        with self._engine.connect() as conn:
+            result = (
+                conn.execute(
+                    select(_CHUNKS)
+                    .where((_CHUNKS.c.repo_id == repo_id) & (_CHUNKS.c.path == path))
+                    .order_by(_CHUNKS.c.start_line.asc())
+                )
+                .mappings()
+                .all()
+            )
+        return [_row_to_chunk(dict(row)) for row in result]
+
     def close(self) -> None:
         self._engine.dispose()
 

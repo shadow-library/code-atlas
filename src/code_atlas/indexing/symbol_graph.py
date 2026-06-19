@@ -73,6 +73,20 @@ class SymbolGraph:
     def callees(self, symbol: Symbol) -> list[Symbol]:
         return self._neighbors_calls(symbol, direction="out")
 
+    def find_by_name(self, name: str, kind: str | None = None) -> list[Symbol]:
+        """Return all symbols matching ``name`` (and optionally ``kind``). Sorted by (path, line)."""
+        matches: list[Symbol] = []
+        for _node_key, attrs in self._g.nodes(data=True):
+            data = attrs.get("symbol_data")
+            if not isinstance(data, dict):
+                continue
+            if data.get("name") != name:
+                continue
+            if kind is not None and data.get("kind") != kind:
+                continue
+            matches.append(Symbol(**data))
+        return sorted(matches, key=lambda s: (s.path, s.line))
+
     def _symbol_from_node(self, key: NodeKey) -> Symbol:
         data = self._g.nodes[key].get("symbol_data")
         if not isinstance(data, dict):

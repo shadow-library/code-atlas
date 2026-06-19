@@ -198,3 +198,28 @@ def test_acceptance_five_symbols_six_edges_roundtrip(tmp_path: Path) -> None:
     assert loaded.callers(f2) == before_callers_f2
     assert loaded.callers(f3) == before_callers_f3
     assert [s.name for s in loaded.callees(f1)] == ["beta", "gamma"]
+
+
+def test_find_by_name_returns_matches_sorted() -> None:
+    # Node key is (path, name), so each foo must live in a distinct path to coexist.
+    g = SymbolGraph()
+    g.add_symbol(_sym("foo", path="z/last.py", line=5))
+    g.add_symbol(_sym("foo", path="m/mid.py", line=10))
+    g.add_symbol(_sym("foo", path="a/first.py", line=2))
+    g.add_symbol(_sym("other", path="a/first.py", line=1))
+    matches = g.find_by_name("foo")
+    assert [(s.path, s.line) for s in matches] == [
+        ("a/first.py", 2),
+        ("m/mid.py", 10),
+        ("z/last.py", 5),
+    ]
+
+
+def test_find_by_name_filters_by_kind() -> None:
+    g = SymbolGraph()
+    g.add_symbol(_sym("foo", path="a.py", kind="function", line=1))
+    g.add_symbol(_sym("foo", path="b.py", kind="class", line=2))
+    g.add_symbol(_sym("foo", path="c.py", kind="method", line=3))
+    matches = g.find_by_name("foo", kind="class")
+    assert [(s.path, s.kind) for s in matches] == [("b.py", "class")]
+    assert g.find_by_name("foo", kind="constant") == []

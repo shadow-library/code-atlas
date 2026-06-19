@@ -160,7 +160,7 @@
 
 ## Phase 6 — Agent
 
-## 022 — Agent tools (file + symbol lookups) [pending]
+## 022 — Agent tools (file + symbol lookups) [done]
 **deps:** 012, 015
 **files:** src/code_atlas/agent/__init__.py, src/code_atlas/agent/tools.py, tests/unit/agent/test_tools.py
 **desc:** Tool implementations + JSON schemas for LLM: `open_file(path, start_line, end_line)`, `find_symbol(name, kind=None)`, `list_callers(symbol)`, `list_callees(symbol)`. All take a `repo_id` from a bound context (no LLM hallucinating repo IDs). `Toolbox(metadata_store, symbol_graph, repo_id)` exposes a dict `name -> callable` and a list of JSON schemas.

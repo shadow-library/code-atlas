@@ -28,6 +28,27 @@
 
 ## Capabilities (by task)
 
+### Task 022 — Agent tools — Phase 6 starts
+- New pkg `code_atlas.agent` with `Toolbox` + `ToolResult` type alias.
+- **`MetadataStore.find_by_path(repo_id, path) -> list[CodeChunk]`** added — SELECT WHERE repo_id+path, ORDER BY start_line ASC. Backs `open_file`.
+- **`SymbolGraph.find_by_name(name, kind=None) -> list[Symbol]`** added — iterates `_g.nodes(data=True)`, filters by `symbol_data["name"]` (+ optional kind). Sorted by `(path, line)`. Backs `find_symbol` and the `list_callers`/`list_callees` aggregation.
+- `Toolbox(*, metadata_store, symbol_graph, repo_id)`. `repo_id` is bound at construction — **the LLM never sees or names it.** Empty `repo_id` → `AgentError`.
+- Four LLM-callable tools, all SYNC, all return deterministic typed dicts:
+  - `open_file(*, path, start_line, end_line) -> {"path", "start_line", "end_line", "chunks": [{chunk_id, start_line, end_line, kind, symbol, content}]}`. Returns chunks whose `[start_line, end_line]` OVERLAPS the requested range. Empty `path` or invalid range → `AgentError`. No matches → `chunks: []`.
+  - `find_symbol(*, name, kind=None) -> {"name", "results": [{name, kind, path, line, parent}]}`. Unknown symbol → `results: []`, no error.
+  - `list_callers(*, symbol_name) -> {"symbol", "results": [...]}`. Aggregates over ALL symbols matching `symbol_name` (any kind, any path), dedupes by `(path, name)`, sorts.
+  - `list_callees(*, symbol_name) -> ...` — same shape, opposite direction.
+- `Toolbox.specs` — list of 4 `ToolSpec` records (reuses `code_atlas.providers.base.ToolSpec`) with JSON-schema-style `parameters` dicts (`type: object`, properties, required, `additionalProperties: false`). Schemas do NOT include `repo_id` — bound at toolbox level.
+- `Toolbox.callables` — `{name: bound method}` dict. `Toolbox.call(name, arguments) -> dict` dispatches by name; unknown name → `AgentError("toolbox: unknown tool", context={"name", "available": sorted(...)})`; arg-shape mismatch (`TypeError` from `**arguments`) → `AgentError("toolbox: invalid arguments", context={"tool", "error"})`.
+- **Tool semantics**: tools NEVER raise on "not found" — they return empty results. They only raise `AgentError` on invalid arguments. Store errors (`IndexingError`) propagate untouched.
+- **Symbol-graph node-key gotcha** (re-confirmed in this task): nodes are keyed by `(path, name)` — two symbols with the same name AT THE SAME PATH overwrite each other. Tests for `find_by_name` must use distinct paths per name. Affects future call-graph extractors too.
+- 15 tests in `tests/unit/agent/test_tools.py` + 2 new tests in `tests/unit/indexing/test_metadata_store.py` + 2 in `tests/unit/indexing/test_symbol_graph.py`. Tests use real file-backed `MetadataStore` (per the SQLite + asyncio.to_thread gotcha — though tools are sync here, the convention sticks) and real `SymbolGraph`.
+- Post-write fixes:
+  1. **Ruff format**: 2 files needed reformat (tools.py, test_tools.py — minor line-wrap differences). Auto-fixed.
+  2. **Ruff lint**: 1 import-order issue in `agent/__init__.py` (`ToolResult, Toolbox` → `Toolbox, ToolResult` per isort). Auto-fixed.
+  3. **Test bug**: sub-agent's `test_find_by_name_returns_matches_sorted` added two `foo` symbols at the same path (`a/first.py`) with different lines — they collided on the `(path, name)` node key. Fixed by spreading across distinct paths.
+- Phase 5 (Retrieval) complete; Phase 6 (Agent) seeded. Task 023 (prompts + qa orchestrator) will consume `Toolbox.specs` + `Toolbox.call`.
+
 ### Task 021 — Citation hydration + Reranker Protocol — Phase 5 complete
 - New module `code_atlas.retrieval.citation`. Exports `to_citation(chunk, *, max_snippet_chars=800) -> Citation` and `DEFAULT_SNIPPET_MAX_CHARS = 800`.
 - New module `code_atlas.retrieval.reranker`. Exports `Reranker` Protocol (async `rerank(query, results) -> list[RetrievalResult]`) and `PassthroughReranker` (no-op default impl, returns shallow copy).
