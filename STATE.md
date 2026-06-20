@@ -28,6 +28,21 @@
 
 ## Capabilities (by task)
 
+### Task 026 — Eval dataset format + seed dataset — Phase 8 starts
+- New pkg `code_atlas.evaluation` (re-exports `EvalCase`, `load_dataset`). Depends only on `errors` + `utils` (utils is a leaf — strict layering holds). Absolute imports in `__init__`.
+- **`EvalCase`** (frozen pydantic, `extra="forbid"`): `case_id`, `repo_id`, `question` (all `min_length=1`, required); `expected_files`, `expected_symbols`, `expected_answer_traits` (`list[str]`, default `[]`).
+- **`load_dataset(path: Path) -> list[EvalCase]`**: YAML top-level is a **mapping with a `cases:` list** (room for future dataset-level metadata). Returns cases in file order; `info` log `dataset.loaded` with count. `Path` imported under `TYPE_CHECKING` only (annotation-only; `from __future__ import annotations`).
+- **Error contract** — all `EvaluationError` (`from exc` when wrapping a cause):
+  - unreadable file (`OSError`) → `"dataset: cannot read file"` ctx `{path}`
+  - bad YAML (`yaml.YAMLError`) → `"dataset: invalid YAML"` ctx `{path}`
+  - top-level not a mapping / `cases` missing or non-list → `"dataset: 'cases' must be a list"` ctx `{path}`
+  - per-case `ValidationError` (incl. non-mapping list items — pydantic rejects them) → `"dataset: invalid case"` ctx `{index, error}`
+  - duplicate `case_id` → `"dataset: duplicate case_id"` ctx `{case_id}`
+- **Seed**: `eval/datasets/seed.yaml` — **10 cases**, all `repo_id: code-atlas`, targeting THIS repo. File paths + symbols vetted against the current tree (hybrid.py/`HybridRetriever`+`_rrf_fuse`, providers/base.py/`EmbeddingProvider`, agent/tools.py/`Toolbox`+4 tools, agent/qa.py+domain/answer.py/`QAAgent`+`Answer`, symbol_graph.py, metadata_store.py, cli.py/`init`+`ingest`+`ask`, api/routes.py/`health`+`ask`+`ingest`+`ask_stream`, ingestion/parser.py/`chunk_file`). Load via cwd-independent `Path(__file__).resolve().parents[3] / "eval" / "datasets" / "seed.yaml"`.
+- 6 unit tests in `tests/unit/evaluation/test_datasets.py` (new `tests/unit/evaluation/` dir, no `__init__.py`): seed parses (≥6 cases, all `EvalCase`, repo_id all `code-atlas`, unique ids), required-field validation, duplicate id (asserts `"case_id" in exc.value.context`), missing `cases` key, missing file, optional-list defaults.
+- Quality gate clean first-try after apply (no post-write fixes). Changed `__init__` to absolute import (vs sub-agent's relative) per codebase convention; used sub-agent's cleaned test file (dropped a needless TYPE_CHECKING alias it flagged itself).
+- **Phase 8 (Evaluation) seeded.** Tasks 027 (retrieval metrics), 028 (citation grounding), 029 (LLM-judge) consume `EvalCase`. 027/028 unblock next (029 needs 019 ✓).
+
 ### Task 025 — FastAPI app (/health, /ingest, /ask, SSE stream) — Phase 7 complete
 - New `code_atlas.api` package: `app.py`, `routes.py`, `models.py`, `__init__.py`. Uvicorn entrypoint **`code_atlas.api.app:app`** (module-level `app = create_app()`).
 - New runtime deps: `fastapi>=0.110,<1.0` (installed starlette 1.3.1), `uvicorn[standard]>=0.30,<1.0` (installed 0.49.0 + uvloop/httptools/watchfiles/websockets).

@@ -192,7 +192,7 @@
 
 ## Phase 8 — Evaluation
 
-## 026 — Eval dataset format + seed dataset [pending]
+## 026 — Eval dataset format + seed dataset [done]
 **deps:** 007
 **files:** src/code_atlas/evaluation/__init__.py, src/code_atlas/evaluation/datasets.py, eval/datasets/seed.yaml, tests/unit/evaluation/test_datasets.py
 **desc:** `EvalCase` pydantic model: `case_id, repo_id, question, expected_files (list[str]), expected_symbols (list[str]), expected_answer_traits (list[str])`. `load_dataset(path) -> list[EvalCase]` reads YAML. Seed dataset: 6–10 cases targeting *this* repo (code-atlas itself) — questions like "Where is the hybrid retriever defined?", "What protocol does an embedding provider implement?".

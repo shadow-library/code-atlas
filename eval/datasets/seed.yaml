@@ -1,0 +1,81 @@
+cases:
+  - case_id: hybrid-retriever-location
+    repo_id: code-atlas
+    question: "Where is the hybrid retriever defined?"
+    expected_files: ["src/code_atlas/retrieval/hybrid.py"]
+    expected_symbols: ["HybridRetriever"]
+    expected_answer_traits:
+      - "names the HybridRetriever class"
+      - "points to src/code_atlas/retrieval/hybrid.py"
+  - case_id: embedding-provider-protocol
+    repo_id: code-atlas
+    question: "What protocol does an embedding provider implement?"
+    expected_files: ["src/code_atlas/providers/base.py"]
+    expected_symbols: ["EmbeddingProvider"]
+    expected_answer_traits:
+      - "mentions the EmbeddingProvider Protocol"
+      - "notes the async embed method"
+  - case_id: rrf-fusion
+    repo_id: code-atlas
+    question: "How does hybrid retrieval combine vector and lexical results?"
+    expected_files: ["src/code_atlas/retrieval/hybrid.py"]
+    expected_symbols: ["_rrf_fuse", "HybridRetriever"]
+    expected_answer_traits:
+      - "mentions Reciprocal Rank Fusion (RRF)"
+      - "notes vector and lexical run in parallel"
+  - case_id: agent-tools
+    repo_id: code-atlas
+    question: "What LLM-callable tools does the agent expose?"
+    expected_files: ["src/code_atlas/agent/tools.py"]
+    expected_symbols: ["Toolbox", "open_file", "find_symbol", "list_callers", "list_callees"]
+    expected_answer_traits:
+      - "lists open_file, find_symbol, list_callers, list_callees"
+      - "mentions the Toolbox"
+  - case_id: qa-agent-answer
+    repo_id: code-atlas
+    question: "What does the QA agent return when you ask a question?"
+    expected_files: ["src/code_atlas/agent/qa.py", "src/code_atlas/domain/answer.py"]
+    expected_symbols: ["QAAgent", "Answer"]
+    expected_answer_traits:
+      - "returns an Answer with citations"
+      - "QAAgent.ask is the entrypoint"
+  - case_id: symbol-graph-persistence
+    repo_id: code-atlas
+    question: "How is the symbol graph persisted to disk?"
+    expected_files: ["src/code_atlas/indexing/symbol_graph.py"]
+    expected_symbols: ["SymbolGraph"]
+    expected_answer_traits:
+      - "gzip-compressed JSON node-link format"
+      - "has save and load methods"
+  - case_id: metadata-idempotency
+    repo_id: code-atlas
+    question: "How does the metadata store avoid duplicate rows on re-indexing?"
+    expected_files: ["src/code_atlas/indexing/metadata_store.py"]
+    expected_symbols: ["MetadataStore"]
+    expected_answer_traits:
+      - "uses upsert / on_conflict_do_update"
+      - "keyed on chunk_id"
+  - case_id: cli-commands
+    repo_id: code-atlas
+    question: "What commands does the code-atlas CLI provide?"
+    expected_files: ["src/code_atlas/cli.py"]
+    expected_symbols: ["init", "ingest", "ask"]
+    expected_answer_traits:
+      - "lists init, ingest, ask"
+      - "built with typer"
+  - case_id: api-endpoints
+    repo_id: code-atlas
+    question: "What HTTP endpoints does the FastAPI app expose?"
+    expected_files: ["src/code_atlas/api/routes.py"]
+    expected_symbols: ["health", "ask", "ingest", "ask_stream"]
+    expected_answer_traits:
+      - "lists /health, /ask, /ingest, /ask/stream"
+      - "uses SSE for streaming"
+  - case_id: tree-sitter-chunker
+    repo_id: code-atlas
+    question: "Where is source code split into chunks?"
+    expected_files: ["src/code_atlas/ingestion/parser.py"]
+    expected_symbols: ["chunk_file"]
+    expected_answer_traits:
+      - "uses tree-sitter AST chunking"
+      - "falls back to fixed-window chunks"
