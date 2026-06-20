@@ -232,7 +232,7 @@
 **desc:** Multi-stage Dockerfile: builder (uv install) → runtime (python:3.12-slim, non-root user, copy installed venv + src, expose 8000). Entrypoint runs `uvicorn code_atlas.api.app:app`. `docker-compose.yml` defines two services: `ollama` (ollama/ollama image, volume for models, exposes 11434) and `code-atlas` (build context root) depending on ollama. `.dockerignore` excludes tests, eval reports, .venv, .git.
 **accept:** `docker compose build` succeeds. `docker compose config` validates. Image runs (assert via `docker run --rm <img> code-atlas --help`).
 
-## 032 — Makefile + developer docs [pending]
+## 032 — Makefile + developer docs [done]
 **deps:** 031
 **files:** Makefile, README.md, docs/usage.md, docs/development.md, docs/architecture.md
 **desc:** Makefile targets: `install`, `fmt`, `lint`, `type`, `test`, `test-all`, `eval`, `run-api`, `docker-build`, `docker-up`, `clean`. README expanded: install + quickstart (ingest + ask), pointers to docs. `docs/usage.md` covers CLI + API examples. `docs/development.md` covers local setup, tests, eval, contributing. `docs/architecture.md` is a user-facing summary of the system (not a copy of ARCHITECTURE.md).
