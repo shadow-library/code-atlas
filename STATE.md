@@ -28,6 +28,26 @@
 
 ## Capabilities (by task)
 
+### Task 023 — Prompts + QA agent — Phase 6 complete
+- New module `code_atlas.agent.prompts`: `SYSTEM_PROMPT` (3 hard rules — cite `path:start-end`, never invent paths/symbols/lines, decline when context+tools insufficient), `DECLINE_MESSAGE` fallback string, `format_context(results)` (per-chunk header `[path:start-end] symbol=...` + content, blank-line separated; empty list → short notice), `format_user_prompt(question, results)` (question + `Context:` section).
+- New module `code_atlas.agent.qa`: `QAAgent(*, retriever, llm, toolbox, max_tool_iters=4, retrieval_k=8)`. Kw-only (matches sibling ctors). `max_tool_iters < 1` or `retrieval_k < 1` → `AgentError`.
+- **`async ask(question) -> Answer`** pipeline:
+  1. Empty/whitespace question → `AgentError("qa: question is required")`.
+  2. `time.perf_counter()` timer.
+  3. `retriever.retrieve(RetrievalQuery(text=question, k=retrieval_k))` — **NO repo_id filter** (v1 = one indexed repo per agent instance; stores hold a single repo; `tools.py` out of scope so no public repo_id accessor to read).
+  4. Seed messages `[system=SYSTEM_PROMPT, user=format_user_prompt(...)]`.
+  5. **Bounded tool-use loop** `for iteration in range(max_tool_iters + 1)`: call `llm.chat(messages, tools=toolbox.specs)`; accumulate `usage.prompt`/`usage.completion`; append `{"step":"llm","iter",...}` to trace; break if no `tool_calls`; break (without executing) if `iteration == max_tool_iters` (cap); else append `assistant` turn + execute each tool, append `tool`-role message (`content=json.dumps(result)`, `tool_call_id`, `name`). Total LLM calls ≤ `max_tool_iters + 1`.
+  6. `text = response.content.strip() or DECLINE_MESSAGE` (Answer.text is min_length=1 → never empty).
+  7. Citations = `to_citation(r.chunk)` per retrieved result, **deduped by `(path, start_line, end_line)`** first-seen order — citations come from retrieved chunks, NOT parsed from answer text (guarantees grounding).
+  8. `latency_ms`, `TokenUsage(prompt, completion)` (total auto-fills), trace returned on `Answer`.
+- **`_run_tool(tc, trace)`**: traces `{"step":"tool","name","arguments"}`, then `toolbox.call(...)`; **swallows `AgentError` into `{"error": str(exc)}`** so tool failures feed back to the LLM rather than aborting the loop.
+- Assistant tool-call turn appended as `ChatMessage(role="assistant", content=response.content)` (may be empty) before tool-result messages — `ChatMessage` has no `tool_calls` field and Ollama provider doesn't serialize assistant tool_calls; acceptable v1, tool-result messages carry the info.
+- `agent/__init__.py` now exports `QAAgent` (`__all__ = ["QAAgent", "ToolResult", "Toolbox"]`).
+- **Decisions (locked)**: no reranker in QAAgent (constructor locked; deferred); `assert response is not None` for mypy narrowing (loop runs ≥1×).
+- 4 integration tests in `tests/integration/agent/test_qa.py` (real `HybridRetriever` + file-backed `MetadataStore` + real `SymbolGraph` + real `Toolbox`; fake embedder/vector/lexical/LLM): grounded answer + token total (10+5+12+8=35) + 2 LLM calls, tool executed & fed back as `role="tool"` message + trace entry, decline on blank content, empty-question raises. File-backed SQLite (not `:memory:`) per the `asyncio.to_thread` gotcha. No `__init__.py` under `tests/`.
+- Post-write fix: ruff format collapsed one multi-line `messages.append(...)` onto a single line (≤120). Gate then clean (ruff/mypy/256 pytest).
+- **Phase 6 (Agent) complete.** Retrieval+agent surface is end-to-end: `QAAgent.ask(question) -> Answer{text, citations, trace, latency_ms, token_usage}`. Phase 7 (CLI + API) unblocks next — Task 024 (CLI) deps (016, 023) now both done.
+
 ### Task 022 — Agent tools — Phase 6 starts
 - New pkg `code_atlas.agent` with `Toolbox` + `ToolResult` type alias.
 - **`MetadataStore.find_by_path(repo_id, path) -> list[CodeChunk]`** added — SELECT WHERE repo_id+path, ORDER BY start_line ASC. Backs `open_file`.

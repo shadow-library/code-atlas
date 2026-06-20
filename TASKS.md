@@ -166,7 +166,7 @@
 **desc:** Tool implementations + JSON schemas for LLM: `open_file(path, start_line, end_line)`, `find_symbol(name, kind=None)`, `list_callers(symbol)`, `list_callees(symbol)`. All take a `repo_id` from a bound context (no LLM hallucinating repo IDs). `Toolbox(metadata_store, symbol_graph, repo_id)` exposes a dict `name -> callable` and a list of JSON schemas.
 **accept:** Each tool returns a typed dict with deterministic shape. Unknown symbol returns `{"results": []}`, never raises.
 
-## 023 — Prompts + QA agent [pending]
+## 023 — Prompts + QA agent [done]
 **deps:** 020, 021, 022, 019
 **files:** src/code_atlas/agent/prompts.py, src/code_atlas/agent/qa.py, tests/integration/agent/test_qa.py
 **desc:** `prompts.py` holds system prompt with hard rules: cite file:line for every claim; decline if no supporting chunk; never invent paths. `QAAgent(retriever, llm, toolbox, max_tool_iters=4)`. `async ask(question) -> Answer`. Loop: format context, call LLM with tools, if tool calls present, execute and feed back, otherwise extract text + citations. Latency + token usage captured.
