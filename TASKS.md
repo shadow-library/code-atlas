@@ -182,7 +182,7 @@
 **desc:** `typer` app `code-atlas`. Commands: `init` (write a default config to cwd), `ingest --repo <path> --id <repo_id>` (run Indexer), `ask "<question>" --repo-id <id>` (run QAAgent, print Answer with citations rendered as `path:start-end`). Reads Settings via env/yaml. Pretty output via `rich`.
 **accept:** `code-atlas --help` lists three commands. Invoking each with `--help` shows flags. CliRunner test for `init` writes the file.
 
-## 025 — FastAPI app (/health, /ingest, /ask, SSE stream) [pending]
+## 025 — FastAPI app (/health, /ingest, /ask, SSE stream) [done]
 **deps:** 016, 023
 **files:** src/code_atlas/api/__init__.py, src/code_atlas/api/app.py, src/code_atlas/api/routes.py, src/code_atlas/api/models.py, tests/unit/api/test_app.py
 **desc:** FastAPI app. `GET /health` returns `{status: "ok", version}`. `POST /ingest` body `{repo_path, repo_id}` triggers indexing (background task), returns 202 + job id. `POST /ask` body `{repo_id, question}` returns `Answer` JSON. `GET /ask/stream?repo_id&question` returns SSE stream of chat tokens followed by a final `event: done` carrying the full Answer.
