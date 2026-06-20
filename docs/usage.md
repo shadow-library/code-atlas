@@ -109,20 +109,40 @@ curl -N 'http://127.0.0.1:8000/ask/stream?repo_id=code-atlas&question=Where+is+t
 
 ## Evaluation
 
-There is **no `code-atlas eval` subcommand**. Evaluation is a library
-(`code_atlas.evaluation`): `load_dataset`, `EvalRunner`, `write_report`, the metric
-functions, and `load_cost_table` / `estimate_cost`. A seed dataset lives at
-`eval/datasets/seed.yaml` (10 cases targeting this repo).
+### `code-atlas eval`
 
-To validate a dataset offline (no Ollama, no index needed):
+Run the evaluation harness over a dataset and write a JSON + Markdown report. Needs a
+running Ollama **and** an already-indexed repo (the `--repo-id` must match a repo that
+has been `ingest`ed; for the seed set that is `code-atlas`).
+
+| Flag | Description |
+| --- | --- |
+| `--repo-id <id>` | **Required.** Identifier of the indexed repository to evaluate. |
+| `--dataset <path>` | YAML eval dataset (default: `eval/datasets/seed.yaml`). |
+| `--k <int>` | Retrieval cutoff for recall@k / nDCG@k (default: `10`). |
+| `--out <dir>` | Directory for report files (default: `eval/reports`). |
+
+```bash
+code-atlas eval --repo-id code-atlas --dataset eval/datasets/seed.yaml --k 10
+```
+
+It writes `{run_id}.json` and `{run_id}.md` into the output dir and prints an aggregates
+summary (recall@k, MRR, nDCG@k, grounding rate, correctness, latency p50/p95, total cost)
+plus the two report paths.
+
+The underlying machinery is also a public library (`code_atlas.evaluation`):
+`load_dataset`, `EvalRunner`, `write_report`, the metric functions, and
+`load_cost_table` / `estimate_cost`. A seed dataset lives at `eval/datasets/seed.yaml`
+(10 cases targeting this repo). To validate a dataset offline (no Ollama, no index
+needed):
 
 ```bash
 make eval
 # seed dataset OK: 10 cases
 ```
 
-A full grounded run needs a running Ollama **and** an indexed repo, and is driven
-programmatically. Build the agent stack the same way the CLI does, then run the cases:
+Or drive a full grounded run programmatically — build the agent stack the same way the
+CLI does, then run the cases:
 
 ```python
 import asyncio

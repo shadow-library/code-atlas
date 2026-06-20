@@ -13,12 +13,13 @@ from code_atlas.cli import app
 runner = CliRunner()
 
 
-def test_help_lists_three_commands() -> None:
+def test_help_lists_commands() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "init" in result.output
     assert "ingest" in result.output
     assert "ask" in result.output
+    assert "eval" in result.output
 
 
 def test_init_help_shows_force() -> None:
@@ -38,6 +39,14 @@ def test_ask_help_shows_repo_id() -> None:
     result = runner.invoke(app, ["ask", "--help"])
     assert result.exit_code == 0
     assert "--repo-id" in result.output
+
+
+def test_eval_help_shows_flags() -> None:
+    result = runner.invoke(app, ["eval", "--help"])
+    assert result.exit_code == 0
+    assert "--repo-id" in result.output
+    assert "--dataset" in result.output
+    assert "--k" in result.output
 
 
 def test_init_writes_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

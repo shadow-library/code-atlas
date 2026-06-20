@@ -240,4 +240,12 @@
 
 ---
 
+## Phase 10 — Follow-ups
+
+## 033 — eval CLI subcommand (`code-atlas eval`) [done]
+**deps:** 024, 030
+**files:** src/code_atlas/cli.py, tests/unit/test_cli.py, docs/usage.md
+**desc:** Add `code-atlas eval --repo-id <id> [--dataset <path>] [--k <int>] [--out <dir>]`. Builds the agent stack (mirroring `ask`), loads the dataset + cost table, runs `EvalRunner` under one `asyncio.run`, writes JSON+MD via `write_report`, and prints an aggregates summary. Update `docs/usage.md` to document the command (replacing the "no subcommand" note).
+**accept:** `code-atlas eval --help` lists `--repo-id`/`--dataset`/`--k`/`--out`. Offline CliRunner `--help` test passes. `docs/usage.md` no longer claims the subcommand is absent. Quality gate green.
+
 <!-- Add new tasks below this line as they emerge. Use IDs 033+. -->

@@ -28,6 +28,7 @@ from code_atlas.config.settings import (
 )
 from code_atlas.domain.answer import Answer
 from code_atlas.errors import CodeAtlasError
+from code_atlas.evaluation import EvalRun, EvalRunner, load_cost_table, load_dataset, write_report
 from code_atlas.indexing.indexer import Indexer
 from code_atlas.indexing.lexical_store import LexicalStore
 from code_atlas.indexing.metadata_store import MetadataStore
@@ -202,3 +203,86 @@ def ask(
                 line += f" ({citation.symbol})"
             console.print(line)
     console.print(f"[dim]{answer.latency_ms} ms · {answer.token_usage.total} tokens[/dim]")
+
+
+@app.command(name="eval")
+def run_eval(
+    repo_id: Annotated[str, typer.Option("--repo-id", help="Identifier of the indexed repository to evaluate.")],
+    dataset: Annotated[Path, typer.Option("--dataset", help="Path to the YAML eval dataset.")] = Path(
+        "eval/datasets/seed.yaml"
+    ),
+    k: Annotated[int, typer.Option("--k", help="Retrieval cutoff for recall@k / nDCG@k.")] = 10,
+    out: Annotated[
+        Path | None, typer.Option("--out", help="Directory for report files (default: settings.eval.reports_dir).")
+    ] = None,
+) -> None:
+    """Run the evaluation harness over a dataset and write JSON + Markdown reports."""
+    settings = Settings()
+    configure_logging(settings.app.log_level, json=settings.app.log_json)
+    paths = _StorePaths(settings)
+    out_dir = out if out is not None else Path(settings.eval.reports_dir)
+
+    try:
+        cases = load_dataset(dataset)
+        cost_table = load_cost_table(settings.eval.cost_rates_path)
+    except CodeAtlasError as exc:
+        err_console.print(f"[red]error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    embedder = make_embedding(settings)
+    llm = make_llm(settings)
+    metadata = MetadataStore(paths.metadata_url)
+    lexical = LexicalStore(paths.lexical_path)
+    vector = LanceVectorStore(paths.vector_uri, dimension=settings.embeddings.dimension)
+    graph = SymbolGraph.load(paths.graph_path) if paths.graph_path.exists() else SymbolGraph()
+
+    retriever = HybridRetriever(
+        vector_store=vector,
+        lexical_store=lexical,
+        embedder=embedder,
+        metadata_store=metadata,
+    )
+    toolbox = Toolbox(metadata_store=metadata, symbol_graph=graph, repo_id=repo_id)
+    agent = QAAgent(retriever=retriever, llm=llm, toolbox=toolbox)
+
+    runner = EvalRunner(
+        agent=agent,
+        metadata_store=metadata,
+        judge_llm=llm,
+        cost_table=cost_table,
+        provider=settings.chat.provider,
+        model=settings.chat.model,
+        k=k,
+    )
+
+    async def _run() -> EvalRun:
+        try:
+            return await runner.run(cases)
+        finally:
+            for provider in (embedder, llm):
+                aclose = getattr(provider, "aclose", None)
+                if aclose is not None:
+                    await aclose()
+
+    try:
+        run = asyncio.run(_run())
+    except CodeAtlasError as exc:
+        err_console.print(f"[red]error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    finally:
+        metadata.close()
+        lexical.close()
+        vector.close()
+
+    json_path, md_path = write_report(run, out_dir)
+
+    agg = run.aggregates
+    console.print(f"[bold]Eval[/bold] {run.run_id} — {agg.n_cases} cases (k={agg.k})")
+    console.print(f"  recall@k:        {agg.mean_recall_at_k:.3f}")
+    console.print(f"  mrr:             {agg.mean_mrr:.3f}")
+    console.print(f"  ndcg@k:          {agg.mean_ndcg_at_k:.3f}")
+    console.print(f"  grounding rate:  {agg.mean_grounding_rate:.3f}")
+    console.print(f"  correctness:     {agg.mean_correctness:.3f}")
+    console.print(f"  latency p50/p95: {agg.latency_p50_ms:.0f} / {agg.latency_p95_ms:.0f} ms")
+    console.print(f"  cost total:      ${agg.total_cost_usd:.4f}")
+    console.print(f"[dim]reports: {json_path} · {md_path}[/dim]")
