@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 from fastapi.testclient import TestClient
 
 from code_atlas import __version__
+from code_atlas.agent.qa import StreamEvent
 from code_atlas.api.app import app
 from code_atlas.api.routes import get_agent_factory, get_ingest_runner
 from code_atlas.domain.answer import Answer, Citation
@@ -23,6 +24,12 @@ class FakeAgent:
             path="src/code_atlas/api/routes.py", start_line=1, end_line=2, snippet="router = APIRouter()"
         )
         return Answer(text=_FAKE_TEXT, citations=[citation])
+
+    async def ask_stream(self, question: str) -> AsyncIterator[StreamEvent]:
+        answer = await self.ask(question)
+        for token in answer.text.split():
+            yield StreamEvent(type="token", text=token)
+        yield StreamEvent(type="done", answer=answer)
 
 
 @pytest.fixture

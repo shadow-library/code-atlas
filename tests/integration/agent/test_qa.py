@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from code_atlas.agent.prompts import DECLINE_MESSAGE
-from code_atlas.agent.qa import QAAgent
+from code_atlas.agent.qa import QAAgent, StreamEvent
 from code_atlas.agent.tools import Toolbox
 from code_atlas.domain.answer import TokenUsage
 from code_atlas.domain.chunk import CodeChunk, Symbol
@@ -82,6 +82,32 @@ class FakeLLM:
     ) -> AsyncIterator[ChatChunk]:
         if False:  # pragma: no cover - unused minimal stub
             yield ChatChunk()
+
+
+class StreamingFakeLLM:
+    model = "fake"
+
+    def __init__(self, turns: list[list[ChatChunk]]) -> None:
+        self._turns = turns
+        self._turn = 0
+
+    async def chat(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        tools: Sequence[ToolSpec] | None = None,
+    ) -> ChatResponse:
+        raise NotImplementedError
+
+    async def chat_stream(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        tools: Sequence[ToolSpec] | None = None,
+    ) -> AsyncIterator[ChatChunk]:
+        for chunk in self._turns[self._turn]:
+            yield chunk
+        self._turn += 1
 
 
 def _seed_chunk(meta: MetadataStore) -> None:
@@ -190,3 +216,73 @@ async def test_empty_question_raises(meta_store: MetadataStore, symbol_graph: Sy
     )
     with pytest.raises(AgentError):
         await agent.ask("   ")
+
+
+async def test_ask_stream_single_turn(meta_store: MetadataStore, symbol_graph: SymbolGraph) -> None:
+    turns = [
+        [
+            ChatChunk(content_delta="The "),
+            ChatChunk(content_delta="hybrid "),
+            ChatChunk(content_delta="retriever."),
+            ChatChunk(done=True, usage=TokenUsage(prompt=12, completion=8), finish_reason="stop"),
+        ]
+    ]
+    agent = QAAgent(
+        retriever=_retriever(meta_store),
+        llm=StreamingFakeLLM(turns),
+        toolbox=Toolbox(metadata_store=meta_store, symbol_graph=symbol_graph, repo_id="r"),
+        max_tool_iters=4,
+    )
+    events = [e async for e in agent.ask_stream("where is the retriever?")]
+
+    streamed = "".join(e.text for e in events if e.type == "token")
+    assert streamed == "The hybrid retriever."
+    done = events[-1]
+    assert done.type == "done"
+    assert done.answer is not None
+    assert done.answer.text == streamed.strip()
+    assert done.answer.citations
+    assert done.answer.token_usage.total == 20
+
+
+async def test_ask_stream_tool_then_answer(meta_store: MetadataStore, symbol_graph: SymbolGraph) -> None:
+    turns = [
+        [
+            ChatChunk(
+                tool_call_delta=ToolCall(id="call_0", name="find_symbol", arguments={"name": "HybridRetriever"}),
+                done=True,
+                usage=TokenUsage(prompt=10, completion=5),
+            ),
+        ],
+        [
+            ChatChunk(content_delta="Defined "),
+            ChatChunk(content_delta="in hybrid.py."),
+            ChatChunk(done=True, usage=TokenUsage(prompt=12, completion=8), finish_reason="stop"),
+        ],
+    ]
+    agent = QAAgent(
+        retriever=_retriever(meta_store),
+        llm=StreamingFakeLLM(turns),
+        toolbox=Toolbox(metadata_store=meta_store, symbol_graph=symbol_graph, repo_id="r"),
+        max_tool_iters=4,
+    )
+    events = [e async for e in agent.ask_stream("where is the retriever?")]
+
+    done = events[-1]
+    assert isinstance(done, StreamEvent)
+    assert done.type == "done"
+    assert done.answer is not None
+    assert done.answer.text == "Defined in hybrid.py."
+    assert done.answer.token_usage.total == 35
+    assert any(e.get("step") == "tool" and e.get("name") == "find_symbol" for e in done.answer.trace)
+
+
+async def test_ask_stream_blank_question_raises(meta_store: MetadataStore, symbol_graph: SymbolGraph) -> None:
+    agent = QAAgent(
+        retriever=_retriever(meta_store),
+        llm=StreamingFakeLLM([]),
+        toolbox=Toolbox(metadata_store=meta_store, symbol_graph=symbol_graph, repo_id="r"),
+        max_tool_iters=4,
+    )
+    with pytest.raises(AgentError):
+        [e async for e in agent.ask_stream("  ")]

@@ -10,6 +10,7 @@ router, routes read ``request.app.state`` lazily at request time.
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Annotated
@@ -24,6 +25,7 @@ from code_atlas.agent.tools import Toolbox
 from code_atlas.api.models import AskRequest, HealthResponse, IngestRequest, IngestResponse
 from code_atlas.config import Settings
 from code_atlas.domain.answer import Answer
+from code_atlas.errors import CodeAtlasError
 from code_atlas.indexing.indexer import Indexer
 from code_atlas.indexing.lexical_store import LexicalStore
 from code_atlas.indexing.metadata_store import MetadataStore
@@ -106,19 +108,23 @@ def get_ingest_runner(request: Request) -> IngestRunner:
     return _run
 
 
-async def _event_stream(agent: QAAgent, question: str) -> AsyncIterator[str]:
-    """Replay a computed :class:`Answer` as SSE.
+def _sse_data(text: str) -> str:
+    """Format a (possibly multi-line) payload as one SSE ``data:`` event."""
+    body = "".join(f"data: {line}\n" for line in text.split("\n"))
+    return f"{body}\n"
 
-    ``QAAgent`` is non-streaming, so the full answer is computed first and replayed as
-    whitespace-delimited token events followed by a terminal ``done`` event carrying the
-    serialized answer. True incremental streaming is deferred: it needs a streaming path
-    in ``QAAgent`` that streams only the final post-tool turn.
-    """
-    answer = await agent.ask(question)
-    tokens = answer.text.split() or [answer.text]
-    for token in tokens:
-        yield f"data: {token}\n\n"
-    yield f"event: done\ndata: {answer.model_dump_json()}\n\n"
+
+async def _event_stream(agent: QAAgent, question: str) -> AsyncIterator[str]:
+    """Stream answer tokens as SSE ``data:`` events, then a terminal ``done`` event with the full answer."""
+    try:
+        async for event in agent.ask_stream(question):
+            if event.type == "token":
+                if event.text:
+                    yield _sse_data(event.text)
+            elif event.answer is not None:
+                yield f"event: done\ndata: {event.answer.model_dump_json()}\n\n"
+    except CodeAtlasError as exc:
+        yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
 
 
 @router.get("/health", response_model=HealthResponse)

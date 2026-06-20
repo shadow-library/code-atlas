@@ -254,4 +254,10 @@
 **desc:** `ask` and `eval` build an identical QA stack (embedder + llm + 4 stores + retriever + toolbox + agent) and tear it down identically. Extract a `_QAStack` dataclass + `_build_qa_stack(settings, paths, repo_id)` factory plus `aclose_providers()`/`close_stores()` helpers, and rewrite `ask`/`eval` to use them. `ingest` stays separate (different lifecycle: persistent loop, no llm, fresh graph, indexer). Pure refactor — no behavior, flag, or output change.
 **accept:** Quality gate green (incl. existing offline CLI `--help`/`init` tests). `ask`/`eval` flags + printed output identical to before. `ingest` untouched.
 
+## 035 — True incremental SSE streaming (QAAgent.ask_stream) [done]
+**deps:** 023, 025
+**files:** src/code_atlas/agent/qa.py, src/code_atlas/agent/__init__.py, src/code_atlas/api/routes.py, tests/integration/agent/test_qa.py, tests/unit/api/test_app.py
+**desc:** Add `QAAgent.ask_stream(question) -> AsyncIterator[StreamEvent]` driving the provider's `chat_stream` (token deltas emitted live), running the same bounded tool-use loop as `ask`, ending with a terminal `done` event carrying the full `Answer`. Rewrite the API `_event_stream` to consume `ask_stream` (real tokens + SSE-correct multi-line `data:` framing + an `error` event on failure). `ask` stays as-is (uses non-streaming `chat`).
+**accept:** Streaming integration test: token events concatenate to the answer text + a `done` event carries the full Answer with citations; tool-call-then-answer path streams the final turn. API SSE test still passes (`data:` + `event: done`). Quality gate green.
+
 <!-- Add new tasks below this line as they emerge. Use IDs 033+. -->
