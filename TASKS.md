@@ -176,7 +176,7 @@
 
 ## Phase 7 — CLI + API
 
-## 024 — CLI (typer): init / ingest / ask [pending]
+## 024 — CLI (typer): init / ingest / ask [done]
 **deps:** 016, 023
 **files:** src/code_atlas/cli.py, tests/unit/test_cli.py
 **desc:** `typer` app `code-atlas`. Commands: `init` (write a default config to cwd), `ingest --repo <path> --id <repo_id>` (run Indexer), `ask "<question>" --repo-id <id>` (run QAAgent, print Answer with citations rendered as `path:start-end`). Reads Settings via env/yaml. Pretty output via `rich`.
