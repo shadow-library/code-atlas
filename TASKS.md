@@ -226,7 +226,7 @@
 
 ## Phase 9 — Infrastructure & Docs
 
-## 031 — Docker + docker-compose (Ollama) [pending]
+## 031 — Docker + docker-compose (Ollama) [done]
 **deps:** 024, 025
 **files:** docker/Dockerfile, docker/docker-compose.yml, .dockerignore
 **desc:** Multi-stage Dockerfile: builder (uv install) → runtime (python:3.12-slim, non-root user, copy installed venv + src, expose 8000). Entrypoint runs `uvicorn code_atlas.api.app:app`. `docker-compose.yml` defines two services: `ollama` (ollama/ollama image, volume for models, exposes 11434) and `code-atlas` (build context root) depending on ollama. `.dockerignore` excludes tests, eval reports, .venv, .git.

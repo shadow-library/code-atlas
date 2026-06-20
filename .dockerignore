@@ -1,0 +1,29 @@
+# Keep the build context small. KEEP: src/, pyproject.toml, uv.lock, README.md, config/.
+.git
+.gitignore
+
+# Local virtualenv and tooling caches
+.venv
+.mypy_cache
+.ruff_cache
+.pytest_cache
+**/__pycache__
+*.pyc
+*.egg-info
+
+# Not needed at runtime / not part of the package
+tests/
+eval/reports/
+data/
+docs/
+
+# Orchestrator + CI + dev config
+.orchestrator/
+.github/
+.pre-commit-config.yaml
+.editorconfig
+.env
+.env.example
+
+# Docker artifacts themselves
+docker/
