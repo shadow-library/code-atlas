@@ -1,0 +1,19 @@
+# USD per 1k tokens. Local providers (ollama) bill nothing; cloud rates are illustrative.
+ollama:
+  default:
+    prompt_per_1k: 0.0
+    completion_per_1k: 0.0
+openai:
+  gpt-4o-mini:
+    prompt_per_1k: 0.00015
+    completion_per_1k: 0.0006
+  gpt-4o:
+    prompt_per_1k: 0.0025
+    completion_per_1k: 0.01
+anthropic:
+  claude-3-5-haiku:
+    prompt_per_1k: 0.0008
+    completion_per_1k: 0.004
+  claude-3-5-sonnet:
+    prompt_per_1k: 0.003
+    completion_per_1k: 0.015

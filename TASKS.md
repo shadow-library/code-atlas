@@ -216,7 +216,7 @@
 **desc:** `judge_answer(answer, expected_traits, llm) -> CorrectnessReport{score: 0..1, per_trait: dict[str, bool], rationale: str}`. Prompt instructs judge LLM to evaluate each trait independently. Uses the same provider abstraction.
 **accept:** With a fake LLM returning canned JSON, returns the parsed report shape; malformed judge output → score 0 + warning.
 
-## 030 — Latency + cost tracking, eval runner, report writer [pending]
+## 030 — Latency + cost tracking, eval runner, report writer [done]
 **deps:** 027, 028, 029
 **files:** src/code_atlas/evaluation/metrics_cost.py, src/code_atlas/evaluation/runner.py, src/code_atlas/evaluation/report.py, config/costs.yaml, tests/integration/evaluation/test_runner.py
 **desc:** `metrics_cost.py` reads `config/costs.yaml` (per-provider per-model USD per 1k tokens for prompt + completion), turns `TokenUsage` into USD. `runner.py`: iterate cases, run agent per case, collect retrieval / grounding / correctness / latency / cost, emit `EvalRun{cases, aggregates}`. `report.py` writes both `eval/reports/{run_id}.json` and a Markdown summary table.
