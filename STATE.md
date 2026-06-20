@@ -28,6 +28,14 @@
 
 ## Capabilities (by task)
 
+### Task 034 — Extract shared CLI composition root (refactor)
+- **Behavior-preserving** de-dup in `cli.py`. Added `_QAStack` dataclass + `_build_qa_stack(settings, paths, repo_id) -> _QAStack` factory (placed after `_StorePaths`); `ask` and `eval` now build/teardown via it. `ingest` UNTOUCHED (distinct lifecycle: persistent `asyncio.new_event_loop()` for the sync Indexer shim, FRESH `SymbolGraph()`, no llm/retriever/agent).
+- **`_QAStack`** (`@dataclass`): fields `embedder, llm, metadata, lexical, vector, agent` + `async aclose_providers()` (getattr-guarded `aclose` over embedder+llm) + `close_stores()` (metadata/lexical/vector). `metadata` kept as a field because eval's `EvalRunner` needs it (+ `llm` as judge).
+- Commands keep their OWN `asyncio.run(_run())` shim and try/except/finally — only the construction + the two teardown blocks were lifted. Close order preserved exactly (providers in `_run` finally, 3 stores in outer finally). No flag/output/exit-code change (`ask`/`eval --help` verified identical).
+- **Dataclass-annotation note (carry-forward)**: `EmbeddingProvider`/`LLMProvider` imported under `TYPE_CHECKING` — a PLAIN `@dataclass` under `from __future__ import annotations` does NOT resolve field annotations at runtime (unlike pydantic), so Protocol field types stay out of the runtime import graph. (Contrast Task 030: pydantic field types MUST be runtime imports.)
+- Net: each of `ask`/`eval` dropped ~12 lines of construction + the duplicated teardown loop. Gate clean first-try (no format reflow — the `HybridRetriever(...)` one-liner is 119 cols): 48 source files, **318 tests** pass.
+- The Task 024/025 "deferred shared composition root" is now resolved for the QA path. (`ingest` intentionally still bespoke.)
+
 ### Task 033 — `code-atlas eval` CLI subcommand (Phase 10 follow-up)
 - New `eval` command in `cli.py`: `@app.command(name="eval")` + function **`run_eval`** (named to avoid shadowing the `eval` builtin; `name="eval"` keeps the CLI verb).
 - **Signature**: `--repo-id` (REQUIRED, no default — must come first since it has no default), `--dataset` (default `Path("eval/datasets/seed.yaml")`), `--k` (default 10), `--out` (`Path | None`, default None → falls back to `settings.eval.reports_dir`).

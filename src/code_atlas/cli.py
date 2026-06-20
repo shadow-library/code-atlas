@@ -7,8 +7,9 @@ the sync ``Indexer`` at this caller boundary (see ``ingest``'s persistent loop).
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 import yaml
@@ -38,6 +39,9 @@ from code_atlas.providers import make_embedding, make_llm
 from code_atlas.retrieval.hybrid import HybridRetriever
 from code_atlas.utils import configure_logging
 
+if TYPE_CHECKING:
+    from code_atlas.providers.base import EmbeddingProvider, LLMProvider
+
 app = typer.Typer(
     name="code-atlas",
     help="AI coding assistant for large polyglot repositories.",
@@ -61,6 +65,44 @@ class _StorePaths:
         self.lexical_path = str((self.root_dir / "lexical.sqlite").resolve())
         self.vector_uri = storage.lance_uri
         self.graph_path = (self.root_dir / "symbol_graph.json.gz").resolve()
+
+
+@dataclass
+class _QAStack:
+    """The assembled QA stack shared by the ``ask`` and ``eval`` commands."""
+
+    embedder: EmbeddingProvider
+    llm: LLMProvider
+    metadata: MetadataStore
+    lexical: LexicalStore
+    vector: LanceVectorStore
+    agent: QAAgent
+
+    async def aclose_providers(self) -> None:
+        """Close async provider clients (no-op for providers without ``aclose``)."""
+        for provider in (self.embedder, self.llm):
+            aclose = getattr(provider, "aclose", None)
+            if aclose is not None:
+                await aclose()
+
+    def close_stores(self) -> None:
+        self.metadata.close()
+        self.lexical.close()
+        self.vector.close()
+
+
+def _build_qa_stack(settings: Settings, paths: _StorePaths, repo_id: str) -> _QAStack:
+    """Build the retrieval + agent stack used by ``ask`` and ``eval`` (graph loaded from disk if present)."""
+    embedder = make_embedding(settings)
+    llm = make_llm(settings)
+    metadata = MetadataStore(paths.metadata_url)
+    lexical = LexicalStore(paths.lexical_path)
+    vector = LanceVectorStore(paths.vector_uri, dimension=settings.embeddings.dimension)
+    graph = SymbolGraph.load(paths.graph_path) if paths.graph_path.exists() else SymbolGraph()
+    retriever = HybridRetriever(vector_store=vector, lexical_store=lexical, embedder=embedder, metadata_store=metadata)
+    toolbox = Toolbox(metadata_store=metadata, symbol_graph=graph, repo_id=repo_id)
+    agent = QAAgent(retriever=retriever, llm=llm, toolbox=toolbox)
+    return _QAStack(embedder=embedder, llm=llm, metadata=metadata, lexical=lexical, vector=vector, agent=agent)
 
 
 def _default_config() -> dict[str, Any]:
@@ -158,31 +200,13 @@ def ask(
     settings = Settings()
     configure_logging(settings.app.log_level, json=settings.app.log_json)
     paths = _StorePaths(settings)
-
-    embedder = make_embedding(settings)
-    llm = make_llm(settings)
-    metadata = MetadataStore(paths.metadata_url)
-    lexical = LexicalStore(paths.lexical_path)
-    vector = LanceVectorStore(paths.vector_uri, dimension=settings.embeddings.dimension)
-    graph = SymbolGraph.load(paths.graph_path) if paths.graph_path.exists() else SymbolGraph()
-
-    retriever = HybridRetriever(
-        vector_store=vector,
-        lexical_store=lexical,
-        embedder=embedder,
-        metadata_store=metadata,
-    )
-    toolbox = Toolbox(metadata_store=metadata, symbol_graph=graph, repo_id=repo_id)
-    agent = QAAgent(retriever=retriever, llm=llm, toolbox=toolbox)
+    stack = _build_qa_stack(settings, paths, repo_id)
 
     async def _run() -> Answer:
         try:
-            return await agent.ask(question)
+            return await stack.agent.ask(question)
         finally:
-            for provider in (embedder, llm):
-                aclose = getattr(provider, "aclose", None)
-                if aclose is not None:
-                    await aclose()
+            await stack.aclose_providers()
 
     try:
         answer = asyncio.run(_run())
@@ -190,9 +214,7 @@ def ask(
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=1) from exc
     finally:
-        metadata.close()
-        lexical.close()
-        vector.close()
+        stack.close_stores()
 
     console.print(answer.text)
     if answer.citations:
@@ -229,26 +251,11 @@ def run_eval(
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=1) from exc
 
-    embedder = make_embedding(settings)
-    llm = make_llm(settings)
-    metadata = MetadataStore(paths.metadata_url)
-    lexical = LexicalStore(paths.lexical_path)
-    vector = LanceVectorStore(paths.vector_uri, dimension=settings.embeddings.dimension)
-    graph = SymbolGraph.load(paths.graph_path) if paths.graph_path.exists() else SymbolGraph()
-
-    retriever = HybridRetriever(
-        vector_store=vector,
-        lexical_store=lexical,
-        embedder=embedder,
-        metadata_store=metadata,
-    )
-    toolbox = Toolbox(metadata_store=metadata, symbol_graph=graph, repo_id=repo_id)
-    agent = QAAgent(retriever=retriever, llm=llm, toolbox=toolbox)
-
+    stack = _build_qa_stack(settings, paths, repo_id)
     runner = EvalRunner(
-        agent=agent,
-        metadata_store=metadata,
-        judge_llm=llm,
+        agent=stack.agent,
+        metadata_store=stack.metadata,
+        judge_llm=stack.llm,
         cost_table=cost_table,
         provider=settings.chat.provider,
         model=settings.chat.model,
@@ -259,10 +266,7 @@ def run_eval(
         try:
             return await runner.run(cases)
         finally:
-            for provider in (embedder, llm):
-                aclose = getattr(provider, "aclose", None)
-                if aclose is not None:
-                    await aclose()
+            await stack.aclose_providers()
 
     try:
         run = asyncio.run(_run())
@@ -270,9 +274,7 @@ def run_eval(
         err_console.print(f"[red]error:[/red] {exc}")
         raise typer.Exit(code=1) from exc
     finally:
-        metadata.close()
-        lexical.close()
-        vector.close()
+        stack.close_stores()
 
     json_path, md_path = write_report(run, out_dir)
 

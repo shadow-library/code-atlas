@@ -248,4 +248,10 @@
 **desc:** Add `code-atlas eval --repo-id <id> [--dataset <path>] [--k <int>] [--out <dir>]`. Builds the agent stack (mirroring `ask`), loads the dataset + cost table, runs `EvalRunner` under one `asyncio.run`, writes JSON+MD via `write_report`, and prints an aggregates summary. Update `docs/usage.md` to document the command (replacing the "no subcommand" note).
 **accept:** `code-atlas eval --help` lists `--repo-id`/`--dataset`/`--k`/`--out`. Offline CliRunner `--help` test passes. `docs/usage.md` no longer claims the subcommand is absent. Quality gate green.
 
+## 034 — Extract shared CLI composition root [done]
+**deps:** 024, 033
+**files:** src/code_atlas/cli.py
+**desc:** `ask` and `eval` build an identical QA stack (embedder + llm + 4 stores + retriever + toolbox + agent) and tear it down identically. Extract a `_QAStack` dataclass + `_build_qa_stack(settings, paths, repo_id)` factory plus `aclose_providers()`/`close_stores()` helpers, and rewrite `ask`/`eval` to use them. `ingest` stays separate (different lifecycle: persistent loop, no llm, fresh graph, indexer). Pure refactor — no behavior, flag, or output change.
+**accept:** Quality gate green (incl. existing offline CLI `--help`/`init` tests). `ask`/`eval` flags + printed output identical to before. `ingest` untouched.
+
 <!-- Add new tasks below this line as they emerge. Use IDs 033+. -->
