@@ -210,7 +210,7 @@
 **desc:** Given an `Answer` + `MetadataStore`, verify each citation: (a) file exists in the repo index, (b) the line range is within the file's known chunk ranges, (c) the citation `snippet` (if non-empty) is a substring of the chunk content. Return `GroundingReport{total, grounded, ungrounded_citations}`.
 **accept:** Tests: fully grounded answer → all green; fabricated citation → flagged; out-of-range line → flagged; correct file but wrong snippet → flagged.
 
-## 029 — Answer correctness (LLM-as-judge) [pending]
+## 029 — Answer correctness (LLM-as-judge) [done]
 **deps:** 026, 019
 **files:** src/code_atlas/evaluation/metrics_correctness.py, tests/unit/evaluation/test_metrics_correctness.py
 **desc:** `judge_answer(answer, expected_traits, llm) -> CorrectnessReport{score: 0..1, per_trait: dict[str, bool], rationale: str}`. Prompt instructs judge LLM to evaluate each trait independently. Uses the same provider abstraction.

@@ -28,6 +28,21 @@
 
 ## Capabilities (by task)
 
+### Task 029 — Answer correctness (LLM-as-judge)
+- New module `code_atlas.evaluation.metrics_correctness`. Re-exports `CorrectnessReport`, `judge_answer` from `evaluation/__init__` (`__all__` RUF022-sorted: `CorrectnessReport, EvalCase, GroundingReport, UngroundedCitation, check_grounding, judge_answer, load_dataset, mrr, ndcg_at_k, recall_at_k`).
+- **`async judge_answer(answer: Answer, expected_traits: list[str], llm: LLMProvider) -> CorrectnessReport`** — ASYNC (first eval metric that calls an LLM; grounding/retrieval were sync/pure).
+- **`CorrectnessReport`** (frozen pydantic, `ConfigDict(frozen=True)` — NO `extra="forbid"`, mirrors grounding reports): `score: float` (0..1), `per_trait: dict[str, bool]`, `rationale: str`.
+- **Score is computed by US, not the LLM**: `score = sum(per_trait.values()) / len(expected_traits)`. The judge LLM only returns per-trait booleans + a rationale string. Keeps scoring deterministic.
+- **Vacuous short-circuit**: empty `expected_traits` → `CorrectnessReport(score=1.0, per_trait={}, rationale="no traits to evaluate")` **without calling the LLM** (consistent with recall/grounding vacuous-pass convention).
+- **Prompt**: module-level `_JUDGE_SYSTEM_PROMPT` (strict-evaluator, JSON-only, exact-trait-text keys) + `_build_messages(answer, traits)` (system + user embedding `answer.text` + numbered traits). `await llm.chat(messages)` with **NO tools**. Judges against `answer.text` only (not citations).
+- **`_parse_judge(content, traits)`**: try `json.loads(content)`; on `JSONDecodeError` fall back to outermost-brace substring (`content.find("{")` .. `content.rfind("}")`) and retry — handles markdown-fenced/prose-wrapped JUDGE output (a real LLM path, not defensive bloat).
+- **Malformed soft-fail** (parsed not a `dict`, OR `per_trait` missing/not a `dict`): `log.warning("correctness.judge_malformed", content=content[:200])` → `CorrectnessReport(score=0.0, per_trait={}, rationale="judge returned malformed output")`. Does NOT raise.
+- **Trait alignment**: `per_trait = {t: _coerce_bool(raw.get(t, False)) for t in expected_traits}` — keys ALWAYS == `expected_traits` (missing trait → False; hallucinated extra keys dropped). `_coerce_bool`: real bool passthrough; str → `lower() in {"true","yes","1"}`; else `bool(v)` (LLMs emit stringified booleans).
+- **Error policy**: `ProviderError` from `llm.chat` bubbles UNCAUGHT (matches hybrid/grounding bubble-as-is). Malformed judge output is the ONLY soft-fail. No `EvaluationError` raised here.
+- **Imports**: `ChatMessage` + `get_logger` at runtime; `Answer` + `LLMProvider` under `TYPE_CHECKING` (annotation-only — `from __future__ import annotations` keeps `answer.text` access valid). Token/cost capture deferred to Task 030.
+- 8 unit tests in `tests/unit/evaluation/test_metrics_correctness.py` (`asyncio_mode=auto` → plain `async def`, no decorator; local `FakeLLM(content)` with `.calls` recorder): all-true, partial (`approx(2/3)`), missing-trait→False, stringified-bool coercion, malformed non-JSON, malformed shape, markdown-fence extraction, empty-traits vacuous (asserts `fake.calls == []`). Gate clean first-try (no post-write fixes).
+- **Phase 8 remaining: 030 only** (cost/runner/report — deps 027✓ 028✓ 029✓ now all met).
+
 ### Task 028 — Citation grounding (hallucination check)
 - New module `code_atlas.evaluation.metrics_grounding`. Re-exports `check_grounding`, `GroundingReport`, `UngroundedCitation` from `evaluation/__init__` (`__all__` now multiline, RUF022-sorted).
 - **`check_grounding(answer: Answer, metadata_store: MetadataStore, *, repo_id: str) -> GroundingReport`** — SYNC; calls `MetadataStore.find_by_path(repo_id, path)` directly (no threads → `:memory:` store fine in tests).
