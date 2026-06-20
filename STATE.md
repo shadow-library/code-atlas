@@ -28,6 +28,18 @@
 
 ## Capabilities (by task)
 
+### Task 027 — Retrieval metrics (recall@k, MRR, nDCG)
+- New module `code_atlas.evaluation.metrics_retrieval` — three PURE, stdlib-only functions (binary relevance: a file is relevant iff in the expected set). Re-exported from `evaluation/__init__` (`__all__` RUF022-sorted: `EvalCase, load_dataset, mrr, ndcg_at_k, recall_at_k`).
+  - `recall_at_k(retrieved_files: list[str], expected_files: list[str], k: int) -> float`
+  - `mrr(retrieved_files: list[str], expected_files: list[str]) -> float`
+  - `ndcg_at_k(retrieved_files: list[str], expected_files: list[str], k: int) -> float`
+- **Dedup semantics**: `retrieved_files` deduped via `_dedup = list(dict.fromkeys(items))` (preserves FIRST-occurrence rank — matters for mrr/ndcg). `expected_files` → `set`.
+- **k-validation**: `recall_at_k` + `ndcg_at_k` require `k >= 1` else `EvaluationError("k must be >= 1", context={"k": k})`. `mrr` takes no k (full list).
+- **Empty-expected conventions** (locked): `recall_at_k → 1.0` (vacuous — zero relevant, zero misses), `mrr → 0.0`, `ndcg_at_k → 0.0`.
+- **nDCG**: DCG `= Σ 1/log2(i+1)` over relevant hits at 1-indexed rank i (rank 1 → `log2(2)=1`); IDCG ideal-ranked, capped at `min(k, len(expected))`. `mrr` is single-query reciprocal rank — the runner means across cases for true MRR.
+- 23 tests in `tests/unit/evaluation/test_metrics_retrieval.py` (recall partial/full/zero/k-trunc/empty-exp(1.0)/empty-retr/dedup; mrr first/perfect/miss/empty/dedup-rank; ndcg perfect/partial(approx via math.log2)/miss/empty/k-trunc; `k<=0` raises for both `@k` metrics via parametrize). Gate clean first-try.
+- Tasks 028 (grounding), 029 (LLM-judge), 030 (cost/runner/report) still pending in Phase 8.
+
 ### Task 026 — Eval dataset format + seed dataset — Phase 8 starts
 - New pkg `code_atlas.evaluation` (re-exports `EvalCase`, `load_dataset`). Depends only on `errors` + `utils` (utils is a leaf — strict layering holds). Absolute imports in `__init__`.
 - **`EvalCase`** (frozen pydantic, `extra="forbid"`): `case_id`, `repo_id`, `question` (all `min_length=1`, required); `expected_files`, `expected_symbols`, `expected_answer_traits` (`list[str]`, default `[]`).

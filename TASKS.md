@@ -198,7 +198,7 @@
 **desc:** `EvalCase` pydantic model: `case_id, repo_id, question, expected_files (list[str]), expected_symbols (list[str]), expected_answer_traits (list[str])`. `load_dataset(path) -> list[EvalCase]` reads YAML. Seed dataset: 6–10 cases targeting *this* repo (code-atlas itself) — questions like "Where is the hybrid retriever defined?", "What protocol does an embedding provider implement?".
 **accept:** Seed YAML parses. Loader validates required fields. Case `case_id`s are unique.
 
-## 027 — Retrieval metrics (recall@k, MRR, nDCG) [pending]
+## 027 — Retrieval metrics (recall@k, MRR, nDCG) [done]
 **deps:** 026
 **files:** src/code_atlas/evaluation/metrics_retrieval.py, tests/unit/evaluation/test_metrics_retrieval.py
 **desc:** Pure functions: `recall_at_k(retrieved_files, expected_files, k)`, `mrr(retrieved_files, expected_files)`, `ndcg_at_k(retrieved_files, expected_files, k)`. Operate on file-path level (deduped).
