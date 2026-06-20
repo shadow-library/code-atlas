@@ -28,6 +28,21 @@
 
 ## Capabilities (by task)
 
+### Task 028 — Citation grounding (hallucination check)
+- New module `code_atlas.evaluation.metrics_grounding`. Re-exports `check_grounding`, `GroundingReport`, `UngroundedCitation` from `evaluation/__init__` (`__all__` now multiline, RUF022-sorted).
+- **`check_grounding(answer: Answer, metadata_store: MetadataStore, *, repo_id: str) -> GroundingReport`** — SYNC; calls `MetadataStore.find_by_path(repo_id, path)` directly (no threads → `:memory:` store fine in tests).
+- **Report shapes** (both frozen pydantic):
+  - `UngroundedCitation{citation: Citation, file_exists, line_range_valid, snippet_present: bool, reasons: list[str]}`.
+  - `GroundingReport{total, grounded, ungrounded_citations: list[UngroundedCitation]}` + `@property is_fully_grounded` (`total == grounded`).
+- **3 per-citation checks** (all must pass → counted grounded), each with a fixed failure-reason string:
+  1. `file_exists` = `bool(find_by_path(...))` → fail `"file not indexed"`.
+  2. `line_range_valid` = ∃ chunk fully covering the cited range (`chunk.start_line <= cite.start_line AND chunk.end_line >= cite.end_line`) → fail `"line range outside known chunks"`.
+  3. `snippet_present` = snippet substring of a CONTAINING chunk's `content` → fail `"snippet not found in cited chunk"`.
+- **Conventions**: empty snippet → `snippet_present=True` (vacuous — nothing fabricated). Empty `answer.citations` → `total=0, grounded=0, ungrounded=[]` → `is_fully_grounded` vacuously True. No `EvaluationError` paths (no invalid-arg case). No logger.
+- **Import layering**: `Citation` imported at runtime (pydantic field type); `Answer`/`CodeChunk`/`MetadataStore` under `TYPE_CHECKING` so `evaluation` does NOT pull `sqlalchemy` at import time (`from __future__ import annotations` keeps the runtime `find_by_path` call valid). evaluation→indexing dependency is annotation-only.
+- 7 unit tests in `tests/unit/evaluation/test_metrics_grounding.py` (real `:memory:` MetadataStore, fixture yields+closes): fully-grounded, fabricated-file, out-of-range-line, wrong-snippet, empty-snippet vacuous, empty-citations vacuous, mixed counts. Gate clean first-try.
+- Phase 8 remaining: 029 (LLM-judge), 030 (cost/runner/report).
+
 ### Task 027 — Retrieval metrics (recall@k, MRR, nDCG)
 - New module `code_atlas.evaluation.metrics_retrieval` — three PURE, stdlib-only functions (binary relevance: a file is relevant iff in the expected set). Re-exported from `evaluation/__init__` (`__all__` RUF022-sorted: `EvalCase, load_dataset, mrr, ndcg_at_k, recall_at_k`).
   - `recall_at_k(retrieved_files: list[str], expected_files: list[str], k: int) -> float`

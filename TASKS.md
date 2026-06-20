@@ -204,7 +204,7 @@
 **desc:** Pure functions: `recall_at_k(retrieved_files, expected_files, k)`, `mrr(retrieved_files, expected_files)`, `ndcg_at_k(retrieved_files, expected_files, k)`. Operate on file-path level (deduped).
 **accept:** Tests cover exact known inputs/outputs for each metric, including ties and empty cases.
 
-## 028 — Citation grounding (hallucination check) [pending]
+## 028 — Citation grounding (hallucination check) [done]
 **deps:** 026, 012
 **files:** src/code_atlas/evaluation/metrics_grounding.py, tests/unit/evaluation/test_metrics_grounding.py
 **desc:** Given an `Answer` + `MetadataStore`, verify each citation: (a) file exists in the repo index, (b) the line range is within the file's known chunk ranges, (c) the citation `snippet` (if non-empty) is a substring of the chunk content. Return `GroundingReport{total, grounded, ungrounded_citations}`.
