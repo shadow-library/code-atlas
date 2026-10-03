@@ -262,6 +262,7 @@ version = "0.1.0"
 dependencies = [
  "atlas-core",
  "blake3",
+ "fd-lock",
  "ignore",
  "rayon",
  "serde",
