@@ -4,15 +4,22 @@ use tree_sitter::Node;
 use super::Extractor;
 use crate::args::{summarize, summarize_arguments};
 use crate::modules::{module_specifier, require_fact};
-use crate::syntax::{ChainHead, children, compact_text, field_children, first_child, member_chain, span_of, string_value, text, type_path, unwrap_expression};
+use crate::syntax::{ChainHead, children, compact_text, field_children, first_child, member_chain, span_between, span_of, string_value, text, type_path, unwrap_expression};
 use crate::testing::recognize;
 
 impl<'s, 't> Extractor<'s, 't> {
   pub(super) fn call(&mut self, node: Node<'t>) {
     let arguments = node.child_by_field_name("arguments");
-    let Some(callee) = node.child_by_field_name("function") else {
+    let Some(mut callee) = node.child_by_field_name("function") else {
       return self.push_all(children(node));
     };
+    let mut span = span_of(node);
+    if node.child_by_field_name("type_arguments").is_some()
+      && let Some(awaited) = awaited_callee(callee)
+    {
+      callee = awaited;
+      span = span_between(callee, node);
+    }
     match callee.kind() {
       "import" => {
         if !self.in_error {
@@ -40,7 +47,7 @@ impl<'s, 't> Extractor<'s, 't> {
       return self.test_symbol(node, test);
     }
     let args = summarize_arguments(arguments, self.source);
-    self.call_reference(callee, args, span_of(node));
+    self.call_reference(callee, args, span);
     if let Some(arguments) = arguments {
       self.value_refs(arguments);
     }
@@ -235,6 +242,15 @@ impl<'s, 't> Extractor<'s, 't> {
       self.reference(RefKind::ValueRef, path, receiver, Vec::new(), span_of(node));
     }
   }
+}
+
+fn awaited_callee(mut callee: Node<'_>) -> Option<Node<'_>> {
+  let mut unwrapped = false;
+  while callee.kind() == "await_expression" {
+    callee = first_child(callee)?;
+    unwrapped = true;
+  }
+  unwrapped.then_some(callee)
 }
 
 fn jsx_props(attributes: &[Node<'_>], source: &str) -> Vec<ArgSummary> {

@@ -354,6 +354,29 @@ references:
       end_line: 13
       end_col: 47
   - from: 5
+    kind: method_call
+    path:
+      - this
+      - pool
+      - query
+    receiver:
+      type: this
+    args:
+      - type: str
+        value: "SELECT id, name FROM users WHERE id = $1"
+      - type: array
+        value:
+          - type: path
+            value:
+              - id
+    span:
+      start_byte: 320
+      end_byte: 397
+      start_line: 14
+      start_col: 27
+      end_line: 14
+      end_col: 104
+  - from: 5
     kind: type_ref
     path:
       - GlobexUser

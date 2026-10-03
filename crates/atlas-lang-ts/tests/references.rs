@@ -373,3 +373,67 @@ fn should_describe_the_head_of_value_reference_chains() {
     ]
   );
 }
+
+#[test]
+fn should_capture_generic_calls_with_and_without_await() {
+  let source = r#"
+import { foo, X } from './deps';
+export class S {
+  async run(x: Pool, arg: number) {
+    x.y<T>();
+    await x.y<T>();
+    await this.a.b<T>(arg);
+    new X<T>();
+    await new X<T>();
+    foo<T>();
+    await foo<T>();
+    x?.y<T>();
+    (await x.y<T>()).z();
+    return x.y<T>();
+  }
+  async *gen(x: Pool) { yield x.y<T>(); }
+}
+"#;
+  let facts = analyze("src/a.ts", source);
+  let calls: Vec<String> = facts
+    .references
+    .iter()
+    .filter(|reference| matches!(reference.kind, RefKind::Call | RefKind::MethodCall | RefKind::Instantiation))
+    .map(|reference| format!("{:?} {}", reference.kind, reference.path.join(".")))
+    .collect();
+  assert_eq!(
+    calls,
+    [
+      "MethodCall x.y",
+      "MethodCall x.y",
+      "MethodCall this.a.b",
+      "Instantiation X",
+      "Instantiation X",
+      "Call foo",
+      "Call foo",
+      "MethodCall x.y",
+      "MethodCall (await x.y<T>()).z",
+      "MethodCall x.y",
+      "MethodCall x.y",
+      "MethodCall x.y",
+    ]
+  );
+}
+
+#[test]
+fn should_keep_receiver_args_and_span_of_an_awaited_generic_call() {
+  let source = "class S { async run(arg: number) { await this.a.b<T>(arg, 'q'); } }";
+  let facts = analyze("src/a.ts", source);
+  let call = facts.references.iter().find(|reference| reference.kind == RefKind::MethodCall).unwrap();
+  assert_eq!(call.path, strings(&["this", "a", "b"]));
+  assert_eq!(call.receiver, Some(ReceiverHint::This));
+  assert_eq!(call.args.len(), 2);
+  assert_eq!(&source[call.span.start_byte as usize..call.span.end_byte as usize], "this.a.b<T>(arg, 'q')");
+}
+
+#[test]
+fn should_capture_awaited_generic_call_in_tsx() {
+  let source = "import { useQuery } from './q';\nexport async function C() { const d = await useQuery<User>('k'); return <div />; }";
+  let facts = analyze("src/c.tsx", source);
+  assert_eq!(refs_of_kind(&facts, RefKind::Call), ["C -> useQuery"]);
+}
