@@ -1,0 +1,145 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-api
+  path: src/common/slug.ts
+  language: typescript
+  content_hash: de824b5972524a6765b4f4b2dc430455a2832044763e542880964f82d06a59ac
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: legacySlugify
+    module_suffix: []
+    item_path:
+      - legacySlugify
+    span:
+      start_byte: 0
+      end_byte: 153
+      start_line: 1
+      start_col: 0
+      end_line: 6
+      end_col: 1
+    name_span:
+      start_byte: 16
+      end_byte: 29
+      start_line: 1
+      start_col: 16
+      end_line: 1
+      end_col: 29
+    signature: "function legacySlugify(input: string): string"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: input
+        type_text: string
+        attributes: []
+        span:
+          start_byte: 30
+          end_byte: 43
+          start_line: 1
+          start_col: 30
+          end_line: 1
+          end_col: 43
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2
+        - 2236525561
+        - 2
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2
+        - 2236525561
+        - 2
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 23
+      line_count: 6
+imports: []
+exports: []
+references:
+  - from: 0
+    kind: method_call
+    path:
+      - "(input .toLowerCase() .replace(/[^a-z0-9]+/g, '-'))"
+      - replace
+    receiver:
+      type: expr
+      value: "input .toLowerCase() .replace(/[^a-z0-9]+/g, '-')"
+    args:
+      - type: other
+        value: /^-+|-+$/g
+      - type: str
+        value: ""
+    span:
+      start_byte: 64
+      end_byte: 150
+      start_line: 2
+      start_col: 9
+      end_line: 5
+      end_col: 28
+  - from: 0
+    kind: method_call
+    path:
+      - (input .toLowerCase())
+      - replace
+    receiver:
+      type: expr
+      value: input .toLowerCase()
+    args:
+      - type: other
+        value: "/[^a-z0-9]+/g"
+      - type: str
+        value: "-"
+    span:
+      start_byte: 64
+      end_byte: 121
+      start_line: 2
+      start_col: 9
+      end_line: 4
+      end_col: 32
+  - from: 0
+    kind: method_call
+    path:
+      - input
+      - toLowerCase
+    receiver:
+      type: expr
+      value: input
+    args: []
+    span:
+      start_byte: 64
+      end_byte: 88
+      start_line: 2
+      start_col: 9
+      end_line: 3
+      end_col: 18
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

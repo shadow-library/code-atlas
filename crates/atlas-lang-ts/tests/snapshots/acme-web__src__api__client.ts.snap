@@ -1,0 +1,167 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-web
+  path: src/api/client.ts
+  language: typescript
+  content_hash: bf6554dff40fd024edd5f2cac7557cb26b7cbfc873dda8433df9fecfc8e2d6fa
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: constant
+    name: acme
+    module_suffix: []
+    item_path:
+      - acme
+    span:
+      start_byte: 130
+      end_byte: 218
+      start_line: 6
+      start_col: 13
+      end_line: 6
+      end_col: 101
+    name_span:
+      start_byte: 130
+      end_byte: 134
+      start_line: 6
+      start_col: 13
+      end_line: 6
+      end_col: 17
+    signature: "const acme = new AcmeClient({ baseUrl: API_URL, auth: { type: 'bearer', token: getToken() } })"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+imports:
+  - type: ts_import
+    specifier: "@acme/sdk"
+    bindings:
+      - type: named
+        imported: AcmeClient
+        local: AcmeClient
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 39
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 39
+  - type: ts_import
+    specifier: "../config"
+    bindings:
+      - type: named
+        imported: API_URL
+        local: API_URL
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 41
+      end_byte: 77
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 36
+  - type: ts_import
+    specifier: "./session"
+    bindings:
+      - type: named
+        imported: getToken
+        local: getToken
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 78
+      end_byte: 115
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 37
+exports: []
+references:
+  - from: 0
+    kind: instantiation
+    path:
+      - AcmeClient
+    receiver: ~
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: baseUrl
+            value:
+              type: path
+              value:
+                - API_URL
+          - key:
+              type: ident
+              value: auth
+            value:
+              type: object
+              value:
+                - key:
+                    type: ident
+                    value: type
+                  value:
+                    type: str
+                    value: bearer
+                - key:
+                    type: ident
+                    value: token
+                  value:
+                    type: call
+                    value:
+                      callee:
+                        - getToken
+                      args: []
+    span:
+      start_byte: 137
+      end_byte: 218
+      start_line: 6
+      start_col: 20
+      end_line: 6
+      end_col: 101
+  - from: 0
+    kind: value_ref
+    path:
+      - API_URL
+    receiver: ~
+    args: []
+    span:
+      start_byte: 163
+      end_byte: 170
+      start_line: 6
+      start_col: 46
+      end_line: 6
+      end_col: 53
+  - from: 0
+    kind: call
+    path:
+      - getToken
+    receiver: ~
+    args: []
+    span:
+      start_byte: 203
+      end_byte: 213
+      start_line: 6
+      start_col: 86
+      end_line: 6
+      end_col: 96
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

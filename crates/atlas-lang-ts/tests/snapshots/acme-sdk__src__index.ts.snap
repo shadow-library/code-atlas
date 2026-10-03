@@ -1,0 +1,56 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-sdk
+  path: src/index.ts
+  language: typescript
+  content_hash: 326c1fe0ca72a04463263121c4d1a370ad3d51cc920739fb317d45572647a4ef
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols: []
+imports: []
+exports:
+  - type: re_export_all
+    specifier: "./client"
+    namespace: ~
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 25
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 25
+  - type: re_export_all
+    specifier: "./types"
+    namespace: ~
+    type_only: false
+    span:
+      start_byte: 26
+      end_byte: 50
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 24
+  - type: re_export
+    specifier: "./money"
+    bindings:
+      - imported: toCents
+        exported: toCents
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 51
+      end_byte: 85
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 34
+references: []
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

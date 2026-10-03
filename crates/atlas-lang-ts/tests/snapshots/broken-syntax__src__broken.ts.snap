@@ -1,0 +1,357 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: broken-syntax
+  path: src/broken.ts
+  language: typescript
+  content_hash: 06a1f969edd324c0dfaf96322e0d2a83d46b046187939dfd160b2f0a84d477d2
+  is_declaration_file: false
+parse_status:
+  status: partial
+  error_count: 1
+  first_errors:
+    - span:
+        start_byte: 166
+        end_byte: 172
+        start_line: 12
+        start_col: 14
+        end_line: 12
+        end_col: 20
+      message: "unexpected syntax `= (1 +`"
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: before
+    module_suffix: []
+    item_path:
+      - before
+    span:
+      start_byte: 0
+      end_byte: 48
+      start_line: 1
+      start_col: 0
+      end_line: 3
+      end_col: 1
+    name_span:
+      start_byte: 16
+      end_byte: 22
+      start_line: 1
+      start_col: 16
+      end_line: 1
+      end_col: 22
+    signature: "function before(): number"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 3
+        - 2521745084
+        - 1414422230
+      token_count: 5
+      line_count: 3
+  - local: 1
+    parent: ~
+    kind: class
+    name: Early
+    module_suffix: []
+    item_path:
+      - Early
+    span:
+      start_byte: 50
+      end_byte: 115
+      start_line: 5
+      start_col: 0
+      end_line: 9
+      end_col: 1
+    name_span:
+      start_byte: 63
+      end_byte: 68
+      start_line: 5
+      start_col: 13
+      end_line: 5
+      end_col: 18
+    signature: class Early
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 2
+    parent: 1
+    kind: method
+    name: run
+    module_suffix: []
+    item_path:
+      - Early
+      - run
+    span:
+      start_byte: 73
+      end_byte: 113
+      start_line: 6
+      start_col: 2
+      end_line: 8
+      end_col: 3
+    name_span:
+      start_byte: 73
+      end_byte: 76
+      start_line: 6
+      start_col: 2
+      end_line: 6
+      end_col: 5
+    signature: "run(): number"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 7
+      line_count: 3
+  - local: 3
+    parent: ~
+    kind: function
+    name: middle
+    module_suffix: []
+    item_path:
+      - middle
+    span:
+      start_byte: 117
+      end_byte: 192
+      start_line: 11
+      start_col: 0
+      end_line: 14
+      end_col: 1
+    name_span:
+      start_byte: 133
+      end_byte: 139
+      start_line: 11
+      start_col: 16
+      end_line: 11
+      end_col: 22
+    signature: "function middle(): number"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1
+        - 2488189846
+        - 2303636037
+        - 3
+        - 2253303180
+        - 2521745084
+        - 1044042820
+        - 1
+        - 2521745084
+        - 1414422230
+      token_count: 12
+      line_count: 4
+  - local: 4
+    parent: ~
+    kind: function
+    name: after
+    module_suffix: []
+    item_path:
+      - after
+    span:
+      start_byte: 194
+      end_byte: 252
+      start_line: 16
+      start_col: 0
+      end_line: 18
+      end_col: 1
+    name_span:
+      start_byte: 210
+      end_byte: 215
+      start_line: 16
+      start_col: 16
+      end_line: 16
+      end_col: 21
+    signature: "function after(): number"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2253303180
+        - 3
+        - 2521745084
+        - 1414422230
+      token_count: 9
+      line_count: 3
+  - local: 5
+    parent: ~
+    kind: class
+    name: Late
+    module_suffix: []
+    item_path:
+      - Late
+    span:
+      start_byte: 254
+      end_byte: 316
+      start_line: 20
+      start_col: 0
+      end_line: 24
+      end_col: 1
+    name_span:
+      start_byte: 267
+      end_byte: 271
+      start_line: 20
+      start_col: 13
+      end_line: 20
+      end_col: 17
+    signature: class Late
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 6
+    parent: 5
+    kind: method
+    name: go
+    module_suffix: []
+    item_path:
+      - Late
+      - go
+    span:
+      start_byte: 276
+      end_byte: 314
+      start_line: 21
+      start_col: 2
+      end_line: 23
+      end_col: 3
+    name_span:
+      start_byte: 276
+      end_byte: 278
+      start_line: 21
+      start_col: 2
+      end_line: 21
+      end_col: 4
+    signature: "go(): number"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 7
+      line_count: 3
+imports: []
+exports: []
+references:
+  - from: 2
+    kind: call
+    path:
+      - before
+    receiver: ~
+    args: []
+    span:
+      start_byte: 100
+      end_byte: 108
+      start_line: 7
+      start_col: 11
+      end_line: 7
+      end_col: 19
+  - from: 4
+    kind: call
+    path:
+      - before
+    receiver: ~
+    args: []
+    span:
+      start_byte: 237
+      end_byte: 245
+      start_line: 17
+      start_col: 9
+      end_line: 17
+      end_col: 17
+  - from: 6
+    kind: call
+    path:
+      - after
+    receiver: ~
+    args: []
+    span:
+      start_byte: 302
+      end_byte: 309
+      start_line: 22
+      start_col: 11
+      end_line: 22
+      end_col: 18
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

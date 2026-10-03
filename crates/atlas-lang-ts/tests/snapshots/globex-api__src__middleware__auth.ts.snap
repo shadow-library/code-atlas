@@ -1,0 +1,251 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: globex-api
+  path: src/middleware/auth.ts
+  language: typescript
+  content_hash: 4e7c08d898b548339eca63b8e75ac72808b91ad5febf77ae78744ae9d8f2b858
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: requireGlobexKey
+    module_suffix: []
+    item_path:
+      - requireGlobexKey
+    span:
+      start_byte: 75
+      end_byte: 308
+      start_line: 3
+      start_col: 0
+      end_line: 9
+      end_col: 1
+    name_span:
+      start_byte: 91
+      end_byte: 107
+      start_line: 3
+      start_col: 16
+      end_line: 3
+      end_col: 32
+    signature: "function requireGlobexKey(req: Request, res: Response, next: NextFunction): void"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: req
+        type_text: Request
+        attributes: []
+        span:
+          start_byte: 108
+          end_byte: 120
+          start_line: 3
+          start_col: 33
+          end_line: 3
+          end_col: 45
+      - name: res
+        type_text: Response
+        attributes: []
+        span:
+          start_byte: 122
+          end_byte: 135
+          start_line: 3
+          start_col: 47
+          end_line: 3
+          end_col: 60
+      - name: next
+        type_text: NextFunction
+        attributes: []
+        span:
+          start_byte: 137
+          end_byte: 155
+          start_line: 3
+          start_col: 62
+          end_line: 3
+          end_col: 80
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 2130171789
+        - 2303636037
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 4001663416
+        - 1
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2286858418
+        - 1447977468
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 3
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1447977468
+        - 1
+        - 2538522703
+        - 2
+        - 1414422230
+        - 2286858418
+        - 2521745084
+        - 1044042820
+        - 2521745084
+        - 1414422230
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 41
+      line_count: 7
+imports:
+  - type: ts_import
+    specifier: express
+    bindings:
+      - type: named
+        imported: NextFunction
+        local: NextFunction
+        type_only: true
+      - type: named
+        imported: Request
+        local: Request
+        type_only: true
+      - type: named
+        imported: Response
+        local: Response
+        type_only: true
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 73
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 73
+exports: []
+references:
+  - from: 0
+    kind: type_ref
+    path:
+      - Request
+    receiver: ~
+    args: []
+    span:
+      start_byte: 113
+      end_byte: 120
+      start_line: 3
+      start_col: 38
+      end_line: 3
+      end_col: 45
+  - from: 0
+    kind: type_ref
+    path:
+      - Response
+    receiver: ~
+    args: []
+    span:
+      start_byte: 127
+      end_byte: 135
+      start_line: 3
+      start_col: 52
+      end_line: 3
+      end_col: 60
+  - from: 0
+    kind: type_ref
+    path:
+      - NextFunction
+    receiver: ~
+    args: []
+    span:
+      start_byte: 143
+      end_byte: 155
+      start_line: 3
+      start_col: 68
+      end_line: 3
+      end_col: 80
+  - from: 0
+    kind: method_call
+    path:
+      - req
+      - header
+    receiver:
+      type: type_hint
+      value:
+        - Request
+    args:
+      - type: str
+        value: x-globex-key
+    span:
+      start_byte: 171
+      end_byte: 197
+      start_line: 4
+      start_col: 6
+      end_line: 4
+      end_col: 32
+  - from: 0
+    kind: method_call
+    path:
+      - (res.status(401))
+      - json
+    receiver:
+      type: expr
+      value: res.status(401)
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: error
+            value:
+              type: str
+              value: unauthorized
+    span:
+      start_byte: 232
+      end_byte: 279
+      start_line: 5
+      start_col: 4
+      end_line: 5
+      end_col: 51
+  - from: 0
+    kind: method_call
+    path:
+      - res
+      - status
+    receiver:
+      type: type_hint
+      value:
+        - Response
+    args:
+      - type: number
+        value: "401"
+    span:
+      start_byte: 232
+      end_byte: 247
+      start_line: 5
+      start_col: 4
+      end_line: 5
+      end_col: 19
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

@@ -1,0 +1,271 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-web
+  path: src/main.tsx
+  language: tsx
+  content_hash: f518aaae5972781abdb58b24ca25749418f3fb5215820f58db3655b427fe9cb0
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: App
+    module_suffix: []
+    item_path:
+      - App
+    span:
+      start_byte: 190
+      end_byte: 331
+      start_line: 7
+      start_col: 0
+      end_line: 15
+      end_col: 1
+    name_span:
+      start_byte: 199
+      end_byte: 202
+      start_line: 7
+      start_col: 9
+      end_line: 7
+      end_col: 12
+    signature: function App()
+    doc: ~
+    visibility:
+      type: module
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2521745084
+        - 1044042820
+        - 2303636037
+        - 2504967465
+        - 1
+        - 2471412227
+        - 1447977468
+        - 1
+        - 2582079543
+        - 2504967465
+        - 1
+        - 1
+        - 2488189846
+        - 1447977468
+        - 1
+        - 2202970323
+        - 1
+        - 1414422230
+        - 2681318234
+        - 1414422230
+        - 2504967465
+        - 1
+        - 2681318234
+        - 285223026
+        - 1
+        - 2471412227
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 36
+      line_count: 9
+imports:
+  - type: ts_import
+    specifier: react-dom/client
+    bindings:
+      - type: named
+        imported: createRoot
+        local: createRoot
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 46
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 46
+  - type: ts_import
+    specifier: "./components/OrderForm"
+    bindings:
+      - type: named
+        imported: OrderForm
+        local: OrderForm
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 48
+      end_byte: 99
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 51
+  - type: ts_import
+    specifier: "./components/UserCard"
+    bindings:
+      - type: named
+        imported: UserCard
+        local: UserCard
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 100
+      end_byte: 149
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 49
+  - type: ts_import
+    specifier: "./hooks/useMe"
+    bindings:
+      - type: named
+        imported: useMe
+        local: useMe
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 150
+      end_byte: 188
+      start_line: 5
+      start_col: 0
+      end_line: 5
+      end_col: 38
+exports: []
+references:
+  - from: 0
+    kind: call
+    path:
+      - useMe
+    receiver: ~
+    args: []
+    span:
+      start_byte: 220
+      end_byte: 227
+      start_line: 8
+      start_col: 13
+      end_line: 8
+      end_col: 20
+  - from: 0
+    kind: jsx_element
+    path:
+      - UserCard
+    receiver: ~
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: userId
+            value:
+              type: path
+              value:
+                - me
+                - id
+    span:
+      start_byte: 264
+      end_byte: 291
+      start_line: 11
+      start_col: 13
+      end_line: 11
+      end_col: 40
+  - from: 0
+    kind: jsx_element
+    path:
+      - OrderForm
+    receiver: ~
+    args: []
+    span:
+      start_byte: 299
+      end_byte: 312
+      start_line: 12
+      start_col: 6
+      end_line: 12
+      end_col: 19
+  - from: ~
+    kind: method_call
+    path:
+      - "(createRoot(document.getElementById('root')!))"
+      - render
+    receiver:
+      type: expr
+      value: "createRoot(document.getElementById('root')!)"
+    args:
+      - type: other
+        value: "<App />"
+    span:
+      start_byte: 333
+      end_byte: 393
+      start_line: 17
+      start_col: 0
+      end_line: 17
+      end_col: 60
+  - from: ~
+    kind: call
+    path:
+      - createRoot
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - document
+            - getElementById
+          args:
+            - type: str
+              value: root
+    span:
+      start_byte: 333
+      end_byte: 377
+      start_line: 17
+      start_col: 0
+      end_line: 17
+      end_col: 44
+  - from: ~
+    kind: method_call
+    path:
+      - document
+      - getElementById
+    receiver:
+      type: identifier
+      value: document
+    args:
+      - type: str
+        value: root
+    span:
+      start_byte: 344
+      end_byte: 375
+      start_line: 17
+      start_col: 11
+      end_line: 17
+      end_col: 42
+  - from: ~
+    kind: jsx_element
+    path:
+      - App
+    receiver: ~
+    args: []
+    span:
+      start_byte: 385
+      end_byte: 392
+      start_line: 17
+      start_col: 52
+      end_line: 17
+      end_col: 59
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

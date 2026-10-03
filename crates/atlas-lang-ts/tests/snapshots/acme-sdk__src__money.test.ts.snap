@@ -1,0 +1,523 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-sdk
+  path: src/money.test.ts
+  language: typescript
+  content_hash: 4d827e879af61f34ac92ec0dbb82526e77b30450f62f8ba8e50075cfd1f5796b
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: test_suite
+    name: toCents
+    module_suffix: []
+    item_path:
+      - toCents
+    span:
+      start_byte: 84
+      end_byte: 404
+      start_line: 5
+      start_col: 0
+      end_line: 15
+      end_col: 2
+    name_span:
+      start_byte: 93
+      end_byte: 102
+      start_line: 5
+      start_col: 9
+      end_line: 5
+      end_col: 18
+    signature: "describe('toCents')"
+    doc: ~
+    visibility:
+      type: module
+    modifiers: []
+    attributes: []
+    params: []
+    test:
+      framework: vitest
+      kind: suite
+      display_name: toCents
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2303636037
+        - 2
+        - 2236525561
+        - 2303636037
+        - 2286858418
+        - 536740216
+        - 1447977468
+        - 1
+        - 2303636037
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 3
+        - 2286858418
+        - 2521745084
+        - 1
+        - 2303636037
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 3
+        - 2286858418
+        - 2521745084
+        - 1
+        - 2303636037
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 3
+        - 2286858418
+        - 2521745084
+        - 1414422230
+        - 2286858418
+        - 2521745084
+        - 1
+        - 2303636037
+        - 2
+        - 2236525561
+        - 2303636037
+        - 2286858418
+        - 536740216
+        - 1447977468
+        - 1
+        - 2303636037
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2219747942
+        - 3
+        - 2286858418
+        - 2521745084
+        - 1414422230
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 77
+      line_count: 11
+  - local: 1
+    parent: 0
+    kind: test
+    name: should convert whole and fractional amounts
+    module_suffix: []
+    item_path:
+      - toCents
+      - should convert whole and fractional amounts
+    span:
+      start_byte: 114
+      end_byte: 295
+      start_line: 6
+      start_col: 2
+      end_line: 10
+      end_col: 4
+    name_span:
+      start_byte: 117
+      end_byte: 162
+      start_line: 6
+      start_col: 5
+      end_line: 6
+      end_col: 50
+    signature: "it('should convert whole and fractional amounts')"
+    doc: ~
+    visibility:
+      type: module
+    modifiers: []
+    attributes: []
+    params: []
+    test:
+      framework: vitest
+      kind: case
+      display_name: should convert whole and fractional amounts
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2303636037
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 3
+        - 2286858418
+        - 2521745084
+        - 1
+        - 2303636037
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 3
+        - 2286858418
+        - 2521745084
+        - 1
+        - 2303636037
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 3
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 41
+      line_count: 5
+  - local: 2
+    parent: 0
+    kind: test
+    name: should keep the sign of negative amounts
+    module_suffix: []
+    item_path:
+      - toCents
+      - should keep the sign of negative amounts
+    span:
+      start_byte: 300
+      end_byte: 400
+      start_line: 12
+      start_col: 2
+      end_line: 14
+      end_col: 4
+    name_span:
+      start_byte: 303
+      end_byte: 345
+      start_line: 12
+      start_col: 5
+      end_line: 12
+      end_col: 47
+    signature: "it('should keep the sign of negative amounts')"
+    doc: ~
+    visibility:
+      type: module
+    modifiers: []
+    attributes: []
+    params: []
+    test:
+      framework: vitest
+      kind: case
+      display_name: should keep the sign of negative amounts
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2303636037
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2219747942
+        - 3
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 16
+      line_count: 3
+imports:
+  - type: ts_import
+    specifier: vitest
+    bindings:
+      - type: named
+        imported: describe
+        local: describe
+        type_only: false
+      - type: named
+        imported: expect
+        local: expect
+        type_only: false
+      - type: named
+        imported: it
+        local: it
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 46
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 46
+  - type: ts_import
+    specifier: "./money"
+    bindings:
+      - type: named
+        imported: toCents
+        local: toCents
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 48
+      end_byte: 82
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 34
+exports: []
+references:
+  - from: 1
+    kind: method_call
+    path:
+      - "(expect(toCents('12.34')))"
+      - toBe
+    receiver:
+      type: expr
+      value: "expect(toCents('12.34'))"
+    args:
+      - type: number
+        value: "1234"
+    span:
+      start_byte: 176
+      end_byte: 211
+      start_line: 7
+      start_col: 4
+      end_line: 7
+      end_col: 39
+  - from: 1
+    kind: call
+    path:
+      - expect
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - toCents
+          args:
+            - type: str
+              value: "12.34"
+    span:
+      start_byte: 176
+      end_byte: 200
+      start_line: 7
+      start_col: 4
+      end_line: 7
+      end_col: 28
+  - from: 1
+    kind: call
+    path:
+      - toCents
+    receiver: ~
+    args:
+      - type: str
+        value: "12.34"
+    span:
+      start_byte: 183
+      end_byte: 199
+      start_line: 7
+      start_col: 11
+      end_line: 7
+      end_col: 27
+  - from: 1
+    kind: method_call
+    path:
+      - "(expect(toCents('12.3')))"
+      - toBe
+    receiver:
+      type: expr
+      value: "expect(toCents('12.3'))"
+    args:
+      - type: number
+        value: "1230"
+    span:
+      start_byte: 217
+      end_byte: 251
+      start_line: 8
+      start_col: 4
+      end_line: 8
+      end_col: 38
+  - from: 1
+    kind: call
+    path:
+      - expect
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - toCents
+          args:
+            - type: str
+              value: "12.3"
+    span:
+      start_byte: 217
+      end_byte: 240
+      start_line: 8
+      start_col: 4
+      end_line: 8
+      end_col: 27
+  - from: 1
+    kind: call
+    path:
+      - toCents
+    receiver: ~
+    args:
+      - type: str
+        value: "12.3"
+    span:
+      start_byte: 224
+      end_byte: 239
+      start_line: 8
+      start_col: 11
+      end_line: 8
+      end_col: 26
+  - from: 1
+    kind: method_call
+    path:
+      - "(expect(toCents('12')))"
+      - toBe
+    receiver:
+      type: expr
+      value: "expect(toCents('12'))"
+    args:
+      - type: number
+        value: "1200"
+    span:
+      start_byte: 257
+      end_byte: 289
+      start_line: 9
+      start_col: 4
+      end_line: 9
+      end_col: 36
+  - from: 1
+    kind: call
+    path:
+      - expect
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - toCents
+          args:
+            - type: str
+              value: "12"
+    span:
+      start_byte: 257
+      end_byte: 278
+      start_line: 9
+      start_col: 4
+      end_line: 9
+      end_col: 25
+  - from: 1
+    kind: call
+    path:
+      - toCents
+    receiver: ~
+    args:
+      - type: str
+        value: "12"
+    span:
+      start_byte: 264
+      end_byte: 277
+      start_line: 9
+      start_col: 11
+      end_line: 9
+      end_col: 24
+  - from: 2
+    kind: method_call
+    path:
+      - "(expect(toCents('-1.50')))"
+      - toBe
+    receiver:
+      type: expr
+      value: "expect(toCents('-1.50'))"
+    args:
+      - type: other
+        value: "-150"
+    span:
+      start_byte: 359
+      end_byte: 394
+      start_line: 13
+      start_col: 4
+      end_line: 13
+      end_col: 39
+  - from: 2
+    kind: call
+    path:
+      - expect
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - toCents
+          args:
+            - type: str
+              value: "-1.50"
+    span:
+      start_byte: 359
+      end_byte: 383
+      start_line: 13
+      start_col: 4
+      end_line: 13
+      end_col: 28
+  - from: 2
+    kind: call
+    path:
+      - toCents
+    receiver: ~
+    args:
+      - type: str
+        value: "-1.50"
+    span:
+      start_byte: 366
+      end_byte: 382
+      start_line: 13
+      start_col: 11
+      end_line: 13
+      end_col: 27
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

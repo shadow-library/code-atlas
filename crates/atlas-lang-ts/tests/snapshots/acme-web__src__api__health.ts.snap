@@ -1,0 +1,128 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-web
+  path: src/api/health.ts
+  language: typescript
+  content_hash: d35415480ed0a8d915a7c163a1dd5b4332500a6fdeaf70ef081ad41fc266bafc
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: checkHealth
+    module_suffix: []
+    item_path:
+      - checkHealth
+    span:
+      start_byte: 38
+      end_byte: 170
+      start_line: 3
+      start_col: 0
+      end_line: 6
+      end_col: 1
+    name_span:
+      start_byte: 60
+      end_byte: 71
+      start_line: 3
+      start_col: 22
+      end_line: 3
+      end_col: 33
+    signature: "async function checkHealth(): Promise<boolean>"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers:
+      - async
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1
+        - 2488189846
+        - 602291836
+        - 1
+        - 2303636037
+        - 1364089373
+        - 1559042142
+        - 1
+        - 1414422230
+        - 2
+        - 1364089373
+        - 2286858418
+        - 2521745084
+        - 1044042820
+        - 1
+        - 2202970323
+        - 1
+        - 2521745084
+        - 1414422230
+      token_count: 21
+      line_count: 4
+imports:
+  - type: ts_import
+    specifier: "../config"
+    bindings:
+      - type: named
+        imported: API_URL
+        local: API_URL
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 36
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 36
+exports: []
+references:
+  - from: 0
+    kind: type_ref
+    path:
+      - Promise
+    receiver: ~
+    args: []
+    span:
+      start_byte: 75
+      end_byte: 82
+      start_line: 3
+      start_col: 37
+      end_line: 3
+      end_col: 44
+  - from: 0
+    kind: call
+    path:
+      - fetch
+    receiver: ~
+    args:
+      - type: template
+        value:
+          - type: expr
+            value:
+              type: path
+              value:
+                - API_URL
+          - type: lit
+            value: /health
+    span:
+      start_byte: 119
+      end_byte: 145
+      start_line: 4
+      start_col: 25
+      end_line: 4
+      end_col: 51
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

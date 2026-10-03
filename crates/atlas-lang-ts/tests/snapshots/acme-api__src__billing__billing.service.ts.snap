@@ -1,0 +1,213 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-api
+  path: src/billing/billing.service.ts
+  language: typescript
+  content_hash: ab1e508fb6987e295a0173d48480390ff6921fae719e5a7a5dac0e756394084e
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: constant
+    name: TAX_RATE
+    module_suffix: []
+    item_path:
+      - TAX_RATE
+    span:
+      start_byte: 97
+      end_byte: 114
+      start_line: 5
+      start_col: 6
+      end_line: 5
+      end_col: 23
+    name_span:
+      start_byte: 97
+      end_byte: 105
+      start_line: 5
+      start_col: 6
+      end_line: 5
+      end_col: 14
+    signature: const TAX_RATE = 0.0825
+    doc: ~
+    visibility:
+      type: module
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 1
+    parent: ~
+    kind: class
+    name: BillingService
+    module_suffix: []
+    item_path:
+      - BillingService
+    span:
+      start_byte: 117
+      end_byte: 278
+      start_line: 7
+      start_col: 0
+      end_line: 12
+      end_col: 1
+    name_span:
+      start_byte: 144
+      end_byte: 158
+      start_line: 8
+      start_col: 13
+      end_line: 8
+      end_col: 27
+    signature: class BillingService
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes:
+      - path:
+          - Injectable
+        args: []
+        span:
+          start_byte: 117
+          end_byte: 130
+          start_line: 7
+          start_col: 0
+          end_line: 7
+          end_col: 13
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 2
+    parent: 1
+    kind: method
+    name: applyTax
+    module_suffix: []
+    item_path:
+      - BillingService
+      - applyTax
+    span:
+      start_byte: 163
+      end_byte: 276
+      start_line: 9
+      start_col: 2
+      end_line: 11
+      end_col: 3
+    name_span:
+      start_byte: 163
+      end_byte: 171
+      start_line: 9
+      start_col: 2
+      end_line: 9
+      end_col: 10
+    signature: "applyTax(subtotalCents: number): number"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: subtotalCents
+        type_text: number
+        attributes: []
+        span:
+          start_byte: 172
+          end_byte: 193
+          start_line: 9
+          start_col: 11
+          end_line: 9
+          end_col: 32
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 1
+        - 2253303180
+        - 1
+        - 2303636037
+        - 1
+        - 2270080799
+        - 1
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 12
+      line_count: 3
+imports:
+  - type: ts_import
+    specifier: "@nestjs/common"
+    bindings:
+      - type: named
+        imported: Injectable
+        local: Injectable
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 44
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 44
+  - type: ts_import
+    specifier: "./rounding"
+    bindings:
+      - type: named
+        imported: roundHalfEven
+        local: roundHalfEven
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 46
+      end_byte: 89
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 43
+exports: []
+references:
+  - from: 1
+    kind: decorator
+    path:
+      - Injectable
+    receiver: ~
+    args: []
+    span:
+      start_byte: 117
+      end_byte: 130
+      start_line: 7
+      start_col: 0
+      end_line: 7
+      end_col: 13
+  - from: 2
+    kind: call
+    path:
+      - roundHalfEven
+    receiver: ~
+    args:
+      - type: other
+        value: subtotalCents * TAX_RATE
+    span:
+      start_byte: 232
+      end_byte: 271
+      start_line: 10
+      start_col: 27
+      end_line: 10
+      end_col: 66
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

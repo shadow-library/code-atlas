@@ -1,0 +1,373 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-web
+  path: src/hooks/useMe.ts
+  language: typescript
+  content_hash: 0a21535f3fa01a59415c608a3e00ec603d58f5da66652ce58bc53efbf754ea4d
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: useMe
+    module_suffix: []
+    item_path:
+      - useMe
+    span:
+      start_byte: 166
+      end_byte: 479
+      start_line: 7
+      start_col: 0
+      end_line: 18
+      end_col: 1
+    name_span:
+      start_byte: 182
+      end_byte: 187
+      start_line: 7
+      start_col: 16
+      end_line: 7
+      end_col: 21
+    signature: "function useMe(): User | null"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1984861276
+        - 1
+        - 2236525561
+        - 1
+        - 1951306038
+        - 2488189846
+        - 1
+        - 2504967465
+        - 1
+        - 1431199849
+        - 3901604059
+        - 2471412227
+        - 2303636037
+        - 3901604059
+        - 2286858418
+        - 2521745084
+        - 1
+        - 2303636037
+        - 2303636037
+        - 2286858418
+        - 536740216
+        - 1447977468
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2521745084
+        - 1
+        - 2303636037
+        - 1364089373
+        - 1559042142
+        - 1
+        - 1414422230
+        - 2
+        - 1364089373
+        - 2236525561
+        - 1447977468
+        - 1
+        - 2538522703
+        - 1447977468
+        - 1
+        - 2538522703
+        - 1364089373
+        - 2
+        - 1559042142
+        - 1
+        - 1414422230
+        - 1364089373
+        - 1414422230
+        - 1414422230
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2303636037
+        - 1
+        - 2286858418
+        - 536740216
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 2521745084
+        - 1414422230
+        - 2236525561
+        - 1984861276
+        - 1951306038
+        - 2286858418
+        - 2521745084
+        - 1044042820
+        - 1
+        - 2521745084
+        - 1414422230
+      token_count: 84
+      line_count: 12
+imports:
+  - type: ts_import
+    specifier: "@acme/sdk"
+    bindings:
+      - type: named
+        imported: User
+        local: User
+        type_only: true
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 38
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 38
+  - type: ts_import
+    specifier: react
+    bindings:
+      - type: named
+        imported: useEffect
+        local: useEffect
+        type_only: false
+      - type: named
+        imported: useState
+        local: useState
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 39
+      end_byte: 83
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 44
+  - type: ts_import
+    specifier: "../api/session"
+    bindings:
+      - type: named
+        imported: getToken
+        local: getToken
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 85
+      end_byte: 127
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 42
+  - type: ts_import
+    specifier: "../config"
+    bindings:
+      - type: named
+        imported: API_URL
+        local: API_URL
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 128
+      end_byte: 164
+      start_line: 5
+      start_col: 0
+      end_line: 5
+      end_col: 36
+exports: []
+references:
+  - from: 0
+    kind: type_ref
+    path:
+      - User
+    receiver: ~
+    args: []
+    span:
+      start_byte: 191
+      end_byte: 195
+      start_line: 7
+      start_col: 25
+      end_line: 7
+      end_col: 29
+  - from: 0
+    kind: call
+    path:
+      - useState
+    receiver: ~
+    args:
+      - type: "null"
+    span:
+      start_byte: 227
+      end_byte: 254
+      start_line: 8
+      start_col: 22
+      end_line: 8
+      end_col: 49
+  - from: 0
+    kind: type_ref
+    path:
+      - User
+    receiver: ~
+    args: []
+    span:
+      start_byte: 236
+      end_byte: 240
+      start_line: 8
+      start_col: 31
+      end_line: 8
+      end_col: 35
+  - from: 0
+    kind: call
+    path:
+      - useEffect
+    receiver: ~
+    args:
+      - type: closure
+        value:
+          params: []
+      - type: array
+        value: []
+    span:
+      start_byte: 259
+      end_byte: 462
+      start_line: 10
+      start_col: 2
+      end_line: 15
+      end_col: 8
+  - from: 0
+    kind: call
+    path:
+      - getToken
+    receiver: ~
+    args: []
+    span:
+      start_byte: 295
+      end_byte: 305
+      start_line: 11
+      start_col: 18
+      end_line: 11
+      end_col: 28
+  - from: 0
+    kind: method_call
+    path:
+      - "(fetch(`${API_URL}/users/me`, { headers: { Authorization: `Bearer ${token}` } }) .then((response) => response.json()))"
+      - then
+    receiver:
+      type: expr
+      value: "fetch(`${API_URL}/users/me`, { headers: { Authorization: `Bearer ${token}` } }) .then((response) => response.json())"
+    args:
+      - type: path
+        value:
+          - setMe
+    span:
+      start_byte: 311
+      end_byte: 452
+      start_line: 12
+      start_col: 4
+      end_line: 14
+      end_col: 18
+  - from: 0
+    kind: method_call
+    path:
+      - "(fetch(`${API_URL}/users/me`, { headers: { Authorization: `Bearer ${token}` } }))"
+      - then
+    receiver:
+      type: expr
+      value: "fetch(`${API_URL}/users/me`, { headers: { Authorization: `Bearer ${token}` } })"
+    args:
+      - type: closure
+        value:
+          params:
+            - response
+    span:
+      start_byte: 311
+      end_byte: 433
+      start_line: 12
+      start_col: 4
+      end_line: 13
+      end_col: 42
+  - from: 0
+    kind: call
+    path:
+      - fetch
+    receiver: ~
+    args:
+      - type: template
+        value:
+          - type: expr
+            value:
+              type: path
+              value:
+                - API_URL
+          - type: lit
+            value: /users/me
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: headers
+            value:
+              type: object
+              value:
+                - key:
+                    type: ident
+                    value: Authorization
+                  value:
+                    type: template
+                    value:
+                      - type: lit
+                        value: "Bearer "
+                      - type: expr
+                        value:
+                          type: path
+                          value:
+                            - token
+    span:
+      start_byte: 311
+      end_byte: 390
+      start_line: 12
+      start_col: 4
+      end_line: 12
+      end_col: 83
+  - from: 0
+    kind: method_call
+    path:
+      - response
+      - json
+    receiver:
+      type: expr
+      value: response
+    args: []
+    span:
+      start_byte: 417
+      end_byte: 432
+      start_line: 13
+      start_col: 26
+      end_line: 13
+      end_col: 41
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

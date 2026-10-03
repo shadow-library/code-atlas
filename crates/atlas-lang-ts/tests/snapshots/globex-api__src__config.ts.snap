@@ -1,0 +1,101 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: globex-api
+  path: src/config.ts
+  language: typescript
+  content_hash: bd657820a56ca081b376399e6281726c74e0d2af0f78592986aea0ced5876681
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: constant
+    name: DATABASE_URL
+    module_suffix: []
+    item_path:
+      - DATABASE_URL
+    span:
+      start_byte: 13
+      end_byte: 85
+      start_line: 1
+      start_col: 13
+      end_line: 1
+      end_col: 85
+    name_span:
+      start_byte: 13
+      end_byte: 25
+      start_line: 1
+      start_col: 13
+      end_line: 1
+      end_col: 25
+    signature: "const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://localhost/globex'"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 1
+    parent: ~
+    kind: constant
+    name: PORT
+    module_suffix: []
+    item_path:
+      - PORT
+    span:
+      start_byte: 100
+      end_byte: 139
+      start_line: 2
+      start_col: 13
+      end_line: 2
+      end_col: 52
+    name_span:
+      start_byte: 100
+      end_byte: 104
+      start_line: 2
+      start_col: 13
+      end_line: 2
+      end_col: 17
+    signature: const PORT = Number(process.env.PORT ?? 8080)
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+imports: []
+exports: []
+references:
+  - from: 1
+    kind: call
+    path:
+      - Number
+    receiver: ~
+    args:
+      - type: other
+        value: process.env.PORT ?? 8080
+    span:
+      start_byte: 107
+      end_byte: 139
+      start_line: 2
+      start_col: 20
+      end_line: 2
+      end_col: 52
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

@@ -1,0 +1,285 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-api
+  path: src/reports/reports.module.ts
+  language: typescript
+  content_hash: a871ef1c873eb308a94af991b24c96801e67e9a0e906a7bd4022a57f856f4401
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: class
+    name: ReportsModule
+    module_suffix: []
+    item_path:
+      - ReportsModule
+    span:
+      start_byte: 250
+      end_byte: 407
+      start_line: 8
+      start_col: 0
+      end_line: 13
+      end_col: 29
+    name_span:
+      start_byte: 391
+      end_byte: 404
+      start_line: 13
+      start_col: 13
+      end_line: 13
+      end_col: 26
+    signature: class ReportsModule
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes:
+      - path:
+          - Module
+        args:
+          - type: object
+            value:
+              - key:
+                  type: ident
+                  value: imports
+                value:
+                  type: array
+                  value:
+                    - type: call
+                      value:
+                        callee:
+                          - TypeOrmModule
+                          - forFeature
+                        args:
+                          - type: array
+                            value:
+                              - type: path
+                                value:
+                                  - Order
+              - key:
+                  type: ident
+                  value: controllers
+                value:
+                  type: array
+                  value:
+                    - type: path
+                      value:
+                        - ReportsController
+              - key:
+                  type: ident
+                  value: providers
+                value:
+                  type: array
+                  value:
+                    - type: path
+                      value:
+                        - ReportsService
+        span:
+          start_byte: 250
+          end_byte: 377
+          start_line: 8
+          start_col: 0
+          end_line: 12
+          end_col: 2
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+imports:
+  - type: ts_import
+    specifier: "@nestjs/common"
+    bindings:
+      - type: named
+        imported: Module
+        local: Module
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 40
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 40
+  - type: ts_import
+    specifier: "@nestjs/typeorm"
+    bindings:
+      - type: named
+        imported: TypeOrmModule
+        local: TypeOrmModule
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 41
+      end_byte: 89
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 48
+  - type: ts_import
+    specifier: "../orders/order.entity"
+    bindings:
+      - type: named
+        imported: Order
+        local: Order
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 91
+      end_byte: 138
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 47
+  - type: ts_import
+    specifier: "./reports.controller"
+    bindings:
+      - type: named
+        imported: ReportsController
+        local: ReportsController
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 139
+      end_byte: 196
+      start_line: 5
+      start_col: 0
+      end_line: 5
+      end_col: 57
+  - type: ts_import
+    specifier: "./reports.service"
+    bindings:
+      - type: named
+        imported: ReportsService
+        local: ReportsService
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 197
+      end_byte: 248
+      start_line: 6
+      start_col: 0
+      end_line: 6
+      end_col: 51
+exports: []
+references:
+  - from: 0
+    kind: decorator
+    path:
+      - Module
+    receiver: ~
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: imports
+            value:
+              type: array
+              value:
+                - type: call
+                  value:
+                    callee:
+                      - TypeOrmModule
+                      - forFeature
+                    args:
+                      - type: array
+                        value:
+                          - type: path
+                            value:
+                              - Order
+          - key:
+              type: ident
+              value: controllers
+            value:
+              type: array
+              value:
+                - type: path
+                  value:
+                    - ReportsController
+          - key:
+              type: ident
+              value: providers
+            value:
+              type: array
+              value:
+                - type: path
+                  value:
+                    - ReportsService
+    span:
+      start_byte: 250
+      end_byte: 377
+      start_line: 8
+      start_col: 0
+      end_line: 12
+      end_col: 2
+  - from: 0
+    kind: value_ref
+    path:
+      - ReportsController
+    receiver: ~
+    args: []
+    span:
+      start_byte: 324
+      end_byte: 341
+      start_line: 10
+      start_col: 16
+      end_line: 10
+      end_col: 33
+  - from: 0
+    kind: value_ref
+    path:
+      - ReportsService
+    receiver: ~
+    args: []
+    span:
+      start_byte: 358
+      end_byte: 372
+      start_line: 11
+      start_col: 14
+      end_line: 11
+      end_col: 28
+  - from: 0
+    kind: method_call
+    path:
+      - TypeOrmModule
+      - forFeature
+    receiver:
+      type: identifier
+      value: TypeOrmModule
+    args:
+      - type: array
+        value:
+          - type: path
+            value:
+              - Order
+    span:
+      start_byte: 272
+      end_byte: 305
+      start_line: 9
+      start_col: 12
+      end_line: 9
+      end_col: 45
+  - from: 0
+    kind: value_ref
+    path:
+      - Order
+    receiver: ~
+    args: []
+    span:
+      start_byte: 298
+      end_byte: 303
+      start_line: 9
+      start_col: 38
+      end_line: 9
+      end_col: 43
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

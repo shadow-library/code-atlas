@@ -1,0 +1,271 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-web
+  path: src/hooks/useCreateOrder.ts
+  language: typescript
+  content_hash: 58c6d955ace61ab8a39bc35081b69af8bedec36c8a421fe0b9789ce39f66bfd4
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: useCreateOrder
+    module_suffix: []
+    item_path:
+      - useCreateOrder
+    span:
+      start_byte: 150
+      end_byte: 482
+      start_line: 6
+      start_col: 0
+      end_line: 19
+      end_col: 1
+    name_span:
+      start_byte: 166
+      end_byte: 180
+      start_line: 6
+      start_col: 16
+      end_line: 6
+      end_col: 30
+    signature: function useCreateOrder()
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1984861276
+        - 1
+        - 2236525561
+        - 1
+        - 1951306038
+        - 2488189846
+        - 1
+        - 2303636037
+        - 4112141105
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2303636037
+        - 42945966
+        - 2303636037
+        - 1
+        - 2538522703
+        - 1
+        - 2286858418
+        - 2538522703
+        - 1
+        - 2504967465
+        - 1
+        - 2471412227
+        - 536740216
+        - 1447977468
+        - 1
+        - 2303636037
+        - 3575228598
+        - 2286858418
+        - 2521745084
+        - 1212246899
+        - 1447977468
+        - 1044042820
+        - 602291836
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 2521745084
+        - 1414422230
+        - 3401755237
+        - 1447977468
+        - 1
+        - 2303636037
+        - 4112141105
+        - 2286858418
+        - 2521745084
+        - 1414422230
+        - 1414422230
+        - 2236525561
+        - 1984861276
+        - 1951306038
+        - 2286858418
+        - 2521745084
+        - 1044042820
+        - 1447977468
+        - 1
+        - 2236525561
+        - 1
+        - 1414422230
+        - 2521745084
+        - 1414422230
+      token_count: 70
+      line_count: 14
+imports:
+  - type: ts_import
+    specifier: "@acme/sdk"
+    bindings:
+      - type: named
+        imported: CreateOrderInput
+        local: CreateOrderInput
+        type_only: true
+      - type: named
+        imported: Order
+        local: Order
+        type_only: true
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 62
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 62
+  - type: ts_import
+    specifier: react
+    bindings:
+      - type: named
+        imported: useCallback
+        local: useCallback
+        type_only: false
+      - type: named
+        imported: useState
+        local: useState
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 63
+      end_byte: 109
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 46
+  - type: ts_import
+    specifier: "../api/client"
+    bindings:
+      - type: named
+        imported: acme
+        local: acme
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 111
+      end_byte: 148
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 37
+exports: []
+references:
+  - from: 0
+    kind: call
+    path:
+      - useState
+    receiver: ~
+    args:
+      - type: bool
+        value: false
+    span:
+      start_byte: 217
+      end_byte: 232
+      start_line: 7
+      start_col: 32
+      end_line: 7
+      end_col: 47
+  - from: 0
+    kind: call
+    path:
+      - useCallback
+    receiver: ~
+    args:
+      - type: closure
+        value:
+          params:
+            - input
+      - type: array
+        value: []
+    span:
+      start_byte: 252
+      end_byte: 448
+      start_line: 9
+      start_col: 17
+      end_line: 16
+      end_col: 8
+  - from: 0
+    kind: type_ref
+    path:
+      - CreateOrderInput
+    receiver: ~
+    args: []
+    span:
+      start_byte: 278
+      end_byte: 294
+      start_line: 9
+      start_col: 43
+      end_line: 9
+      end_col: 59
+  - from: 0
+    kind: type_ref
+    path:
+      - Promise
+    receiver: ~
+    args: []
+    span:
+      start_byte: 297
+      end_byte: 304
+      start_line: 9
+      start_col: 62
+      end_line: 9
+      end_col: 69
+  - from: 0
+    kind: type_ref
+    path:
+      - Order
+    receiver: ~
+    args: []
+    span:
+      start_byte: 305
+      end_byte: 310
+      start_line: 9
+      start_col: 70
+      end_line: 9
+      end_col: 75
+  - from: 0
+    kind: method_call
+    path:
+      - acme
+      - createOrder
+    receiver:
+      type: identifier
+      value: acme
+    args:
+      - type: path
+        value:
+          - input
+    span:
+      start_byte: 368
+      end_byte: 391
+      start_line: 12
+      start_col: 19
+      end_line: 12
+      end_col: 42
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

@@ -1,0 +1,205 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-api
+  path: src/common/money.ts
+  language: typescript
+  content_hash: beee0b87bbf5c9b08f2b670786844e6e16c1c49258ec6ddb39ae51489829da13
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: formatMoney
+    module_suffix: []
+    item_path:
+      - formatMoney
+    span:
+      start_byte: 0
+      end_byte: 257
+      start_line: 1
+      start_col: 0
+      end_line: 7
+      end_col: 1
+    name_span:
+      start_byte: 16
+      end_byte: 27
+      start_line: 1
+      start_col: 16
+      end_line: 1
+      end_col: 27
+    signature: "function formatMoney(cents: number): string"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: cents
+        type_text: number
+        attributes: []
+        span:
+          start_byte: 28
+          end_byte: 41
+          start_line: 1
+          start_col: 28
+          end_line: 1
+          end_col: 41
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2504967465
+        - 3
+        - 2454634608
+        - 2
+        - 2538522703
+        - 2
+        - 2521745084
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2186192704
+        - 3
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2303636037
+        - 1
+        - 2353968894
+        - 3
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 3
+        - 2236525561
+        - 2
+        - 2286858418
+        - 2521745084
+        - 1044042820
+        - 1364089373
+        - 1559042142
+        - 1
+        - 1414422230
+        - 2
+        - 1559042142
+        - 1
+        - 1414422230
+        - 2
+        - 1559042142
+        - 1
+        - 1414422230
+        - 1364089373
+        - 2521745084
+        - 1414422230
+      token_count: 67
+      line_count: 7
+imports: []
+exports: []
+references:
+  - from: 0
+    kind: method_call
+    path:
+      - Math
+      - abs
+    receiver:
+      type: identifier
+      value: Math
+    args:
+      - type: path
+        value:
+          - cents
+    span:
+      start_byte: 104
+      end_byte: 119
+      start_line: 3
+      start_col: 14
+      end_line: 3
+      end_col: 29
+  - from: 0
+    kind: method_call
+    path:
+      - Math
+      - floor
+    receiver:
+      type: identifier
+      value: Math
+    args:
+      - type: other
+        value: abs / 100
+    span:
+      start_byte: 137
+      end_byte: 158
+      start_line: 4
+      start_col: 16
+      end_line: 4
+      end_col: 37
+  - from: 0
+    kind: method_call
+    path:
+      - (String(abs % 100))
+      - padStart
+    receiver:
+      type: expr
+      value: String(abs % 100)
+    args:
+      - type: number
+        value: "2"
+      - type: str
+        value: "0"
+    span:
+      start_byte: 179
+      end_byte: 213
+      start_line: 5
+      start_col: 19
+      end_line: 5
+      end_col: 53
+  - from: 0
+    kind: call
+    path:
+      - String
+    receiver: ~
+    args:
+      - type: other
+        value: abs % 100
+    span:
+      start_byte: 179
+      end_byte: 196
+      start_line: 5
+      start_col: 19
+      end_line: 5
+      end_col: 36
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

@@ -1,0 +1,288 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: similar-not-equivalent
+  path: src/sums.ts
+  language: typescript
+  content_hash: ec2b1ffe140556808f79b649aa0e3e78d70a77bb1199b949862fcc587419dadd
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: sumLoop
+    module_suffix: []
+    item_path:
+      - sumLoop
+    span:
+      start_byte: 0
+      end_byte: 132
+      start_line: 1
+      start_col: 0
+      end_line: 5
+      end_col: 1
+    name_span:
+      start_byte: 16
+      end_byte: 23
+      start_line: 1
+      start_col: 16
+      end_line: 1
+      end_col: 23
+    signature: "function sumLoop(values: number[]): number"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: values
+        type_text: "number[]"
+        attributes: []
+        span:
+          start_byte: 24
+          end_byte: 40
+          start_line: 1
+          start_col: 24
+          end_line: 1
+          end_col: 40
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 245158099
+        - 1
+        - 2488189846
+        - 3
+        - 2521745084
+        - 2584321561
+        - 2303636037
+        - 704892417
+        - 1
+        - 2130465979
+        - 1
+        - 2286858418
+        - 1
+        - 517696931
+        - 1
+        - 2521745084
+        - 1044042820
+        - 1
+        - 2521745084
+        - 1414422230
+      token_count: 21
+      line_count: 5
+  - local: 1
+    parent: ~
+    kind: function
+    name: sumReduce
+    module_suffix: []
+    item_path:
+      - sumReduce
+    span:
+      start_byte: 134
+      end_byte: 245
+      start_line: 7
+      start_col: 0
+      end_line: 9
+      end_col: 1
+    name_span:
+      start_byte: 150
+      end_byte: 159
+      start_line: 7
+      start_col: 16
+      end_line: 7
+      end_col: 25
+    signature: "function sumReduce(values: number[]): number"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: values
+        type_text: "number[]"
+        attributes: []
+        span:
+          start_byte: 160
+          end_byte: 176
+          start_line: 7
+          start_col: 26
+          end_line: 7
+          end_col: 42
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2303636037
+        - 1
+        - 2236525561
+        - 1
+        - 2286858418
+        - 536740216
+        - 1
+        - 2253303180
+        - 1
+        - 2236525561
+        - 3
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 20
+      line_count: 3
+  - local: 2
+    parent: ~
+    kind: function
+    name: isEvenMod
+    module_suffix: []
+    item_path:
+      - isEvenMod
+    span:
+      start_byte: 247
+      end_byte: 318
+      start_line: 11
+      start_col: 0
+      end_line: 13
+      end_col: 1
+    name_span:
+      start_byte: 263
+      end_byte: 272
+      start_line: 11
+      start_col: 16
+      end_line: 11
+      end_col: 25
+    signature: "function isEvenMod(n: number): boolean"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: n
+        type_text: number
+        attributes: []
+        span:
+          start_byte: 273
+          end_byte: 282
+          start_line: 11
+          start_col: 26
+          end_line: 11
+          end_col: 35
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 1
+        - 2353968894
+        - 3
+        - 568558820
+        - 3
+        - 2521745084
+        - 1414422230
+      token_count: 9
+      line_count: 3
+  - local: 3
+    parent: ~
+    kind: function
+    name: isEvenBit
+    module_suffix: []
+    item_path:
+      - isEvenBit
+    span:
+      start_byte: 320
+      end_byte: 393
+      start_line: 15
+      start_col: 0
+      end_line: 17
+      end_col: 1
+    name_span:
+      start_byte: 336
+      end_byte: 345
+      start_line: 15
+      start_col: 16
+      end_line: 15
+      end_col: 25
+    signature: "function isEvenBit(n: number): boolean"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: n
+        type_text: number
+        attributes: []
+        span:
+          start_byte: 346
+          end_byte: 355
+          start_line: 15
+          start_col: 26
+          end_line: 15
+          end_col: 35
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 2303636037
+        - 1
+        - 2337191275
+        - 3
+        - 2286858418
+        - 568558820
+        - 3
+        - 2521745084
+        - 1414422230
+      token_count: 11
+      line_count: 3
+imports: []
+exports: []
+references:
+  - from: 1
+    kind: method_call
+    path:
+      - values
+      - reduce
+    receiver:
+      type: expr
+      value: values
+    args:
+      - type: closure
+        value:
+          params:
+            - acc
+            - value
+      - type: number
+        value: "0"
+    span:
+      start_byte: 197
+      end_byte: 242
+      start_line: 8
+      start_col: 9
+      end_line: 8
+      end_col: 54
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

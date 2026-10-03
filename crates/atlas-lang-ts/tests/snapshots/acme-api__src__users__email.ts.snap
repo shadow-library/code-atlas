@@ -1,0 +1,111 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-api
+  path: src/users/email.ts
+  language: typescript
+  content_hash: ea914308236357441c2425de7c65d89075cfdfc9fdde124d2b682d0af61cf949
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: normalizeEmail
+    module_suffix: []
+    item_path:
+      - normalizeEmail
+    span:
+      start_byte: 0
+      end_byte: 94
+      start_line: 1
+      start_col: 0
+      end_line: 3
+      end_col: 1
+    name_span:
+      start_byte: 16
+      end_byte: 30
+      start_line: 1
+      start_col: 16
+      end_line: 1
+      end_col: 30
+    signature: "function normalizeEmail(email: string): string"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: email
+        type_text: string
+        attributes: []
+        span:
+          start_byte: 31
+          end_byte: 44
+          start_line: 1
+          start_col: 31
+          end_line: 1
+          end_col: 44
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 13
+      line_count: 3
+imports: []
+exports: []
+references:
+  - from: 0
+    kind: method_call
+    path:
+      - (email.trim())
+      - toLowerCase
+    receiver:
+      type: expr
+      value: email.trim()
+    args: []
+    span:
+      start_byte: 65
+      end_byte: 91
+      start_line: 2
+      start_col: 9
+      end_line: 2
+      end_col: 35
+  - from: 0
+    kind: method_call
+    path:
+      - email
+      - trim
+    receiver:
+      type: expr
+      value: email
+    args: []
+    span:
+      start_byte: 65
+      end_byte: 77
+      start_line: 2
+      start_col: 9
+      end_line: 2
+      end_col: 21
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

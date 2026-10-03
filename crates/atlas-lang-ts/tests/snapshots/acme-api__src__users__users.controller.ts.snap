@@ -1,0 +1,1041 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-api
+  path: src/users/users.controller.ts
+  language: typescript
+  content_hash: c4238fca45df2214542b2c97dc01c82093661d369bafc47ec3a0ff49c3e28a3f
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: class
+    name: UsersController
+    module_suffix: []
+    item_path:
+      - UsersController
+    span:
+      start_byte: 380
+      end_byte: 1118
+      start_line: 8
+      start_col: 0
+      end_line: 36
+      end_col: 1
+    name_span:
+      start_byte: 457
+      end_byte: 472
+      start_line: 10
+      start_col: 13
+      end_line: 10
+      end_col: 28
+    signature: class UsersController
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes:
+      - path:
+          - Controller
+        args:
+          - type: str
+            value: users
+        span:
+          start_byte: 380
+          end_byte: 400
+          start_line: 8
+          start_col: 0
+          end_line: 8
+          end_col: 20
+      - path:
+          - UseGuards
+        args:
+          - type: path
+            value:
+              - JwtAuthGuard
+          - type: path
+            value:
+              - PermissionsGuard
+        span:
+          start_byte: 401
+          end_byte: 443
+          start_line: 9
+          start_col: 0
+          end_line: 9
+          end_col: 42
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 1
+    parent: 0
+    kind: method
+    name: constructor
+    module_suffix: []
+    item_path:
+      - UsersController
+      - constructor
+    span:
+      start_byte: 477
+      end_byte: 536
+      start_line: 11
+      start_col: 2
+      end_line: 11
+      end_col: 61
+    name_span:
+      start_byte: 477
+      end_byte: 488
+      start_line: 11
+      start_col: 2
+      end_line: 11
+      end_col: 13
+    signature: "constructor(private readonly usersService: UsersService)"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: usersService
+        type_text: UsersService
+        attributes: []
+        span:
+          start_byte: 489
+          end_byte: 532
+          start_line: 11
+          start_col: 14
+          end_line: 11
+          end_col: 57
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1414422230
+      token_count: 2
+      line_count: 1
+  - local: 2
+    parent: 0
+    kind: field
+    name: usersService
+    module_suffix: []
+    item_path:
+      - UsersController
+      - usersService
+    span:
+      start_byte: 489
+      end_byte: 532
+      start_line: 11
+      start_col: 14
+      end_line: 11
+      end_col: 57
+    name_span:
+      start_byte: 506
+      end_byte: 518
+      start_line: 11
+      start_col: 31
+      end_line: 11
+      end_col: 43
+    signature: "private readonly usersService: UsersService"
+    doc: ~
+    visibility:
+      type: private
+    modifiers:
+      - readonly
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 3
+    parent: 0
+    kind: method
+    name: findOne
+    module_suffix: []
+    item_path:
+      - UsersController
+      - findOne
+    span:
+      start_byte: 540
+      end_byte: 669
+      start_line: 13
+      start_col: 2
+      end_line: 17
+      end_col: 3
+    name_span:
+      start_byte: 589
+      end_byte: 596
+      start_line: 15
+      start_col: 2
+      end_line: 15
+      end_col: 9
+    signature: "findOne(id: string)"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - Get
+        args:
+          - type: str
+            value: ":id"
+        span:
+          start_byte: 540
+          end_byte: 551
+          start_line: 13
+          start_col: 2
+          end_line: 13
+          end_col: 13
+      - path:
+          - RequirePermission
+        args:
+          - type: str
+            value: "users:read"
+        span:
+          start_byte: 554
+          end_byte: 586
+          start_line: 14
+          start_col: 2
+          end_line: 14
+          end_col: 34
+    params:
+      - name: id
+        type_text: string
+        attributes:
+          - path:
+              - Param
+            args:
+              - type: str
+                value: id
+            span:
+              start_byte: 597
+              end_byte: 609
+              start_line: 15
+              start_col: 10
+              end_line: 15
+              end_col: 22
+        span:
+          start_byte: 597
+          end_byte: 620
+          start_line: 15
+          start_col: 10
+          end_line: 15
+          end_col: 33
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 428551226
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 12
+      line_count: 3
+  - local: 4
+    parent: 0
+    kind: method
+    name: create
+    module_suffix: []
+    item_path:
+      - UsersController
+      - create
+    span:
+      start_byte: 673
+      end_byte: 807
+      start_line: 19
+      start_col: 2
+      end_line: 23
+      end_col: 3
+    name_span:
+      start_byte: 719
+      end_byte: 725
+      start_line: 21
+      start_col: 2
+      end_line: 21
+      end_col: 8
+    signature: "create(input: CreateUserInput)"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - Post
+        args: []
+        span:
+          start_byte: 673
+          end_byte: 680
+          start_line: 19
+          start_col: 2
+          end_line: 19
+          end_col: 9
+      - path:
+          - RequirePermission
+        args:
+          - type: str
+            value: "users:write"
+        span:
+          start_byte: 683
+          end_byte: 716
+          start_line: 20
+          start_col: 2
+          end_line: 20
+          end_col: 35
+    params:
+      - name: input
+        type_text: CreateUserInput
+        attributes:
+          - path:
+              - Body
+            args: []
+            span:
+              start_byte: 726
+              end_byte: 733
+              start_line: 21
+              start_col: 9
+              end_line: 21
+              end_col: 16
+        span:
+          start_byte: 726
+          end_byte: 756
+          start_line: 21
+          start_col: 9
+          end_line: 21
+          end_col: 39
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 428551226
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 12
+      line_count: 3
+  - local: 5
+    parent: 0
+    kind: method
+    name: update
+    module_suffix: []
+    item_path:
+      - UsersController
+      - update
+    span:
+      start_byte: 811
+      end_byte: 980
+      start_line: 25
+      start_col: 2
+      end_line: 29
+      end_col: 3
+    name_span:
+      start_byte: 863
+      end_byte: 869
+      start_line: 27
+      start_col: 2
+      end_line: 27
+      end_col: 8
+    signature: "update(id: string, input: UpdateUserInput)"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - Patch
+        args:
+          - type: str
+            value: ":id"
+        span:
+          start_byte: 811
+          end_byte: 824
+          start_line: 25
+          start_col: 2
+          end_line: 25
+          end_col: 15
+      - path:
+          - RequirePermission
+        args:
+          - type: str
+            value: "users:write"
+        span:
+          start_byte: 827
+          end_byte: 860
+          start_line: 26
+          start_col: 2
+          end_line: 26
+          end_col: 35
+    params:
+      - name: id
+        type_text: string
+        attributes:
+          - path:
+              - Param
+            args:
+              - type: str
+                value: id
+            span:
+              start_byte: 870
+              end_byte: 882
+              start_line: 27
+              start_col: 9
+              end_line: 27
+              end_col: 21
+        span:
+          start_byte: 870
+          end_byte: 893
+          start_line: 27
+          start_col: 9
+          end_line: 27
+          end_col: 32
+      - name: input
+        type_text: UpdateUserInput
+        attributes:
+          - path:
+              - Body
+            args: []
+            span:
+              start_byte: 895
+              end_byte: 902
+              start_line: 27
+              start_col: 34
+              end_line: 27
+              end_col: 41
+        span:
+          start_byte: 895
+          end_byte: 925
+          start_line: 27
+          start_col: 34
+          end_line: 27
+          end_col: 64
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 428551226
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2236525561
+        - 1
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 14
+      line_count: 3
+  - local: 6
+    parent: 0
+    kind: method
+    name: remove
+    module_suffix: []
+    item_path:
+      - UsersController
+      - remove
+    span:
+      start_byte: 984
+      end_byte: 1116
+      start_line: 31
+      start_col: 2
+      end_line: 35
+      end_col: 3
+    name_span:
+      start_byte: 1038
+      end_byte: 1044
+      start_line: 33
+      start_col: 2
+      end_line: 33
+      end_col: 8
+    signature: "remove(id: string)"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - Delete
+        args:
+          - type: str
+            value: ":id"
+        span:
+          start_byte: 984
+          end_byte: 998
+          start_line: 31
+          start_col: 2
+          end_line: 31
+          end_col: 16
+      - path:
+          - RequirePermission
+        args:
+          - type: str
+            value: "users:delete"
+        span:
+          start_byte: 1001
+          end_byte: 1035
+          start_line: 32
+          start_col: 2
+          end_line: 32
+          end_col: 36
+    params:
+      - name: id
+        type_text: string
+        attributes:
+          - path:
+              - Param
+            args:
+              - type: str
+                value: id
+            span:
+              start_byte: 1045
+              end_byte: 1057
+              start_line: 33
+              start_col: 9
+              end_line: 33
+              end_col: 21
+        span:
+          start_byte: 1045
+          end_byte: 1068
+          start_line: 33
+          start_col: 9
+          end_line: 33
+          end_col: 32
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 428551226
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 12
+      line_count: 3
+imports:
+  - type: ts_import
+    specifier: "@nestjs/common"
+    bindings:
+      - type: named
+        imported: Body
+        local: Body
+        type_only: false
+      - type: named
+        imported: Controller
+        local: Controller
+        type_only: false
+      - type: named
+        imported: Delete
+        local: Delete
+        type_only: false
+      - type: named
+        imported: Get
+        local: Get
+        type_only: false
+      - type: named
+        imported: Param
+        local: Param
+        type_only: false
+      - type: named
+        imported: Patch
+        local: Patch
+        type_only: false
+      - type: named
+        imported: Post
+        local: Post
+        type_only: false
+      - type: named
+        imported: UseGuards
+        local: UseGuards
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 94
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 94
+  - type: ts_import
+    specifier: "../auth/jwt-auth.guard"
+    bindings:
+      - type: named
+        imported: JwtAuthGuard
+        local: JwtAuthGuard
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 96
+      end_byte: 150
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 54
+  - type: ts_import
+    specifier: "../auth/permissions.guard"
+    bindings:
+      - type: named
+        imported: PermissionsGuard
+        local: PermissionsGuard
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 151
+      end_byte: 212
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 61
+  - type: ts_import
+    specifier: "../auth/require-permission.decorator"
+    bindings:
+      - type: named
+        imported: RequirePermission
+        local: RequirePermission
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 213
+      end_byte: 286
+      start_line: 5
+      start_col: 0
+      end_line: 5
+      end_col: 73
+  - type: ts_import
+    specifier: "./users.service"
+    bindings:
+      - type: named
+        imported: CreateUserInput
+        local: CreateUserInput
+        type_only: true
+      - type: named
+        imported: UpdateUserInput
+        local: UpdateUserInput
+        type_only: true
+      - type: named
+        imported: UsersService
+        local: UsersService
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 287
+      end_byte: 378
+      start_line: 6
+      start_col: 0
+      end_line: 6
+      end_col: 91
+exports: []
+references:
+  - from: 0
+    kind: decorator
+    path:
+      - Controller
+    receiver: ~
+    args:
+      - type: str
+        value: users
+    span:
+      start_byte: 380
+      end_byte: 400
+      start_line: 8
+      start_col: 0
+      end_line: 8
+      end_col: 20
+  - from: 0
+    kind: decorator
+    path:
+      - UseGuards
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - JwtAuthGuard
+      - type: path
+        value:
+          - PermissionsGuard
+    span:
+      start_byte: 401
+      end_byte: 443
+      start_line: 9
+      start_col: 0
+      end_line: 9
+      end_col: 42
+  - from: 0
+    kind: value_ref
+    path:
+      - JwtAuthGuard
+    receiver: ~
+    args: []
+    span:
+      start_byte: 412
+      end_byte: 424
+      start_line: 9
+      start_col: 11
+      end_line: 9
+      end_col: 23
+  - from: 0
+    kind: value_ref
+    path:
+      - PermissionsGuard
+    receiver: ~
+    args: []
+    span:
+      start_byte: 426
+      end_byte: 442
+      start_line: 9
+      start_col: 25
+      end_line: 9
+      end_col: 41
+  - from: 2
+    kind: type_ref
+    path:
+      - UsersService
+    receiver: ~
+    args: []
+    span:
+      start_byte: 520
+      end_byte: 532
+      start_line: 11
+      start_col: 45
+      end_line: 11
+      end_col: 57
+  - from: 3
+    kind: decorator
+    path:
+      - Get
+    receiver: ~
+    args:
+      - type: str
+        value: ":id"
+    span:
+      start_byte: 540
+      end_byte: 551
+      start_line: 13
+      start_col: 2
+      end_line: 13
+      end_col: 13
+  - from: 3
+    kind: decorator
+    path:
+      - RequirePermission
+    receiver: ~
+    args:
+      - type: str
+        value: "users:read"
+    span:
+      start_byte: 554
+      end_byte: 586
+      start_line: 14
+      start_col: 2
+      end_line: 14
+      end_col: 34
+  - from: 3
+    kind: decorator
+    path:
+      - Param
+    receiver: ~
+    args:
+      - type: str
+        value: id
+    span:
+      start_byte: 597
+      end_byte: 609
+      start_line: 15
+      start_col: 10
+      end_line: 15
+      end_col: 22
+  - from: 3
+    kind: method_call
+    path:
+      - this
+      - usersService
+      - findOne
+    receiver:
+      type: this
+    args:
+      - type: path
+        value:
+          - id
+    span:
+      start_byte: 635
+      end_byte: 664
+      start_line: 16
+      start_col: 11
+      end_line: 16
+      end_col: 40
+  - from: 4
+    kind: decorator
+    path:
+      - Post
+    receiver: ~
+    args: []
+    span:
+      start_byte: 673
+      end_byte: 680
+      start_line: 19
+      start_col: 2
+      end_line: 19
+      end_col: 9
+  - from: 4
+    kind: decorator
+    path:
+      - RequirePermission
+    receiver: ~
+    args:
+      - type: str
+        value: "users:write"
+    span:
+      start_byte: 683
+      end_byte: 716
+      start_line: 20
+      start_col: 2
+      end_line: 20
+      end_col: 35
+  - from: 4
+    kind: decorator
+    path:
+      - Body
+    receiver: ~
+    args: []
+    span:
+      start_byte: 726
+      end_byte: 733
+      start_line: 21
+      start_col: 9
+      end_line: 21
+      end_col: 16
+  - from: 4
+    kind: type_ref
+    path:
+      - CreateUserInput
+    receiver: ~
+    args: []
+    span:
+      start_byte: 741
+      end_byte: 756
+      start_line: 21
+      start_col: 24
+      end_line: 21
+      end_col: 39
+  - from: 4
+    kind: method_call
+    path:
+      - this
+      - usersService
+      - create
+    receiver:
+      type: this
+    args:
+      - type: path
+        value:
+          - input
+    span:
+      start_byte: 771
+      end_byte: 802
+      start_line: 22
+      start_col: 11
+      end_line: 22
+      end_col: 42
+  - from: 5
+    kind: decorator
+    path:
+      - Patch
+    receiver: ~
+    args:
+      - type: str
+        value: ":id"
+    span:
+      start_byte: 811
+      end_byte: 824
+      start_line: 25
+      start_col: 2
+      end_line: 25
+      end_col: 15
+  - from: 5
+    kind: decorator
+    path:
+      - RequirePermission
+    receiver: ~
+    args:
+      - type: str
+        value: "users:write"
+    span:
+      start_byte: 827
+      end_byte: 860
+      start_line: 26
+      start_col: 2
+      end_line: 26
+      end_col: 35
+  - from: 5
+    kind: decorator
+    path:
+      - Param
+    receiver: ~
+    args:
+      - type: str
+        value: id
+    span:
+      start_byte: 870
+      end_byte: 882
+      start_line: 27
+      start_col: 9
+      end_line: 27
+      end_col: 21
+  - from: 5
+    kind: decorator
+    path:
+      - Body
+    receiver: ~
+    args: []
+    span:
+      start_byte: 895
+      end_byte: 902
+      start_line: 27
+      start_col: 34
+      end_line: 27
+      end_col: 41
+  - from: 5
+    kind: type_ref
+    path:
+      - UpdateUserInput
+    receiver: ~
+    args: []
+    span:
+      start_byte: 910
+      end_byte: 925
+      start_line: 27
+      start_col: 49
+      end_line: 27
+      end_col: 64
+  - from: 5
+    kind: method_call
+    path:
+      - this
+      - usersService
+      - update
+    receiver:
+      type: this
+    args:
+      - type: path
+        value:
+          - id
+      - type: path
+        value:
+          - input
+    span:
+      start_byte: 940
+      end_byte: 975
+      start_line: 28
+      start_col: 11
+      end_line: 28
+      end_col: 46
+  - from: 6
+    kind: decorator
+    path:
+      - Delete
+    receiver: ~
+    args:
+      - type: str
+        value: ":id"
+    span:
+      start_byte: 984
+      end_byte: 998
+      start_line: 31
+      start_col: 2
+      end_line: 31
+      end_col: 16
+  - from: 6
+    kind: decorator
+    path:
+      - RequirePermission
+    receiver: ~
+    args:
+      - type: str
+        value: "users:delete"
+    span:
+      start_byte: 1001
+      end_byte: 1035
+      start_line: 32
+      start_col: 2
+      end_line: 32
+      end_col: 36
+  - from: 6
+    kind: decorator
+    path:
+      - Param
+    receiver: ~
+    args:
+      - type: str
+        value: id
+    span:
+      start_byte: 1045
+      end_byte: 1057
+      start_line: 33
+      start_col: 9
+      end_line: 33
+      end_col: 21
+  - from: 6
+    kind: method_call
+    path:
+      - this
+      - usersService
+      - remove
+    receiver:
+      type: this
+    args:
+      - type: path
+        value:
+          - id
+    span:
+      start_byte: 1083
+      end_byte: 1111
+      start_line: 34
+      start_col: 11
+      end_line: 34
+      end_col: 39
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

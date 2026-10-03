@@ -1,0 +1,61 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: dynamic-ts
+  path: src/plugins/alpha.ts
+  language: typescript
+  content_hash: 3dedd4a64cf4a6771c898f4f49bc989aeef0746ddf3d8c0c2b3cc5820828f786
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: alpha
+    module_suffix: []
+    item_path:
+      - alpha
+    span:
+      start_byte: 0
+      end_byte: 61
+      start_line: 1
+      start_col: 0
+      end_line: 3
+      end_col: 1
+    name_span:
+      start_byte: 24
+      end_byte: 29
+      start_line: 1
+      start_col: 24
+      end_line: 1
+      end_col: 29
+    signature: "function alpha(): string"
+    doc: ~
+    visibility:
+      type: exported_default
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 2
+        - 2521745084
+        - 1414422230
+      token_count: 5
+      line_count: 3
+imports: []
+exports: []
+references: []
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

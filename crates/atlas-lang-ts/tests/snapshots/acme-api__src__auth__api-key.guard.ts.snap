@@ -1,0 +1,521 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-api
+  path: src/auth/api-key.guard.ts
+  language: typescript
+  content_hash: 70b67a75c475642620d27fcab0bda9430158203ef4d79c1f00ae9b93ac50f7bf
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: class
+    name: ApiKeyGuard
+    module_suffix: []
+    item_path:
+      - ApiKeyGuard
+    span:
+      start_byte: 158
+      end_byte: 758
+      start_line: 4
+      start_col: 0
+      end_line: 16
+      end_col: 1
+    name_span:
+      start_byte: 185
+      end_byte: 196
+      start_line: 5
+      start_col: 13
+      end_line: 5
+      end_col: 24
+    signature: class ApiKeyGuard implements CanActivate
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes:
+      - path:
+          - Injectable
+        args: []
+        span:
+          start_byte: 158
+          end_byte: 171
+          start_line: 4
+          start_col: 0
+          end_line: 4
+          end_col: 13
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements:
+      - - CanActivate
+    body: ~
+  - local: 1
+    parent: 0
+    kind: method
+    name: constructor
+    module_suffix: []
+    item_path:
+      - ApiKeyGuard
+      - constructor
+    span:
+      start_byte: 224
+      end_byte: 285
+      start_line: 6
+      start_col: 2
+      end_line: 6
+      end_col: 63
+    name_span:
+      start_byte: 224
+      end_byte: 235
+      start_line: 6
+      start_col: 2
+      end_line: 6
+      end_col: 13
+    signature: "constructor(private readonly configService: ConfigService)"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: configService
+        type_text: ConfigService
+        attributes: []
+        span:
+          start_byte: 236
+          end_byte: 281
+          start_line: 6
+          start_col: 14
+          end_line: 6
+          end_col: 59
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1414422230
+      token_count: 2
+      line_count: 1
+  - local: 2
+    parent: 0
+    kind: field
+    name: configService
+    module_suffix: []
+    item_path:
+      - ApiKeyGuard
+      - configService
+    span:
+      start_byte: 236
+      end_byte: 281
+      start_line: 6
+      start_col: 14
+      end_line: 6
+      end_col: 59
+    name_span:
+      start_byte: 253
+      end_byte: 266
+      start_line: 6
+      start_col: 31
+      end_line: 6
+      end_col: 44
+    signature: "private readonly configService: ConfigService"
+    doc: ~
+    visibility:
+      type: private
+    modifiers:
+      - readonly
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 3
+    parent: 0
+    kind: method
+    name: canActivate
+    module_suffix: []
+    item_path:
+      - ApiKeyGuard
+      - canActivate
+    span:
+      start_byte: 289
+      end_byte: 756
+      start_line: 8
+      start_col: 2
+      end_line: 15
+      end_col: 3
+    name_span:
+      start_byte: 289
+      end_byte: 300
+      start_line: 8
+      start_col: 2
+      end_line: 8
+      end_col: 13
+    signature: "canActivate(context: ExecutionContext): boolean"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: context
+        type_text: ExecutionContext
+        attributes: []
+        span:
+          start_byte: 301
+          end_byte: 326
+          start_line: 8
+          start_col: 14
+          end_line: 8
+          end_col: 39
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1
+        - 2538522703
+        - 2
+        - 1431199849
+        - 777574686
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 1984861276
+        - 2
+        - 1951306038
+        - 2521745084
+        - 704892417
+        - 1
+        - 2488189846
+        - 2303636037
+        - 428551226
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2504967465
+        - 2
+        - 2471412227
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2700655709
+        - 2
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 2521745084
+        - 2130171789
+        - 2303636037
+        - 2421079370
+        - 1
+        - 1600209167
+        - 2421079370
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 2286858418
+        - 109144266
+        - 1180356660
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2521745084
+        - 1
+        - 2202970323
+        - 1
+        - 2488189846
+        - 1447977468
+        - 1
+        - 2538522703
+        - 2
+        - 2236525561
+        - 1
+        - 2538522703
+        - 1984861276
+        - 2
+        - 1951306038
+        - 1414422230
+        - 2521745084
+        - 1044042820
+        - 3575228598
+        - 2521745084
+        - 1414422230
+      token_count: 97
+      line_count: 8
+imports:
+  - type: ts_import
+    specifier: "@nestjs/common"
+    bindings:
+      - type: named
+        imported: CanActivate
+        local: CanActivate
+        type_only: true
+      - type: named
+        imported: ExecutionContext
+        local: ExecutionContext
+        type_only: true
+      - type: named
+        imported: Injectable
+        local: Injectable
+        type_only: false
+      - type: named
+        imported: UnauthorizedException
+        local: UnauthorizedException
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 108
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 108
+  - type: ts_import
+    specifier: "@nestjs/config"
+    bindings:
+      - type: named
+        imported: ConfigService
+        local: ConfigService
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 109
+      end_byte: 156
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 47
+exports: []
+references:
+  - from: 0
+    kind: decorator
+    path:
+      - Injectable
+    receiver: ~
+    args: []
+    span:
+      start_byte: 158
+      end_byte: 171
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 13
+  - from: 0
+    kind: type_ref
+    path:
+      - CanActivate
+    receiver: ~
+    args: []
+    span:
+      start_byte: 208
+      end_byte: 219
+      start_line: 5
+      start_col: 36
+      end_line: 5
+      end_col: 47
+  - from: 2
+    kind: type_ref
+    path:
+      - ConfigService
+    receiver: ~
+    args: []
+    span:
+      start_byte: 268
+      end_byte: 281
+      start_line: 6
+      start_col: 46
+      end_line: 6
+      end_col: 59
+  - from: 3
+    kind: type_ref
+    path:
+      - ExecutionContext
+    receiver: ~
+    args: []
+    span:
+      start_byte: 310
+      end_byte: 326
+      start_line: 8
+      start_col: 23
+      end_line: 8
+      end_col: 39
+  - from: 3
+    kind: method_call
+    path:
+      - (context.switchToHttp())
+      - getRequest
+    receiver:
+      type: expr
+      value: context.switchToHttp()
+    args: []
+    span:
+      start_byte: 359
+      end_byte: 394
+      start_line: 9
+      start_col: 20
+      end_line: 9
+      end_col: 55
+  - from: 3
+    kind: method_call
+    path:
+      - context
+      - switchToHttp
+    receiver:
+      type: type_hint
+      value:
+        - ExecutionContext
+    args: []
+    span:
+      start_byte: 359
+      end_byte: 381
+      start_line: 9
+      start_col: 20
+      end_line: 9
+      end_col: 42
+  - from: 3
+    kind: method_call
+    path:
+      - "((this.configService.get<string>('API_KEYS') ?? '').split(','))"
+      - filter
+    receiver:
+      type: expr
+      value: "(this.configService.get<string>('API_KEYS') ?? '').split(',')"
+    args:
+      - type: path
+        value:
+          - Boolean
+    span:
+      start_byte: 487
+      end_byte: 564
+      start_line: 11
+      start_col: 20
+      end_line: 11
+      end_col: 97
+  - from: 3
+    kind: value_ref
+    path:
+      - Boolean
+    receiver: ~
+    args: []
+    span:
+      start_byte: 556
+      end_byte: 563
+      start_line: 11
+      start_col: 89
+      end_line: 11
+      end_col: 96
+  - from: 3
+    kind: method_call
+    path:
+      - "(this.configService.get<string>('API_KEYS') ?? '')"
+      - split
+    receiver:
+      type: expr
+      value: "this.configService.get<string>('API_KEYS') ?? ''"
+    args:
+      - type: str
+        value: ","
+    span:
+      start_byte: 487
+      end_byte: 548
+      start_line: 11
+      start_col: 20
+      end_line: 11
+      end_col: 81
+  - from: 3
+    kind: method_call
+    path:
+      - this
+      - configService
+      - get
+    receiver:
+      type: this
+    args:
+      - type: str
+        value: API_KEYS
+    span:
+      start_byte: 488
+      end_byte: 530
+      start_line: 11
+      start_col: 21
+      end_line: 11
+      end_col: 63
+  - from: 3
+    kind: method_call
+    path:
+      - allowed
+      - includes
+    receiver:
+      type: expr
+      value: allowed
+    args:
+      - type: path
+        value:
+          - provided
+    span:
+      start_byte: 588
+      end_byte: 614
+      start_line: 12
+      start_col: 22
+      end_line: 12
+      end_col: 48
+  - from: 3
+    kind: instantiation
+    path:
+      - UnauthorizedException
+    receiver: ~
+    args:
+      - type: str
+        value: Invalid API key
+    span:
+      start_byte: 622
+      end_byte: 666
+      start_line: 12
+      start_col: 56
+      end_line: 12
+      end_col: 100
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

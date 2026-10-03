@@ -1,0 +1,373 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: globex-api
+  path: src/services/users.service.ts
+  language: typescript
+  content_hash: 3b610d8d3479fdf8d7d0fa8aaa59d001e78791e25ad5d12c32e3810f62213482
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: interface
+    name: GlobexUser
+    module_suffix: []
+    item_path:
+      - GlobexUser
+    span:
+      start_byte: 71
+      end_byte: 132
+      start_line: 5
+      start_col: 0
+      end_line: 8
+      end_col: 1
+    name_span:
+      start_byte: 88
+      end_byte: 98
+      start_line: 5
+      start_col: 17
+      end_line: 5
+      end_col: 27
+    signature: interface GlobexUser
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 1
+    parent: 0
+    kind: field
+    name: id
+    module_suffix: []
+    item_path:
+      - GlobexUser
+      - id
+    span:
+      start_byte: 103
+      end_byte: 113
+      start_line: 6
+      start_col: 2
+      end_line: 6
+      end_col: 12
+    name_span:
+      start_byte: 103
+      end_byte: 105
+      start_line: 6
+      start_col: 2
+      end_line: 6
+      end_col: 4
+    signature: "id: string"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 2
+    parent: 0
+    kind: field
+    name: name
+    module_suffix: []
+    item_path:
+      - GlobexUser
+      - name
+    span:
+      start_byte: 117
+      end_byte: 129
+      start_line: 7
+      start_col: 2
+      end_line: 7
+      end_col: 14
+    name_span:
+      start_byte: 117
+      end_byte: 121
+      start_line: 7
+      start_col: 2
+      end_line: 7
+      end_col: 6
+    signature: "name: string"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 3
+    parent: ~
+    kind: class
+    name: UsersService
+    module_suffix: []
+    item_path:
+      - UsersService
+    span:
+      start_byte: 134
+      end_byte: 432
+      start_line: 10
+      start_col: 0
+      end_line: 17
+      end_col: 1
+    name_span:
+      start_byte: 147
+      end_byte: 159
+      start_line: 10
+      start_col: 13
+      end_line: 10
+      end_col: 25
+    signature: class UsersService
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 4
+    parent: 3
+    kind: field
+    name: pool
+    module_suffix: []
+    item_path:
+      - UsersService
+      - pool
+    span:
+      start_byte: 164
+      end_byte: 232
+      start_line: 11
+      start_col: 2
+      end_line: 11
+      end_col: 70
+    name_span:
+      start_byte: 181
+      end_byte: 185
+      start_line: 11
+      start_col: 19
+      end_line: 11
+      end_col: 23
+    signature: "private readonly pool = new Pool({ connectionString: DATABASE_URL })"
+    doc: ~
+    visibility:
+      type: private
+    modifiers:
+      - readonly
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 5
+    parent: 3
+    kind: method
+    name: findOne
+    module_suffix: []
+    item_path:
+      - UsersService
+      - findOne
+    span:
+      start_byte: 237
+      end_byte: 430
+      start_line: 13
+      start_col: 2
+      end_line: 16
+      end_col: 3
+    name_span:
+      start_byte: 243
+      end_byte: 250
+      start_line: 13
+      start_col: 8
+      end_line: 13
+      end_col: 15
+    signature: "async findOne(id: string): Promise<GlobexUser | null>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers:
+      - async
+    attributes: []
+    params:
+      - name: id
+        type_text: string
+        attributes: []
+        span:
+          start_byte: 251
+          end_byte: 261
+          start_line: 13
+          start_col: 16
+          end_line: 13
+          end_col: 26
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1447977468
+        - 1
+        - 1414422230
+        - 2488189846
+        - 602291836
+        - 428551226
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2504967465
+        - 1
+        - 2471412227
+        - 2303636037
+        - 2
+        - 2236525561
+        - 1984861276
+        - 1
+        - 1951306038
+        - 2286858418
+        - 2521745084
+        - 1044042820
+        - 1
+        - 1984861276
+        - 3
+        - 1951306038
+        - 2700655709
+        - 3901604059
+        - 2521745084
+        - 1414422230
+      token_count: 32
+      line_count: 4
+imports:
+  - type: ts_import
+    specifier: pg
+    bindings:
+      - type: named
+        imported: Pool
+        local: Pool
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 26
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 26
+  - type: ts_import
+    specifier: "../config"
+    bindings:
+      - type: named
+        imported: DATABASE_URL
+        local: DATABASE_URL
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 28
+      end_byte: 69
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 41
+exports: []
+references:
+  - from: 4
+    kind: instantiation
+    path:
+      - Pool
+    receiver: ~
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: connectionString
+            value:
+              type: path
+              value:
+                - DATABASE_URL
+    span:
+      start_byte: 188
+      end_byte: 232
+      start_line: 11
+      start_col: 26
+      end_line: 11
+      end_col: 70
+  - from: 4
+    kind: value_ref
+    path:
+      - DATABASE_URL
+    receiver: ~
+    args: []
+    span:
+      start_byte: 217
+      end_byte: 229
+      start_line: 11
+      start_col: 55
+      end_line: 11
+      end_col: 67
+  - from: 5
+    kind: type_ref
+    path:
+      - Promise
+    receiver: ~
+    args: []
+    span:
+      start_byte: 264
+      end_byte: 271
+      start_line: 13
+      start_col: 29
+      end_line: 13
+      end_col: 36
+  - from: 5
+    kind: type_ref
+    path:
+      - GlobexUser
+    receiver: ~
+    args: []
+    span:
+      start_byte: 272
+      end_byte: 282
+      start_line: 13
+      start_col: 37
+      end_line: 13
+      end_col: 47
+  - from: 5
+    kind: type_ref
+    path:
+      - GlobexUser
+    receiver: ~
+    args: []
+    span:
+      start_byte: 336
+      end_byte: 346
+      start_line: 14
+      start_col: 43
+      end_line: 14
+      end_col: 53
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

@@ -1,0 +1,177 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-web
+  path: src/components/UserCard.tsx
+  language: tsx
+  content_hash: 35218cd490898e9ffffb112b1d938e545ad887e1d4e53c9157e174a6d4e46cdf
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: UserCard
+    module_suffix: []
+    item_path:
+      - UserCard
+    span:
+      start_byte: 45
+      end_byte: 349
+      start_line: 3
+      start_col: 0
+      end_line: 13
+      end_col: 1
+    name_span:
+      start_byte: 61
+      end_byte: 69
+      start_line: 3
+      start_col: 16
+      end_line: 3
+      end_col: 24
+    signature: "function UserCard({ userId }: { userId: string })"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: "{ userId }"
+        type_text: "{ userId: string }"
+        attributes: []
+        span:
+          start_byte: 70
+          end_byte: 100
+          start_line: 3
+          start_col: 25
+          end_line: 3
+          end_col: 55
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1447977468
+        - 1
+        - 2236525561
+        - 1
+        - 1414422230
+        - 2488189846
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 2521745084
+        - 2130171789
+        - 2303636037
+        - 1
+        - 2286858418
+        - 1044042820
+        - 2504967465
+        - 1
+        - 1
+        - 2488189846
+        - 2
+        - 2471412227
+        - 1447977468
+        - 1
+        - 2202970323
+        - 1
+        - 1414422230
+        - 285223026
+        - 1
+        - 2471412227
+        - 2521745084
+        - 2130171789
+        - 2303636037
+        - 2421079370
+        - 1
+        - 2286858418
+        - 1044042820
+        - 2504967465
+        - 1
+        - 2471412227
+        - 2
+        - 285223026
+        - 1
+        - 2471412227
+        - 2521745084
+        - 1044042820
+        - 2303636037
+        - 2504967465
+        - 1
+        - 2471412227
+        - 2504967465
+        - 1
+        - 2471412227
+        - 1447977468
+        - 1
+        - 2202970323
+        - 1
+        - 1414422230
+        - 285223026
+        - 1
+        - 2471412227
+        - 2504967465
+        - 1
+        - 2471412227
+        - 1447977468
+        - 1
+        - 2202970323
+        - 1
+        - 1414422230
+        - 285223026
+        - 1
+        - 2471412227
+        - 285223026
+        - 1
+        - 2471412227
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 80
+      line_count: 11
+imports:
+  - type: ts_import
+    specifier: "../hooks/useUser"
+    bindings:
+      - type: named
+        imported: useUser
+        local: useUser
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 43
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 43
+exports: []
+references:
+  - from: 0
+    kind: call
+    path:
+      - useUser
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - userId
+    span:
+      start_byte: 130
+      end_byte: 145
+      start_line: 4
+      start_col: 26
+      end_line: 4
+      end_col: 41
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

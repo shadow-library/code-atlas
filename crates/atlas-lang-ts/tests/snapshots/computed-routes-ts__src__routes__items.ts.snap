@@ -1,0 +1,192 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: computed-routes-ts
+  path: src/routes/items.ts
+  language: typescript
+  content_hash: 2e4c0146c542ac0b5468957fdd5ed89d5e29c563b54b647baa54096dabaf8721
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: constant
+    name: itemsRouter
+    module_suffix: []
+    item_path:
+      - itemsRouter
+    span:
+      start_byte: 48
+      end_byte: 70
+      start_line: 3
+      start_col: 13
+      end_line: 3
+      end_col: 35
+    name_span:
+      start_byte: 48
+      end_byte: 59
+      start_line: 3
+      start_col: 13
+      end_line: 3
+      end_col: 24
+    signature: const itemsRouter = Router()
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+imports:
+  - type: ts_import
+    specifier: express
+    bindings:
+      - type: named
+        imported: Router
+        local: Router
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 33
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 33
+exports: []
+references:
+  - from: 0
+    kind: call
+    path:
+      - Router
+    receiver: ~
+    args: []
+    span:
+      start_byte: 62
+      end_byte: 70
+      start_line: 3
+      start_col: 27
+      end_line: 3
+      end_col: 35
+  - from: ~
+    kind: method_call
+    path:
+      - itemsRouter
+      - get
+    receiver:
+      type: identifier
+      value: itemsRouter
+    args:
+      - type: str
+        value: "/:id"
+      - type: closure
+        value:
+          params:
+            - req
+            - res
+    span:
+      start_byte: 73
+      end_byte: 150
+      start_line: 5
+      start_col: 0
+      end_line: 7
+      end_col: 2
+  - from: ~
+    kind: method_call
+    path:
+      - res
+      - json
+    receiver:
+      type: expr
+      value: res
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: id
+            value:
+              type: path
+              value:
+                - req
+                - params
+                - id
+    span:
+      start_byte: 115
+      end_byte: 146
+      start_line: 6
+      start_col: 2
+      end_line: 6
+      end_col: 33
+  - from: ~
+    kind: method_call
+    path:
+      - itemsRouter
+      - post
+    receiver:
+      type: identifier
+      value: itemsRouter
+    args:
+      - type: str
+        value: /
+      - type: closure
+        value:
+          params:
+            - req
+            - res
+    span:
+      start_byte: 153
+      end_byte: 227
+      start_line: 9
+      start_col: 0
+      end_line: 11
+      end_col: 2
+  - from: ~
+    kind: method_call
+    path:
+      - (res.status(201))
+      - json
+    receiver:
+      type: expr
+      value: res.status(201)
+    args:
+      - type: path
+        value:
+          - req
+          - body
+    span:
+      start_byte: 193
+      end_byte: 223
+      start_line: 10
+      start_col: 2
+      end_line: 10
+      end_col: 32
+  - from: ~
+    kind: method_call
+    path:
+      - res
+      - status
+    receiver:
+      type: expr
+      value: res
+    args:
+      - type: number
+        value: "201"
+    span:
+      start_byte: 193
+      end_byte: 208
+      start_line: 10
+      start_col: 2
+      end_line: 10
+      end_col: 17
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

@@ -1,0 +1,130 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: computed-routes-ts
+  path: src/routes/index.ts
+  language: typescript
+  content_hash: 608db7bfc48a544f3f338d891f22398828624d47a29b90bf0b564126b3c2527f
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: constant
+    name: apiRouter
+    module_suffix: []
+    item_path:
+      - apiRouter
+    span:
+      start_byte: 88
+      end_byte: 108
+      start_line: 5
+      start_col: 13
+      end_line: 5
+      end_col: 33
+    name_span:
+      start_byte: 88
+      end_byte: 97
+      start_line: 5
+      start_col: 13
+      end_line: 5
+      end_col: 22
+    signature: const apiRouter = Router()
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+imports:
+  - type: ts_import
+    specifier: express
+    bindings:
+      - type: named
+        imported: Router
+        local: Router
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 33
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 33
+  - type: ts_import
+    specifier: "./items"
+    bindings:
+      - type: named
+        imported: itemsRouter
+        local: itemsRouter
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 35
+      end_byte: 73
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 38
+exports: []
+references:
+  - from: 0
+    kind: call
+    path:
+      - Router
+    receiver: ~
+    args: []
+    span:
+      start_byte: 100
+      end_byte: 108
+      start_line: 5
+      start_col: 25
+      end_line: 5
+      end_col: 33
+  - from: ~
+    kind: method_call
+    path:
+      - apiRouter
+      - use
+    receiver:
+      type: identifier
+      value: apiRouter
+    args:
+      - type: str
+        value: /items
+      - type: path
+        value:
+          - itemsRouter
+    span:
+      start_byte: 111
+      end_byte: 147
+      start_line: 7
+      start_col: 0
+      end_line: 7
+      end_col: 36
+  - from: ~
+    kind: value_ref
+    path:
+      - itemsRouter
+    receiver: ~
+    args: []
+    span:
+      start_byte: 135
+      end_byte: 146
+      start_line: 7
+      start_col: 24
+      end_line: 7
+      end_col: 35
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

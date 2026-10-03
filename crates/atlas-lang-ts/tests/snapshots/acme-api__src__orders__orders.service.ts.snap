@@ -1,0 +1,996 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-api
+  path: src/orders/orders.service.ts
+  language: typescript
+  content_hash: 686f4a57a27c446064f6956e21217335b0773161cbe8d8e69cacdaebbadc6675
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: interface
+    name: CreateOrderInput
+    module_suffix: []
+    item_path:
+      - CreateOrderInput
+    span:
+      start_byte: 359
+      end_byte: 439
+      start_line: 10
+      start_col: 0
+      end_line: 13
+      end_col: 1
+    name_span:
+      start_byte: 376
+      end_byte: 392
+      start_line: 10
+      start_col: 17
+      end_line: 10
+      end_col: 33
+    signature: interface CreateOrderInput
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 1
+    parent: 0
+    kind: field
+    name: userId
+    module_suffix: []
+    item_path:
+      - CreateOrderInput
+      - userId
+    span:
+      start_byte: 397
+      end_byte: 411
+      start_line: 11
+      start_col: 2
+      end_line: 11
+      end_col: 16
+    name_span:
+      start_byte: 397
+      end_byte: 403
+      start_line: 11
+      start_col: 2
+      end_line: 11
+      end_col: 8
+    signature: "userId: string"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 2
+    parent: 0
+    kind: field
+    name: subtotalCents
+    module_suffix: []
+    item_path:
+      - CreateOrderInput
+      - subtotalCents
+    span:
+      start_byte: 415
+      end_byte: 436
+      start_line: 12
+      start_col: 2
+      end_line: 12
+      end_col: 23
+    name_span:
+      start_byte: 415
+      end_byte: 428
+      start_line: 12
+      start_col: 2
+      end_line: 12
+      end_col: 15
+    signature: "subtotalCents: number"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 3
+    parent: ~
+    kind: class
+    name: OrdersService
+    module_suffix: []
+    item_path:
+      - OrdersService
+    span:
+      start_byte: 441
+      end_byte: 1268
+      start_line: 15
+      start_col: 0
+      end_line: 36
+      end_col: 1
+    name_span:
+      start_byte: 468
+      end_byte: 481
+      start_line: 16
+      start_col: 13
+      end_line: 16
+      end_col: 26
+    signature: class OrdersService
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes:
+      - path:
+          - Injectable
+        args: []
+        span:
+          start_byte: 441
+          end_byte: 454
+          start_line: 15
+          start_col: 0
+          end_line: 15
+          end_col: 13
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 4
+    parent: 3
+    kind: method
+    name: constructor
+    module_suffix: []
+    item_path:
+      - OrdersService
+      - constructor
+    span:
+      start_byte: 486
+      end_byte: 668
+      start_line: 17
+      start_col: 2
+      end_line: 21
+      end_col: 6
+    name_span:
+      start_byte: 486
+      end_byte: 497
+      start_line: 17
+      start_col: 2
+      end_line: 17
+      end_col: 13
+    signature: "constructor(private readonly orders: Repository<Order>, private readonly events: EventEmitter2, private readonly billing: BillingService)"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: orders
+        type_text: Repository<Order>
+        attributes:
+          - path:
+              - InjectRepository
+            args:
+              - type: path
+                value:
+                  - Order
+            span:
+              start_byte: 503
+              end_byte: 527
+              start_line: 18
+              start_col: 4
+              end_line: 18
+              end_col: 28
+        span:
+          start_byte: 503
+          end_byte: 570
+          start_line: 18
+          start_col: 4
+          end_line: 18
+          end_col: 71
+      - name: events
+        type_text: EventEmitter2
+        attributes: []
+        span:
+          start_byte: 576
+          end_byte: 614
+          start_line: 19
+          start_col: 4
+          end_line: 19
+          end_col: 42
+      - name: billing
+        type_text: BillingService
+        attributes: []
+        span:
+          start_byte: 620
+          end_byte: 660
+          start_line: 20
+          start_col: 4
+          end_line: 20
+          end_col: 44
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1414422230
+      token_count: 2
+      line_count: 1
+  - local: 5
+    parent: 3
+    kind: field
+    name: orders
+    module_suffix: []
+    item_path:
+      - OrdersService
+      - orders
+    span:
+      start_byte: 503
+      end_byte: 570
+      start_line: 18
+      start_col: 4
+      end_line: 18
+      end_col: 71
+    name_span:
+      start_byte: 545
+      end_byte: 551
+      start_line: 18
+      start_col: 46
+      end_line: 18
+      end_col: 52
+    signature: "private readonly orders: Repository<Order>"
+    doc: ~
+    visibility:
+      type: private
+    modifiers:
+      - readonly
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 6
+    parent: 3
+    kind: field
+    name: events
+    module_suffix: []
+    item_path:
+      - OrdersService
+      - events
+    span:
+      start_byte: 576
+      end_byte: 614
+      start_line: 19
+      start_col: 4
+      end_line: 19
+      end_col: 42
+    name_span:
+      start_byte: 593
+      end_byte: 599
+      start_line: 19
+      start_col: 21
+      end_line: 19
+      end_col: 27
+    signature: "private readonly events: EventEmitter2"
+    doc: ~
+    visibility:
+      type: private
+    modifiers:
+      - readonly
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 7
+    parent: 3
+    kind: field
+    name: billing
+    module_suffix: []
+    item_path:
+      - OrdersService
+      - billing
+    span:
+      start_byte: 620
+      end_byte: 660
+      start_line: 20
+      start_col: 4
+      end_line: 20
+      end_col: 44
+    name_span:
+      start_byte: 637
+      end_byte: 644
+      start_line: 20
+      start_col: 21
+      end_line: 20
+      end_col: 28
+    signature: "private readonly billing: BillingService"
+    doc: ~
+    visibility:
+      type: private
+    modifiers:
+      - readonly
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 8
+    parent: 3
+    kind: method
+    name: findOne
+    module_suffix: []
+    item_path:
+      - OrdersService
+      - findOne
+    span:
+      start_byte: 672
+      end_byte: 893
+      start_line: 23
+      start_col: 2
+      end_line: 27
+      end_col: 3
+    name_span:
+      start_byte: 678
+      end_byte: 685
+      start_line: 23
+      start_col: 8
+      end_line: 23
+      end_col: 15
+    signature: "async findOne(id: string)"
+    doc: ~
+    visibility:
+      type: public
+    modifiers:
+      - async
+    attributes: []
+    params:
+      - name: id
+        type_text: string
+        attributes: []
+        span:
+          start_byte: 686
+          end_byte: 696
+          start_line: 23
+          start_col: 16
+          end_line: 23
+          end_col: 26
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1
+        - 2488189846
+        - 602291836
+        - 428551226
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1447977468
+        - 1
+        - 1414422230
+        - 2286858418
+        - 2521745084
+        - 2130171789
+        - 2303636037
+        - 2421079370
+        - 1
+        - 2286858418
+        - 109144266
+        - 1180356660
+        - 1
+        - 2303636037
+        - 1364089373
+        - 2
+        - 1559042142
+        - 1
+        - 1414422230
+        - 2
+        - 1364089373
+        - 2286858418
+        - 2521745084
+        - 1044042820
+        - 1447977468
+        - 1506154315
+        - 1
+        - 2236525561
+        - 1
+        - 2538522703
+        - 1
+        - 2303636037
+        - 1
+        - 2202970323
+        - 1
+        - 2286858418
+        - 1414422230
+        - 2521745084
+        - 1414422230
+      token_count: 50
+      line_count: 5
+  - local: 9
+    parent: 3
+    kind: method
+    name: create
+    module_suffix: []
+    item_path:
+      - OrdersService
+      - create
+    span:
+      start_byte: 897
+      end_byte: 1266
+      start_line: 29
+      start_col: 2
+      end_line: 35
+      end_col: 3
+    name_span:
+      start_byte: 903
+      end_byte: 909
+      start_line: 29
+      start_col: 8
+      end_line: 29
+      end_col: 14
+    signature: "async create(input: CreateOrderInput): Promise<Order>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers:
+      - async
+    attributes: []
+    params:
+      - name: input
+        type_text: CreateOrderInput
+        attributes: []
+        span:
+          start_byte: 910
+          end_byte: 933
+          start_line: 29
+          start_col: 15
+          end_line: 29
+          end_col: 38
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1
+        - 2488189846
+        - 428551226
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2202970323
+        - 1
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1
+        - 2488189846
+        - 602291836
+        - 428551226
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 428551226
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1447977468
+        - 1
+        - 2538522703
+        - 1
+        - 2202970323
+        - 1
+        - 2236525561
+        - 1
+        - 1414422230
+        - 2286858418
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1
+        - 2488189846
+        - 1447977468
+        - 1
+        - 2538522703
+        - 1
+        - 2202970323
+        - 1
+        - 2236525561
+        - 1
+        - 2538522703
+        - 1
+        - 2202970323
+        - 1
+        - 2236525561
+        - 1
+        - 1414422230
+        - 2521745084
+        - 428551226
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2
+        - 2236525561
+        - 1
+        - 2286858418
+        - 2521745084
+        - 1044042820
+        - 1
+        - 2521745084
+        - 1414422230
+      token_count: 77
+      line_count: 7
+imports:
+  - type: ts_import
+    specifier: "@nestjs/common"
+    bindings:
+      - type: named
+        imported: Injectable
+        local: Injectable
+        type_only: false
+      - type: named
+        imported: NotFoundException
+        local: NotFoundException
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 63
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 63
+  - type: ts_import
+    specifier: "@nestjs/event-emitter"
+    bindings:
+      - type: named
+        imported: EventEmitter2
+        local: EventEmitter2
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 64
+      end_byte: 118
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 54
+  - type: ts_import
+    specifier: "@nestjs/typeorm"
+    bindings:
+      - type: named
+        imported: InjectRepository
+        local: InjectRepository
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 119
+      end_byte: 170
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 51
+  - type: ts_import
+    specifier: typeorm
+    bindings:
+      - type: named
+        imported: Repository
+        local: Repository
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 171
+      end_byte: 208
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 37
+  - type: ts_import
+    specifier: "../billing/billing.service"
+    bindings:
+      - type: named
+        imported: BillingService
+        local: BillingService
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 210
+      end_byte: 270
+      start_line: 6
+      start_col: 0
+      end_line: 6
+      end_col: 60
+  - type: ts_import
+    specifier: "../common/money"
+    bindings:
+      - type: named
+        imported: formatMoney
+        local: formatMoney
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 271
+      end_byte: 317
+      start_line: 7
+      start_col: 0
+      end_line: 7
+      end_col: 46
+  - type: ts_import
+    specifier: "./order.entity"
+    bindings:
+      - type: named
+        imported: Order
+        local: Order
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 318
+      end_byte: 357
+      start_line: 8
+      start_col: 0
+      end_line: 8
+      end_col: 39
+exports: []
+references:
+  - from: 3
+    kind: decorator
+    path:
+      - Injectable
+    receiver: ~
+    args: []
+    span:
+      start_byte: 441
+      end_byte: 454
+      start_line: 15
+      start_col: 0
+      end_line: 15
+      end_col: 13
+  - from: 5
+    kind: decorator
+    path:
+      - InjectRepository
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Order
+    span:
+      start_byte: 503
+      end_byte: 527
+      start_line: 18
+      start_col: 4
+      end_line: 18
+      end_col: 28
+  - from: 5
+    kind: value_ref
+    path:
+      - Order
+    receiver: ~
+    args: []
+    span:
+      start_byte: 521
+      end_byte: 526
+      start_line: 18
+      start_col: 22
+      end_line: 18
+      end_col: 27
+  - from: 5
+    kind: type_ref
+    path:
+      - Repository
+    receiver: ~
+    args: []
+    span:
+      start_byte: 553
+      end_byte: 563
+      start_line: 18
+      start_col: 54
+      end_line: 18
+      end_col: 64
+  - from: 5
+    kind: type_ref
+    path:
+      - Order
+    receiver: ~
+    args: []
+    span:
+      start_byte: 564
+      end_byte: 569
+      start_line: 18
+      start_col: 65
+      end_line: 18
+      end_col: 70
+  - from: 6
+    kind: type_ref
+    path:
+      - EventEmitter2
+    receiver: ~
+    args: []
+    span:
+      start_byte: 601
+      end_byte: 614
+      start_line: 19
+      start_col: 29
+      end_line: 19
+      end_col: 42
+  - from: 7
+    kind: type_ref
+    path:
+      - BillingService
+    receiver: ~
+    args: []
+    span:
+      start_byte: 646
+      end_byte: 660
+      start_line: 20
+      start_col: 30
+      end_line: 20
+      end_col: 44
+  - from: 8
+    kind: method_call
+    path:
+      - this
+      - orders
+      - findOneBy
+    receiver:
+      type: this
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: id
+            value:
+              type: path
+              value:
+                - id
+    span:
+      start_byte: 724
+      end_byte: 753
+      start_line: 24
+      start_col: 24
+      end_line: 24
+      end_col: 53
+  - from: 8
+    kind: instantiation
+    path:
+      - NotFoundException
+    receiver: ~
+    args:
+      - type: template
+        value:
+          - type: lit
+            value: "Order "
+          - type: expr
+            value:
+              type: path
+              value:
+                - id
+          - type: lit
+            value: " not found"
+    span:
+      start_byte: 777
+      end_byte: 823
+      start_line: 25
+      start_col: 22
+      end_line: 25
+      end_col: 68
+  - from: 8
+    kind: call
+    path:
+      - formatMoney
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - order
+          - totalCents
+    span:
+      start_byte: 857
+      end_byte: 886
+      start_line: 26
+      start_col: 32
+      end_line: 26
+      end_col: 61
+  - from: 9
+    kind: type_ref
+    path:
+      - CreateOrderInput
+    receiver: ~
+    args: []
+    span:
+      start_byte: 917
+      end_byte: 933
+      start_line: 29
+      start_col: 22
+      end_line: 29
+      end_col: 38
+  - from: 9
+    kind: type_ref
+    path:
+      - Promise
+    receiver: ~
+    args: []
+    span:
+      start_byte: 936
+      end_byte: 943
+      start_line: 29
+      start_col: 41
+      end_line: 29
+      end_col: 48
+  - from: 9
+    kind: type_ref
+    path:
+      - Order
+    receiver: ~
+    args: []
+    span:
+      start_byte: 944
+      end_byte: 949
+      start_line: 29
+      start_col: 49
+      end_line: 29
+      end_col: 54
+  - from: 9
+    kind: method_call
+    path:
+      - this
+      - billing
+      - applyTax
+    receiver:
+      type: this
+    args:
+      - type: path
+        value:
+          - input
+          - subtotalCents
+    span:
+      start_byte: 976
+      end_byte: 1018
+      start_line: 30
+      start_col: 23
+      end_line: 30
+      end_col: 65
+  - from: 9
+    kind: method_call
+    path:
+      - this
+      - orders
+      - save
+    receiver:
+      type: this
+    args:
+      - type: call
+        value:
+          callee:
+            - this
+            - orders
+            - create
+          args:
+            - type: object
+              value:
+                - key:
+                    type: ident
+                    value: userId
+                  value:
+                    type: path
+                    value:
+                      - input
+                      - userId
+                - key:
+                    type: ident
+                    value: totalCents
+                  value:
+                    type: path
+                    value:
+                      - totalCents
+    span:
+      start_byte: 1044
+      end_byte: 1118
+      start_line: 31
+      start_col: 24
+      end_line: 31
+      end_col: 98
+  - from: 9
+    kind: method_call
+    path:
+      - this
+      - orders
+      - create
+    receiver:
+      type: this
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: userId
+            value:
+              type: path
+              value:
+                - input
+                - userId
+          - key:
+              type: ident
+              value: totalCents
+            value:
+              type: path
+              value:
+                - totalCents
+    span:
+      start_byte: 1061
+      end_byte: 1117
+      start_line: 31
+      start_col: 41
+      end_line: 31
+      end_col: 97
+  - from: 9
+    kind: method_call
+    path:
+      - this
+      - events
+      - emit
+    receiver:
+      type: this
+    args:
+      - type: str
+        value: order.created
+      - type: path
+        value:
+          - payload
+    span:
+      start_byte: 1201
+      end_byte: 1243
+      start_line: 33
+      start_col: 4
+      end_line: 33
+      end_col: 46
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

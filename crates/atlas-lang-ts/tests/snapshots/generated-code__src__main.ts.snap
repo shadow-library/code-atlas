@@ -1,0 +1,159 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: generated-code
+  path: src/main.ts
+  language: typescript
+  content_hash: b5e1ef111c19d8e7ce40536e2fea80da2a179052d0f6e7b4047599ea862e7e9f
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: loadPet
+    module_suffix: []
+    item_path:
+      - loadPet
+    span:
+      start_byte: 68
+      end_byte: 193
+      start_line: 3
+      start_col: 0
+      end_line: 5
+      end_col: 1
+    name_span:
+      start_byte: 90
+      end_byte: 97
+      start_line: 3
+      start_col: 22
+      end_line: 3
+      end_col: 29
+    signature: "async function loadPet(id: number): Promise<Pet>"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers:
+      - async
+    attributes: []
+    params:
+      - name: id
+        type_text: number
+        attributes: []
+        span:
+          start_byte: 98
+          end_byte: 108
+          start_line: 3
+          start_col: 30
+          end_line: 3
+          end_col: 40
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 13
+      line_count: 3
+imports:
+  - type: ts_import
+    specifier: "./generated/api-types"
+    bindings:
+      - type: named
+        imported: createPetClient
+        local: createPetClient
+        type_only: false
+      - type: named
+        imported: Pet
+        local: Pet
+        type_only: true
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 66
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 66
+exports: []
+references:
+  - from: 0
+    kind: type_ref
+    path:
+      - Promise
+    receiver: ~
+    args: []
+    span:
+      start_byte: 111
+      end_byte: 118
+      start_line: 3
+      start_col: 43
+      end_line: 3
+      end_col: 50
+  - from: 0
+    kind: type_ref
+    path:
+      - Pet
+    receiver: ~
+    args: []
+    span:
+      start_byte: 119
+      end_byte: 122
+      start_line: 3
+      start_col: 51
+      end_line: 3
+      end_col: 54
+  - from: 0
+    kind: method_call
+    path:
+      - "(createPetClient('https://pets.example.test'))"
+      - getPet
+    receiver:
+      type: expr
+      value: "createPetClient('https://pets.example.test')"
+    args:
+      - type: path
+        value:
+          - id
+    span:
+      start_byte: 135
+      end_byte: 190
+      start_line: 4
+      start_col: 9
+      end_line: 4
+      end_col: 64
+  - from: 0
+    kind: call
+    path:
+      - createPetClient
+    receiver: ~
+    args:
+      - type: str
+        value: "https://pets.example.test"
+    span:
+      start_byte: 135
+      end_byte: 179
+      start_line: 4
+      start_col: 9
+      end_line: 4
+      end_col: 53
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

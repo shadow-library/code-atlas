@@ -1,0 +1,110 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: reexport-chain-ts
+  path: src/app/checkout.ts
+  language: typescript
+  content_hash: b030172885227f25c03148558796947d28ecee88dfb206129ef5135e6a120d1b
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: checkout
+    module_suffix: []
+    item_path:
+      - checkout
+    span:
+      start_byte: 35
+      end_byte: 125
+      start_line: 3
+      start_col: 0
+      end_line: 5
+      end_col: 1
+    name_span:
+      start_byte: 51
+      end_byte: 59
+      start_line: 3
+      start_col: 16
+      end_line: 3
+      end_col: 24
+    signature: "function checkout(prices: number[]): string"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: prices
+        type_text: "number[]"
+        attributes: []
+        span:
+          start_byte: 60
+          end_byte: 76
+          start_line: 3
+          start_col: 25
+          end_line: 3
+          end_col: 41
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 1364089373
+        - 2
+        - 1559042142
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 1414422230
+        - 1364089373
+        - 2521745084
+        - 1414422230
+      token_count: 13
+      line_count: 3
+imports:
+  - type: ts_import
+    specifier: "../index"
+    bindings:
+      - type: named
+        imported: total
+        local: total
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 33
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 33
+exports: []
+references:
+  - from: 0
+    kind: call
+    path:
+      - total
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - prices
+    span:
+      start_byte: 107
+      end_byte: 120
+      start_line: 4
+      start_col: 19
+      end_line: 4
+      end_col: 32
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

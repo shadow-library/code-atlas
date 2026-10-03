@@ -1,0 +1,252 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: globex-api
+  path: src/server.ts
+  language: typescript
+  content_hash: 3d8a5cb73040cd6e1374211065af82b9cebdd00dd3c13b77f431ca2767aed4d7
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: constant
+    name: app
+    module_suffix: []
+    item_path:
+      - app
+    span:
+      start_byte: 194
+      end_byte: 209
+      start_line: 7
+      start_col: 6
+      end_line: 7
+      end_col: 21
+    name_span:
+      start_byte: 194
+      end_byte: 197
+      start_line: 7
+      start_col: 6
+      end_line: 7
+      end_col: 9
+    signature: const app = express()
+    doc: ~
+    visibility:
+      type: module
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+imports:
+  - type: ts_import
+    specifier: express
+    bindings:
+      - type: default
+        local: express
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 30
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 30
+  - type: ts_import
+    specifier: "./config"
+    bindings:
+      - type: named
+        imported: PORT
+        local: PORT
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 32
+      end_byte: 64
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 32
+  - type: ts_import
+    specifier: "./routes/orders.routes"
+    bindings:
+      - type: named
+        imported: registerOrderRoutes
+        local: registerOrderRoutes
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 65
+      end_byte: 126
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 61
+  - type: ts_import
+    specifier: "./routes/users.routes"
+    bindings:
+      - type: named
+        imported: registerUserRoutes
+        local: registerUserRoutes
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 127
+      end_byte: 186
+      start_line: 5
+      start_col: 0
+      end_line: 5
+      end_col: 59
+exports: []
+references:
+  - from: 0
+    kind: call
+    path:
+      - express
+    receiver: ~
+    args: []
+    span:
+      start_byte: 200
+      end_byte: 209
+      start_line: 7
+      start_col: 12
+      end_line: 7
+      end_col: 21
+  - from: ~
+    kind: method_call
+    path:
+      - app
+      - use
+    receiver:
+      type: identifier
+      value: app
+    args:
+      - type: call
+        value:
+          callee:
+            - express
+            - json
+          args: []
+    span:
+      start_byte: 211
+      end_byte: 234
+      start_line: 8
+      start_col: 0
+      end_line: 8
+      end_col: 23
+  - from: ~
+    kind: method_call
+    path:
+      - express
+      - json
+    receiver:
+      type: identifier
+      value: express
+    args: []
+    span:
+      start_byte: 219
+      end_byte: 233
+      start_line: 8
+      start_col: 8
+      end_line: 8
+      end_col: 22
+  - from: ~
+    kind: call
+    path:
+      - registerUserRoutes
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - app
+    span:
+      start_byte: 237
+      end_byte: 260
+      start_line: 10
+      start_col: 0
+      end_line: 10
+      end_col: 23
+  - from: ~
+    kind: value_ref
+    path:
+      - app
+    receiver: ~
+    args: []
+    span:
+      start_byte: 256
+      end_byte: 259
+      start_line: 10
+      start_col: 19
+      end_line: 10
+      end_col: 22
+  - from: ~
+    kind: call
+    path:
+      - registerOrderRoutes
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - app
+    span:
+      start_byte: 262
+      end_byte: 286
+      start_line: 11
+      start_col: 0
+      end_line: 11
+      end_col: 24
+  - from: ~
+    kind: value_ref
+    path:
+      - app
+    receiver: ~
+    args: []
+    span:
+      start_byte: 282
+      end_byte: 285
+      start_line: 11
+      start_col: 20
+      end_line: 11
+      end_col: 23
+  - from: ~
+    kind: method_call
+    path:
+      - app
+      - listen
+    receiver:
+      type: identifier
+      value: app
+    args:
+      - type: path
+        value:
+          - PORT
+    span:
+      start_byte: 289
+      end_byte: 305
+      start_line: 13
+      start_col: 0
+      end_line: 13
+      end_col: 16
+  - from: ~
+    kind: value_ref
+    path:
+      - PORT
+    receiver: ~
+    args: []
+    span:
+      start_byte: 300
+      end_byte: 304
+      start_line: 13
+      start_col: 11
+      end_line: 13
+      end_col: 15
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

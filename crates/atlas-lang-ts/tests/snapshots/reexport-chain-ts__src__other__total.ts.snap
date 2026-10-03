@@ -1,0 +1,95 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: reexport-chain-ts
+  path: src/other/total.ts
+  language: typescript
+  content_hash: 0ff4840cc1b500494e57d3b9f8a3c73282917c044f08c1d6a9b8b437cd1c6140
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: total
+    module_suffix: []
+    item_path:
+      - total
+    span:
+      start_byte: 0
+      end_byte: 81
+      start_line: 1
+      start_col: 0
+      end_line: 3
+      end_col: 1
+    name_span:
+      start_byte: 16
+      end_byte: 21
+      start_line: 1
+      start_col: 16
+      end_line: 1
+      end_col: 21
+    signature: "function total(prices: number[]): number"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: prices
+        type_text: "number[]"
+        attributes: []
+        span:
+          start_byte: 22
+          end_byte: 38
+          start_line: 1
+          start_col: 22
+          end_line: 1
+          end_col: 38
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1506154315
+        - 1
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 11
+      line_count: 3
+imports: []
+exports: []
+references:
+  - from: 0
+    kind: method_call
+    path:
+      - Math
+      - max
+    receiver:
+      type: identifier
+      value: Math
+    args:
+      - type: other
+        value: "...prices"
+    span:
+      start_byte: 59
+      end_byte: 78
+      start_line: 2
+      start_col: 9
+      end_line: 2
+      end_col: 28
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

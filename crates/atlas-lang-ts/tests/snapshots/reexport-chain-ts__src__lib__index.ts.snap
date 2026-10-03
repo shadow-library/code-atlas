@@ -1,0 +1,34 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: reexport-chain-ts
+  path: src/lib/index.ts
+  language: typescript
+  content_hash: 7db0bd168417b2f1787c5fe6f06739eee3ad883886cf4bb60ce7690fb81459f3
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols: []
+imports: []
+exports:
+  - type: re_export
+    specifier: "../core"
+    bindings:
+      - imported: computeTotal
+        exported: total
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 48
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 48
+references: []
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

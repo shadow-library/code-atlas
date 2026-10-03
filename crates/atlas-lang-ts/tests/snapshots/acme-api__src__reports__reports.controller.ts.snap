@@ -1,0 +1,359 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-api
+  path: src/reports/reports.controller.ts
+  language: typescript
+  content_hash: 284171795ac490e91d2e1e42b5635177eb1f19d49ee7914022d3c0afa11a8306
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: class
+    name: ReportsController
+    module_suffix: []
+    item_path:
+      - ReportsController
+    span:
+      start_byte: 168
+      end_byte: 398
+      start_line: 6
+      start_col: 0
+      end_line: 15
+      end_col: 1
+    name_span:
+      start_byte: 195
+      end_byte: 212
+      start_line: 7
+      start_col: 13
+      end_line: 7
+      end_col: 30
+    signature: class ReportsController
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes:
+      - path:
+          - Controller
+        args: []
+        span:
+          start_byte: 168
+          end_byte: 181
+          start_line: 6
+          start_col: 0
+          end_line: 6
+          end_col: 13
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 1
+    parent: 0
+    kind: method
+    name: constructor
+    module_suffix: []
+    item_path:
+      - ReportsController
+      - constructor
+    span:
+      start_byte: 217
+      end_byte: 280
+      start_line: 8
+      start_col: 2
+      end_line: 8
+      end_col: 65
+    name_span:
+      start_byte: 217
+      end_byte: 228
+      start_line: 8
+      start_col: 2
+      end_line: 8
+      end_col: 13
+    signature: "constructor(private readonly reportsService: ReportsService)"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: reportsService
+        type_text: ReportsService
+        attributes: []
+        span:
+          start_byte: 229
+          end_byte: 276
+          start_line: 8
+          start_col: 14
+          end_line: 8
+          end_col: 61
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1414422230
+      token_count: 2
+      line_count: 1
+  - local: 2
+    parent: 0
+    kind: field
+    name: reportsService
+    module_suffix: []
+    item_path:
+      - ReportsController
+      - reportsService
+    span:
+      start_byte: 229
+      end_byte: 276
+      start_line: 8
+      start_col: 14
+      end_line: 8
+      end_col: 61
+    name_span:
+      start_byte: 246
+      end_byte: 260
+      start_line: 8
+      start_col: 31
+      end_line: 8
+      end_col: 45
+    signature: "private readonly reportsService: ReportsService"
+    doc: ~
+    visibility:
+      type: private
+    modifiers:
+      - readonly
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 3
+    parent: 0
+    kind: method
+    name: export
+    module_suffix: []
+    item_path:
+      - ReportsController
+      - export
+    span:
+      start_byte: 284
+      end_byte: 396
+      start_line: 10
+      start_col: 2
+      end_line: 14
+      end_col: 3
+    name_span:
+      start_byte: 338
+      end_byte: 344
+      start_line: 12
+      start_col: 2
+      end_line: 12
+      end_col: 8
+    signature: export()
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - Get
+        args:
+          - type: str
+            value: v1/reports/export
+        span:
+          start_byte: 284
+          end_byte: 309
+          start_line: 10
+          start_col: 2
+          end_line: 10
+          end_col: 27
+      - path:
+          - UseGuards
+        args:
+          - type: path
+            value:
+              - ApiKeyGuard
+        span:
+          start_byte: 312
+          end_byte: 335
+          start_line: 11
+          start_col: 2
+          end_line: 11
+          end_col: 25
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 428551226
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 11
+      line_count: 3
+imports:
+  - type: ts_import
+    specifier: "@nestjs/common"
+    bindings:
+      - type: named
+        imported: Controller
+        local: Controller
+        type_only: false
+      - type: named
+        imported: Get
+        local: Get
+        type_only: false
+      - type: named
+        imported: UseGuards
+        local: UseGuards
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 60
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 60
+  - type: ts_import
+    specifier: "../auth/api-key.guard"
+    bindings:
+      - type: named
+        imported: ApiKeyGuard
+        local: ApiKeyGuard
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 62
+      end_byte: 114
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 52
+  - type: ts_import
+    specifier: "./reports.service"
+    bindings:
+      - type: named
+        imported: ReportsService
+        local: ReportsService
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 115
+      end_byte: 166
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 51
+exports: []
+references:
+  - from: 0
+    kind: decorator
+    path:
+      - Controller
+    receiver: ~
+    args: []
+    span:
+      start_byte: 168
+      end_byte: 181
+      start_line: 6
+      start_col: 0
+      end_line: 6
+      end_col: 13
+  - from: 2
+    kind: type_ref
+    path:
+      - ReportsService
+    receiver: ~
+    args: []
+    span:
+      start_byte: 262
+      end_byte: 276
+      start_line: 8
+      start_col: 47
+      end_line: 8
+      end_col: 61
+  - from: 3
+    kind: decorator
+    path:
+      - Get
+    receiver: ~
+    args:
+      - type: str
+        value: v1/reports/export
+    span:
+      start_byte: 284
+      end_byte: 309
+      start_line: 10
+      start_col: 2
+      end_line: 10
+      end_col: 27
+  - from: 3
+    kind: decorator
+    path:
+      - UseGuards
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - ApiKeyGuard
+    span:
+      start_byte: 312
+      end_byte: 335
+      start_line: 11
+      start_col: 2
+      end_line: 11
+      end_col: 25
+  - from: 3
+    kind: value_ref
+    path:
+      - ApiKeyGuard
+    receiver: ~
+    args: []
+    span:
+      start_byte: 323
+      end_byte: 334
+      start_line: 11
+      start_col: 13
+      end_line: 11
+      end_col: 24
+  - from: 3
+    kind: method_call
+    path:
+      - this
+      - reportsService
+      - exportCsv
+    receiver:
+      type: this
+    args: []
+    span:
+      start_byte: 360
+      end_byte: 391
+      start_line: 13
+      start_col: 11
+      end_line: 13
+      end_col: 42
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

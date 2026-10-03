@@ -1,0 +1,102 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: dynamic-ts
+  path: src/handlers.ts
+  language: typescript
+  content_hash: 44da3158720e9f1618dd59dae2639d596a54d2ee210485a1b6e939d2d3a0aa79
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: start
+    module_suffix: []
+    item_path:
+      - start
+    span:
+      start_byte: 0
+      end_byte: 53
+      start_line: 1
+      start_col: 0
+      end_line: 3
+      end_col: 1
+    name_span:
+      start_byte: 16
+      end_byte: 21
+      start_line: 1
+      start_col: 16
+      end_line: 1
+      end_col: 21
+    signature: "function start(): string"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 2
+        - 2521745084
+        - 1414422230
+      token_count: 5
+      line_count: 3
+  - local: 1
+    parent: ~
+    kind: function
+    name: stop
+    module_suffix: []
+    item_path:
+      - stop
+    span:
+      start_byte: 55
+      end_byte: 106
+      start_line: 5
+      start_col: 0
+      end_line: 7
+      end_col: 1
+    name_span:
+      start_byte: 71
+      end_byte: 75
+      start_line: 5
+      start_col: 16
+      end_line: 5
+      end_col: 20
+    signature: "function stop(): string"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 2
+        - 2521745084
+        - 1414422230
+      token_count: 5
+      line_count: 3
+imports: []
+exports: []
+references: []
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

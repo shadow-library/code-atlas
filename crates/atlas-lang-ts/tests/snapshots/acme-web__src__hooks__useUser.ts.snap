@@ -1,0 +1,327 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-web
+  path: src/hooks/useUser.ts
+  language: typescript
+  content_hash: fe9197f7d07931b9397a1c40e99b9e9c881f2f972a6d670a7af1d7337a722556
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: useUser
+    module_suffix: []
+    item_path:
+      - useUser
+    span:
+      start_byte: 124
+      end_byte: 426
+      start_line: 6
+      start_col: 0
+      end_line: 15
+      end_col: 1
+    name_span:
+      start_byte: 140
+      end_byte: 147
+      start_line: 6
+      start_col: 16
+      end_line: 6
+      end_col: 23
+    signature: "function useUser(id: string): { user: User | null; error: Error | null }"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: id
+        type_text: string
+        attributes: []
+        span:
+          start_byte: 148
+          end_byte: 158
+          start_line: 6
+          start_col: 24
+          end_line: 6
+          end_col: 34
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1984861276
+        - 1
+        - 2236525561
+        - 1
+        - 1951306038
+        - 2488189846
+        - 1
+        - 2504967465
+        - 1
+        - 1431199849
+        - 3901604059
+        - 2471412227
+        - 2303636037
+        - 3901604059
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1984861276
+        - 1
+        - 2236525561
+        - 1
+        - 1951306038
+        - 2488189846
+        - 1
+        - 2504967465
+        - 1
+        - 1431199849
+        - 3901604059
+        - 2471412227
+        - 2303636037
+        - 3901604059
+        - 2286858418
+        - 2521745084
+        - 1
+        - 2303636037
+        - 2303636037
+        - 2286858418
+        - 536740216
+        - 1447977468
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2236525561
+        - 1
+        - 2286858418
+        - 2521745084
+        - 1414422230
+        - 2236525561
+        - 1984861276
+        - 1
+        - 1951306038
+        - 2286858418
+        - 2521745084
+        - 1044042820
+        - 1447977468
+        - 1
+        - 2236525561
+        - 1
+        - 1414422230
+        - 2521745084
+        - 1414422230
+      token_count: 70
+      line_count: 10
+imports:
+  - type: ts_import
+    specifier: "@acme/sdk"
+    bindings:
+      - type: named
+        imported: User
+        local: User
+        type_only: true
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 38
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 38
+  - type: ts_import
+    specifier: react
+    bindings:
+      - type: named
+        imported: useEffect
+        local: useEffect
+        type_only: false
+      - type: named
+        imported: useState
+        local: useState
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 39
+      end_byte: 83
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 44
+  - type: ts_import
+    specifier: "../api/client"
+    bindings:
+      - type: named
+        imported: acme
+        local: acme
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 85
+      end_byte: 122
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 37
+exports: []
+references:
+  - from: 0
+    kind: type_ref
+    path:
+      - User
+    receiver: ~
+    args: []
+    span:
+      start_byte: 169
+      end_byte: 173
+      start_line: 6
+      start_col: 45
+      end_line: 6
+      end_col: 49
+  - from: 0
+    kind: type_ref
+    path:
+      - Error
+    receiver: ~
+    args: []
+    span:
+      start_byte: 189
+      end_byte: 194
+      start_line: 6
+      start_col: 65
+      end_line: 6
+      end_col: 70
+  - from: 0
+    kind: call
+    path:
+      - useState
+    receiver: ~
+    args:
+      - type: "null"
+    span:
+      start_byte: 232
+      end_byte: 259
+      start_line: 7
+      start_col: 26
+      end_line: 7
+      end_col: 53
+  - from: 0
+    kind: type_ref
+    path:
+      - User
+    receiver: ~
+    args: []
+    span:
+      start_byte: 241
+      end_byte: 245
+      start_line: 7
+      start_col: 35
+      end_line: 7
+      end_col: 39
+  - from: 0
+    kind: call
+    path:
+      - useState
+    receiver: ~
+    args:
+      - type: "null"
+    span:
+      start_byte: 289
+      end_byte: 317
+      start_line: 8
+      start_col: 28
+      end_line: 8
+      end_col: 56
+  - from: 0
+    kind: type_ref
+    path:
+      - Error
+    receiver: ~
+    args: []
+    span:
+      start_byte: 298
+      end_byte: 303
+      start_line: 8
+      start_col: 37
+      end_line: 8
+      end_col: 42
+  - from: 0
+    kind: call
+    path:
+      - useEffect
+    receiver: ~
+    args:
+      - type: closure
+        value:
+          params: []
+      - type: array
+        value:
+          - type: path
+            value:
+              - id
+    span:
+      start_byte: 322
+      end_byte: 396
+      start_line: 10
+      start_col: 2
+      end_line: 12
+      end_col: 10
+  - from: 0
+    kind: method_call
+    path:
+      - (acme.getUser(id))
+      - then
+    receiver:
+      type: expr
+      value: acme.getUser(id)
+    args:
+      - type: path
+        value:
+          - setUser
+      - type: path
+        value:
+          - setError
+    span:
+      start_byte: 344
+      end_byte: 384
+      start_line: 11
+      start_col: 4
+      end_line: 11
+      end_col: 44
+  - from: 0
+    kind: method_call
+    path:
+      - acme
+      - getUser
+    receiver:
+      type: identifier
+      value: acme
+    args:
+      - type: path
+        value:
+          - id
+    span:
+      start_byte: 344
+      end_byte: 360
+      start_line: 11
+      start_col: 4
+      end_line: 11
+      end_col: 20
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

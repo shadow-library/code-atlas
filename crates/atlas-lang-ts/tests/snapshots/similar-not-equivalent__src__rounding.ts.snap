@@ -1,0 +1,227 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: similar-not-equivalent
+  path: src/rounding.ts
+  language: typescript
+  content_hash: 7bd7461f8a69df66b88c4791daf3ef432136d7a2c01497bdc193ec52cde55684
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: roundHalfUp
+    module_suffix: []
+    item_path:
+      - roundHalfUp
+    span:
+      start_byte: 0
+      end_byte: 139
+      start_line: 1
+      start_col: 0
+      end_line: 4
+      end_col: 1
+    name_span:
+      start_byte: 16
+      end_byte: 27
+      start_line: 1
+      start_col: 16
+      end_line: 1
+      end_col: 27
+    signature: "function roundHalfUp(value: number): number"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: value
+        type_text: number
+        attributes: []
+        span:
+          start_byte: 28
+          end_byte: 41
+          start_line: 1
+          start_col: 28
+          end_line: 1
+          end_col: 41
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 2521745084
+        - 1044042820
+        - 1
+        - 2219747942
+        - 1
+        - 2504967465
+        - 3
+        - 2454634608
+        - 1
+        - 2538522703
+        - 1
+        - 2253303180
+        - 3
+        - 2521745084
+        - 1414422230
+      token_count: 25
+      line_count: 4
+  - local: 1
+    parent: ~
+    kind: function
+    name: roundHalfEven
+    module_suffix: []
+    item_path:
+      - roundHalfEven
+    span:
+      start_byte: 141
+      end_byte: 376
+      start_line: 6
+      start_col: 0
+      end_line: 12
+      end_col: 1
+    name_span:
+      start_byte: 157
+      end_byte: 170
+      start_line: 6
+      start_col: 16
+      end_line: 6
+      end_col: 29
+    signature: "function roundHalfEven(value: number): number"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: value
+        type_text: number
+        attributes: []
+        span:
+          start_byte: 171
+          end_byte: 184
+          start_line: 6
+          start_col: 30
+          end_line: 6
+          end_col: 43
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2219747942
+        - 1
+        - 2521745084
+        - 2130171789
+        - 2303636037
+        - 1
+        - 2504967465
+        - 3
+        - 2286858418
+        - 1044042820
+        - 1
+        - 2521745084
+        - 2130171789
+        - 2303636037
+        - 1
+        - 2471412227
+        - 3
+        - 2286858418
+        - 1044042820
+        - 1
+        - 2253303180
+        - 3
+        - 2521745084
+        - 1044042820
+        - 1
+        - 2353968894
+        - 3
+        - 568558820
+        - 3
+        - 2454634608
+        - 1
+        - 2538522703
+        - 1
+        - 2253303180
+        - 3
+        - 2521745084
+        - 1414422230
+      token_count: 52
+      line_count: 7
+imports: []
+exports: []
+references:
+  - from: 0
+    kind: method_call
+    path:
+      - Math
+      - floor
+    receiver:
+      type: identifier
+      value: Math
+    args:
+      - type: path
+        value:
+          - value
+    span:
+      start_byte: 69
+      end_byte: 86
+      start_line: 2
+      start_col: 16
+      end_line: 2
+      end_col: 33
+  - from: 1
+    kind: method_call
+    path:
+      - Math
+      - floor
+    receiver:
+      type: identifier
+      value: Math
+    args:
+      - type: path
+        value:
+          - value
+    span:
+      start_byte: 212
+      end_byte: 229
+      start_line: 7
+      start_col: 16
+      end_line: 7
+      end_col: 33
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

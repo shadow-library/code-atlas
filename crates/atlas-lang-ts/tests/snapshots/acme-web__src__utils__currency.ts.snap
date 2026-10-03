@@ -1,0 +1,330 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-web
+  path: src/utils/currency.ts
+  language: typescript
+  content_hash: 11442871b02451258880df1a09016fd90e2136c2c3e22bb679bcbd30a4bddbfc
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: parseMoney
+    module_suffix: []
+    item_path:
+      - parseMoney
+    span:
+      start_byte: 0
+      end_byte: 399
+      start_line: 1
+      start_col: 0
+      end_line: 9
+      end_col: 1
+    name_span:
+      start_byte: 16
+      end_byte: 26
+      start_line: 1
+      start_col: 16
+      end_line: 1
+      end_col: 26
+    signature: "function parseMoney(input: string): number"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: input
+        type_text: string
+        attributes: []
+        span:
+          start_byte: 27
+          end_byte: 40
+          start_line: 1
+          start_col: 27
+          end_line: 1
+          end_col: 40
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 1984861276
+        - 3
+        - 1951306038
+        - 568558820
+        - 2
+        - 2454634608
+        - 2219747942
+        - 3
+        - 2538522703
+        - 3
+        - 2521745084
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2
+        - 2236525561
+        - 2
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 568558820
+        - 2219747942
+        - 3
+        - 2454634608
+        - 1
+        - 2538522703
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 3
+        - 2236525561
+        - 1
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 568558820
+        - 2219747942
+        - 3
+        - 2454634608
+        - 2
+        - 2538522703
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2253303180
+        - 3
+        - 2286858418
+        - 2521745084
+        - 1044042820
+        - 1
+        - 2270080799
+        - 2303636037
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 2270080799
+        - 3
+        - 2253303180
+        - 1
+        - 2303636037
+        - 1364089373
+        - 1559042142
+        - 1
+        - 1414422230
+        - 2
+        - 1364089373
+        - 2202970323
+        - 1
+        - 2303636037
+        - 3
+        - 2236525561
+        - 3
+        - 2286858418
+        - 2286858418
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 115
+      line_count: 9
+imports: []
+exports: []
+references:
+  - from: 0
+    kind: method_call
+    path:
+      - input
+      - trim
+    receiver:
+      type: expr
+      value: input
+    args: []
+    span:
+      start_byte: 68
+      end_byte: 80
+      start_line: 2
+      start_col: 16
+      end_line: 2
+      end_col: 28
+  - from: 0
+    kind: method_call
+    path:
+      - value
+      - replace
+    receiver:
+      type: expr
+      value: value
+    args:
+      - type: other
+        value: /^-/
+      - type: str
+        value: ""
+    span:
+      start_byte: 141
+      end_byte: 164
+      start_line: 4
+      start_col: 17
+      end_line: 4
+      end_col: 40
+  - from: 0
+    kind: method_call
+    path:
+      - digits
+      - indexOf
+    receiver:
+      type: expr
+      value: digits
+    args:
+      - type: str
+        value: "."
+    span:
+      start_byte: 180
+      end_byte: 199
+      start_line: 5
+      start_col: 14
+      end_line: 5
+      end_col: 33
+  - from: 0
+    kind: method_call
+    path:
+      - digits
+      - slice
+    receiver:
+      type: expr
+      value: digits
+    args:
+      - type: number
+        value: "0"
+      - type: path
+        value:
+          - dot
+    span:
+      start_byte: 239
+      end_byte: 259
+      start_line: 6
+      start_col: 38
+      end_line: 6
+      end_col: 58
+  - from: 0
+    kind: method_call
+    path:
+      - digits
+      - slice
+    receiver:
+      type: expr
+      value: digits
+    args:
+      - type: concat
+        value:
+          - type: path
+            value:
+              - dot
+          - type: number
+            value: "1"
+    span:
+      start_byte: 298
+      end_byte: 319
+      start_line: 7
+      start_col: 37
+      end_line: 7
+      end_col: 58
+  - from: 0
+    kind: call
+    path:
+      - Number
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - whole
+    span:
+      start_byte: 338
+      end_byte: 351
+      start_line: 8
+      start_col: 17
+      end_line: 8
+      end_col: 30
+  - from: 0
+    kind: call
+    path:
+      - Number
+    receiver: ~
+    args:
+      - type: other
+        value: "`${fraction}00`.slice(0, 2)"
+    span:
+      start_byte: 360
+      end_byte: 395
+      start_line: 8
+      start_col: 39
+      end_line: 8
+      end_col: 74
+  - from: 0
+    kind: method_call
+    path:
+      - "(`${fraction}00`)"
+      - slice
+    receiver:
+      type: expr
+      value: "`${fraction}00`"
+    args:
+      - type: number
+        value: "0"
+      - type: number
+        value: "2"
+    span:
+      start_byte: 367
+      end_byte: 394
+      start_line: 8
+      start_col: 46
+      end_line: 8
+      end_col: 73
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

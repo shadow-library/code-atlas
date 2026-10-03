@@ -1,0 +1,319 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-api
+  path: src/orders/orders.module.ts
+  language: typescript
+  content_hash: a236f9e27448b4df62ed99602fd7532b3bb1c4db1f86018d6332ebf1010e145d
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: class
+    name: OrdersModule
+    module_suffix: []
+    item_path:
+      - OrdersModule
+    span:
+      start_byte: 297
+      end_byte: 466
+      start_line: 9
+      start_col: 0
+      end_line: 14
+      end_col: 28
+    name_span:
+      start_byte: 451
+      end_byte: 463
+      start_line: 14
+      start_col: 13
+      end_line: 14
+      end_col: 25
+    signature: class OrdersModule
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes:
+      - path:
+          - Module
+        args:
+          - type: object
+            value:
+              - key:
+                  type: ident
+                  value: imports
+                value:
+                  type: array
+                  value:
+                    - type: call
+                      value:
+                        callee:
+                          - TypeOrmModule
+                          - forFeature
+                        args:
+                          - type: array
+                            value:
+                              - type: path
+                                value:
+                                  - Order
+                    - type: path
+                      value:
+                        - BillingModule
+              - key:
+                  type: ident
+                  value: controllers
+                value:
+                  type: array
+                  value:
+                    - type: path
+                      value:
+                        - OrdersController
+              - key:
+                  type: ident
+                  value: providers
+                value:
+                  type: array
+                  value:
+                    - type: path
+                      value:
+                        - OrdersService
+        span:
+          start_byte: 297
+          end_byte: 437
+          start_line: 9
+          start_col: 0
+          end_line: 13
+          end_col: 2
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+imports:
+  - type: ts_import
+    specifier: "@nestjs/common"
+    bindings:
+      - type: named
+        imported: Module
+        local: Module
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 40
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 40
+  - type: ts_import
+    specifier: "@nestjs/typeorm"
+    bindings:
+      - type: named
+        imported: TypeOrmModule
+        local: TypeOrmModule
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 41
+      end_byte: 89
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 48
+  - type: ts_import
+    specifier: "../billing/billing.module"
+    bindings:
+      - type: named
+        imported: BillingModule
+        local: BillingModule
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 91
+      end_byte: 149
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 58
+  - type: ts_import
+    specifier: "./order.entity"
+    bindings:
+      - type: named
+        imported: Order
+        local: Order
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 150
+      end_byte: 189
+      start_line: 5
+      start_col: 0
+      end_line: 5
+      end_col: 39
+  - type: ts_import
+    specifier: "./orders.controller"
+    bindings:
+      - type: named
+        imported: OrdersController
+        local: OrdersController
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 190
+      end_byte: 245
+      start_line: 6
+      start_col: 0
+      end_line: 6
+      end_col: 55
+  - type: ts_import
+    specifier: "./orders.service"
+    bindings:
+      - type: named
+        imported: OrdersService
+        local: OrdersService
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 246
+      end_byte: 295
+      start_line: 7
+      start_col: 0
+      end_line: 7
+      end_col: 49
+exports: []
+references:
+  - from: 0
+    kind: decorator
+    path:
+      - Module
+    receiver: ~
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: imports
+            value:
+              type: array
+              value:
+                - type: call
+                  value:
+                    callee:
+                      - TypeOrmModule
+                      - forFeature
+                    args:
+                      - type: array
+                        value:
+                          - type: path
+                            value:
+                              - Order
+                - type: path
+                  value:
+                    - BillingModule
+          - key:
+              type: ident
+              value: controllers
+            value:
+              type: array
+              value:
+                - type: path
+                  value:
+                    - OrdersController
+          - key:
+              type: ident
+              value: providers
+            value:
+              type: array
+              value:
+                - type: path
+                  value:
+                    - OrdersService
+    span:
+      start_byte: 297
+      end_byte: 437
+      start_line: 9
+      start_col: 0
+      end_line: 13
+      end_col: 2
+  - from: 0
+    kind: value_ref
+    path:
+      - BillingModule
+    receiver: ~
+    args: []
+    span:
+      start_byte: 354
+      end_byte: 367
+      start_line: 10
+      start_col: 47
+      end_line: 10
+      end_col: 60
+  - from: 0
+    kind: value_ref
+    path:
+      - OrdersController
+    receiver: ~
+    args: []
+    span:
+      start_byte: 386
+      end_byte: 402
+      start_line: 11
+      start_col: 16
+      end_line: 11
+      end_col: 32
+  - from: 0
+    kind: value_ref
+    path:
+      - OrdersService
+    receiver: ~
+    args: []
+    span:
+      start_byte: 419
+      end_byte: 432
+      start_line: 12
+      start_col: 14
+      end_line: 12
+      end_col: 27
+  - from: 0
+    kind: method_call
+    path:
+      - TypeOrmModule
+      - forFeature
+    receiver:
+      type: identifier
+      value: TypeOrmModule
+    args:
+      - type: array
+        value:
+          - type: path
+            value:
+              - Order
+    span:
+      start_byte: 319
+      end_byte: 352
+      start_line: 10
+      start_col: 12
+      end_line: 10
+      end_col: 45
+  - from: 0
+    kind: value_ref
+    path:
+      - Order
+    receiver: ~
+    args: []
+    span:
+      start_byte: 345
+      end_byte: 350
+      start_line: 10
+      start_col: 38
+      end_line: 10
+      end_col: 43
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

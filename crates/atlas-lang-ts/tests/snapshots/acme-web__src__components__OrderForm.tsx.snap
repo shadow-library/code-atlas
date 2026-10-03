@@ -1,0 +1,336 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-web
+  path: src/components/OrderForm.tsx
+  language: tsx
+  content_hash: dcf1bdb60c50d409ed75e41e369ee76f5332acc50f7dd365174214beab782652
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: OrderForm
+    module_suffix: []
+    item_path:
+      - OrderForm
+    span:
+      start_byte: 187
+      end_byte: 701
+      start_line: 7
+      start_col: 0
+      end_line: 24
+      end_col: 1
+    name_span:
+      start_byte: 203
+      end_byte: 212
+      start_line: 7
+      start_col: 16
+      end_line: 7
+      end_col: 25
+    signature: function OrderForm()
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1447977468
+        - 1
+        - 2236525561
+        - 1
+        - 1414422230
+        - 2488189846
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1984861276
+        - 1
+        - 2236525561
+        - 1
+        - 1951306038
+        - 2488189846
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1
+        - 2488189846
+        - 2303636037
+        - 1
+        - 2538522703
+        - 1
+        - 2286858418
+        - 536740216
+        - 1447977468
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2521745084
+        - 2130171789
+        - 2303636037
+        - 2421079370
+        - 1
+        - 2286858418
+        - 1044042820
+        - 2521745084
+        - 1
+        - 2303636037
+        - 1447977468
+        - 1
+        - 2538522703
+        - 1
+        - 2202970323
+        - 1
+        - 2236525561
+        - 1
+        - 2538522703
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 1414422230
+        - 2286858418
+        - 2521745084
+        - 1414422230
+        - 2521745084
+        - 1044042820
+        - 2303636037
+        - 2504967465
+        - 1
+        - 1
+        - 2488189846
+        - 1447977468
+        - 1
+        - 1414422230
+        - 2471412227
+        - 2504967465
+        - 1
+        - 1
+        - 2488189846
+        - 1447977468
+        - 1
+        - 1414422230
+        - 1
+        - 2488189846
+        - 1447977468
+        - 2303636037
+        - 1
+        - 2286858418
+        - 536740216
+        - 1
+        - 2303636037
+        - 1
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2286858418
+        - 1414422230
+        - 2681318234
+        - 2504967465
+        - 1
+        - 1
+        - 2488189846
+        - 1447977468
+        - 1
+        - 1600209167
+        - 2421079370
+        - 1
+        - 1414422230
+        - 2471412227
+        - 2
+        - 285223026
+        - 1
+        - 2471412227
+        - 285223026
+        - 1
+        - 2471412227
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 129
+      line_count: 18
+imports:
+  - type: ts_import
+    specifier: "@acme/sdk"
+    bindings:
+      - type: named
+        imported: toCents
+        local: toCents
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 36
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 36
+  - type: ts_import
+    specifier: react
+    bindings:
+      - type: named
+        imported: FormEvent
+        local: FormEvent
+        type_only: true
+      - type: named
+        imported: useState
+        local: useState
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 37
+      end_byte: 86
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 49
+  - type: ts_import
+    specifier: "../hooks/useCreateOrder"
+    bindings:
+      - type: named
+        imported: useCreateOrder
+        local: useCreateOrder
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 88
+      end_byte: 145
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 57
+  - type: ts_import
+    specifier: "../hooks/useMe"
+    bindings:
+      - type: named
+        imported: useMe
+        local: useMe
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 146
+      end_byte: 185
+      start_line: 5
+      start_col: 0
+      end_line: 5
+      end_col: 39
+exports: []
+references:
+  - from: 0
+    kind: call
+    path:
+      - useMe
+    receiver: ~
+    args: []
+    span:
+      start_byte: 230
+      end_byte: 237
+      start_line: 8
+      start_col: 13
+      end_line: 8
+      end_col: 20
+  - from: 0
+    kind: call
+    path:
+      - useCreateOrder
+    receiver: ~
+    args: []
+    span:
+      start_byte: 269
+      end_byte: 285
+      start_line: 9
+      start_col: 30
+      end_line: 9
+      end_col: 46
+  - from: 0
+    kind: call
+    path:
+      - useState
+    receiver: ~
+    args:
+      - type: str
+        value: "0.00"
+    span:
+      start_byte: 317
+      end_byte: 333
+      start_line: 10
+      start_col: 30
+      end_line: 10
+      end_col: 46
+  - from: 0
+    kind: type_ref
+    path:
+      - FormEvent
+    receiver: ~
+    args: []
+    span:
+      start_byte: 363
+      end_byte: 372
+      start_line: 12
+      start_col: 27
+      end_line: 12
+      end_col: 36
+  - from: 0
+    kind: method_call
+    path:
+      - event
+      - preventDefault
+    receiver:
+      type: type_hint
+      value:
+        - FormEvent
+    args: []
+    span:
+      start_byte: 383
+      end_byte: 405
+      start_line: 13
+      start_col: 4
+      end_line: 13
+      end_col: 26
+  - from: 0
+    kind: call
+    path:
+      - toCents
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - amount
+    span:
+      start_byte: 471
+      end_byte: 486
+      start_line: 15
+      start_col: 43
+      end_line: 15
+      end_col: 58
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

@@ -1,0 +1,292 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-sdk
+  path: src/money.ts
+  language: typescript
+  content_hash: 82536ea4a5db04e50b867ca7426dbf90c79f547699f205dd96352fb61b2eb1fa
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: toCents
+    module_suffix: []
+    item_path:
+      - toCents
+    span:
+      start_byte: 0
+      end_byte: 332
+      start_line: 1
+      start_col: 0
+      end_line: 7
+      end_col: 1
+    name_span:
+      start_byte: 16
+      end_byte: 23
+      start_line: 1
+      start_col: 16
+      end_line: 1
+      end_col: 23
+    signature: "function toCents(amount: string): number"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: amount
+        type_text: string
+        attributes: []
+        span:
+          start_byte: 24
+          end_byte: 38
+          start_line: 1
+          start_col: 24
+          end_line: 1
+          end_col: 38
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1984861276
+        - 1
+        - 2236525561
+        - 1
+        - 2488189846
+        - 2
+        - 1951306038
+        - 2488189846
+        - 2303636037
+        - 1
+        - 2454634608
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 3
+        - 2286858418
+        - 2538522703
+        - 1
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 2270080799
+        - 3
+        - 2253303180
+        - 1
+        - 2303636037
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 3
+        - 2236525561
+        - 2
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 3
+        - 2236525561
+        - 3
+        - 2286858418
+        - 2286858418
+        - 2521745084
+        - 1044042820
+        - 1
+        - 2454634608
+        - 2219747942
+        - 1
+        - 2538522703
+        - 1
+        - 2521745084
+        - 1414422230
+      token_count: 85
+      line_count: 7
+imports: []
+exports: []
+references:
+  - from: 0
+    kind: method_call
+    path:
+      - amount
+      - trim
+    receiver:
+      type: expr
+      value: amount
+    args: []
+    span:
+      start_byte: 68
+      end_byte: 81
+      start_line: 2
+      start_col: 18
+      end_line: 2
+      end_col: 31
+  - from: 0
+    kind: method_call
+    path:
+      - trimmed
+      - startsWith
+    receiver:
+      type: expr
+      value: trimmed
+    args:
+      - type: str
+        value: "-"
+    span:
+      start_byte: 102
+      end_byte: 125
+      start_line: 3
+      start_col: 19
+      end_line: 3
+      end_col: 42
+  - from: 0
+    kind: method_call
+    path:
+      - "(negative ? trimmed.slice(1) : trimmed)"
+      - split
+    receiver:
+      type: expr
+      value: "negative ? trimmed.slice(1) : trimmed"
+    args:
+      - type: str
+        value: "."
+    span:
+      start_byte: 160
+      end_byte: 210
+      start_line: 4
+      start_col: 33
+      end_line: 4
+      end_col: 83
+  - from: 0
+    kind: method_call
+    path:
+      - trimmed
+      - slice
+    receiver:
+      type: expr
+      value: trimmed
+    args:
+      - type: number
+        value: "1"
+    span:
+      start_byte: 172
+      end_byte: 188
+      start_line: 4
+      start_col: 45
+      end_line: 4
+      end_col: 61
+  - from: 0
+    kind: call
+    path:
+      - Number
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - whole
+    span:
+      start_byte: 228
+      end_byte: 241
+      start_line: 5
+      start_col: 16
+      end_line: 5
+      end_col: 29
+  - from: 0
+    kind: call
+    path:
+      - Number
+    receiver: ~
+    args:
+      - type: other
+        value: "fraction.padEnd(2, '0').slice(0, 2)"
+    span:
+      start_byte: 250
+      end_byte: 293
+      start_line: 5
+      start_col: 38
+      end_line: 5
+      end_col: 81
+  - from: 0
+    kind: method_call
+    path:
+      - "(fraction.padEnd(2, '0'))"
+      - slice
+    receiver:
+      type: expr
+      value: "fraction.padEnd(2, '0')"
+    args:
+      - type: number
+        value: "0"
+      - type: number
+        value: "2"
+    span:
+      start_byte: 257
+      end_byte: 292
+      start_line: 5
+      start_col: 45
+      end_line: 5
+      end_col: 80
+  - from: 0
+    kind: method_call
+    path:
+      - fraction
+      - padEnd
+    receiver:
+      type: expr
+      value: fraction
+    args:
+      - type: number
+        value: "2"
+      - type: str
+        value: "0"
+    span:
+      start_byte: 257
+      end_byte: 280
+      start_line: 5
+      start_col: 45
+      end_line: 5
+      end_col: 68
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

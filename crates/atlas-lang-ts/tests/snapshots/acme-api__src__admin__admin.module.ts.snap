@@ -1,0 +1,141 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-api
+  path: src/admin/admin.module.ts
+  language: typescript
+  content_hash: 708d2ecfb1920e942fc845d31b7d049b5d33f739014485aef8872ffce313d690
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: class
+    name: AdminModule
+    module_suffix: []
+    item_path:
+      - AdminModule
+    span:
+      start_byte: 97
+      end_byte: 168
+      start_line: 5
+      start_col: 0
+      end_line: 6
+      end_col: 27
+    name_span:
+      start_byte: 154
+      end_byte: 165
+      start_line: 6
+      start_col: 13
+      end_line: 6
+      end_col: 24
+    signature: class AdminModule
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes:
+      - path:
+          - Module
+        args:
+          - type: object
+            value:
+              - key:
+                  type: ident
+                  value: controllers
+                value:
+                  type: array
+                  value:
+                    - type: path
+                      value:
+                        - AdminController
+        span:
+          start_byte: 97
+          end_byte: 140
+          start_line: 5
+          start_col: 0
+          end_line: 5
+          end_col: 43
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+imports:
+  - type: ts_import
+    specifier: "@nestjs/common"
+    bindings:
+      - type: named
+        imported: Module
+        local: Module
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 40
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 40
+  - type: ts_import
+    specifier: "./admin.controller"
+    bindings:
+      - type: named
+        imported: AdminController
+        local: AdminController
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 42
+      end_byte: 95
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 53
+exports: []
+references:
+  - from: 0
+    kind: decorator
+    path:
+      - Module
+    receiver: ~
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: controllers
+            value:
+              type: array
+              value:
+                - type: path
+                  value:
+                    - AdminController
+    span:
+      start_byte: 97
+      end_byte: 140
+      start_line: 5
+      start_col: 0
+      end_line: 5
+      end_col: 43
+  - from: 0
+    kind: value_ref
+    path:
+      - AdminController
+    receiver: ~
+    args: []
+    span:
+      start_byte: 121
+      end_byte: 136
+      start_line: 5
+      start_col: 24
+      end_line: 5
+      end_col: 39
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

@@ -1,0 +1,355 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-api
+  path: src/users/user.entity.ts
+  language: typescript
+  content_hash: bdbb8a098e46b30cc625e7f6f16ef51103629bb3a08d0cbe095bef649c689868
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: class
+    name: User
+    module_suffix: []
+    item_path:
+      - User
+    span:
+      start_byte: 67
+      end_byte: 291
+      start_line: 3
+      start_col: 0
+      end_line: 16
+      end_col: 1
+    name_span:
+      start_byte: 97
+      end_byte: 101
+      start_line: 4
+      start_col: 13
+      end_line: 4
+      end_col: 17
+    signature: class User
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes:
+      - path:
+          - Entity
+        args:
+          - type: str
+            value: users
+        span:
+          start_byte: 67
+          end_byte: 83
+          start_line: 3
+          start_col: 0
+          end_line: 3
+          end_col: 16
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 1
+    parent: 0
+    kind: field
+    name: id
+    module_suffix: []
+    item_path:
+      - User
+      - id
+    span:
+      start_byte: 106
+      end_byte: 151
+      start_line: 5
+      start_col: 2
+      end_line: 6
+      end_col: 13
+    name_span:
+      start_byte: 140
+      end_byte: 142
+      start_line: 6
+      start_col: 2
+      end_line: 6
+      end_col: 4
+    signature: "id!: string"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - PrimaryGeneratedColumn
+        args:
+          - type: str
+            value: uuid
+        span:
+          start_byte: 106
+          end_byte: 137
+          start_line: 5
+          start_col: 2
+          end_line: 5
+          end_col: 33
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 2
+    parent: 0
+    kind: field
+    name: email
+    module_suffix: []
+    item_path:
+      - User
+      - email
+    span:
+      start_byte: 156
+      end_byte: 198
+      start_line: 8
+      start_col: 2
+      end_line: 9
+      end_col: 16
+    name_span:
+      start_byte: 184
+      end_byte: 189
+      start_line: 9
+      start_col: 2
+      end_line: 9
+      end_col: 7
+    signature: "email!: string"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - Column
+        args:
+          - type: object
+            value:
+              - key:
+                  type: ident
+                  value: unique
+                value:
+                  type: bool
+                  value: true
+        span:
+          start_byte: 156
+          end_byte: 181
+          start_line: 8
+          start_col: 2
+          end_line: 8
+          end_col: 27
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 3
+    parent: 0
+    kind: field
+    name: displayName
+    module_suffix: []
+    item_path:
+      - User
+      - displayName
+    span:
+      start_byte: 203
+      end_byte: 235
+      start_line: 11
+      start_col: 2
+      end_line: 12
+      end_col: 22
+    name_span:
+      start_byte: 215
+      end_byte: 226
+      start_line: 12
+      start_col: 2
+      end_line: 12
+      end_col: 13
+    signature: "displayName!: string"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - Column
+        args: []
+        span:
+          start_byte: 203
+          end_byte: 212
+          start_line: 11
+          start_col: 2
+          end_line: 11
+          end_col: 11
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 4
+    parent: 0
+    kind: field
+    name: permissions
+    module_suffix: []
+    item_path:
+      - User
+      - permissions
+    span:
+      start_byte: 240
+      end_byte: 288
+      start_line: 14
+      start_col: 2
+      end_line: 15
+      end_col: 24
+    name_span:
+      start_byte: 266
+      end_byte: 277
+      start_line: 15
+      start_col: 2
+      end_line: 15
+      end_col: 13
+    signature: "permissions!: string[]"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - Column
+        args:
+          - type: str
+            value: simple-array
+        span:
+          start_byte: 240
+          end_byte: 263
+          start_line: 14
+          start_col: 2
+          end_line: 14
+          end_col: 25
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+imports:
+  - type: ts_import
+    specifier: typeorm
+    bindings:
+      - type: named
+        imported: Column
+        local: Column
+        type_only: false
+      - type: named
+        imported: Entity
+        local: Entity
+        type_only: false
+      - type: named
+        imported: PrimaryGeneratedColumn
+        local: PrimaryGeneratedColumn
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 65
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 65
+exports: []
+references:
+  - from: 0
+    kind: decorator
+    path:
+      - Entity
+    receiver: ~
+    args:
+      - type: str
+        value: users
+    span:
+      start_byte: 67
+      end_byte: 83
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 16
+  - from: 1
+    kind: decorator
+    path:
+      - PrimaryGeneratedColumn
+    receiver: ~
+    args:
+      - type: str
+        value: uuid
+    span:
+      start_byte: 106
+      end_byte: 137
+      start_line: 5
+      start_col: 2
+      end_line: 5
+      end_col: 33
+  - from: 2
+    kind: decorator
+    path:
+      - Column
+    receiver: ~
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: unique
+            value:
+              type: bool
+              value: true
+    span:
+      start_byte: 156
+      end_byte: 181
+      start_line: 8
+      start_col: 2
+      end_line: 8
+      end_col: 27
+  - from: 3
+    kind: decorator
+    path:
+      - Column
+    receiver: ~
+    args: []
+    span:
+      start_byte: 203
+      end_byte: 212
+      start_line: 11
+      start_col: 2
+      end_line: 11
+      end_col: 11
+  - from: 4
+    kind: decorator
+    path:
+      - Column
+    receiver: ~
+    args:
+      - type: str
+        value: simple-array
+    span:
+      start_byte: 240
+      end_byte: 263
+      start_line: 14
+      start_col: 2
+      end_line: 14
+      end_col: 25
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

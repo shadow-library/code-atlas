@@ -1,0 +1,110 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-api
+  path: src/common/database.config.ts
+  language: typescript
+  content_hash: 5b20087d20d41f95298c718e8313dc063f286dafe1612944668c05c53bf838eb
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: databaseConfig
+    module_suffix: []
+    item_path:
+      - databaseConfig
+    span:
+      start_byte: 62
+      end_byte: 245
+      start_line: 3
+      start_col: 0
+      end_line: 10
+      end_col: 1
+    name_span:
+      start_byte: 78
+      end_byte: 92
+      start_line: 3
+      start_col: 16
+      end_line: 3
+      end_col: 30
+    signature: "function databaseConfig(): TypeOrmModuleOptions"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 1447977468
+        - 1
+        - 2538522703
+        - 2
+        - 2236525561
+        - 1
+        - 2538522703
+        - 1
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2236525561
+        - 1
+        - 2538522703
+        - 3575228598
+        - 2236525561
+        - 1
+        - 2538522703
+        - 4112141105
+        - 2236525561
+        - 1414422230
+        - 2521745084
+        - 1414422230
+      token_count: 26
+      line_count: 8
+imports:
+  - type: ts_import
+    specifier: "@nestjs/typeorm"
+    bindings:
+      - type: named
+        imported: TypeOrmModuleOptions
+        local: TypeOrmModuleOptions
+        type_only: true
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 60
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 60
+exports: []
+references:
+  - from: 0
+    kind: type_ref
+    path:
+      - TypeOrmModuleOptions
+    receiver: ~
+    args: []
+    span:
+      start_byte: 96
+      end_byte: 116
+      start_line: 3
+      start_col: 34
+      end_line: 3
+      end_col: 54
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

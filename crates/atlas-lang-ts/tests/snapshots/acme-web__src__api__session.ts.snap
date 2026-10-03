@@ -1,0 +1,231 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-web
+  path: src/api/session.ts
+  language: typescript
+  content_hash: be9d6f19345d354c5086d5178f9624810af7b671957714f7f04218a8d40e238b
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: constant
+    name: TOKEN_KEY
+    module_suffix: []
+    item_path:
+      - TOKEN_KEY
+    span:
+      start_byte: 6
+      end_byte: 30
+      start_line: 1
+      start_col: 6
+      end_line: 1
+      end_col: 30
+    name_span:
+      start_byte: 6
+      end_byte: 15
+      start_line: 1
+      start_col: 6
+      end_line: 1
+      end_col: 15
+    signature: "const TOKEN_KEY = 'acme.token'"
+    doc: ~
+    visibility:
+      type: module
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 1
+    parent: ~
+    kind: function
+    name: getToken
+    module_suffix: []
+    item_path:
+      - getToken
+    span:
+      start_byte: 33
+      end_byte: 126
+      start_line: 3
+      start_col: 0
+      end_line: 5
+      end_col: 1
+    name_span:
+      start_byte: 49
+      end_byte: 57
+      start_line: 3
+      start_col: 16
+      end_line: 3
+      end_col: 24
+    signature: "function getToken(): string"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 1
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 2700655709
+        - 2
+        - 2521745084
+        - 1414422230
+      token_count: 14
+      line_count: 3
+  - local: 2
+    parent: ~
+    kind: function
+    name: setToken
+    module_suffix: []
+    item_path:
+      - setToken
+    span:
+      start_byte: 128
+      end_byte: 226
+      start_line: 7
+      start_col: 0
+      end_line: 9
+      end_col: 1
+    name_span:
+      start_byte: 144
+      end_byte: 152
+      start_line: 7
+      start_col: 16
+      end_line: 7
+      end_col: 24
+    signature: "function setToken(token: string): void"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: token
+        type_text: string
+        attributes: []
+        span:
+          start_byte: 153
+          end_byte: 166
+          start_line: 7
+          start_col: 25
+          end_line: 7
+          end_col: 38
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2236525561
+        - 1
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 13
+      line_count: 3
+imports: []
+exports: []
+references:
+  - from: 1
+    kind: method_call
+    path:
+      - window
+      - localStorage
+      - getItem
+    receiver:
+      type: identifier
+      value: window
+    args:
+      - type: path
+        value:
+          - TOKEN_KEY
+    span:
+      start_byte: 79
+      end_byte: 117
+      start_line: 4
+      start_col: 9
+      end_line: 4
+      end_col: 47
+  - from: 1
+    kind: value_ref
+    path:
+      - TOKEN_KEY
+    receiver: ~
+    args: []
+    span:
+      start_byte: 107
+      end_byte: 116
+      start_line: 4
+      start_col: 37
+      end_line: 4
+      end_col: 46
+  - from: 2
+    kind: method_call
+    path:
+      - window
+      - localStorage
+      - setItem
+    receiver:
+      type: identifier
+      value: window
+    args:
+      - type: path
+        value:
+          - TOKEN_KEY
+      - type: path
+        value:
+          - token
+    span:
+      start_byte: 178
+      end_byte: 223
+      start_line: 8
+      start_col: 2
+      end_line: 8
+      end_col: 47
+  - from: 2
+    kind: value_ref
+    path:
+      - TOKEN_KEY
+    receiver: ~
+    args: []
+    span:
+      start_byte: 206
+      end_byte: 215
+      start_line: 8
+      start_col: 30
+      end_line: 8
+      end_col: 39
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

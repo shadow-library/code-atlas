@@ -1,0 +1,109 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: reexport-chain-ts
+  path: src/core/impl.ts
+  language: typescript
+  content_hash: 5fc82324e52a2bc79f19170a9e1ac3860c34ce999671d74333402c1ed07c0bc1
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: computeTotal
+    module_suffix: []
+    item_path:
+      - computeTotal
+    span:
+      start_byte: 0
+      end_byte: 114
+      start_line: 1
+      start_col: 0
+      end_line: 3
+      end_col: 1
+    name_span:
+      start_byte: 16
+      end_byte: 28
+      start_line: 1
+      start_col: 16
+      end_line: 1
+      end_col: 28
+    signature: "function computeTotal(prices: number[]): number"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: prices
+        type_text: "number[]"
+        attributes: []
+        span:
+          start_byte: 29
+          end_byte: 45
+          start_line: 1
+          start_col: 29
+          end_line: 1
+          end_col: 45
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2303636037
+        - 1
+        - 2236525561
+        - 1
+        - 2286858418
+        - 536740216
+        - 1
+        - 2253303180
+        - 1
+        - 2236525561
+        - 3
+        - 2286858418
+        - 2521745084
+        - 1414422230
+      token_count: 20
+      line_count: 3
+imports: []
+exports: []
+references:
+  - from: 0
+    kind: method_call
+    path:
+      - prices
+      - reduce
+    receiver:
+      type: expr
+      value: prices
+    args:
+      - type: closure
+        value:
+          params:
+            - sum
+            - price
+      - type: number
+        value: "0"
+    span:
+      start_byte: 66
+      end_byte: 111
+      start_line: 2
+      start_col: 9
+      end_line: 2
+      end_col: 54
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

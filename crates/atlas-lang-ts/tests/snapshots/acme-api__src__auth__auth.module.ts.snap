@@ -1,0 +1,588 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-api
+  path: src/auth/auth.module.ts
+  language: typescript
+  content_hash: 229579f812982ea090c808a8b86a56d14cf25d82f024c82b497e3ece076fa603
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: class
+    name: AuthModule
+    module_suffix: []
+    item_path:
+      - AuthModule
+    span:
+      start_byte: 399
+      end_byte: 738
+      start_line: 11
+      start_col: 0
+      end_line: 17
+      end_col: 26
+    name_span:
+      start_byte: 725
+      end_byte: 735
+      start_line: 17
+      start_col: 13
+      end_line: 17
+      end_col: 23
+    signature: class AuthModule
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes:
+      - path:
+          - Global
+        args: []
+        span:
+          start_byte: 399
+          end_byte: 408
+          start_line: 11
+          start_col: 0
+          end_line: 11
+          end_col: 9
+      - path:
+          - Module
+        args:
+          - type: object
+            value:
+              - key:
+                  type: ident
+                  value: imports
+                value:
+                  type: array
+                  value:
+                    - type: call
+                      value:
+                        callee:
+                          - JwtModule
+                          - register
+                        args:
+                          - type: object
+                            value:
+                              - key:
+                                  type: ident
+                                  value: secret
+                                value:
+                                  type: path
+                                  value:
+                                    - process
+                                    - env
+                                    - JWT_SECRET
+              - key:
+                  type: ident
+                  value: providers
+                value:
+                  type: array
+                  value:
+                    - type: path
+                      value:
+                        - JwtAuthGuard
+                    - type: path
+                      value:
+                        - ApiKeyGuard
+                    - type: path
+                      value:
+                        - SessionGuard
+                    - type: path
+                      value:
+                        - JwtOrApiKeyGuard
+                    - type: path
+                      value:
+                        - PermissionsGuard
+                    - type: path
+                      value:
+                        - SessionStore
+              - key:
+                  type: ident
+                  value: exports
+                value:
+                  type: array
+                  value:
+                    - type: path
+                      value:
+                        - JwtAuthGuard
+                    - type: path
+                      value:
+                        - ApiKeyGuard
+                    - type: path
+                      value:
+                        - SessionGuard
+                    - type: path
+                      value:
+                        - JwtOrApiKeyGuard
+                    - type: path
+                      value:
+                        - PermissionsGuard
+                    - type: path
+                      value:
+                        - SessionStore
+                    - type: path
+                      value:
+                        - JwtModule
+        span:
+          start_byte: 409
+          end_byte: 711
+          start_line: 12
+          start_col: 0
+          end_line: 16
+          end_col: 2
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+imports:
+  - type: ts_import
+    specifier: "@nestjs/common"
+    bindings:
+      - type: named
+        imported: Global
+        local: Global
+        type_only: false
+      - type: named
+        imported: Module
+        local: Module
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 48
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 48
+  - type: ts_import
+    specifier: "@nestjs/jwt"
+    bindings:
+      - type: named
+        imported: JwtModule
+        local: JwtModule
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 49
+      end_byte: 89
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 40
+  - type: ts_import
+    specifier: "./api-key.guard"
+    bindings:
+      - type: named
+        imported: ApiKeyGuard
+        local: ApiKeyGuard
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 91
+      end_byte: 137
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 46
+  - type: ts_import
+    specifier: "./jwt-auth.guard"
+    bindings:
+      - type: named
+        imported: JwtAuthGuard
+        local: JwtAuthGuard
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 138
+      end_byte: 186
+      start_line: 5
+      start_col: 0
+      end_line: 5
+      end_col: 48
+  - type: ts_import
+    specifier: "./jwt-or-api-key.guard"
+    bindings:
+      - type: named
+        imported: JwtOrApiKeyGuard
+        local: JwtOrApiKeyGuard
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 187
+      end_byte: 245
+      start_line: 6
+      start_col: 0
+      end_line: 6
+      end_col: 58
+  - type: ts_import
+    specifier: "./permissions.guard"
+    bindings:
+      - type: named
+        imported: PermissionsGuard
+        local: PermissionsGuard
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 246
+      end_byte: 301
+      start_line: 7
+      start_col: 0
+      end_line: 7
+      end_col: 55
+  - type: ts_import
+    specifier: "./session.guard"
+    bindings:
+      - type: named
+        imported: SessionGuard
+        local: SessionGuard
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 302
+      end_byte: 349
+      start_line: 8
+      start_col: 0
+      end_line: 8
+      end_col: 47
+  - type: ts_import
+    specifier: "./session.store"
+    bindings:
+      - type: named
+        imported: SessionStore
+        local: SessionStore
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 350
+      end_byte: 397
+      start_line: 9
+      start_col: 0
+      end_line: 9
+      end_col: 47
+exports: []
+references:
+  - from: 0
+    kind: decorator
+    path:
+      - Global
+    receiver: ~
+    args: []
+    span:
+      start_byte: 399
+      end_byte: 408
+      start_line: 11
+      start_col: 0
+      end_line: 11
+      end_col: 9
+  - from: 0
+    kind: decorator
+    path:
+      - Module
+    receiver: ~
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: imports
+            value:
+              type: array
+              value:
+                - type: call
+                  value:
+                    callee:
+                      - JwtModule
+                      - register
+                    args:
+                      - type: object
+                        value:
+                          - key:
+                              type: ident
+                              value: secret
+                            value:
+                              type: path
+                              value:
+                                - process
+                                - env
+                                - JWT_SECRET
+          - key:
+              type: ident
+              value: providers
+            value:
+              type: array
+              value:
+                - type: path
+                  value:
+                    - JwtAuthGuard
+                - type: path
+                  value:
+                    - ApiKeyGuard
+                - type: path
+                  value:
+                    - SessionGuard
+                - type: path
+                  value:
+                    - JwtOrApiKeyGuard
+                - type: path
+                  value:
+                    - PermissionsGuard
+                - type: path
+                  value:
+                    - SessionStore
+          - key:
+              type: ident
+              value: exports
+            value:
+              type: array
+              value:
+                - type: path
+                  value:
+                    - JwtAuthGuard
+                - type: path
+                  value:
+                    - ApiKeyGuard
+                - type: path
+                  value:
+                    - SessionGuard
+                - type: path
+                  value:
+                    - JwtOrApiKeyGuard
+                - type: path
+                  value:
+                    - PermissionsGuard
+                - type: path
+                  value:
+                    - SessionStore
+                - type: path
+                  value:
+                    - JwtModule
+    span:
+      start_byte: 409
+      end_byte: 711
+      start_line: 12
+      start_col: 0
+      end_line: 16
+      end_col: 2
+  - from: 0
+    kind: value_ref
+    path:
+      - JwtAuthGuard
+    receiver: ~
+    args: []
+    span:
+      start_byte: 502
+      end_byte: 514
+      start_line: 14
+      start_col: 14
+      end_line: 14
+      end_col: 26
+  - from: 0
+    kind: value_ref
+    path:
+      - ApiKeyGuard
+    receiver: ~
+    args: []
+    span:
+      start_byte: 516
+      end_byte: 527
+      start_line: 14
+      start_col: 28
+      end_line: 14
+      end_col: 39
+  - from: 0
+    kind: value_ref
+    path:
+      - SessionGuard
+    receiver: ~
+    args: []
+    span:
+      start_byte: 529
+      end_byte: 541
+      start_line: 14
+      start_col: 41
+      end_line: 14
+      end_col: 53
+  - from: 0
+    kind: value_ref
+    path:
+      - JwtOrApiKeyGuard
+    receiver: ~
+    args: []
+    span:
+      start_byte: 543
+      end_byte: 559
+      start_line: 14
+      start_col: 55
+      end_line: 14
+      end_col: 71
+  - from: 0
+    kind: value_ref
+    path:
+      - PermissionsGuard
+    receiver: ~
+    args: []
+    span:
+      start_byte: 561
+      end_byte: 577
+      start_line: 14
+      start_col: 73
+      end_line: 14
+      end_col: 89
+  - from: 0
+    kind: value_ref
+    path:
+      - SessionStore
+    receiver: ~
+    args: []
+    span:
+      start_byte: 579
+      end_byte: 591
+      start_line: 14
+      start_col: 91
+      end_line: 14
+      end_col: 103
+  - from: 0
+    kind: value_ref
+    path:
+      - JwtAuthGuard
+    receiver: ~
+    args: []
+    span:
+      start_byte: 606
+      end_byte: 618
+      start_line: 15
+      start_col: 12
+      end_line: 15
+      end_col: 24
+  - from: 0
+    kind: value_ref
+    path:
+      - ApiKeyGuard
+    receiver: ~
+    args: []
+    span:
+      start_byte: 620
+      end_byte: 631
+      start_line: 15
+      start_col: 26
+      end_line: 15
+      end_col: 37
+  - from: 0
+    kind: value_ref
+    path:
+      - SessionGuard
+    receiver: ~
+    args: []
+    span:
+      start_byte: 633
+      end_byte: 645
+      start_line: 15
+      start_col: 39
+      end_line: 15
+      end_col: 51
+  - from: 0
+    kind: value_ref
+    path:
+      - JwtOrApiKeyGuard
+    receiver: ~
+    args: []
+    span:
+      start_byte: 647
+      end_byte: 663
+      start_line: 15
+      start_col: 53
+      end_line: 15
+      end_col: 69
+  - from: 0
+    kind: value_ref
+    path:
+      - PermissionsGuard
+    receiver: ~
+    args: []
+    span:
+      start_byte: 665
+      end_byte: 681
+      start_line: 15
+      start_col: 71
+      end_line: 15
+      end_col: 87
+  - from: 0
+    kind: value_ref
+    path:
+      - SessionStore
+    receiver: ~
+    args: []
+    span:
+      start_byte: 683
+      end_byte: 695
+      start_line: 15
+      start_col: 89
+      end_line: 15
+      end_col: 101
+  - from: 0
+    kind: value_ref
+    path:
+      - JwtModule
+    receiver: ~
+    args: []
+    span:
+      start_byte: 697
+      end_byte: 706
+      start_line: 15
+      start_col: 103
+      end_line: 15
+      end_col: 112
+  - from: 0
+    kind: method_call
+    path:
+      - JwtModule
+      - register
+    receiver:
+      type: identifier
+      value: JwtModule
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: secret
+            value:
+              type: path
+              value:
+                - process
+                - env
+                - JWT_SECRET
+    span:
+      start_byte: 431
+      end_byte: 485
+      start_line: 13
+      start_col: 12
+      end_line: 13
+      end_col: 66
+  - from: 0
+    kind: value_ref
+    path:
+      - process
+      - env
+      - JWT_SECRET
+    receiver:
+      type: identifier
+      value: process
+    args: []
+    span:
+      start_byte: 460
+      end_byte: 482
+      start_line: 13
+      start_col: 41
+      end_line: 13
+      end_col: 63
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

@@ -1,0 +1,547 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-api
+  path: src/auth/jwt-auth.guard.ts
+  language: typescript
+  content_hash: 7a73230be25bf9789738d36d679268fc51ee446933c32357bebd343754cb02d6
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: class
+    name: JwtAuthGuard
+    module_suffix: []
+    item_path:
+      - JwtAuthGuard
+    span:
+      start_byte: 152
+      end_byte: 797
+      start_line: 4
+      start_col: 0
+      end_line: 19
+      end_col: 1
+    name_span:
+      start_byte: 179
+      end_byte: 191
+      start_line: 5
+      start_col: 13
+      end_line: 5
+      end_col: 25
+    signature: class JwtAuthGuard implements CanActivate
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes:
+      - path:
+          - Injectable
+        args: []
+        span:
+          start_byte: 152
+          end_byte: 165
+          start_line: 4
+          start_col: 0
+          end_line: 4
+          end_col: 13
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements:
+      - - CanActivate
+    body: ~
+  - local: 1
+    parent: 0
+    kind: method
+    name: constructor
+    module_suffix: []
+    item_path:
+      - JwtAuthGuard
+      - constructor
+    span:
+      start_byte: 219
+      end_byte: 267
+      start_line: 6
+      start_col: 2
+      end_line: 6
+      end_col: 50
+    name_span:
+      start_byte: 219
+      end_byte: 230
+      start_line: 6
+      start_col: 2
+      end_line: 6
+      end_col: 13
+    signature: "constructor(private readonly jwt: JwtService)"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: jwt
+        type_text: JwtService
+        attributes: []
+        span:
+          start_byte: 231
+          end_byte: 263
+          start_line: 6
+          start_col: 14
+          end_line: 6
+          end_col: 46
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1414422230
+      token_count: 2
+      line_count: 1
+  - local: 2
+    parent: 0
+    kind: field
+    name: jwt
+    module_suffix: []
+    item_path:
+      - JwtAuthGuard
+      - jwt
+    span:
+      start_byte: 231
+      end_byte: 263
+      start_line: 6
+      start_col: 14
+      end_line: 6
+      end_col: 46
+    name_span:
+      start_byte: 248
+      end_byte: 251
+      start_line: 6
+      start_col: 31
+      end_line: 6
+      end_col: 34
+    signature: "private readonly jwt: JwtService"
+    doc: ~
+    visibility:
+      type: private
+    modifiers:
+      - readonly
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 3
+    parent: 0
+    kind: method
+    name: canActivate
+    module_suffix: []
+    item_path:
+      - JwtAuthGuard
+      - canActivate
+    span:
+      start_byte: 271
+      end_byte: 795
+      start_line: 8
+      start_col: 2
+      end_line: 18
+      end_col: 3
+    name_span:
+      start_byte: 277
+      end_byte: 288
+      start_line: 8
+      start_col: 8
+      end_line: 8
+      end_col: 19
+    signature: "async canActivate(context: ExecutionContext): Promise<boolean>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers:
+      - async
+    attributes: []
+    params:
+      - name: context
+        type_text: ExecutionContext
+        attributes: []
+        span:
+          start_byte: 289
+          end_byte: 314
+          start_line: 8
+          start_col: 20
+          end_line: 8
+          end_col: 45
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 704892417
+        - 1
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2521745084
+        - 704892417
+        - 1
+        - 2538522703
+        - 2
+        - 1431199849
+        - 777574686
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 1984861276
+        - 2
+        - 1951306038
+        - 2521745084
+        - 2130171789
+        - 2303636037
+        - 2421079370
+        - 1
+        - 2952319994
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2286858418
+        - 109144266
+        - 1180356660
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2521745084
+        - 1212246899
+        - 1447977468
+        - 1
+        - 2202970323
+        - 1
+        - 2488189846
+        - 602291836
+        - 428551226
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2
+        - 2202970323
+        - 1
+        - 2286858418
+        - 2236525561
+        - 1447977468
+        - 1
+        - 2538522703
+        - 1
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 1414422230
+        - 2286858418
+        - 2521745084
+        - 1044042820
+        - 3575228598
+        - 2521745084
+        - 1414422230
+        - 2239413405
+        - 1447977468
+        - 109144266
+        - 1180356660
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+        - 2521745084
+        - 1414422230
+        - 1414422230
+      token_count: 93
+      line_count: 11
+imports:
+  - type: ts_import
+    specifier: "@nestjs/common"
+    bindings:
+      - type: named
+        imported: CanActivate
+        local: CanActivate
+        type_only: true
+      - type: named
+        imported: ExecutionContext
+        local: ExecutionContext
+        type_only: true
+      - type: named
+        imported: Injectable
+        local: Injectable
+        type_only: false
+      - type: named
+        imported: UnauthorizedException
+        local: UnauthorizedException
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 108
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 108
+  - type: ts_import
+    specifier: "@nestjs/jwt"
+    bindings:
+      - type: named
+        imported: JwtService
+        local: JwtService
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 109
+      end_byte: 150
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 41
+exports: []
+references:
+  - from: 0
+    kind: decorator
+    path:
+      - Injectable
+    receiver: ~
+    args: []
+    span:
+      start_byte: 152
+      end_byte: 165
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 13
+  - from: 0
+    kind: type_ref
+    path:
+      - CanActivate
+    receiver: ~
+    args: []
+    span:
+      start_byte: 203
+      end_byte: 214
+      start_line: 5
+      start_col: 37
+      end_line: 5
+      end_col: 48
+  - from: 2
+    kind: type_ref
+    path:
+      - JwtService
+    receiver: ~
+    args: []
+    span:
+      start_byte: 253
+      end_byte: 263
+      start_line: 6
+      start_col: 36
+      end_line: 6
+      end_col: 46
+  - from: 3
+    kind: type_ref
+    path:
+      - ExecutionContext
+    receiver: ~
+    args: []
+    span:
+      start_byte: 298
+      end_byte: 314
+      start_line: 8
+      start_col: 29
+      end_line: 8
+      end_col: 45
+  - from: 3
+    kind: type_ref
+    path:
+      - Promise
+    receiver: ~
+    args: []
+    span:
+      start_byte: 317
+      end_byte: 324
+      start_line: 8
+      start_col: 48
+      end_line: 8
+      end_col: 55
+  - from: 3
+    kind: method_call
+    path:
+      - (context.switchToHttp())
+      - getRequest
+    receiver:
+      type: expr
+      value: context.switchToHttp()
+    args: []
+    span:
+      start_byte: 356
+      end_byte: 391
+      start_line: 9
+      start_col: 20
+      end_line: 9
+      end_col: 55
+  - from: 3
+    kind: method_call
+    path:
+      - context
+      - switchToHttp
+    receiver:
+      type: type_hint
+      value:
+        - ExecutionContext
+    args: []
+    span:
+      start_byte: 356
+      end_byte: 378
+      start_line: 9
+      start_col: 20
+      end_line: 9
+      end_col: 42
+  - from: 3
+    kind: method_call
+    path:
+      - header
+      - startsWith
+    receiver:
+      type: expr
+      value: header
+    args:
+      - type: str
+        value: "Bearer "
+    span:
+      start_byte: 475
+      end_byte: 504
+      start_line: 11
+      start_col: 9
+      end_line: 11
+      end_col: 38
+  - from: 3
+    kind: instantiation
+    path:
+      - UnauthorizedException
+    receiver: ~
+    args:
+      - type: str
+        value: Missing bearer token
+    span:
+      start_byte: 512
+      end_byte: 561
+      start_line: 11
+      start_col: 46
+      end_line: 11
+      end_col: 95
+  - from: 3
+    kind: method_call
+    path:
+      - this
+      - jwt
+      - verifyAsync
+    receiver:
+      type: this
+    args:
+      - type: call
+        value:
+          callee:
+            - header
+            - slice
+          args:
+            - type: other
+              value: "'Bearer '.length"
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: secret
+            value:
+              type: path
+              value:
+                - process
+                - env
+                - JWT_SECRET
+    span:
+      start_byte: 600
+      end_byte: 688
+      start_line: 13
+      start_col: 27
+      end_line: 13
+      end_col: 115
+  - from: 3
+    kind: value_ref
+    path:
+      - process
+      - env
+      - JWT_SECRET
+    receiver:
+      type: identifier
+      value: process
+    args: []
+    span:
+      start_byte: 663
+      end_byte: 685
+      start_line: 13
+      start_col: 90
+      end_line: 13
+      end_col: 112
+  - from: 3
+    kind: method_call
+    path:
+      - header
+      - slice
+    receiver:
+      type: expr
+      value: header
+    args:
+      - type: other
+        value: "'Bearer '.length"
+    span:
+      start_byte: 621
+      end_byte: 651
+      start_line: 13
+      start_col: 48
+      end_line: 13
+      end_col: 78
+  - from: 3
+    kind: instantiation
+    path:
+      - UnauthorizedException
+    receiver: ~
+    args:
+      - type: str
+        value: Invalid bearer token
+    span:
+      start_byte: 735
+      end_byte: 784
+      start_line: 16
+      start_col: 12
+      end_line: 16
+      end_col: 61
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

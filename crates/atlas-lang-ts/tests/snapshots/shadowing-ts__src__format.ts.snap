@@ -1,0 +1,77 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: shadowing-ts
+  path: src/format.ts
+  language: typescript
+  content_hash: f338dbb6bef11551e0bc5a70751652e86e40f11380cd8f0b12dcf0d31a546fde
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: format
+    module_suffix: []
+    item_path:
+      - format
+    span:
+      start_byte: 0
+      end_byte: 72
+      start_line: 1
+      start_col: 0
+      end_line: 3
+      end_col: 1
+    name_span:
+      start_byte: 16
+      end_byte: 22
+      start_line: 1
+      start_col: 16
+      end_line: 1
+      end_col: 22
+    signature: "function format(value: string): string"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params:
+      - name: value
+        type_text: string
+        attributes: []
+        span:
+          start_byte: 23
+          end_byte: 36
+          start_line: 1
+          start_col: 23
+          end_line: 1
+          end_col: 36
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 1364089373
+        - 2
+        - 1559042142
+        - 1
+        - 1414422230
+        - 2
+        - 1364089373
+        - 2521745084
+        - 1414422230
+      token_count: 11
+      line_count: 3
+imports: []
+exports: []
+references: []
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

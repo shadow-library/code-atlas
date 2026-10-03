@@ -1,0 +1,53 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: acme-web
+  path: src/config.ts
+  language: typescript
+  content_hash: d111f78331e103af9e13baf62c728b48ebc993fd133d6ccf1b28f2f6beba409f
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: constant
+    name: API_URL
+    module_suffix: []
+    item_path:
+      - API_URL
+    span:
+      start_byte: 13
+      end_byte: 86
+      start_line: 1
+      start_col: 13
+      end_line: 1
+      end_col: 86
+    name_span:
+      start_byte: 13
+      end_byte: 20
+      start_line: 1
+      start_col: 13
+      end_line: 1
+      end_col: 20
+    signature: "const API_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'"
+    doc: ~
+    visibility:
+      type: exported
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+imports: []
+exports: []
+references: []
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1

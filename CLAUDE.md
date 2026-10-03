@@ -38,6 +38,7 @@ The plan lives in `docs/plan/implementation-plan.md`.
 - Scoping: env vars (`env:<repo>:<NAME>`), config keys, endpoints, auth schemes, permissions and jobs are repo-scoped. Events, queues and db tables are project-scoped, which assumes one logical database and one event bus per project.
 - DB models: a table is an `EntityKey::DbTable`; a model class stays a symbol entity with its normal kind (class/struct) and gets a `maps_to_table` edge to the table. `EntityKind::DbModel` exists only for `Other` keys; detectors use the convention above.
 - Client URL templates and base-URL composition are resolved by `atlas-link`; detectors record the raw `ArgSummary` pattern.
+- TS member-chain references: `path` always starts with the chain head (`this`, `super`, a name, or `(expr)` for any other expression; computed members are `[expr]` segments) and `receiver` describes `path[0]`: `This`, `Identifier` for a non-local name, `TypeHint`/`Expr` for a local binding or expression. A head marked `TypeHint`/`Expr` is never resolved as an import or module symbol.
 
 ## Conventions
 

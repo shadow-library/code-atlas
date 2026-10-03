@@ -1,0 +1,435 @@
+---
+source: crates/atlas-lang-ts/tests/fixtures.rs
+---
+file:
+  repo: computed-routes-ts
+  path: src/server.ts
+  language: typescript
+  content_hash: 65fdd33f06aaccb816b5473ef06b85d51bb76ab6e8362bdc1579e6b9c771033c
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: constant
+    name: API_PREFIX
+    module_suffix: []
+    item_path:
+      - API_PREFIX
+    span:
+      start_byte: 77
+      end_byte: 96
+      start_line: 5
+      start_col: 6
+      end_line: 5
+      end_col: 25
+    name_span:
+      start_byte: 77
+      end_byte: 87
+      start_line: 5
+      start_col: 6
+      end_line: 5
+      end_col: 16
+    signature: "const API_PREFIX = '/api'"
+    doc: ~
+    visibility:
+      type: module
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 1
+    parent: ~
+    kind: constant
+    name: app
+    module_suffix: []
+    item_path:
+      - app
+    span:
+      start_byte: 104
+      end_byte: 119
+      start_line: 6
+      start_col: 6
+      end_line: 6
+      end_col: 21
+    name_span:
+      start_byte: 104
+      end_byte: 107
+      start_line: 6
+      start_col: 6
+      end_line: 6
+      end_col: 9
+    signature: const app = express()
+    doc: ~
+    visibility:
+      type: module
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 2
+    parent: ~
+    kind: function
+    name: buildPath
+    module_suffix: []
+    item_path:
+      - buildPath
+    span:
+      start_byte: 370
+      end_byte: 463
+      start_line: 22
+      start_col: 0
+      end_line: 24
+      end_col: 1
+    name_span:
+      start_byte: 379
+      end_byte: 388
+      start_line: 22
+      start_col: 9
+      end_line: 22
+      end_col: 18
+    signature: "function buildPath(name: string): string"
+    doc: ~
+    visibility:
+      type: module
+    modifiers: []
+    attributes: []
+    params:
+      - name: name
+        type_text: string
+        attributes: []
+        span:
+          start_byte: 389
+          end_byte: 401
+          start_line: 22
+          start_col: 19
+          end_line: 22
+          end_col: 31
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1044042820
+        - 1364089373
+        - 2
+        - 1559042142
+        - 1
+        - 1414422230
+        - 2
+        - 1559042142
+        - 1180356660
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+        - 1414422230
+        - 1364089373
+        - 2521745084
+        - 1414422230
+      token_count: 21
+      line_count: 3
+imports:
+  - type: ts_import
+    specifier: express
+    bindings:
+      - type: default
+        local: express
+    type_only: false
+    span:
+      start_byte: 0
+      end_byte: 30
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 30
+  - type: ts_import
+    specifier: "./routes"
+    bindings:
+      - type: named
+        imported: apiRouter
+        local: apiRouter
+        type_only: false
+    type_only: false
+    span:
+      start_byte: 32
+      end_byte: 69
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 37
+exports: []
+references:
+  - from: 1
+    kind: call
+    path:
+      - express
+    receiver: ~
+    args: []
+    span:
+      start_byte: 110
+      end_byte: 119
+      start_line: 6
+      start_col: 12
+      end_line: 6
+      end_col: 21
+  - from: ~
+    kind: method_call
+    path:
+      - app
+      - use
+    receiver:
+      type: identifier
+      value: app
+    args:
+      - type: str
+        value: /api
+      - type: path
+        value:
+          - apiRouter
+    span:
+      start_byte: 122
+      end_byte: 148
+      start_line: 8
+      start_col: 0
+      end_line: 8
+      end_col: 26
+  - from: ~
+    kind: value_ref
+    path:
+      - apiRouter
+    receiver: ~
+    args: []
+    span:
+      start_byte: 138
+      end_byte: 147
+      start_line: 8
+      start_col: 16
+      end_line: 8
+      end_col: 25
+  - from: ~
+    kind: method_call
+    path:
+      - app
+      - get
+    receiver:
+      type: identifier
+      value: app
+    args:
+      - type: template
+        value:
+          - type: expr
+            value:
+              type: path
+              value:
+                - API_PREFIX
+          - type: lit
+            value: /status
+      - type: closure
+        value:
+          params:
+            - _req
+            - res
+    span:
+      start_byte: 151
+      end_byte: 228
+      start_line: 10
+      start_col: 0
+      end_line: 12
+      end_col: 2
+  - from: ~
+    kind: method_call
+    path:
+      - res
+      - json
+    receiver:
+      type: expr
+      value: res
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: ok
+            value:
+              type: bool
+              value: true
+    span:
+      start_byte: 202
+      end_byte: 224
+      start_line: 11
+      start_col: 2
+      end_line: 11
+      end_col: 24
+  - from: ~
+    kind: method_call
+    path:
+      - app
+      - get
+    receiver:
+      type: identifier
+      value: app
+    args:
+      - type: concat
+        value:
+          - type: str
+            value: /legacy
+          - type: str
+            value: /ping
+      - type: closure
+        value:
+          params:
+            - _req
+            - res
+    span:
+      start_byte: 231
+      end_byte: 299
+      start_line: 14
+      start_col: 0
+      end_line: 16
+      end_col: 2
+  - from: ~
+    kind: method_call
+    path:
+      - res
+      - send
+    receiver:
+      type: expr
+      value: res
+    args:
+      - type: str
+        value: pong
+    span:
+      start_byte: 279
+      end_byte: 295
+      start_line: 15
+      start_col: 2
+      end_line: 15
+      end_col: 18
+  - from: ~
+    kind: method_call
+    path:
+      - app
+      - get
+    receiver:
+      type: identifier
+      value: app
+    args:
+      - type: call
+        value:
+          callee:
+            - buildPath
+          args:
+            - type: str
+              value: reports
+      - type: closure
+        value:
+          params:
+            - _req
+            - res
+    span:
+      start_byte: 302
+      end_byte: 367
+      start_line: 18
+      start_col: 0
+      end_line: 20
+      end_col: 2
+  - from: ~
+    kind: call
+    path:
+      - buildPath
+    receiver: ~
+    args:
+      - type: str
+        value: reports
+    span:
+      start_byte: 310
+      end_byte: 330
+      start_line: 18
+      start_col: 8
+      end_line: 18
+      end_col: 28
+  - from: ~
+    kind: method_call
+    path:
+      - res
+      - json
+    receiver:
+      type: expr
+      value: res
+    args:
+      - type: array
+        value: []
+    span:
+      start_byte: 351
+      end_byte: 363
+      start_line: 19
+      start_col: 2
+      end_line: 19
+      end_col: 14
+  - from: 2
+    kind: method_call
+    path:
+      - (new Date())
+      - getFullYear
+    receiver:
+      type: expr
+      value: new Date()
+    args: []
+    span:
+      start_byte: 434
+      end_byte: 458
+      start_line: 23
+      start_col: 21
+      end_line: 23
+      end_col: 45
+  - from: 2
+    kind: instantiation
+    path:
+      - Date
+    receiver: ~
+    args: []
+    span:
+      start_byte: 434
+      end_byte: 444
+      start_line: 23
+      start_col: 21
+      end_line: 23
+      end_col: 31
+  - from: ~
+    kind: method_call
+    path:
+      - app
+      - listen
+    receiver:
+      type: identifier
+      value: app
+    args:
+      - type: number
+        value: "3000"
+    span:
+      start_byte: 465
+      end_byte: 481
+      start_line: 26
+      start_col: 0
+      end_line: 26
+      end_col: 16
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-ts
+  version: 1
