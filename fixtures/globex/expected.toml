@@ -1,0 +1,217 @@
+[project]
+name = "globex"
+repos = ["globex-api", "globex-worker"]
+unused_exhaustive = false
+
+[[entity]]
+kind = "api_endpoint"
+repo = "globex-api"
+method = "GET"
+route = "/users/:id"
+handler = { repo = "globex-api", path = "src/routes/users.routes.ts", symbol = "registerUserRoutes" }
+certainty = ["syntactic"]
+note = "inline arrow handler is attributed to the enclosing named function; same route shape as acme-api but a different project"
+
+[[entity]]
+kind = "api_endpoint"
+repo = "globex-api"
+method = "GET"
+route = "/orders/:id"
+handler = { repo = "globex-api", path = "src/routes/orders.routes.ts", symbol = "registerOrderRoutes" }
+certainty = ["syntactic"]
+
+[[entity]]
+kind = "api_endpoint"
+repo = "globex-api"
+method = "POST"
+route = "/orders"
+handler = { repo = "globex-api", path = "src/routes/orders.routes.ts", symbol = "registerOrderRoutes" }
+certainty = ["syntactic"]
+
+[[entity]]
+kind = "class"
+sym = { repo = "globex-api", path = "src/services/users.service.ts", symbol = "UsersService" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "globex-api", path = "src/services/users.service.ts", symbol = "UsersService.findOne" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "globex-api", path = "src/services/orders.service.ts", symbol = "OrdersService" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "globex-api", path = "src/services/orders.service.ts", symbol = "OrdersService.create" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "globex-api", path = "src/services/orders.service.ts", symbol = "OrdersService.findOne" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "globex-api", path = "src/util/money.ts", symbol = "formatMoney" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "globex-api", path = "src/middleware/auth.ts", symbol = "requireGlobexKey" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "globex-worker", path = "src/money.rs", symbol = "to_cents" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "globex-worker", path = "src/consumer.rs", symbol = "handle_order_created" }
+
+[[entity]]
+kind = "trait"
+sym = { repo = "globex-worker", path = "src/consumer.rs", symbol = "Bus" }
+
+[[entity]]
+kind = "struct"
+sym = { repo = "globex-worker", path = "src/main.rs", symbol = "StdinBus" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "globex-worker", path = "src/main.rs", symbol = "main" }
+
+[[entity]]
+kind = "constant"
+sym = { repo = "globex-api", path = "src/config.ts", symbol = "DATABASE_URL" }
+
+[[entity]]
+kind = "env_var"
+repo = "globex-api"
+name = "DATABASE_URL"
+note = "same name as the acme-api / acme-billing variables, distinct per-repo entity of project globex"
+
+[[entity]]
+kind = "env_var"
+repo = "globex-api"
+name = "GLOBEX_KEY"
+
+[[entity]]
+kind = "env_var"
+repo = "globex-worker"
+name = "DATABASE_URL"
+
+[[entity]]
+kind = "event"
+name = "order.created"
+note = "globex-scoped event, a different entity from acme order.created despite the identical name"
+
+[[edge]]
+kind = "exposes_endpoint"
+from = { repo = "globex-api", path = "src/routes/users.routes.ts", symbol = "registerUserRoutes" }
+to = { kind = "api_endpoint", repo = "globex-api", method = "GET", route = "/users/:id" }
+certainty = ["syntactic"]
+
+[[edge]]
+kind = "exposes_endpoint"
+from = { repo = "globex-api", path = "src/routes/orders.routes.ts", symbol = "registerOrderRoutes" }
+to = { kind = "api_endpoint", repo = "globex-api", method = "GET", route = "/orders/:id" }
+certainty = ["syntactic"]
+
+[[edge]]
+kind = "calls"
+from = { repo = "globex-api", path = "src/routes/users.routes.ts", symbol = "registerUserRoutes" }
+to = { repo = "globex-api", path = "src/services/users.service.ts", symbol = "UsersService.findOne" }
+certainty = ["resolved", "heuristic"]
+min_confidence = 0.7
+note = "`usersService` is a module-level `new UsersService()`; call is inside an inline arrow handler"
+
+[[edge]]
+kind = "calls"
+from = { repo = "globex-api", path = "src/services/orders.service.ts", symbol = "OrdersService.findOne" }
+to = { repo = "globex-api", path = "src/util/money.ts", symbol = "formatMoney" }
+certainty = ["resolved"]
+
+[[edge]]
+kind = "reads_env"
+from = { repo = "globex-api", path = "src/config.ts", symbol = "DATABASE_URL" }
+to = { kind = "env_var", repo = "globex-api", name = "DATABASE_URL" }
+certainty = ["syntactic"]
+note = "module-level constant initialiser, attributed to the const symbol"
+
+[[edge]]
+kind = "reads_env"
+from = { repo = "globex-api", path = "src/middleware/auth.ts", symbol = "requireGlobexKey" }
+to = { kind = "env_var", repo = "globex-api", name = "GLOBEX_KEY" }
+certainty = ["syntactic"]
+
+[[edge]]
+kind = "reads_env"
+from = { repo = "globex-worker", path = "src/main.rs", symbol = "main" }
+to = { kind = "env_var", repo = "globex-worker", name = "DATABASE_URL" }
+certainty = ["syntactic"]
+
+[[edge]]
+kind = "publishes"
+from = { repo = "globex-api", path = "src/services/orders.service.ts", symbol = "OrdersService.create" }
+to = { kind = "event", name = "order.created" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "orderEvents.emit(\"order.created\", order) on a node:events EventEmitter"
+
+[[edge]]
+kind = "subscribes"
+from = { repo = "globex-worker", path = "src/consumer.rs", symbol = "handle_order_created" }
+to = { kind = "event", name = "order.created" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "bus.subscribe(\"order.created\") on `&mut dyn Bus`"
+
+[[edge]]
+kind = "calls"
+from = { repo = "globex-worker", path = "src/consumer.rs", symbol = "handle_order_created" }
+to = { repo = "globex-worker", path = "src/money.rs", symbol = "to_cents" }
+certainty = ["resolved"]
+note = "use crate::money::to_cents inside a closure passed to .map"
+
+[[auth]]
+api_repo = "globex-api"
+supported = ["api_key"]
+used = {}
+unused = ["api_key"]
+note = "x-globex-key header checked by requireGlobexKey; no client exists in the globex project, so the scheme is unused"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getUser" }
+to = { kind = "api_endpoint", repo = "globex-api", method = "GET", route = "/users/:id" }
+note = "project isolation: acme-sdk must never link to globex routes of the same shape"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getOrder" }
+to = { kind = "api_endpoint", repo = "globex-api", method = "GET", route = "/orders/:id" }
+note = "project isolation: acme-sdk must never link to globex routes of the same shape"
+
+[[forbidden_edge]]
+kind = "subscribes"
+from = { repo = "globex-worker", path = "src/consumer.rs", symbol = "handle_order_created" }
+to = { kind = "event", repo = "acme-billing", name = "order.created" }
+note = "the acme and globex order.created events are different entities; globex consumers never attach to acme publishers"
+
+[[isolation]]
+project = "acme"
+must_not_return = [{ repo = "globex-api", path = "src/services/users.service.ts", symbol = "UsersService" }, { repo = "globex-api", path = "src/util/money.ts", symbol = "formatMoney" }, { repo = "globex-worker", path = "src/money.rs", symbol = "to_cents" }, { repo = "globex-worker", path = "src/consumer.rs", symbol = "handle_order_created" }, { repo = "globex-api", path = "src/services/orders.service.ts", symbol = "OrdersService.create" }, { kind = "api_endpoint", repo = "globex-api", method = "GET", route = "/users/:id" }, { kind = "api_endpoint", repo = "globex-api", method = "GET", route = "/orders/:id" }, { kind = "env_var", repo = "globex-api", name = "DATABASE_URL" }, { kind = "env_var", repo = "globex-worker", name = "DATABASE_URL" }]
+note = "acme-scoped queries (find symbol UsersService, who uses formatMoney, endpoints for GET /users/:id, readers of DATABASE_URL, subscribers of order.created, callers of to_cents) must return only acme-* repos"
+
+[[isolation]]
+project = "globex"
+must_not_return = [{ repo = "acme-api", path = "src/users/users.service.ts", symbol = "UsersService" }, { repo = "acme-api", path = "src/common/money.ts", symbol = "formatMoney" }, { repo = "acme-sdk", path = "src/money.ts", symbol = "toCents" }, { repo = "acme-billing", path = "src/money.rs", symbol = "to_cents" }, { repo = "acme-billing", path = "src/events.rs", symbol = "consume_order_created" }, { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/users/:id" }, { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/orders/:id" }, { kind = "env_var", repo = "acme-api", name = "DATABASE_URL" }, { kind = "env_var", repo = "acme-billing", name = "DATABASE_URL" }]
+note = "the reverse direction"
+
+[[blast_radius]]
+change = { repo = "globex-api", path = "src/util/money.ts", symbol = "formatMoney" }
+must_include = [{ repo = "globex-api", path = "src/services/orders.service.ts", symbol = "OrdersService.findOne" }, { kind = "api_endpoint", repo = "globex-api", method = "GET", route = "/orders/:id" }]
+must_not_include = [{ repo = "acme-api", path = "src/common/money.ts", symbol = "formatMoney" }, { repo = "acme-api", path = "src/orders/orders.service.ts", symbol = "OrdersService.findOne" }, { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getOrder" }]
+note = "same-named function in acme is untouched"
+
+[[blast_radius]]
+change = { repo = "globex-worker", path = "src/money.rs", symbol = "to_cents" }
+must_include = [{ repo = "globex-worker", path = "src/consumer.rs", symbol = "handle_order_created" }]
+must_not_include = [{ repo = "acme-billing", path = "src/money.rs", symbol = "to_cents" }, { repo = "acme-billing", path = "src/events.rs", symbol = "consume_order_created" }]
+note = "globex to_cents is unrelated to acme-billing to_cents"

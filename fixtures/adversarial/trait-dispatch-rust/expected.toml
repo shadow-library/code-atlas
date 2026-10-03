@@ -1,0 +1,262 @@
+[project]
+name = "trait-dispatch-rust"
+repos = ["trait-dispatch-rust"]
+unused_exhaustive = false
+
+[[entity]]
+kind = "trait"
+sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "Store" }
+
+[[entity]]
+kind = "struct"
+sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "MemStore" }
+
+[[entity]]
+kind = "struct"
+sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "DiskStore" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "Store::get" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<MemStore as Store>::get" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<DiskStore as Store>::get" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "Store::put" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<MemStore as Store>::put" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<DiskStore as Store>::put" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "DiskStore::path_for" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_generic" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_dyn" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_impl" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_mem" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "write_boxed" }
+
+[[edge]]
+kind = "implements"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "MemStore" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "Store" }
+certainty = ["syntactic", "resolved"]
+
+[[edge]]
+kind = "implements"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "DiskStore" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "Store" }
+certainty = ["syntactic", "resolved"]
+
+[[edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_generic" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "Store::get" }
+certainty = ["resolved"]
+note = "`T: Store` bound: the static receiver type names the trait, so the trait method is the certain target"
+
+[[edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_generic" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<MemStore as Store>::get" }
+certainty = ["heuristic"]
+min_confidence = 0.3
+required = false
+note = "possible concrete target of the `T: Store` bound call; which impl runs is decided at runtime/monomorphisation, so it is only a candidate"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_generic" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<MemStore as Store>::get" }
+certainty = ["resolved", "compiler_verified", "syntactic"]
+note = "concrete impls behind a generic/dyn receiver may never be resolved"
+
+[[edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_generic" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<DiskStore as Store>::get" }
+certainty = ["heuristic"]
+min_confidence = 0.3
+required = false
+note = "possible concrete target of the `T: Store` bound call; which impl runs is decided at runtime/monomorphisation, so it is only a candidate"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_generic" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<DiskStore as Store>::get" }
+certainty = ["resolved", "compiler_verified", "syntactic"]
+note = "concrete impls behind a generic/dyn receiver may never be resolved"
+
+[[edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_dyn" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "Store::get" }
+certainty = ["resolved"]
+note = "`&dyn Store`: the static receiver type names the trait, so the trait method is the certain target"
+
+[[edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_dyn" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<MemStore as Store>::get" }
+certainty = ["heuristic"]
+min_confidence = 0.3
+required = false
+note = "possible concrete target of the `&dyn Store` call; which impl runs is decided at runtime/monomorphisation, so it is only a candidate"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_dyn" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<MemStore as Store>::get" }
+certainty = ["resolved", "compiler_verified", "syntactic"]
+note = "concrete impls behind a generic/dyn receiver may never be resolved"
+
+[[edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_dyn" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<DiskStore as Store>::get" }
+certainty = ["heuristic"]
+min_confidence = 0.3
+required = false
+note = "possible concrete target of the `&dyn Store` call; which impl runs is decided at runtime/monomorphisation, so it is only a candidate"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_dyn" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<DiskStore as Store>::get" }
+certainty = ["resolved", "compiler_verified", "syntactic"]
+note = "concrete impls behind a generic/dyn receiver may never be resolved"
+
+[[edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_impl" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "Store::get" }
+certainty = ["resolved"]
+note = "`impl Store` argument: the static receiver type names the trait, so the trait method is the certain target"
+
+[[edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_impl" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<MemStore as Store>::get" }
+certainty = ["heuristic"]
+min_confidence = 0.3
+required = false
+note = "possible concrete target of the `impl Store` argument call; which impl runs is decided at runtime/monomorphisation, so it is only a candidate"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_impl" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<MemStore as Store>::get" }
+certainty = ["resolved", "compiler_verified", "syntactic"]
+note = "concrete impls behind a generic/dyn receiver may never be resolved"
+
+[[edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_impl" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<DiskStore as Store>::get" }
+certainty = ["heuristic"]
+min_confidence = 0.3
+required = false
+note = "possible concrete target of the `impl Store` argument call; which impl runs is decided at runtime/monomorphisation, so it is only a candidate"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_impl" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<DiskStore as Store>::get" }
+certainty = ["resolved", "compiler_verified", "syntactic"]
+note = "concrete impls behind a generic/dyn receiver may never be resolved"
+
+[[edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "write_boxed" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "Store::put" }
+certainty = ["resolved"]
+note = "`Box<dyn Store>` auto-deref: the static receiver type names the trait, so the trait method is the certain target"
+
+[[edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "write_boxed" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<MemStore as Store>::put" }
+certainty = ["heuristic"]
+min_confidence = 0.3
+required = false
+note = "possible concrete target of the `Box<dyn Store>` auto-deref call; which impl runs is decided at runtime/monomorphisation, so it is only a candidate"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "write_boxed" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<MemStore as Store>::put" }
+certainty = ["resolved", "compiler_verified", "syntactic"]
+note = "concrete impls behind a generic/dyn receiver may never be resolved"
+
+[[edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "write_boxed" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<DiskStore as Store>::put" }
+certainty = ["heuristic"]
+min_confidence = 0.3
+required = false
+note = "possible concrete target of the `Box<dyn Store>` auto-deref call; which impl runs is decided at runtime/monomorphisation, so it is only a candidate"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "write_boxed" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<DiskStore as Store>::put" }
+certainty = ["resolved", "compiler_verified", "syntactic"]
+note = "concrete impls behind a generic/dyn receiver may never be resolved"
+
+[[edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_mem" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<MemStore as Store>::get" }
+certainty = ["resolved"]
+note = "receiver is the concrete type &MemStore: the impl method is statically known"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "read_mem" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<DiskStore as Store>::get" }
+note = "concrete receiver rules out the other impl at any certainty"
+
+[[edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<DiskStore as Store>::get" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "DiskStore::path_for" }
+certainty = ["resolved"]
+note = "self.path_for: inherent method on the impl target type"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<MemStore as Store>::get" }
+to = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "DiskStore::path_for" }
+note = "different type"
+
+[[not_unused]]
+sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<DiskStore as Store>::put" }
+reason = "trait impl method reachable via write_boxed dyn dispatch"

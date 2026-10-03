@@ -1,0 +1,138 @@
+[project]
+name = "dynamic-ts"
+repos = ["dynamic-ts"]
+unused_exhaustive = false
+
+[[entity]]
+kind = "function"
+sym = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "invoke" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "invokeOn" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "loadHandler" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "loadPlugin" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "runExpression" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "staticCall" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "dynamic-ts", path = "src/handlers.ts", symbol = "start" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "dynamic-ts", path = "src/handlers.ts", symbol = "stop" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "dynamic-ts", path = "src/plugins/alpha.ts", symbol = "default" }
+
+[[unresolved]]
+from = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "invoke" }
+ref_kind = "call"
+reason = "dynamic"
+name = "methodName"
+note = "table[methodName]() has a runtime-computed member name; the receiver is typed Record<string, ...>, so no export of handlers.ts may be guessed"
+
+[[unresolved]]
+from = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "invokeOn" }
+ref_kind = "call"
+reason = "dynamic"
+name = "methodName"
+note = "target[methodName]() on a parameter of unknown shape"
+
+[[unresolved]]
+from = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "loadHandler" }
+ref_kind = "require"
+reason = "dynamic"
+name = "modulePath"
+note = "require(modulePath) with a variable argument"
+
+[[unresolved]]
+from = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "loadPlugin" }
+ref_kind = "import"
+reason = "dynamic"
+name = "name"
+note = "import(`./plugins/${name}`): a template with a static directory prefix still has a runtime-chosen module; no edge to plugins/alpha.ts (not even heuristic) is expected from this fixture; a cautious analyzer may record only the unresolved reference"
+
+[[unresolved]]
+from = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "runExpression" }
+ref_kind = "call"
+reason = "dynamic"
+name = "eval"
+note = "eval(source) executes arbitrary code; nothing can be linked"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "invoke" }
+to = { repo = "dynamic-ts", path = "src/handlers.ts", symbol = "start" }
+note = "fabricated edge from a computed member access"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "invoke" }
+to = { repo = "dynamic-ts", path = "src/handlers.ts", symbol = "stop" }
+note = "fabricated edge from a computed member access"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "invokeOn" }
+to = { repo = "dynamic-ts", path = "src/handlers.ts", symbol = "start" }
+note = "fabricated edge from a computed member access"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "invokeOn" }
+to = { repo = "dynamic-ts", path = "src/handlers.ts", symbol = "stop" }
+note = "fabricated edge from a computed member access"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "loadHandler" }
+to = { kind = "function" }
+note = "require(variable) must not link to any function"
+
+[[forbidden_edge]]
+kind = "imports"
+from = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "loadPlugin" }
+to = { repo = "dynamic-ts", path = "src/plugins/alpha.ts" }
+note = "dynamic import must not fabricate an import edge to the one plugin that happens to exist"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "loadPlugin" }
+to = { repo = "dynamic-ts", path = "src/plugins/alpha.ts", symbol = "default" }
+note = "dynamic import must not fabricate a call edge"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "runExpression" }
+to = { kind = "function" }
+note = "eval must not link to any function"
+
+[[edge]]
+kind = "calls"
+from = { repo = "dynamic-ts", path = "src/dispatch.ts", symbol = "staticCall" }
+to = { repo = "dynamic-ts", path = "src/handlers.ts", symbol = "start" }
+certainty = ["resolved"]
+note = "contrast case: handlers.start() through a namespace import is statically resolvable"
+
+[[not_unused]]
+sym = { repo = "dynamic-ts", path = "src/handlers.ts", symbol = "stop" }
+reason = "reachable only through the dynamic table[methodName]() access: a static analyzer cannot prove it is used or unused, it must not be reported as confidently unused"
+
+[[not_unused]]
+sym = { repo = "dynamic-ts", path = "src/plugins/alpha.ts", symbol = "default" }
+reason = "reachable only through the dynamic import in loadPlugin"

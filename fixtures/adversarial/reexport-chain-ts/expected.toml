@@ -1,0 +1,50 @@
+[project]
+name = "reexport-chain-ts"
+repos = ["reexport-chain-ts"]
+unused_exhaustive = false
+
+[[entity]]
+kind = "function"
+sym = { repo = "reexport-chain-ts", path = "src/core/impl.ts", symbol = "computeTotal" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "reexport-chain-ts", path = "src/other/total.ts", symbol = "total" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "reexport-chain-ts", path = "src/app/checkout.ts", symbol = "checkout" }
+
+[[edge]]
+kind = "re_exports"
+from = { repo = "reexport-chain-ts", path = "src/core/index.ts" }
+to = { repo = "reexport-chain-ts", path = "src/core/impl.ts", symbol = "computeTotal" }
+certainty = ["syntactic", "resolved"]
+note = "barrel 1: export { computeTotal } from \"./impl\""
+
+[[edge]]
+kind = "re_exports"
+from = { repo = "reexport-chain-ts", path = "src/lib/index.ts" }
+to = { repo = "reexport-chain-ts", path = "src/core/impl.ts", symbol = "computeTotal" }
+certainty = ["syntactic", "resolved"]
+note = "barrel 2 renames: computeTotal as total; target of the chain is still the original definition"
+
+[[edge]]
+kind = "re_exports"
+from = { repo = "reexport-chain-ts", path = "src/index.ts" }
+to = { repo = "reexport-chain-ts", path = "src/lib/index.ts" }
+certainty = ["syntactic", "resolved"]
+note = "barrel 3: export * from \"./lib\""
+
+[[edge]]
+kind = "calls"
+from = { repo = "reexport-chain-ts", path = "src/app/checkout.ts", symbol = "checkout" }
+to = { repo = "reexport-chain-ts", path = "src/core/impl.ts", symbol = "computeTotal" }
+certainty = ["resolved"]
+note = "import { total } from \"../index\" -> export * -> alias `total` -> core barrel -> impl.ts; the edge target is the original function, not a barrel and not the decoy"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "reexport-chain-ts", path = "src/app/checkout.ts", symbol = "checkout" }
+to = { repo = "reexport-chain-ts", path = "src/other/total.ts", symbol = "total" }
+note = "decoy with the alias name `total` that is never imported by checkout.ts; name-only matching would pick it"

@@ -1,0 +1,89 @@
+[project]
+name = "similar-not-equivalent"
+repos = ["similar-not-equivalent"]
+unused_exhaustive = false
+
+[[entity]]
+kind = "function"
+sym = { repo = "similar-not-equivalent", path = "src/rounding.ts", symbol = "roundHalfUp" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "similar-not-equivalent", path = "src/rounding.ts", symbol = "roundHalfEven" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "similar-not-equivalent", path = "src/user-input.ts", symbol = "normalize" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "similar-not-equivalent", path = "src/path-input.ts", symbol = "normalize" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "similar-not-equivalent", path = "src/sums.ts", symbol = "sumLoop" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "similar-not-equivalent", path = "src/sums.ts", symbol = "sumReduce" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "similar-not-equivalent", path = "src/sums.ts", symbol = "isEvenMod" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "similar-not-equivalent", path = "src/sums.ts", symbol = "isEvenBit" }
+
+[[similar]]
+a = { repo = "similar-not-equivalent", path = "src/rounding.ts", symbol = "roundHalfUp" }
+b = { repo = "similar-not-equivalent", path = "src/rounding.ts", symbol = "roundHalfEven" }
+expected = "similar_not_equivalent"
+deterministic_claim_allowed = false
+note = "same shape, differ on exact .5 ties with an even floor: 2.5 -> 3 (half up) vs 2 (half even); 0.5 -> 1 vs 0"
+
+[[similar]]
+a = { repo = "similar-not-equivalent", path = "src/user-input.ts", symbol = "normalize" }
+b = { repo = "similar-not-equivalent", path = "src/path-input.ts", symbol = "normalize" }
+expected = "unrelated"
+deterministic_claim_allowed = false
+note = "same name and signature, unrelated behaviour (trim+lowercase vs path separator cleanup); a name match alone must not produce similar_to or equivalent_to"
+
+[[similar]]
+a = { repo = "similar-not-equivalent", path = "src/sums.ts", symbol = "sumLoop" }
+b = { repo = "similar-not-equivalent", path = "src/sums.ts", symbol = "sumReduce" }
+expected = "equivalent"
+deterministic_claim_allowed = false
+note = "different shape (for-of loop vs reduce), identical behaviour including evaluation order of the floating-point additions; only an inferred equivalent_to is allowed"
+
+[[similar]]
+a = { repo = "similar-not-equivalent", path = "src/sums.ts", symbol = "isEvenMod" }
+b = { repo = "similar-not-equivalent", path = "src/sums.ts", symbol = "isEvenBit" }
+expected = "similar_not_equivalent"
+deterministic_claim_allowed = false
+note = "equal on integers, different on non-integers and non-finite numbers: isEvenMod(2.5) is false, isEvenBit(2.5) is true (ToInt32 truncates); NaN and Infinity also differ. A plausible but wrong equivalent_to must be rejected."
+
+[[forbidden_edge]]
+kind = "equivalent_to"
+from = { repo = "similar-not-equivalent", path = "src/rounding.ts", symbol = "roundHalfUp" }
+to = { repo = "similar-not-equivalent", path = "src/rounding.ts", symbol = "roundHalfEven" }
+note = "different semantics"
+
+[[forbidden_edge]]
+kind = "equivalent_to"
+from = { repo = "similar-not-equivalent", path = "src/user-input.ts", symbol = "normalize" }
+to = { repo = "similar-not-equivalent", path = "src/path-input.ts", symbol = "normalize" }
+note = "same name only"
+
+[[forbidden_edge]]
+kind = "equivalent_to"
+from = { repo = "similar-not-equivalent", path = "src/sums.ts", symbol = "isEvenMod" }
+to = { repo = "similar-not-equivalent", path = "src/sums.ts", symbol = "isEvenBit" }
+note = "differs on non-integers"
+
+[[forbidden_edge]]
+kind = "equivalent_to"
+from = { repo = "similar-not-equivalent", path = "src/sums.ts", symbol = "sumLoop" }
+to = { repo = "similar-not-equivalent", path = "src/sums.ts", symbol = "sumReduce" }
+certainty = ["syntactic", "resolved", "heuristic", "compiler_verified"]
+note = "equivalent_to is inferred-only: no deterministic certainty allowed"

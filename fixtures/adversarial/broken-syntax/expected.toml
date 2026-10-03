@@ -1,0 +1,140 @@
+[project]
+name = "broken-syntax"
+repos = ["broken-syntax"]
+unused_exhaustive = false
+
+[[file_flag]]
+repo = "broken-syntax"
+path = "src/broken.ts"
+flag = "partial_syntax"
+note = "`const value = (1 + ;` is a syntax error inside middle(); tree-sitter recovers it locally (verified: every top-level declaration survives)"
+
+[[file_flag]]
+repo = "broken-syntax"
+path = "crate/src/lib.rs"
+flag = "partial_syntax"
+note = "`let value = 1 + ;` inside middle(); recovered locally (verified with tree-sitter-rust)"
+
+[[entity]]
+kind = "function"
+sym = { repo = "broken-syntax", path = "src/broken.ts", symbol = "before" }
+note = "outside the error region: must be extracted"
+
+[[entity]]
+kind = "class"
+sym = { repo = "broken-syntax", path = "src/broken.ts", symbol = "Early" }
+note = "outside the error region: must be extracted"
+
+[[entity]]
+kind = "method"
+sym = { repo = "broken-syntax", path = "src/broken.ts", symbol = "Early.run" }
+note = "outside the error region: must be extracted"
+
+[[entity]]
+kind = "function"
+sym = { repo = "broken-syntax", path = "src/broken.ts", symbol = "after" }
+note = "outside the error region: must be extracted"
+
+[[entity]]
+kind = "class"
+sym = { repo = "broken-syntax", path = "src/broken.ts", symbol = "Late" }
+note = "outside the error region: must be extracted"
+
+[[entity]]
+kind = "method"
+sym = { repo = "broken-syntax", path = "src/broken.ts", symbol = "Late.go" }
+note = "outside the error region: must be extracted"
+
+[[entity]]
+kind = "function"
+sym = { repo = "broken-syntax", path = "src/broken.ts", symbol = "middle" }
+best_effort = true
+note = "contains the syntax error; the declaration is recoverable but its body facts are untrusted"
+
+[[entity]]
+kind = "function"
+sym = { repo = "broken-syntax", path = "crate/src/lib.rs", symbol = "before" }
+note = "outside the error region: must be extracted"
+
+[[entity]]
+kind = "struct"
+sym = { repo = "broken-syntax", path = "crate/src/lib.rs", symbol = "Early" }
+note = "outside the error region: must be extracted"
+
+[[entity]]
+kind = "method"
+sym = { repo = "broken-syntax", path = "crate/src/lib.rs", symbol = "Early::run" }
+note = "outside the error region: must be extracted"
+
+[[entity]]
+kind = "function"
+sym = { repo = "broken-syntax", path = "crate/src/lib.rs", symbol = "after" }
+note = "outside the error region: must be extracted"
+
+[[entity]]
+kind = "struct"
+sym = { repo = "broken-syntax", path = "crate/src/lib.rs", symbol = "Late" }
+note = "outside the error region: must be extracted"
+
+[[entity]]
+kind = "method"
+sym = { repo = "broken-syntax", path = "crate/src/lib.rs", symbol = "Late::go" }
+note = "outside the error region: must be extracted"
+
+[[entity]]
+kind = "function"
+sym = { repo = "broken-syntax", path = "crate/src/lib.rs", symbol = "middle" }
+best_effort = true
+note = "contains the syntax error; the declaration is recoverable but its body facts are untrusted"
+
+[[edge]]
+kind = "calls"
+from = { repo = "broken-syntax", path = "src/broken.ts", symbol = "Early.run" }
+to = { repo = "broken-syntax", path = "src/broken.ts", symbol = "before" }
+certainty = ["resolved"]
+note = "clean region before the error"
+
+[[edge]]
+kind = "calls"
+from = { repo = "broken-syntax", path = "src/broken.ts", symbol = "after" }
+to = { repo = "broken-syntax", path = "src/broken.ts", symbol = "before" }
+certainty = ["resolved"]
+
+[[edge]]
+kind = "calls"
+from = { repo = "broken-syntax", path = "src/broken.ts", symbol = "Late.go" }
+to = { repo = "broken-syntax", path = "src/broken.ts", symbol = "after" }
+certainty = ["resolved"]
+note = "clean region after the error"
+
+[[edge]]
+kind = "calls"
+from = { repo = "broken-syntax", path = "crate/src/lib.rs", symbol = "Early::run" }
+to = { repo = "broken-syntax", path = "crate/src/lib.rs", symbol = "before" }
+certainty = ["resolved"]
+note = "clean region before the error"
+
+[[edge]]
+kind = "calls"
+from = { repo = "broken-syntax", path = "crate/src/lib.rs", symbol = "after" }
+to = { repo = "broken-syntax", path = "crate/src/lib.rs", symbol = "before" }
+certainty = ["resolved"]
+
+[[edge]]
+kind = "calls"
+from = { repo = "broken-syntax", path = "crate/src/lib.rs", symbol = "Late::go" }
+to = { repo = "broken-syntax", path = "crate/src/lib.rs", symbol = "after" }
+certainty = ["resolved"]
+note = "clean region after the error"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "broken-syntax", path = "src/broken.ts", symbol = "middle" }
+to = { kind = "function" }
+note = "an erroneous body must not yield fabricated call edges"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "broken-syntax", path = "crate/src/lib.rs", symbol = "middle" }
+to = { kind = "function" }
+note = "an erroneous body must not yield fabricated call edges"

@@ -1,0 +1,91 @@
+[project]
+name = "duplicate-names-rust"
+repos = ["duplicate-names-rust"]
+unused_exhaustive = false
+
+[[entity]]
+kind = "function"
+sym = { repo = "duplicate-names-rust", path = "src/a.rs", symbol = "parse" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "duplicate-names-rust", path = "src/b.rs", symbol = "parse" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "duplicate-names-rust", path = "src/consumer.rs", symbol = "split_fields" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "duplicate-names-rust", path = "src/consumer.rs", symbol = "read_number" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "duplicate-names-rust", path = "src/consumer.rs", symbol = "glob_explicit::explicit_beats_glob" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "duplicate-names-rust", path = "src/ambiguous.rs", symbol = "ambiguous_call" }
+note = "file is compiled only with feature ambiguous-demo (which fails to build with E0659) but must still be indexed"
+
+[[edge]]
+kind = "calls"
+from = { repo = "duplicate-names-rust", path = "src/consumer.rs", symbol = "split_fields" }
+to = { repo = "duplicate-names-rust", path = "src/a.rs", symbol = "parse" }
+certainty = ["resolved"]
+note = "use crate::a::parse; parse(line)"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "duplicate-names-rust", path = "src/consumer.rs", symbol = "split_fields" }
+to = { repo = "duplicate-names-rust", path = "src/b.rs", symbol = "parse" }
+note = "same name, different module"
+
+[[edge]]
+kind = "calls"
+from = { repo = "duplicate-names-rust", path = "src/consumer.rs", symbol = "read_number" }
+to = { repo = "duplicate-names-rust", path = "src/b.rs", symbol = "parse" }
+certainty = ["resolved"]
+note = "use crate::b; b::parse(line): path call through a module import"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "duplicate-names-rust", path = "src/consumer.rs", symbol = "read_number" }
+to = { repo = "duplicate-names-rust", path = "src/a.rs", symbol = "parse" }
+note = "same name, different module"
+
+[[edge]]
+kind = "calls"
+from = { repo = "duplicate-names-rust", path = "src/consumer.rs", symbol = "glob_explicit::explicit_beats_glob" }
+to = { repo = "duplicate-names-rust", path = "src/b.rs", symbol = "parse" }
+certainty = ["resolved"]
+note = "`use crate::a::*; use crate::b::parse;`: an explicit import shadows a glob import, so this is deterministic and compiles"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "duplicate-names-rust", path = "src/consumer.rs", symbol = "glob_explicit::explicit_beats_glob" }
+to = { repo = "duplicate-names-rust", path = "src/a.rs", symbol = "parse" }
+note = "glob-imported a::parse is shadowed by the explicit import"
+
+[[unresolved]]
+from = { repo = "duplicate-names-rust", path = "src/ambiguous.rs", symbol = "ambiguous_call" }
+ref_kind = "call"
+reason = "ambiguous"
+name = "parse"
+candidates = [{ repo = "duplicate-names-rust", path = "src/a.rs", symbol = "parse" }, { repo = "duplicate-names-rust", path = "src/b.rs", symbol = "parse" }]
+max_certainty = "heuristic"
+note = "two glob imports both export `parse`: rustc rejects this (E0659). An emulated resolver cannot pick one: no resolved edge to either; a heuristic edge to either candidate is tolerated with low confidence, none is also fine."
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "duplicate-names-rust", path = "src/ambiguous.rs", symbol = "ambiguous_call" }
+to = { repo = "duplicate-names-rust", path = "src/a.rs", symbol = "parse" }
+certainty = ["resolved", "compiler_verified", "syntactic"]
+note = "must never be resolved to either candidate"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "duplicate-names-rust", path = "src/ambiguous.rs", symbol = "ambiguous_call" }
+to = { repo = "duplicate-names-rust", path = "src/b.rs", symbol = "parse" }
+certainty = ["resolved", "compiler_verified", "syntactic"]
+note = "must never be resolved to either candidate"

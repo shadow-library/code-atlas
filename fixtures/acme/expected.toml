@@ -1,0 +1,1286 @@
+[project]
+name = "acme"
+repos = ["acme-api", "acme-sdk", "acme-web", "acme-billing"]
+unused_exhaustive = false
+
+[[entity]]
+kind = "api_endpoint"
+repo = "acme-api"
+method = "GET"
+route = "/users/:id"
+handler = { repo = "acme-api", path = "src/users/users.controller.ts", symbol = "UsersController.findOne" }
+certainty = ["syntactic"]
+note = "@Controller(\"users\") + @Get(\":id\"); both literals"
+
+[[entity]]
+kind = "api_endpoint"
+repo = "acme-api"
+method = "POST"
+route = "/users"
+handler = { repo = "acme-api", path = "src/users/users.controller.ts", symbol = "UsersController.create" }
+certainty = ["syntactic"]
+note = "@Post() with no argument contributes no path segment"
+
+[[entity]]
+kind = "api_endpoint"
+repo = "acme-api"
+method = "PATCH"
+route = "/users/:id"
+handler = { repo = "acme-api", path = "src/users/users.controller.ts", symbol = "UsersController.update" }
+certainty = ["syntactic"]
+
+[[entity]]
+kind = "api_endpoint"
+repo = "acme-api"
+method = "DELETE"
+route = "/users/:id"
+handler = { repo = "acme-api", path = "src/users/users.controller.ts", symbol = "UsersController.remove" }
+certainty = ["syntactic"]
+
+[[entity]]
+kind = "api_endpoint"
+repo = "acme-api"
+method = "GET"
+route = "/orders/:id"
+handler = { repo = "acme-api", path = "src/orders/orders.controller.ts", symbol = "OrdersController.findOne" }
+certainty = ["resolved", "heuristic"]
+note = "@Controller(ORDERS_PATH) where ORDERS_PATH is a same-file `const` bound once to the literal \"orders\". Expected: resolved (deterministic same-file constant propagation, single binding, no reassignment). heuristic is tolerated, with confidence >= 0.8, for analyzers without constant propagation. unknown/missing is a failure."
+
+[[entity]]
+kind = "api_endpoint"
+repo = "acme-api"
+method = "POST"
+route = "/orders"
+handler = { repo = "acme-api", path = "src/orders/orders.controller.ts", symbol = "OrdersController.create" }
+certainty = ["resolved", "heuristic"]
+note = "same constant-resolved controller prefix as GET /orders/:id"
+
+[[entity]]
+kind = "api_endpoint"
+repo = "acme-api"
+method = "GET"
+route = "/admin/stats"
+handler = { repo = "acme-api", path = "src/admin/admin.controller.ts", symbol = "AdminController.stats" }
+certainty = ["syntactic"]
+
+[[entity]]
+kind = "api_endpoint"
+repo = "acme-api"
+method = "GET"
+route = "/v1/reports/export"
+handler = { repo = "acme-api", path = "src/reports/reports.controller.ts", symbol = "ReportsController.export" }
+certainty = ["syntactic"]
+note = "@Controller() with no prefix and @Get(\"v1/reports/export\"): the route is /v1/reports/export, not /reports/v1/reports/export. No global prefix is configured in main.ts."
+
+[[entity]]
+kind = "api_endpoint"
+repo = "acme-billing"
+method = "POST"
+route = "/invoices"
+handler = { repo = "acme-billing", path = "src/handlers.rs", symbol = "create_invoice" }
+certainty = ["resolved"]
+note = "route literal is in src/lib.rs `.route(\"/invoices\", post(create_invoice))`; handler identifier resolved through the `use crate::handlers::{create_invoice, get_invoice}` import"
+
+[[entity]]
+kind = "api_endpoint"
+repo = "acme-billing"
+method = "GET"
+route = "/invoices/:id"
+handler = { repo = "acme-billing", path = "src/handlers.rs", symbol = "get_invoice" }
+certainty = ["resolved"]
+note = "axum 0.8 `{id}` path syntax normalised to :id"
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-api", path = "src/common/money.ts", symbol = "formatMoney" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-api", path = "src/billing/rounding.ts", symbol = "roundHalfEven" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-api", path = "src/billing/rounding.ts", symbol = "roundHalfUp" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-api", path = "src/common/slug.ts", symbol = "legacySlugify" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-api", path = "src/users/email.ts", symbol = "normalizeEmail" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "acme-api", path = "src/users/users.service.ts", symbol = "UsersService" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "acme-api", path = "src/orders/orders.service.ts", symbol = "OrdersService" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "acme-api", path = "src/billing/billing.service.ts", symbol = "BillingService" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "acme-api", path = "src/reports/reports.service.ts", symbol = "ReportsService" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "acme-api", path = "src/auth/jwt-auth.guard.ts", symbol = "JwtAuthGuard" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "acme-api", path = "src/auth/api-key.guard.ts", symbol = "ApiKeyGuard" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "acme-api", path = "src/auth/session.guard.ts", symbol = "SessionGuard" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "acme-api", path = "src/auth/jwt-or-api-key.guard.ts", symbol = "JwtOrApiKeyGuard" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "acme-api", path = "src/auth/permissions.guard.ts", symbol = "PermissionsGuard" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "acme-api", path = "src/users/users.controller.ts", symbol = "UsersController" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "acme-api", path = "src/orders/orders.controller.ts", symbol = "OrdersController" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "acme-api", path = "src/admin/admin.controller.ts", symbol = "AdminController" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "acme-api", path = "src/reports/reports.controller.ts", symbol = "ReportsController" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-api", path = "src/orders/orders.service.ts", symbol = "OrdersService.create" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-api", path = "src/orders/orders.service.ts", symbol = "OrdersService.findOne" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-api", path = "src/users/users.service.ts", symbol = "UsersService.findOne" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-api", path = "src/reports/reports.service.ts", symbol = "ReportsService.exportCsv" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-api", path = "src/auth/session.store.ts", symbol = "SessionStore.save" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getUser" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.updateUser" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.createOrder" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getOrder" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.headers" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-sdk", path = "src/money.ts", symbol = "toCents" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-web", path = "src/utils/currency.ts", symbol = "parseMoney" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-web", path = "src/hooks/useUser.ts", symbol = "useUser" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-web", path = "src/hooks/useMe.ts", symbol = "useMe" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-web", path = "src/hooks/useCreateOrder.ts", symbol = "useCreateOrder" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-web", path = "src/components/UserCard.tsx", symbol = "UserCard" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-web", path = "src/components/OrderForm.tsx", symbol = "OrderForm" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-web", path = "src/api/health.ts", symbol = "checkHealth" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-web", path = "src/api/session.ts", symbol = "setToken" }
+
+[[entity]]
+kind = "constant"
+sym = { repo = "acme-web", path = "src/api/client.ts", symbol = "acme" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-billing", path = "src/money.rs", symbol = "to_cents" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-billing", path = "src/handlers.rs", symbol = "persist" }
+note = "private helper taking `&dyn InvoiceStore`"
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-billing", path = "src/handlers.rs", symbol = "create_invoice" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-billing", path = "src/handlers.rs", symbol = "get_invoice" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-billing", path = "src/events.rs", symbol = "consume_order_created" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "acme-billing", path = "src/lib.rs", symbol = "router" }
+
+[[entity]]
+kind = "trait"
+sym = { repo = "acme-billing", path = "src/store.rs", symbol = "InvoiceStore" }
+
+[[entity]]
+kind = "struct"
+sym = { repo = "acme-billing", path = "src/store.rs", symbol = "PgInvoiceStore" }
+
+[[entity]]
+kind = "struct"
+sym = { repo = "acme-billing", path = "src/store.rs", symbol = "InMemoryInvoiceStore" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-billing", path = "src/store.rs", symbol = "<PgInvoiceStore as InvoiceStore>::insert" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-billing", path = "src/store.rs", symbol = "<InMemoryInvoiceStore as InvoiceStore>::insert" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-billing", path = "src/store.rs", symbol = "<PgInvoiceStore as InvoiceStore>::find" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-billing", path = "src/store.rs", symbol = "<InMemoryInvoiceStore as InvoiceStore>::find" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-billing", path = "src/store.rs", symbol = "InvoiceStore::insert" }
+
+[[entity]]
+kind = "struct"
+sym = { repo = "acme-billing", path = "src/acme_client.rs", symbol = "AcmeApiClient" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-billing", path = "src/acme_client.rs", symbol = "AcmeApiClient::get_order" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "acme-billing", path = "src/acme_client.rs", symbol = "AcmeApiClient::from_env" }
+
+[[entity]]
+kind = "test"
+sym = { repo = "acme-billing", path = "src/money.rs", symbol = "tests::converts_whole_and_fractional_amounts" }
+
+[[entity]]
+kind = "test"
+sym = { repo = "acme-billing", path = "src/money.rs", symbol = "tests::keeps_the_sign_of_negative_amounts" }
+
+[[entity]]
+kind = "test"
+sym = { repo = "acme-billing", path = "tests/invoices.rs", symbol = "unknown_invoice_returns_404" }
+
+[[entity]]
+kind = "test"
+sym = { repo = "acme-billing", path = "tests/invoices.rs", symbol = "stored_invoice_is_returned" }
+
+[[entity]]
+kind = "env_var"
+repo = "acme-api"
+name = "DATABASE_URL"
+
+[[entity]]
+kind = "env_var"
+repo = "acme-api"
+name = "JWT_SECRET"
+
+[[entity]]
+kind = "env_var"
+repo = "acme-billing"
+name = "DATABASE_URL"
+note = "same name as the acme-api variable but a distinct per-repo entity"
+
+[[entity]]
+kind = "env_var"
+repo = "acme-billing"
+name = "ACME_API_URL"
+
+[[entity]]
+kind = "env_var"
+repo = "acme-billing"
+name = "BILLING_API_KEY"
+
+[[entity]]
+kind = "config_key"
+repo = "acme-api"
+name = "API_KEYS"
+
+[[entity]]
+kind = "event"
+name = "order.created"
+note = "one project-scoped event shared by the acme-api publisher and the acme-billing subscriber"
+
+[[entity]]
+kind = "db_model"
+repo = "acme-api"
+name = "users"
+sym = { repo = "acme-api", path = "src/users/user.entity.ts", symbol = "User" }
+
+[[entity]]
+kind = "db_model"
+repo = "acme-api"
+name = "orders"
+sym = { repo = "acme-api", path = "src/orders/order.entity.ts", symbol = "Order" }
+
+[[entity]]
+kind = "auth_scheme"
+repo = "acme-api"
+scheme = "bearer"
+
+[[entity]]
+kind = "auth_scheme"
+repo = "acme-api"
+scheme = "api_key"
+
+[[entity]]
+kind = "auth_scheme"
+repo = "acme-api"
+scheme = "session_cookie"
+
+[[entity]]
+kind = "permission"
+repo = "acme-api"
+name = "users:read"
+
+[[entity]]
+kind = "permission"
+repo = "acme-api"
+name = "users:write"
+
+[[entity]]
+kind = "permission"
+repo = "acme-api"
+name = "users:delete"
+
+[[entity]]
+kind = "package"
+repo = "acme-api"
+name = "acme-api"
+
+[[entity]]
+kind = "package"
+repo = "acme-sdk"
+name = "@acme/sdk"
+
+[[entity]]
+kind = "package"
+repo = "acme-web"
+name = "acme-web"
+
+[[entity]]
+kind = "package"
+repo = "acme-billing"
+name = "acme-billing"
+
+[[edge]]
+kind = "exposes_endpoint"
+from = { repo = "acme-api", path = "src/users/users.controller.ts", symbol = "UsersController.findOne" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/users/:id" }
+certainty = ["syntactic"]
+
+[[edge]]
+kind = "exposes_endpoint"
+from = { repo = "acme-api", path = "src/users/users.controller.ts", symbol = "UsersController.update" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "PATCH", route = "/users/:id" }
+certainty = ["syntactic"]
+
+[[edge]]
+kind = "exposes_endpoint"
+from = { repo = "acme-api", path = "src/orders/orders.controller.ts", symbol = "OrdersController.findOne" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/orders/:id" }
+certainty = ["resolved", "heuristic"]
+min_confidence = 0.8
+note = "constant-propagated controller prefix"
+
+[[edge]]
+kind = "exposes_endpoint"
+from = { repo = "acme-api", path = "src/reports/reports.controller.ts", symbol = "ReportsController.export" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/v1/reports/export" }
+certainty = ["syntactic"]
+
+[[edge]]
+kind = "exposes_endpoint"
+from = { repo = "acme-billing", path = "src/handlers.rs", symbol = "create_invoice" }
+to = { kind = "api_endpoint", repo = "acme-billing", method = "POST", route = "/invoices" }
+certainty = ["resolved"]
+
+[[edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getUser" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/users/:id" }
+certainty = ["heuristic"]
+min_confidence = 0.7
+note = "fetch(`${this.baseUrl}/users/${id}`): baseUrl is runtime configuration, so the origin is unknown and the match rests on the path template `/users/${id}` -> `/users/:id`. Cross-repo endpoint matching is always heuristic."
+
+[[edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.updateUser" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "PATCH", route = "/users/:id" }
+certainty = ["heuristic"]
+min_confidence = 0.7
+note = "method comes from the `method: \"PATCH\"` option of the fetch init object"
+
+[[edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.createOrder" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "POST", route = "/orders" }
+certainty = ["heuristic"]
+min_confidence = 0.7
+note = "`${this.baseUrl}/orders` with `method: \"POST\"`"
+
+[[edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getOrder" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/orders/:id" }
+certainty = ["heuristic"]
+min_confidence = 0.7
+note = "no method option means GET"
+
+[[edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-web", path = "src/hooks/useMe.ts", symbol = "useMe" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/users/:id" }
+certainty = ["heuristic"]
+min_confidence = 0.4
+note = "Runtime-correct: acme-api has no `/users/me` route, and NestJS matches `GET /users/me` against `@Get(\":id\")` with id = \"me\" (there is no static `me` route declared earlier), so the request really lands on UsersController.findOne. A literal segment matching a param segment is a weaker match than a param-for-param match, hence heuristic with low confidence and never resolved. The call is a semantic bug in the web app (it would look up the user \"me\"), which a correct analyzer cannot know."
+
+[[edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-billing", path = "src/acme_client.rs", symbol = "AcmeApiClient::get_order" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/orders/:id" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "format!(\"{}/orders/{}\", base_url, order_id) passed to `self.http.get(url)`: the URL reaches `get` through a local variable, base_url is runtime configuration (ACME_API_URL), method comes from the `.get` call"
+
+[[edge]]
+kind = "calls"
+from = { repo = "acme-web", path = "src/hooks/useUser.ts", symbol = "useUser" }
+to = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getUser" }
+certainty = ["resolved", "heuristic"]
+min_confidence = 0.7
+note = "`acme` is imported from src/api/client.ts where it is `new AcmeClient(...)`; the receiver type needs one level of const-initialiser inference, then crosses the file:../acme-sdk package link. Syntax-only analysis cannot do better than heuristic."
+
+[[edge]]
+kind = "calls"
+from = { repo = "acme-web", path = "src/hooks/useCreateOrder.ts", symbol = "useCreateOrder" }
+to = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.createOrder" }
+certainty = ["resolved", "heuristic"]
+min_confidence = 0.7
+note = "same receiver-inference chain as useUser; the call is inside a nested useCallback arrow, attributed to the enclosing useCreateOrder"
+
+[[edge]]
+kind = "calls"
+from = { repo = "acme-web", path = "src/components/OrderForm.tsx", symbol = "OrderForm" }
+to = { repo = "acme-sdk", path = "src/money.ts", symbol = "toCents" }
+certainty = ["resolved", "heuristic"]
+min_confidence = 0.8
+note = "import { toCents } from \"@acme/sdk\" -> src/index.ts `export { toCents } from \"./money\"` -> src/money.ts; must resolve to the original definition, not to the re-export"
+
+[[edge]]
+kind = "instantiates"
+from = { repo = "acme-web", path = "src/api/client.ts", symbol = "acme" }
+to = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient" }
+certainty = ["resolved", "heuristic"]
+min_confidence = 0.8
+
+[[edge]]
+kind = "depends_on_package"
+from = { kind = "package", repo = "acme-web", name = "acme-web" }
+to = { kind = "package", repo = "acme-sdk", name = "@acme/sdk" }
+certainty = ["resolved"]
+note = "\"@acme/sdk\": \"file:../acme-sdk\" resolves by path to the acme-sdk repo of the same project"
+
+[[edge]]
+kind = "re_exports"
+from = { repo = "acme-sdk", path = "src/index.ts" }
+to = { repo = "acme-sdk", path = "src/money.ts", symbol = "toCents" }
+certainty = ["syntactic", "resolved"]
+note = "export { toCents } from \"./money\""
+
+[[edge]]
+kind = "re_exports"
+from = { repo = "acme-sdk", path = "src/index.ts" }
+to = { repo = "acme-sdk", path = "src/client.ts" }
+certainty = ["syntactic", "resolved"]
+note = "export * from \"./client\""
+
+[[edge]]
+kind = "supports_auth"
+from = { repo = "acme-api", path = "src/auth/jwt-auth.guard.ts", symbol = "JwtAuthGuard" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "bearer" }
+certainty = ["heuristic"]
+min_confidence = 0.7
+note = "reads headers[\"authorization\"] and checks the \"Bearer \" prefix"
+
+[[edge]]
+kind = "supports_auth"
+from = { repo = "acme-api", path = "src/auth/api-key.guard.ts", symbol = "ApiKeyGuard" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "api_key" }
+certainty = ["heuristic"]
+min_confidence = 0.7
+note = "reads headers[\"x-api-key\"]"
+
+[[edge]]
+kind = "supports_auth"
+from = { repo = "acme-api", path = "src/auth/session.guard.ts", symbol = "SessionGuard" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "session_cookie" }
+certainty = ["heuristic"]
+min_confidence = 0.7
+note = "reads cookies[\"acme_session\"]"
+
+[[edge]]
+kind = "uses_auth"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.headers" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "bearer" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "sets the `Authorization: Bearer ...` header in the `auth.type === \"bearer\"` branch"
+
+[[edge]]
+kind = "uses_auth"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.headers" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "api_key" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "sets the `x-api-key` header in the other branch"
+
+[[edge]]
+kind = "uses_auth"
+from = { repo = "acme-web", path = "src/hooks/useMe.ts", symbol = "useMe" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "bearer" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "direct fetch with headers { Authorization: `Bearer ${token}` }"
+
+[[edge]]
+kind = "uses_auth"
+from = { repo = "acme-billing", path = "src/acme_client.rs", symbol = "AcmeApiClient::get_order" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "api_key" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = ".header(\"x-api-key\", &self.api_key) with the key from std::env::var(\"BILLING_API_KEY\")"
+
+[[edge]]
+kind = "uses_auth"
+from = { repo = "acme-web", path = "src/api/client.ts", symbol = "acme" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "bearer" }
+certainty = ["heuristic"]
+min_confidence = 0.5
+note = "`new AcmeClient({ auth: { type: \"bearer\", token } })` literal discriminant"
+
+[[edge]]
+kind = "requires_permission"
+from = { repo = "acme-api", path = "src/users/users.controller.ts", symbol = "UsersController.findOne" }
+to = { kind = "permission", repo = "acme-api", name = "users:read" }
+certainty = ["syntactic", "heuristic"]
+min_confidence = 0.7
+note = "custom decorator @RequirePermission(\"users:read\"); permission checked by PermissionsGuard (class-level @UseGuards)"
+
+[[edge]]
+kind = "requires_permission"
+from = { repo = "acme-api", path = "src/users/users.controller.ts", symbol = "UsersController.update" }
+to = { kind = "permission", repo = "acme-api", name = "users:write" }
+certainty = ["syntactic", "heuristic"]
+min_confidence = 0.7
+note = "custom decorator @RequirePermission(\"users:write\"); permission checked by PermissionsGuard (class-level @UseGuards)"
+
+[[edge]]
+kind = "requires_permission"
+from = { repo = "acme-api", path = "src/users/users.controller.ts", symbol = "UsersController.remove" }
+to = { kind = "permission", repo = "acme-api", name = "users:delete" }
+certainty = ["syntactic", "heuristic"]
+min_confidence = 0.7
+note = "custom decorator @RequirePermission(\"users:delete\"); permission checked by PermissionsGuard (class-level @UseGuards)"
+
+[[edge]]
+kind = "requires_permission"
+from = { repo = "acme-api", path = "src/users/users.controller.ts", symbol = "UsersController.create" }
+to = { kind = "permission", repo = "acme-api", name = "users:write" }
+certainty = ["syntactic", "heuristic"]
+min_confidence = 0.7
+note = "custom decorator @RequirePermission(\"users:write\"); permission checked by PermissionsGuard (class-level @UseGuards)"
+
+[[edge]]
+kind = "reads_env"
+from = { repo = "acme-api", path = "src/common/database.config.ts", symbol = "databaseConfig" }
+to = { kind = "env_var", repo = "acme-api", name = "DATABASE_URL" }
+certainty = ["syntactic"]
+
+[[edge]]
+kind = "reads_env"
+from = { repo = "acme-api", path = "src/auth/jwt-auth.guard.ts", symbol = "JwtAuthGuard.canActivate" }
+to = { kind = "env_var", repo = "acme-api", name = "JWT_SECRET" }
+certainty = ["syntactic"]
+
+[[edge]]
+kind = "reads_env"
+from = { repo = "acme-api", path = "src/auth/auth.module.ts", symbol = "AuthModule" }
+to = { kind = "env_var", repo = "acme-api", name = "JWT_SECRET" }
+certainty = ["syntactic"]
+note = "read inside the @Module decorator argument, attributed to the decorated class"
+
+[[edge]]
+kind = "reads_config"
+from = { repo = "acme-api", path = "src/auth/api-key.guard.ts", symbol = "ApiKeyGuard.canActivate" }
+to = { kind = "config_key", repo = "acme-api", name = "API_KEYS" }
+certainty = ["heuristic"]
+min_confidence = 0.7
+note = "this.configService.get(\"API_KEYS\"); receiver identified by name/type ConfigService"
+
+[[edge]]
+kind = "reads_env"
+from = { repo = "acme-billing", path = "src/main.rs", symbol = "main" }
+to = { kind = "env_var", repo = "acme-billing", name = "DATABASE_URL" }
+certainty = ["syntactic"]
+
+[[edge]]
+kind = "reads_env"
+from = { repo = "acme-billing", path = "src/acme_client.rs", symbol = "AcmeApiClient::from_env" }
+to = { kind = "env_var", repo = "acme-billing", name = "ACME_API_URL" }
+certainty = ["syntactic"]
+
+[[edge]]
+kind = "reads_env"
+from = { repo = "acme-billing", path = "src/acme_client.rs", symbol = "AcmeApiClient::from_env" }
+to = { kind = "env_var", repo = "acme-billing", name = "BILLING_API_KEY" }
+certainty = ["syntactic"]
+
+[[edge]]
+kind = "publishes"
+from = { repo = "acme-api", path = "src/orders/orders.service.ts", symbol = "OrdersService.create" }
+to = { kind = "event", name = "order.created" }
+certainty = ["heuristic"]
+min_confidence = 0.7
+note = "this.events.emit(\"order.created\", payload): literal first argument on an EventEmitter2-typed receiver; the payload is built in a local variable"
+
+[[edge]]
+kind = "subscribes"
+from = { repo = "acme-billing", path = "src/events.rs", symbol = "consume_order_created" }
+to = { kind = "event", name = "order.created" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "queue.subscribe(\"order.created\") on a `&mut dyn MessageQueue`: literal topic argument, method name pattern"
+
+[[edge]]
+kind = "calls"
+from = { repo = "acme-billing", path = "src/events.rs", symbol = "consume_order_created" }
+to = { repo = "acme-billing", path = "src/money.rs", symbol = "to_cents" }
+certainty = ["resolved"]
+note = "use crate::money::to_cents"
+
+[[edge]]
+kind = "calls"
+from = { repo = "acme-billing", path = "src/handlers.rs", symbol = "create_invoice" }
+to = { repo = "acme-billing", path = "src/handlers.rs", symbol = "persist" }
+certainty = ["resolved"]
+
+[[edge]]
+kind = "calls"
+from = { repo = "acme-billing", path = "src/handlers.rs", symbol = "persist" }
+to = { repo = "acme-billing", path = "src/store.rs", symbol = "InvoiceStore::insert" }
+certainty = ["resolved"]
+note = "receiver is statically `&dyn InvoiceStore`: the trait method is the certain target"
+
+[[edge]]
+kind = "calls"
+from = { repo = "acme-billing", path = "src/handlers.rs", symbol = "persist" }
+to = { repo = "acme-billing", path = "src/store.rs", symbol = "<PgInvoiceStore as InvoiceStore>::insert" }
+certainty = ["heuristic"]
+min_confidence = 0.3
+required = false
+note = "dynamic dispatch: every impl of the trait is a possible runtime target, none is certain"
+
+[[edge]]
+kind = "calls"
+from = { repo = "acme-billing", path = "src/handlers.rs", symbol = "persist" }
+to = { repo = "acme-billing", path = "src/store.rs", symbol = "<InMemoryInvoiceStore as InvoiceStore>::insert" }
+certainty = ["heuristic"]
+min_confidence = 0.3
+required = false
+note = "dynamic dispatch candidate"
+
+[[edge]]
+kind = "calls"
+from = { repo = "acme-billing", path = "src/handlers.rs", symbol = "get_invoice" }
+to = { repo = "acme-billing", path = "src/store.rs", symbol = "InvoiceStore::find" }
+certainty = ["resolved", "heuristic"]
+min_confidence = 0.7
+note = "state.store is Arc<dyn InvoiceStore> reached through a struct field: needs field-type inference; resolved when the AppState field type is known, heuristic otherwise"
+
+[[edge]]
+kind = "implements"
+from = { repo = "acme-billing", path = "src/store.rs", symbol = "PgInvoiceStore" }
+to = { repo = "acme-billing", path = "src/store.rs", symbol = "InvoiceStore" }
+certainty = ["syntactic", "resolved"]
+
+[[edge]]
+kind = "implements"
+from = { repo = "acme-billing", path = "src/store.rs", symbol = "InMemoryInvoiceStore" }
+to = { repo = "acme-billing", path = "src/store.rs", symbol = "InvoiceStore" }
+certainty = ["syntactic", "resolved"]
+
+[[edge]]
+kind = "references"
+from = { repo = "acme-billing", path = "src/lib.rs", symbol = "router" }
+to = { repo = "acme-billing", path = "src/handlers.rs", symbol = "create_invoice" }
+certainty = ["resolved"]
+note = "handler passed as a value to post(create_invoice)"
+
+[[edge]]
+kind = "references"
+from = { repo = "acme-billing", path = "src/lib.rs", symbol = "router" }
+to = { repo = "acme-billing", path = "src/handlers.rs", symbol = "get_invoice" }
+certainty = ["resolved"]
+note = "handler passed as a value to get(get_invoice)"
+
+[[test_of]]
+test = { repo = "acme-api", path = "src/users/users.service.spec.ts", suite = "UsersService" }
+subject = { repo = "acme-api", path = "src/users/users.service.ts", symbol = "UsersService" }
+certainty = ["resolved", "heuristic"]
+note = "describe(\"UsersService\") block; the subject class/function is imported and instantiated or called in the file, so resolution is possible"
+
+[[test_of]]
+test = { repo = "acme-api", path = "src/users/users.service.spec.ts", suite = "normalizeEmail" }
+subject = { repo = "acme-api", path = "src/users/email.ts", symbol = "normalizeEmail" }
+certainty = ["resolved", "heuristic"]
+note = "describe(\"normalizeEmail\") block; the subject class/function is imported and instantiated or called in the file, so resolution is possible"
+
+[[test_of]]
+test = { repo = "acme-api", path = "src/orders/orders.controller.spec.ts", suite = "OrdersController" }
+subject = { repo = "acme-api", path = "src/orders/orders.controller.ts", symbol = "OrdersController" }
+certainty = ["resolved", "heuristic"]
+note = "describe(\"OrdersController\") block; the subject class/function is imported and instantiated or called in the file, so resolution is possible"
+
+[[test_of]]
+test = { repo = "acme-sdk", path = "src/money.test.ts", suite = "toCents" }
+subject = { repo = "acme-sdk", path = "src/money.ts", symbol = "toCents" }
+certainty = ["resolved", "heuristic"]
+
+[[test_of]]
+test = { repo = "acme-sdk", path = "src/client.test.ts", suite = "AcmeClient" }
+subject = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient" }
+certainty = ["resolved", "heuristic"]
+
+[[test_of]]
+test = { repo = "acme-billing", path = "src/money.rs", symbol = "tests::converts_whole_and_fractional_amounts" }
+subject = { repo = "acme-billing", path = "src/money.rs", symbol = "to_cents" }
+certainty = ["resolved"]
+note = "`use super::to_cents` inside #[cfg(test)] mod tests"
+
+[[test_of]]
+test = { repo = "acme-billing", path = "src/money.rs", symbol = "tests::keeps_the_sign_of_negative_amounts" }
+subject = { repo = "acme-billing", path = "src/money.rs", symbol = "to_cents" }
+certainty = ["resolved"]
+
+[[test_of]]
+test = { repo = "acme-billing", path = "tests/invoices.rs", symbol = "unknown_invoice_returns_404" }
+subject = { repo = "acme-billing", path = "src/lib.rs", symbol = "router" }
+certainty = ["resolved"]
+note = "integration test in tests/ calls acme_billing::router through the crate API"
+
+[[test_of]]
+test = { repo = "acme-billing", path = "tests/invoices.rs", symbol = "stored_invoice_is_returned" }
+subject = { repo = "acme-billing", path = "src/store.rs", symbol = "InMemoryInvoiceStore" }
+certainty = ["resolved"]
+note = "only test-side use of InMemoryInvoiceStore"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-web", path = "src/hooks/useMe.ts", symbol = "useMe" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/users/:id" }
+certainty = ["resolved", "compiler_verified", "syntactic"]
+note = "useMe -> GET /users/:id may exist only as heuristic; resolved/compiler_verified/syntactic would overstate a literal-vs-param match"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-web", path = "src/hooks/useMe.ts", symbol = "useMe" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "PATCH", route = "/users/:id" }
+note = "HTTP method mismatch: fetch without a method option is GET"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-web", path = "src/hooks/useMe.ts", symbol = "useMe" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "DELETE", route = "/users/:id" }
+note = "HTTP method mismatch"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-web", path = "src/hooks/useMe.ts", symbol = "useMe" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "POST", route = "/users" }
+note = "HTTP method mismatch and different path arity"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-web", path = "src/hooks/useMe.ts", symbol = "useMe" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/orders/:id" }
+note = "wrong resource"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-web", path = "src/api/health.ts", symbol = "checkHealth" }
+to = { kind = "api_endpoint" }
+note = "GET /health does not exist in any acme repo: the call must stay unmatched; do not fall back to the nearest route"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getUser" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "PATCH", route = "/users/:id" }
+note = "method mismatch"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getUser" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/orders/:id" }
+note = "wrong resource"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.updateUser" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/users/:id" }
+note = "method mismatch: updateUser sends PATCH"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.createOrder" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/orders/:id" }
+note = "POST /orders has no id segment; must not match the parameterised route"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getOrder" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "POST", route = "/orders" }
+note = "method mismatch"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getUser" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/v1/reports/export" }
+note = "nothing in the project calls the report export endpoint"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.updateUser" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/v1/reports/export" }
+note = "nothing in the project calls the report export endpoint"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.createOrder" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/v1/reports/export" }
+note = "nothing in the project calls the report export endpoint"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getOrder" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/v1/reports/export" }
+note = "nothing in the project calls the report export endpoint"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-billing", path = "src/acme_client.rs", symbol = "AcmeApiClient::get_order" }
+to = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/users/:id" }
+note = "wrong resource"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-billing", path = "src/acme_client.rs", symbol = "AcmeApiClient::get_order" }
+to = { kind = "api_endpoint", repo = "acme-billing", method = "POST", route = "/invoices" }
+note = "billing must not match its own server routes: its outgoing call targets acme-api"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getUser" }
+to = { kind = "api_endpoint", repo = "globex-api", method = "GET", route = "/users/:id" }
+note = "project isolation: globex-api exposes an identically shaped route but belongs to another project"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getOrder" }
+to = { kind = "api_endpoint", repo = "globex-api", method = "GET", route = "/orders/:id" }
+note = "project isolation"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "acme-billing", path = "src/acme_client.rs", symbol = "AcmeApiClient::get_order" }
+to = { kind = "api_endpoint", repo = "globex-api", method = "GET", route = "/orders/:id" }
+note = "project isolation"
+
+[[forbidden_edge]]
+kind = "subscribes"
+from = { repo = "acme-billing", path = "src/events.rs", symbol = "consume_order_created" }
+to = { kind = "event", name = "order.cancelled" }
+note = "only the literal topic \"order.created\" is subscribed"
+
+[[forbidden_edge]]
+kind = "equivalent_to"
+from = { repo = "acme-api", path = "src/billing/rounding.ts", symbol = "roundHalfEven" }
+to = { repo = "acme-api", path = "src/billing/rounding.ts", symbol = "roundHalfUp" }
+note = "same shape, different tie-breaking (2.5 -> 2 vs 3): similar, never equivalent"
+
+[[forbidden_edge]]
+kind = "equivalent_to"
+from = { repo = "acme-web", path = "src/utils/currency.ts", symbol = "parseMoney" }
+to = { repo = "acme-sdk", path = "src/money.ts", symbol = "toCents" }
+certainty = ["syntactic", "resolved", "heuristic", "compiler_verified"]
+note = "equivalent_to is an inferred relation; deterministic analysis must not emit it"
+
+[[forbidden_edge]]
+kind = "equivalent_to"
+from = { repo = "acme-billing", path = "src/money.rs", symbol = "to_cents" }
+to = { repo = "acme-sdk", path = "src/money.ts", symbol = "toCents" }
+certainty = ["syntactic", "resolved", "heuristic", "compiler_verified"]
+note = "deterministic analysis must not emit equivalent_to"
+
+[[forbidden_edge]]
+kind = "equivalent_to"
+from = { repo = "acme-billing", path = "src/money.rs", symbol = "to_cents" }
+to = { repo = "globex-worker", path = "src/money.rs", symbol = "to_cents" }
+note = "same name in another project with different semantics (f64 rounding)"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "acme-billing", path = "src/events.rs", symbol = "consume_order_created" }
+to = { repo = "globex-worker", path = "src/money.rs", symbol = "to_cents" }
+note = "project isolation: globex-worker to_cents"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "acme-sdk", path = "src/money.ts", symbol = "toCents" }
+to = { repo = "acme-web", path = "src/utils/currency.ts", symbol = "parseMoney" }
+note = "no call relation between the two implementations"
+
+[[forbidden_edge]]
+kind = "reads_env"
+from = { repo = "acme-billing", path = "src/main.rs", symbol = "main" }
+to = { kind = "env_var", repo = "acme-api", name = "DATABASE_URL" }
+note = "env vars are per repo: acme-billing reads its own DATABASE_URL, not the acme-api entity"
+
+[[unmatched_call]]
+from = { repo = "acme-web", path = "src/api/health.ts", symbol = "checkHealth" }
+method = "GET"
+route = "/health"
+note = "false-positive trap: `${API_URL}/health` has no counterpart in acme-api; expected state is api_client_call without calls_endpoint"
+
+[[auth]]
+api_repo = "acme-api"
+supported = ["bearer", "api_key", "session_cookie"]
+used = { bearer = ["acme-web", "acme-sdk"], api_key = ["acme-billing", "acme-sdk"] }
+unused = ["session_cookie"]
+note = "bearer: acme-web (SDK client and direct fetch) and acme-sdk (bearer mode). api_key: acme-billing and acme-sdk (apiKey mode, which exists in the SDK even though acme-web does not select it). session_cookie: only the admin controller accepts it and no client in the project sends the acme_session cookie. Caveat: SDK apiKey mode is only accepted by GET /orders/:id and GET /v1/reports/export; other endpoints require bearer."
+
+[[endpoint_auth]]
+method = "GET"
+route = "/users/:id"
+schemes = ["bearer"]
+mode = "all_of"
+permission = "users:read"
+certainty = ["syntactic", "heuristic"]
+note = "JwtAuthGuard + PermissionsGuard at class level"
+
+[[endpoint_auth]]
+method = "POST"
+route = "/users"
+schemes = ["bearer"]
+mode = "all_of"
+permission = "users:write"
+certainty = ["syntactic", "heuristic"]
+
+[[endpoint_auth]]
+method = "PATCH"
+route = "/users/:id"
+schemes = ["bearer"]
+mode = "all_of"
+permission = "users:write"
+certainty = ["syntactic", "heuristic"]
+
+[[endpoint_auth]]
+method = "DELETE"
+route = "/users/:id"
+schemes = ["bearer"]
+mode = "all_of"
+permission = "users:delete"
+certainty = ["syntactic", "heuristic"]
+
+[[endpoint_auth]]
+method = "GET"
+route = "/orders/:id"
+schemes = ["bearer", "api_key"]
+mode = "any_of"
+certainty = ["heuristic"]
+note = "JwtOrApiKeyGuard is a composite guard that delegates to JwtAuthGuard or ApiKeyGuard depending on the header present; Nest itself would AND multiple @UseGuards, so deriving any_of requires reading the composite guard. Plain per-decorator analysis may report only the composite guard name."
+
+[[endpoint_auth]]
+method = "POST"
+route = "/orders"
+schemes = ["bearer"]
+mode = "all_of"
+certainty = ["syntactic", "heuristic"]
+note = "method-level @UseGuards(JwtAuthGuard)"
+
+[[endpoint_auth]]
+method = "GET"
+route = "/admin/stats"
+schemes = ["session_cookie"]
+mode = "all_of"
+certainty = ["syntactic", "heuristic"]
+note = "class-level @UseGuards(SessionGuard)"
+
+[[endpoint_auth]]
+method = "GET"
+route = "/v1/reports/export"
+schemes = ["api_key"]
+mode = "all_of"
+certainty = ["syntactic", "heuristic"]
+note = "method-level @UseGuards(ApiKeyGuard)"
+
+[[unused]]
+sym = { repo = "acme-api", path = "src/common/slug.ts", symbol = "legacySlugify" }
+note = "exported, no importer anywhere in the project, not decorator- or framework-reachable"
+
+[[unused]]
+sym = { repo = "acme-api", path = "src/auth/session.store.ts", symbol = "SessionStore.save" }
+note = "no caller anywhere; only SessionStore.find is used by SessionGuard"
+
+[[unused]]
+sym = { repo = "acme-web", path = "src/api/session.ts", symbol = "setToken" }
+note = "exported but never imported"
+
+[[unused]]
+sym = { repo = "acme-web", path = "src/api/health.ts", symbol = "checkHealth" }
+note = "exported but never imported"
+
+[[unused]]
+endpoint = { method = "GET", route = "/v1/reports/export" }
+note = "no client in any acme repo calls it (the \"potentially unused endpoint\" case)"
+
+[[unused]]
+endpoint = { method = "GET", route = "/admin/stats" }
+note = "no consumer in the project; acme-web has no admin screen"
+
+[[unused]]
+endpoint = { method = "POST", route = "/users" }
+note = "no consumer: neither SDK nor web creates users"
+
+[[unused]]
+endpoint = { method = "DELETE", route = "/users/:id" }
+note = "no consumer"
+
+[[ambiguous_unused]]
+sym = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.updateUser" }
+note = "public SDK method, no caller inside the project, though it is the only client of PATCH /users/:id; library API surface"
+
+[[ambiguous_unused]]
+sym = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getOrder" }
+note = "public SDK method with no in-project caller; library API surface"
+
+[[ambiguous_unused]]
+sym = { repo = "acme-billing", path = "src/events.rs", symbol = "consume_order_created" }
+note = "pub subscriber with no caller in main or tests; event entry point reachable only by a runtime that is not part of the fixture"
+
+[[not_unused]]
+sym = { repo = "acme-api", path = "src/users/users.controller.ts", symbol = "UsersController.findOne" }
+reason = "route handler registered by @Get decorator"
+
+[[not_unused]]
+sym = { repo = "acme-api", path = "src/users/users.controller.ts", symbol = "UsersController.create" }
+reason = "route handler registered by @Post decorator"
+
+[[not_unused]]
+sym = { repo = "acme-api", path = "src/users/users.controller.ts", symbol = "UsersController.remove" }
+reason = "route handler registered by @Delete decorator (the endpoint itself is unused, the handler is framework-reachable)"
+
+[[not_unused]]
+sym = { repo = "acme-api", path = "src/admin/admin.controller.ts", symbol = "AdminController.stats" }
+reason = "route handler"
+
+[[not_unused]]
+sym = { repo = "acme-api", path = "src/auth/session.guard.ts", symbol = "SessionGuard" }
+reason = "referenced by @UseGuards(SessionGuard)"
+
+[[not_unused]]
+sym = { repo = "acme-api", path = "src/auth/api-key.guard.ts", symbol = "ApiKeyGuard" }
+reason = "referenced by @UseGuards and by JwtOrApiKeyGuard constructor injection"
+
+[[not_unused]]
+sym = { repo = "acme-api", path = "src/auth/permissions.guard.ts", symbol = "PermissionsGuard" }
+reason = "referenced by @UseGuards"
+
+[[not_unused]]
+sym = { repo = "acme-api", path = "src/app.module.ts", symbol = "AppModule" }
+reason = "bootstrapped by main.ts"
+
+[[not_unused]]
+sym = { repo = "acme-api", path = "src/billing/rounding.ts", symbol = "roundHalfUp" }
+reason = "used by ReportsService.exportCsv"
+
+[[not_unused]]
+sym = { repo = "acme-api", path = "src/billing/rounding.ts", symbol = "roundHalfEven" }
+reason = "used by BillingService.applyTax"
+
+[[not_unused]]
+sym = { repo = "acme-api", path = "src/users/email.ts", symbol = "normalizeEmail" }
+reason = "used only by users.service.spec.ts: must be classified test-only, not unused"
+
+[[not_unused]]
+sym = { repo = "acme-sdk", path = "src/money.ts", symbol = "toCents" }
+reason = "consumed only through the re-export in src/index.ts by acme-web OrderForm"
+
+[[not_unused]]
+sym = { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient" }
+reason = "consumed through export * and instantiated in acme-web"
+
+[[not_unused]]
+sym = { repo = "acme-billing", path = "src/handlers.rs", symbol = "create_invoice" }
+reason = "referenced as a value in the axum router"
+
+[[not_unused]]
+sym = { repo = "acme-billing", path = "src/handlers.rs", symbol = "get_invoice" }
+reason = "referenced as a value in the axum router"
+
+[[not_unused]]
+sym = { repo = "acme-billing", path = "src/store.rs", symbol = "<PgInvoiceStore as InvoiceStore>::insert" }
+reason = "trait impl method reachable through dynamic dispatch"
+
+[[not_unused]]
+sym = { repo = "acme-billing", path = "src/store.rs", symbol = "<InMemoryInvoiceStore as InvoiceStore>::find" }
+reason = "trait impl method reachable through dynamic dispatch"
+
+[[not_unused]]
+sym = { repo = "acme-billing", path = "src/store.rs", symbol = "InMemoryInvoiceStore" }
+reason = "used only by tests/invoices.rs: test-only, not unused"
+
+[[not_unused]]
+sym = { repo = "acme-billing", path = "src/main.rs", symbol = "main" }
+reason = "binary entry point"
+
+[[unused]]
+sym = { repo = "acme-web", path = "src/utils/currency.ts", symbol = "parseMoney" }
+note = "no importer in acme-web: the equivalent toCents is imported from the SDK instead, parseMoney is dead duplicate code (this is what makes the equivalence interesting)"
+
+[[similar]]
+a = { repo = "acme-web", path = "src/utils/currency.ts", symbol = "parseMoney" }
+b = { repo = "acme-sdk", path = "src/money.ts", symbol = "toCents" }
+expected = "equivalent"
+deterministic_claim_allowed = false
+note = "Different name, different structure (regex/indexOf vs split/padEnd), identical results on the well-formed domain /^\\s*-?\\d*(\\.\\d*)?\\s*$/ (verified by randomised comparison; both return NaN for non-numeric parts, they differ only on multi-dot input like \"1.2.3\"). Only an inferred equivalent_to edge is acceptable, with an evidence rationale."
+
+[[similar]]
+a = { repo = "acme-billing", path = "src/money.rs", symbol = "to_cents" }
+b = { repo = "acme-sdk", path = "src/money.ts", symbol = "toCents" }
+expected = "equivalent"
+deterministic_claim_allowed = false
+acceptable = ["equivalent", "similar_not_equivalent"]
+note = "Cross-language port of the same algorithm (truncate to 2 fractional digits, sign handled separately). Differences only on malformed input (Rust parse failure yields 0, TS yields NaN) and on values beyond 2^53. An inferred equivalent_to must carry the caveat; a cautious similar_not_equivalent verdict is accepted (see acceptable)."
+
+[[similar]]
+a = { repo = "acme-api", path = "src/billing/rounding.ts", symbol = "roundHalfEven" }
+b = { repo = "acme-api", path = "src/billing/rounding.ts", symbol = "roundHalfUp" }
+expected = "similar_not_equivalent"
+deterministic_claim_allowed = false
+note = "identical signature and structure; differ at exact .5 ties (banker rounding vs round half up). A heuristic similar_to is allowed, equivalent_to is a violation."
+
+[[similar]]
+a = { repo = "acme-api", path = "src/common/money.ts", symbol = "formatMoney" }
+b = { repo = "globex-api", path = "src/util/money.ts", symbol = "formatMoney" }
+expected = "unrelated"
+deterministic_claim_allowed = false
+note = "same name in an unrelated project: cents -> \"$12.34\" vs euros float -> \"12.34 EUR\". Never linked across projects."
+
+[[similar]]
+a = { repo = "acme-billing", path = "src/money.rs", symbol = "to_cents" }
+b = { repo = "globex-worker", path = "src/money.rs", symbol = "to_cents" }
+expected = "similar_not_equivalent"
+deterministic_claim_allowed = false
+note = "same name, both money -> cents; acme parses a decimal string, globex rounds an f64. Different projects: no cross-project edge at all."
+
+[[blast_radius]]
+change = { repo = "acme-api", path = "src/common/money.ts", symbol = "formatMoney" }
+must_include = [{ repo = "acme-api", path = "src/orders/orders.service.ts", symbol = "OrdersService.findOne" }, { repo = "acme-api", path = "src/reports/reports.service.ts", symbol = "ReportsService.exportCsv" }, { repo = "acme-api", path = "src/orders/orders.controller.ts", symbol = "OrdersController.findOne" }, { repo = "acme-api", path = "src/reports/reports.controller.ts", symbol = "ReportsController.export" }, { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/orders/:id" }, { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/v1/reports/export" }]
+may_include = [{ repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getOrder" }, { repo = "acme-billing", path = "src/acme_client.rs", symbol = "AcmeApiClient::get_order" }]
+must_not_include = [{ repo = "globex-api", path = "src/util/money.ts", symbol = "formatMoney" }, { repo = "acme-sdk", path = "src/money.ts", symbol = "toCents" }, { repo = "acme-api", path = "src/users/users.service.ts", symbol = "UsersService" }, { repo = "acme-api", path = "src/billing/billing.service.ts", symbol = "BillingService.applyTax" }]
+note = "direct callers, their controllers and the endpoints they back; cross-repo consumers of GET /orders/:id are optional because the hop crosses heuristic calls_endpoint edges"
+
+[[blast_radius]]
+change = { repo = "acme-sdk", path = "src/money.ts", symbol = "toCents" }
+must_include = [{ repo = "acme-web", path = "src/components/OrderForm.tsx", symbol = "OrderForm" }, { repo = "acme-sdk", path = "src/money.test.ts", suite = "toCents" }]
+may_include = [{ repo = "acme-web", path = "src/main.tsx", symbol = "App" }]
+must_not_include = [{ repo = "acme-web", path = "src/utils/currency.ts", symbol = "parseMoney" }, { repo = "acme-billing", path = "src/money.rs", symbol = "to_cents" }, { repo = "globex-worker", path = "src/money.rs", symbol = "to_cents" }, { repo = "acme-api", path = "src/common/money.ts", symbol = "formatMoney" }]
+note = "the cross-repo consumer is reached via import { toCents } from \"@acme/sdk\" through the re-export; semantically similar functions elsewhere are NOT impacted"
+
+[[blast_radius]]
+change = { repo = "acme-api", path = "src/users/users.service.ts", symbol = "UsersService.findOne" }
+must_include = [{ repo = "acme-api", path = "src/users/users.service.ts", symbol = "UsersService.update" }, { repo = "acme-api", path = "src/users/users.controller.ts", symbol = "UsersController.findOne" }, { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/users/:id" }, { repo = "acme-api", path = "src/users/users.service.spec.ts", suite = "UsersService" }]
+may_include = [{ repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getUser" }, { repo = "acme-web", path = "src/hooks/useUser.ts", symbol = "useUser" }, { repo = "acme-web", path = "src/hooks/useMe.ts", symbol = "useMe" }, { repo = "acme-web", path = "src/components/UserCard.tsx", symbol = "UserCard" }]
+must_not_include = [{ repo = "acme-api", path = "src/orders/orders.service.ts", symbol = "OrdersService.findOne" }, { repo = "globex-api", path = "src/services/users.service.ts", symbol = "UsersService.findOne" }, { repo = "globex-api", path = "src/routes/users.routes.ts", symbol = "registerUserRoutes" }]
+note = "UsersService.update calls this.findOne; globex UsersService.findOne is a different class in a different project"
+
+[[blast_radius]]
+change = { repo = "acme-api", path = "src/orders/orders.service.ts", symbol = "OrdersService.findOne" }
+must_include = [{ repo = "acme-api", path = "src/orders/orders.controller.ts", symbol = "OrdersController.findOne" }, { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/orders/:id" }, { repo = "acme-api", path = "src/orders/orders.controller.spec.ts", suite = "OrdersController" }, { repo = "acme-sdk", path = "src/client.ts", symbol = "AcmeClient.getOrder" }, { repo = "acme-billing", path = "src/acme_client.rs", symbol = "AcmeApiClient::get_order" }]
+may_include = [{ repo = "acme-billing", path = "src/handlers.rs", symbol = "create_invoice" }]
+must_not_include = [{ repo = "acme-api", path = "src/orders/orders.service.ts", symbol = "OrdersService.create" }, { repo = "globex-api", path = "src/services/orders.service.ts", symbol = "OrdersService.findOne" }]
+note = "endpoint-level propagation: the handler backs GET /orders/:id, whose heuristic consumers are AcmeClient.getOrder and the billing client; the traversal must follow heuristic edges at or above their min_confidence"
+
+[[blast_radius]]
+change = { repo = "acme-billing", path = "src/store.rs", symbol = "InvoiceStore::insert" }
+must_include = [{ repo = "acme-billing", path = "src/handlers.rs", symbol = "persist" }, { repo = "acme-billing", path = "src/handlers.rs", symbol = "create_invoice" }, { repo = "acme-billing", path = "src/store.rs", symbol = "<PgInvoiceStore as InvoiceStore>::insert" }, { repo = "acme-billing", path = "src/store.rs", symbol = "<InMemoryInvoiceStore as InvoiceStore>::insert" }, { repo = "acme-billing", path = "src/events.rs", symbol = "consume_order_created" }]
+may_include = [{ repo = "acme-billing", path = "tests/invoices.rs", symbol = "stored_invoice_is_returned" }, { kind = "api_endpoint", repo = "acme-billing", method = "POST", route = "/invoices" }]
+must_not_include = [{ repo = "acme-api", path = "src/orders/orders.service.ts", symbol = "OrdersService.create" }, { repo = "acme-billing", path = "src/money.rs", symbol = "to_cents" }]
+note = "trait method signature change impacts every impl and every dyn caller"

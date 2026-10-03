@@ -1,0 +1,92 @@
+[project]
+name = "generated-code"
+repos = ["generated-code"]
+unused_exhaustive = false
+
+[[file_flag]]
+repo = "generated-code"
+path = "src/generated/api-types.ts"
+flag = "generated"
+note = "\"// @generated\" marker on the first line: indexed (symbols, edges) but flagged generated so queries can down-rank or filter it"
+
+[[entity]]
+kind = "interface"
+sym = { repo = "generated-code", path = "src/generated/api-types.ts", symbol = "Pet" }
+note = "extracted despite the generated flag"
+
+[[entity]]
+kind = "function"
+sym = { repo = "generated-code", path = "src/generated/api-types.ts", symbol = "createPetClient" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "generated-code", path = "src/main.ts", symbol = "loadPet" }
+
+[[edge]]
+kind = "calls"
+from = { repo = "generated-code", path = "src/main.ts", symbol = "loadPet" }
+to = { repo = "generated-code", path = "src/generated/api-types.ts", symbol = "createPetClient" }
+certainty = ["resolved"]
+note = "hand-written code calling into a generated file resolves normally"
+
+[[unmatched_call]]
+from = { repo = "generated-code", path = "src/generated/api-types.ts", symbol = "createPetClient" }
+method = "GET"
+route = "/pets/:id"
+note = "the generated client issues fetch(`${baseUrl}/pets/${id}`) against a server that is not part of this repo"
+
+[[entity]]
+kind = "function"
+sym = { repo = "generated-code", path = "rust/build.rs", symbol = "main" }
+note = "build script entry point; indexed as an ordinary function (handwritten)"
+
+[[entity]]
+kind = "function"
+sym = { repo = "generated-code", path = "rust/src/lib.rs", symbol = "capacity" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "generated-code", path = "rust/src/lib.rs", symbol = "label" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "generated-code", path = "rust/src/lib.rs", symbol = "handwritten" }
+
+[[unresolved]]
+from = { repo = "generated-code", path = "rust/src/lib.rs" }
+ref_kind = "include"
+reason = "generated_code"
+note = "include!(concat!(env!(\"OUT_DIR\"), \"/constants.rs\")): the target path depends on cargo build output; no file edge, no guessed target. build.rs writes the file as a string literal, which must not be parsed for symbols."
+
+[[unresolved]]
+from = { repo = "generated-code", path = "rust/src/lib.rs", symbol = "capacity" }
+ref_kind = "reference"
+reason = "generated_code"
+name = "MAX_ITEMS"
+note = "MAX_ITEMS is defined only by the included generated file"
+
+[[unresolved]]
+from = { repo = "generated-code", path = "rust/src/lib.rs", symbol = "label" }
+ref_kind = "call"
+reason = "generated_code"
+name = "default_label"
+note = "default_label() is defined only by the included generated file"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "generated-code", path = "rust/src/lib.rs", symbol = "label" }
+to = { repo = "generated-code", path = "rust/build.rs", symbol = "main" }
+note = "the string inside build.rs is not a definition of default_label"
+
+[[forbidden_edge]]
+kind = "references"
+from = { repo = "generated-code", path = "rust/src/lib.rs", symbol = "capacity" }
+to = { kind = "constant" }
+note = "MAX_ITEMS must not be linked to any constant entity (none exists in the fixture)"
+
+[[edge]]
+kind = "calls"
+from = { repo = "generated-code", path = "rust/src/lib.rs", symbol = "handwritten" }
+to = { repo = "generated-code", path = "rust/src/lib.rs", symbol = "capacity" }
+certainty = ["resolved"]
+note = "contrast: ordinary call inside lib.rs"

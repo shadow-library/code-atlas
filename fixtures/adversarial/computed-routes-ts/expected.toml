@@ -1,0 +1,132 @@
+[project]
+name = "computed-routes-ts"
+repos = ["computed-routes-ts"]
+unused_exhaustive = false
+
+[[entity]]
+kind = "api_endpoint"
+repo = "computed-routes-ts"
+method = "GET"
+route = "/api/items/:id"
+handler = { repo = "computed-routes-ts", path = "src/routes/items.ts" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "route assembled from three pieces in three files: app.use(\"/api\", apiRouter) in server.ts + apiRouter.use(\"/items\", itemsRouter) in routes/index.ts + itemsRouter.get(\"/:id\") in routes/items.ts. Prefix composition through imported router variables is heuristic, never resolved. Anonymous callback handlers declared at module level are attributed to the file."
+
+[[entity]]
+kind = "api_endpoint"
+repo = "computed-routes-ts"
+method = "POST"
+route = "/api/items"
+handler = { repo = "computed-routes-ts", path = "src/routes/items.ts" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "itemsRouter.post(\"/\") + mounts: path \"/\" contributes no extra segment, no trailing slash"
+
+[[entity]]
+kind = "api_endpoint"
+repo = "computed-routes-ts"
+method = "GET"
+route = "/api/status"
+handler = { repo = "computed-routes-ts", path = "src/server.ts" }
+certainty = ["resolved", "heuristic"]
+min_confidence = 0.8
+note = "app.get(`${API_PREFIX}/status`) with a same-file `const API_PREFIX = \"/api\"`: constant propagation into a template literal; resolved expected, heuristic (>= 0.8) tolerated"
+
+[[entity]]
+kind = "api_endpoint"
+repo = "computed-routes-ts"
+method = "GET"
+route = "/legacy/ping"
+handler = { repo = "computed-routes-ts", path = "src/server.ts" }
+certainty = ["resolved", "heuristic"]
+min_confidence = 0.8
+note = "app.get(\"/legacy\" + \"/ping\"): constant folding of adjacent string literals; resolved expected, heuristic (>= 0.8) tolerated"
+
+[[unresolved]]
+from = { repo = "computed-routes-ts", path = "src/server.ts" }
+ref_kind = "route"
+reason = "dynamic"
+name = "buildPath"
+note = "app.get(buildPath(\"reports\"), ...): the path comes from a function call with runtime values (new Date().getFullYear()); an endpoint registration for GET with unknown route is expected, but no concrete route may be invented"
+
+[[forbidden_edge]]
+kind = "exposes_endpoint"
+from = { repo = "computed-routes-ts", path = "src/server.ts" }
+to = { kind = "api_endpoint", repo = "computed-routes-ts", method = "GET", route = "/reports" }
+note = "no guessed route for the buildPath() registration"
+
+[[forbidden_edge]]
+kind = "exposes_endpoint"
+from = { repo = "computed-routes-ts", path = "src/server.ts" }
+to = { kind = "api_endpoint", repo = "computed-routes-ts", method = "GET", route = "/reports/:year" }
+note = "no guessed route for the buildPath() registration"
+
+[[edge]]
+kind = "calls_endpoint"
+from = { repo = "computed-routes-ts", path = "src/client.ts", symbol = "getItemConcat" }
+to = { kind = "api_endpoint", repo = "computed-routes-ts", method = "GET", route = "/api/items/:id" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "\"/api/items/\" + id: concatenation with a dynamic tail matches the :id segment"
+
+[[edge]]
+kind = "calls_endpoint"
+from = { repo = "computed-routes-ts", path = "src/client.ts", symbol = "getItemTemplate" }
+to = { kind = "api_endpoint", repo = "computed-routes-ts", method = "GET", route = "/api/items/:id" }
+certainty = ["heuristic"]
+min_confidence = 0.7
+note = "template literal `/api/items/${id}`"
+
+[[edge]]
+kind = "calls_endpoint"
+from = { repo = "computed-routes-ts", path = "src/client.ts", symbol = "createItem" }
+to = { kind = "api_endpoint", repo = "computed-routes-ts", method = "POST", route = "/api/items" }
+certainty = ["heuristic"]
+min_confidence = 0.7
+note = "axios.post(\"/api/items\", body): fully literal path, but the server route is itself heuristic, so the edge is at most heuristic"
+
+[[edge]]
+kind = "calls_endpoint"
+from = { repo = "computed-routes-ts", path = "src/client.ts", symbol = "getStatus" }
+to = { kind = "api_endpoint", repo = "computed-routes-ts", method = "GET", route = "/api/status" }
+certainty = ["heuristic"]
+min_confidence = 0.7
+note = "fully literal path against a resolved/heuristic server route"
+
+[[unresolved]]
+from = { repo = "computed-routes-ts", path = "src/client.ts", symbol = "getDynamic" }
+ref_kind = "call"
+reason = "dynamic"
+name = "url"
+note = "axios.get(url) with a parameter as the whole URL: api_client_call exists with unknown route; no calls_endpoint"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "computed-routes-ts", path = "src/client.ts", symbol = "getDynamic" }
+to = { kind = "api_endpoint" }
+note = "a fully dynamic URL must not match any endpoint"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "computed-routes-ts", path = "src/client.ts", symbol = "getItemConcat" }
+to = { kind = "api_endpoint", repo = "computed-routes-ts", method = "POST", route = "/api/items" }
+note = "method mismatch"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "computed-routes-ts", path = "src/client.ts", symbol = "createItem" }
+to = { kind = "api_endpoint", repo = "computed-routes-ts", method = "GET", route = "/api/items/:id" }
+note = "POST /api/items has no id segment and a different method"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "computed-routes-ts", path = "src/client.ts", symbol = "getStatus" }
+to = { kind = "api_endpoint", repo = "computed-routes-ts", method = "GET", route = "/api/items/:id" }
+note = "`status` must not be absorbed by the :id param of a different route prefix: /api/status is a distinct static route, and /api/items/:id requires the items segment"
+
+[[forbidden_edge]]
+kind = "calls_endpoint"
+from = { repo = "computed-routes-ts", path = "src/client.ts", symbol = "getItemTemplate" }
+to = { kind = "api_endpoint", repo = "computed-routes-ts", method = "GET", route = "/items/:id" }
+note = "the mounted prefix /api must not be dropped: /items/:id is not a route of this server"

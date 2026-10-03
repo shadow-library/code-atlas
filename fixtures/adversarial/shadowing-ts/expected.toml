@@ -1,0 +1,57 @@
+[project]
+name = "shadowing-ts"
+repos = ["shadowing-ts"]
+unused_exhaustive = false
+
+[[entity]]
+kind = "function"
+sym = { repo = "shadowing-ts", path = "src/format.ts", symbol = "format" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "shadowing-ts", path = "src/render.ts", symbol = "renderImported" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "shadowing-ts", path = "src/render.ts", symbol = "renderLocal" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "shadowing-ts", path = "src/render.ts", symbol = "renderParam" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "shadowing-ts", path = "src/render.ts", symbol = "renderBlockScoped" }
+
+[[edge]]
+kind = "calls"
+from = { repo = "shadowing-ts", path = "src/render.ts", symbol = "renderImported" }
+to = { repo = "shadowing-ts", path = "src/format.ts", symbol = "format" }
+certainty = ["resolved"]
+note = "plain imported call"
+
+[[edge]]
+kind = "calls"
+from = { repo = "shadowing-ts", path = "src/render.ts", symbol = "renderBlockScoped" }
+to = { repo = "shadowing-ts", path = "src/format.ts", symbol = "format" }
+certainty = ["resolved"]
+occurrences = 1
+note = "only the first call (in the for loop, outside the block) binds to the import; the call inside the inner block binds to the block-scoped const"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "shadowing-ts", path = "src/render.ts", symbol = "renderLocal" }
+to = { repo = "shadowing-ts", path = "src/format.ts", symbol = "format" }
+note = "`const format` inside the function shadows the import; the call binds to the local arrow. The shadowing must be decided by scope, not by name."
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "shadowing-ts", path = "src/render.ts", symbol = "renderParam" }
+to = { repo = "shadowing-ts", path = "src/format.ts", symbol = "format" }
+note = "parameter `format` shadows the import"
+
+[[forbidden_edge]]
+kind = "references"
+from = { repo = "shadowing-ts", path = "src/render.ts", symbol = "renderLocal" }
+to = { repo = "shadowing-ts", path = "src/format.ts", symbol = "format" }
+note = "no reference to the imported symbol either"
