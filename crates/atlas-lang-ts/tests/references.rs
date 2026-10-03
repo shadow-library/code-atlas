@@ -357,7 +357,7 @@ fn should_not_hint_receivers_typed_with_type_parameters_or_local_types() {
 fn should_describe_the_head_of_value_reference_chains() {
   let facts = analyze(
     "src/routes.ts",
-    "export function wire(local: Router) { app.use(router.handle, local.handle, this.onError); }\n",
+    "export class Wire { wire(local: Router) { app.use(router.handle, local.handle, this.onError); } }\n",
   );
   let values: Vec<(Vec<String>, Option<ReceiverHint>)> = facts
     .references
@@ -436,4 +436,95 @@ fn should_capture_awaited_generic_call_in_tsx() {
   let source = "import { useQuery } from './q';\nexport async function C() { const d = await useQuery<User>('k'); return <div />; }";
   let facts = analyze("src/c.tsx", source);
   assert_eq!(refs_of_kind(&facts, RefKind::Call), ["C -> useQuery"]);
+}
+
+fn this_calls(source: &str) -> Vec<(String, String, Option<ReceiverHint>)> {
+  let facts = analyze("src/this.ts", source);
+  facts
+    .references
+    .iter()
+    .filter(|reference| reference.kind == RefKind::MethodCall && reference.path.first().map(String::as_str) == Some("this"))
+    .map(|reference| (owner_name(&facts, reference.from), reference.path.join("."), reference.receiver.clone()))
+    .collect()
+}
+
+fn rebound(owner: &str) -> (String, String, Option<ReceiverHint>) {
+  (owner.to_owned(), "this.helper".to_owned(), Some(ReceiverHint::Expr("this".to_owned())))
+}
+
+fn bound(owner: &str) -> (String, String, Option<ReceiverHint>) {
+  (owner.to_owned(), "this.helper".to_owned(), Some(ReceiverHint::This))
+}
+
+#[test]
+fn should_rebind_this_inside_object_literal_methods() {
+  let source = "class A { helper() {} go() { const o = { helper() {}, run() { this.helper(); } }; } }";
+  assert_eq!(this_calls(source), [rebound("A.go")]);
+}
+
+#[test]
+fn should_rebind_this_inside_object_literal_accessors() {
+  let source = "class A { helper() {} go() { const o = { get value() { return this.helper(); }, set value(next) { this.helper(); } }; } }";
+  assert_eq!(this_calls(source), [rebound("A.go"), rebound("A.go")]);
+}
+
+#[test]
+fn should_rebind_this_inside_function_expression_callbacks() {
+  let source = "class A { helper() {} go() { [1].forEach(function () { this.helper(); }); } }";
+  assert_eq!(this_calls(source), [rebound("A.go")]);
+}
+
+#[test]
+fn should_rebind_this_inside_function_declarations_nested_in_methods() {
+  let source = "class A { helper() {} go() { function inner() { this.helper(); } inner(); } }";
+  assert_eq!(this_calls(source), [rebound("A.go")]);
+}
+
+#[test]
+fn should_keep_this_inside_arrow_functions() {
+  let source = "class A { helper() {} go() { const f = () => this.helper(); const g = () => { [1].map(() => this.helper()); }; } }";
+  assert_eq!(this_calls(source), [bound("A.go"), bound("A.go")]);
+}
+
+#[test]
+fn should_keep_rebound_this_inside_arrows_nested_in_functions() {
+  let source = "class A { helper() {} go() { [1].forEach(function () { const f = () => this.helper(); }); } }";
+  assert_eq!(this_calls(source), [rebound("A.go")]);
+}
+
+#[test]
+fn should_rebind_this_inside_methods_of_nested_classes() {
+  let source = "class A { helper() {} go() { class B { helper() {} run() { this.helper(); } } } }";
+  assert_eq!(this_calls(source), [rebound("A.go")]);
+}
+
+#[test]
+fn should_restore_this_after_leaving_a_rebinding_construct() {
+  let source = "class A { helper() {} go() { const o = { run() { this.helper(); } }; this.helper(); } }";
+  assert_eq!(this_calls(source), [rebound("A.go"), bound("A.go")]);
+}
+
+#[test]
+fn should_keep_this_inside_static_methods() {
+  let source = "class A { static helper() {} static go() { this.helper(); } }";
+  assert_eq!(this_calls(source), [bound("A.go")]);
+}
+
+#[test]
+fn should_keep_this_inside_static_blocks() {
+  let source = "class A { static helper() {} static { this.helper(); } }";
+  assert_eq!(this_calls(source), [bound("A")]);
+}
+
+#[test]
+fn should_rebind_this_in_value_references_inside_functions() {
+  let source = "class A { helper() {} go() { register(this.helper); register(function () { register(this.helper); }); } }";
+  let facts = analyze("src/this.ts", source);
+  let hints: Vec<Option<ReceiverHint>> = facts
+    .references
+    .iter()
+    .filter(|reference| reference.kind == RefKind::ValueRef && reference.path.join(".") == "this.helper")
+    .map(|reference| reference.receiver.clone())
+    .collect();
+  assert_eq!(hints, [Some(ReceiverHint::This), Some(ReceiverHint::Expr("this".to_owned()))]);
 }

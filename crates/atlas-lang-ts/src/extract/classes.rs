@@ -2,7 +2,7 @@ use atlas_core::{EntityKind, LocalSymbolId, Modifier, Modifiers, RefKind, Visibi
 use tree_sitter::Node;
 
 use super::declarations::declare_modifier;
-use super::{Container, Export, Extractor, FunctionScope, Site, Step};
+use super::{Container, Export, Extractor, FunctionScope, Site, Step, ThisBinding};
 use crate::scope::{Namespace, ScopeKind};
 use crate::signature::{decorator_ranges, doc_comment, signature};
 use crate::syntax::{
@@ -60,6 +60,7 @@ impl<'s, 't> Extractor<'s, 't> {
       self.owner = symbol;
     }
     self.container = Container::Local;
+    self.this_binding = if symbol.is_some() { ThisBinding::EnclosingClass } else { ThisBinding::Rebound };
     self.scopes.push(ScopeKind::Block);
     self.scopes.bind_type_parameters(node, self.source);
     if node.kind() == "class"

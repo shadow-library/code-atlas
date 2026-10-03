@@ -1,7 +1,7 @@
 use atlas_core::{ARG_MAX_DEPTH, ARG_MAX_WIDTH, ArgSummary, ImportFact, ObjectEntry, ObjectKey, ReceiverHint, RefKind, Span};
 use tree_sitter::Node;
 
-use super::Extractor;
+use super::{Extractor, ThisBinding};
 use crate::args::{summarize, summarize_arguments};
 use crate::modules::{module_specifier, require_fact};
 use crate::syntax::{ChainHead, children, compact_text, field_children, first_child, member_chain, span_between, span_of, string_value, text, type_path, unwrap_expression};
@@ -83,7 +83,7 @@ impl<'s, 't> Extractor<'s, 't> {
       }
       ChainHead::This | ChainHead::Super if !chain.segments.is_empty() => {
         let (head, receiver) = match chain.head {
-          ChainHead::This => ("this", ReceiverHint::This),
+          ChainHead::This => ("this", self.this_receiver()),
           _ => ("super", ReceiverHint::Expr("super".to_owned())),
         };
         let path = std::iter::once(head.to_owned()).chain(chain.segments).collect();
@@ -95,6 +95,13 @@ impl<'s, 't> Extractor<'s, 't> {
         self.reference(RefKind::MethodCall, path, Some(receiver), args, span);
       }
       _ => {}
+    }
+  }
+
+  fn this_receiver(&self) -> ReceiverHint {
+    match self.this_binding {
+      ThisBinding::EnclosingClass => ReceiverHint::This,
+      ThisBinding::Rebound => ReceiverHint::Expr("this".to_owned()),
     }
   }
 
@@ -235,7 +242,7 @@ impl<'s, 't> Extractor<'s, 't> {
     let chain = member_chain(node, self.source);
     let receiver = match chain.head {
       ChainHead::Identifier(head) if !self.scopes.is_local_value(text(head, self.source)) => Some(ReceiverHint::Identifier(text(head, self.source).to_owned())),
-      ChainHead::This => Some(ReceiverHint::This),
+      ChainHead::This => Some(self.this_receiver()),
       _ => return,
     };
     if let Some(path) = chain.static_path(self.source) {

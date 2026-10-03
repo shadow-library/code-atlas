@@ -25,6 +25,12 @@ enum Container {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ThisBinding {
+  EnclosingClass,
+  Rebound,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Export {
   None,
   Named,
@@ -62,6 +68,7 @@ impl<'t> Site<'t> {
 struct Saved {
   owner: Option<LocalSymbolId>,
   container: Container,
+  this_binding: ThisBinding,
   scopes: usize,
   suites: usize,
   in_error: bool,
@@ -135,6 +142,7 @@ pub(crate) struct Extractor<'s, 't> {
   scopes: Scopes<'s>,
   owner: Option<LocalSymbolId>,
   container: Container,
+  this_binding: ThisBinding,
   suites: Vec<String>,
   in_error: bool,
   stack: Vec<Step<'t>>,
@@ -153,6 +161,7 @@ impl<'s, 't> Extractor<'s, 't> {
       scopes: Scopes::default(),
       owner: None,
       container: Container::Module,
+      this_binding: ThisBinding::EnclosingClass,
       suites: Vec::new(),
       in_error: false,
       stack: vec![Step::Visit(root)],
@@ -235,6 +244,7 @@ impl<'s, 't> Extractor<'s, 't> {
     Saved {
       owner: self.owner,
       container: self.container,
+      this_binding: self.this_binding,
       scopes: self.scopes.len(),
       suites: self.suites.len(),
       in_error: self.in_error,
@@ -249,6 +259,7 @@ impl<'s, 't> Extractor<'s, 't> {
   fn restore(&mut self, saved: Saved) {
     self.owner = saved.owner;
     self.container = saved.container;
+    self.this_binding = saved.this_binding;
     self.scopes.truncate(saved.scopes);
     self.suites.truncate(saved.suites);
     self.in_error = saved.in_error;

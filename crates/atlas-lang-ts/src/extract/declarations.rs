@@ -1,7 +1,7 @@
 use atlas_core::{DefaultExportTarget, EntityKind, ExportFact, Modifier, Modifiers, ParamFact, Visibility};
 use tree_sitter::Node;
 
-use super::{Container, Export, Extractor, FunctionScope, Site, Step};
+use super::{Container, Export, Extractor, FunctionScope, Site, Step, ThisBinding};
 use crate::args::{parameter_name, summarize};
 use crate::fingerprint::fingerprint;
 use crate::modules::{export_list, require_bindings, require_call, require_fact};
@@ -104,6 +104,9 @@ impl<'s, 't> Extractor<'s, 't> {
       self.owner = scope.owner;
     }
     self.container = Container::Local;
+    if rebinds_this(function) {
+      self.this_binding = ThisBinding::Rebound;
+    }
     self.scopes.push(ScopeKind::Function);
     self.scopes.bind_type_parameters(function, self.source);
     self.scopes.bind_parameters(function, self.source);
@@ -423,6 +426,14 @@ impl<'t> FunctionScope<'t> {
       owner: Some(owner),
       ..Self::default()
     }
+  }
+}
+
+fn rebinds_this(function: Node<'_>) -> bool {
+  match function.kind() {
+    "arrow_function" => false,
+    "method_definition" => function.parent().is_none_or(|parent| parent.kind() != "class_body"),
+    _ => true,
   }
 }
 
