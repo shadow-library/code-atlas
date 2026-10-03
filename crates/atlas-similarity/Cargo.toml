@@ -1,0 +1,15 @@
+[package]
+name = "atlas-similarity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+atlas-core.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

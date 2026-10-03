@@ -1,0 +1,72 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/atlas-core",
+  "crates/atlas-store",
+  "crates/atlas-project",
+  "crates/atlas-lang-rust",
+  "crates/atlas-lang-ts",
+  "crates/atlas-resolve",
+  "crates/atlas-detect",
+  "crates/atlas-scip",
+  "crates/atlas-similarity",
+  "crates/atlas-semantic",
+  "crates/atlas-link",
+  "crates/atlas-engine",
+  "crates/atlas-query",
+  "crates/atlas-mcp",
+  "crates/atlas-cli",
+  "crates/atlas-bench",
+  "crates/atlas-eval",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+atlas-core = { path = "crates/atlas-core" }
+atlas-store = { path = "crates/atlas-store" }
+atlas-project = { path = "crates/atlas-project" }
+atlas-lang-rust = { path = "crates/atlas-lang-rust" }
+atlas-lang-ts = { path = "crates/atlas-lang-ts" }
+atlas-resolve = { path = "crates/atlas-resolve" }
+atlas-detect = { path = "crates/atlas-detect" }
+atlas-scip = { path = "crates/atlas-scip" }
+atlas-similarity = { path = "crates/atlas-similarity" }
+atlas-semantic = { path = "crates/atlas-semantic" }
+atlas-link = { path = "crates/atlas-link" }
+atlas-engine = { path = "crates/atlas-engine" }
+atlas-query = { path = "crates/atlas-query" }
+atlas-mcp = { path = "crates/atlas-mcp" }
+
+tree-sitter = "0.27"
+tree-sitter-rust = "0.24"
+tree-sitter-typescript = "0.23"
+tree-sitter-javascript = "0.25"
+rusqlite = { version = "0.40", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+clap = { version = "4", features = ["derive"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+rayon = "1"
+ignore = "0.4"
+blake3 = "1"
+notify = "8"
+scip = "0.10"
+protobuf = "=3.7.2"
+rmcp = { version = "3.5", features = ["server", "macros", "schemars", "transport-io"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "sync", "time"] }
+ureq = { version = "3", features = ["json"] }
+fd-lock = "4"
+tempfile = "3"
+insta = { version = "1", features = ["yaml", "json"] }
+criterion = "0.8"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"

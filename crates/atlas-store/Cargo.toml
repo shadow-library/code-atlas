@@ -1,0 +1,22 @@
+[package]
+name = "atlas-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+atlas-core.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+fd-lock.workspace = true
+blake3.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

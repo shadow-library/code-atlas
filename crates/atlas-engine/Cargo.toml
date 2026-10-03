@@ -1,0 +1,32 @@
+[package]
+name = "atlas-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+atlas-core.workspace = true
+atlas-store.workspace = true
+atlas-project.workspace = true
+atlas-lang-rust.workspace = true
+atlas-lang-ts.workspace = true
+atlas-resolve.workspace = true
+atlas-detect.workspace = true
+atlas-scip.workspace = true
+atlas-similarity.workspace = true
+atlas-semantic.workspace = true
+atlas-link.workspace = true
+rayon.workspace = true
+notify.workspace = true
+blake3.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
