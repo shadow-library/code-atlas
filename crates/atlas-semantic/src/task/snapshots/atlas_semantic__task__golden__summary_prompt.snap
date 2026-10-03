@@ -1,0 +1,13 @@
+---
+source: crates/atlas-semantic/src/task/golden.rs
+expression: rendered.prompt
+---
+Summarise this module.
+
+<module name="acme-sdk/src/money.ts">
+symbols:
+- export function toCents(amount: string): number -- Converts a decimal string to integer cents.
+- export const CURRENCY: string
+imports:
+- @acme/core
+</module>

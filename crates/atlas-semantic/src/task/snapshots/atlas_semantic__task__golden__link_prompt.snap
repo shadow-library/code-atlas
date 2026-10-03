@@ -1,0 +1,18 @@
+---
+source: crates/atlas-semantic/src/task/golden.rs
+expression: rendered.prompt
+---
+Decide which candidate endpoint this client call targets.
+
+<call>
+method: GET
+url_pattern: `/users/${id}`
+file: acme/src/client.ts:1-8
+source:
+const user = await http.get(`/users/${id}`);
+</call>
+
+<candidates>
+0: GET /orders/:id handler: getUser(id: string): Promise<User>
+1: GET /users/:id handler: getUser(id: string): Promise<User>
+</candidates>

@@ -321,7 +321,10 @@ name = "atlas-semantic"
 version = "0.1.0"
 dependencies = [
  "atlas-core",
+ "atlas-project",
+ "atlas-store",
  "blake3",
+ "insta",
  "serde",
  "serde_json",
  "tempfile",
