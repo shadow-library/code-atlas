@@ -14,8 +14,12 @@ scip.workspace = true
 protobuf.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+blake3.workspace = true
+tempfile.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-tempfile.workspace = true
+atlas-lang-rust.workspace = true
+atlas-lang-ts.workspace = true
+toml.workspace = true

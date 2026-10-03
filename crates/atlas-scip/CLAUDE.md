@@ -1,0 +1,38 @@
+# atlas-scip
+
+Runs compiler-grade SCIP indexers and ingests their output as `compiler_verified` edges mapped onto Code Atlas entities. Depends on `atlas-core` only; dev-depends on the language analyzers.
+
+## Contract with the engine
+
+- Edges from this crate are stored under `Owner::Project { pass: ScipFacts::owner_pass(repo, path) }`, i.e. `scip:{repo}:{path}`, one owner per file in `ScipFacts::per_file`. A change to that file drops its SCIP edges; the owner id embeds the path, so stale files cannot leak edges.
+- `per_file` holds an entry (possibly empty) for every document that matched the context, so the engine can replace a file's edges with "none".
+- The runners never leave files in the indexed package. The cache key covers `request.files` plus the manifests the runner finds itself (`Cargo.toml`, `Cargo.lock`, `rust-toolchain*`, `.cargo/config*`; `package.json`, JS lockfiles, `tsconfig*.json`; `target`, `node_modules`, `.git` skipped). A cache hit returns the `degradations` recorded in a `<key>.json` sidecar beside the `.scip`.
+- The index must be produced from the same file contents as the context (`ScipFileContext.source` and `content_hash`). `ingest` cannot detect a stale index; the cache key (indexer id, indexer version, sorted `(path, content_hash)` of every input file) is what guarantees freshness. Put every file the indexer reads in `ScipRequest.files`, including `Cargo.toml`/`Cargo.lock`/`tsconfig.json`.
+- `ScipIngestContext { repo, package_dir, files }`: `files` is keyed by repo-relative path; `package_dir` is the indexer root relative to the repo, prefixed onto SCIP document paths. Build each `ScipFileContext` with `ScipFileContext::from_facts(facts, keys, source)`, where `keys` is `FileFacts::symbol_keys`.
+- Edge identity: one edge per (kind, from, to) with merged evidence, matching the core `EdgeId` rule. Evidence is the occurrence span plus the file's content hash; producer is `scip:{tool}`.
+
+## Runners
+
+- `ScipIndexer` (`id`, `availability`, `index`) returns a `ScipRun`; failures are values (`Failed`, `TimedOut`, `Unavailable`), never panics or errors.
+- `RustAnalyzerScip`: binary from `PATH`, else `rustup which rust-analyzer`; each candidate is probed with `--version`. Runs `rust-analyzer scip <root> --output <tmp>`. It builds the workspace (build scripts): ~2 GB RSS and a cold start of tens of seconds. `CARGO_TARGET_DIR` is set to `<cache_dir>/rust-target/<hash of root>` (stable, outside the repo), so no `target/` appears in the package. Cargo metadata can still create or update `Cargo.lock` when it is missing or stale; the runner snapshots `<root>/Cargo.lock` (existence and bytes) before the run, restores or deletes it afterwards on every outcome including timeout, and records a `ScipRun.warnings` entry.
+- `ScipTypescript`: `npx --yes @sourcegraph/scip-typescript index --no-progress-bar --cwd <root> --output <tmp>`. Available when `npx` works and the package is cached or the registry answers `npm ping`. A network failure during a run is reported as `Unavailable`. A missing `tsconfig.json` adds `--infer-tsconfig` and `Degradation::InferredTsconfig`; to keep the inferred `tsconfig.json` out of the package, the run uses an overlay directory in the run work dir holding symlinks to every top-level package entry (including `node_modules`) and `--cwd` points at it. scip-typescript follows the symlinks and emits package-relative document paths, so no rebasing is needed (unix only; verified by the ignored test). When a `tsconfig.json` exists the package is indexed in place; no `node_modules` in the root or an ancestor yields `Degradation::MissingNodeModules` (external types resolve poorly, local edges are unaffected).
+- Process hygiene: own process group, whole group killed on timeout (unix: `kill -s KILL -- -pgid`), child always reaped, stderr kept as an 8 KiB tail, per-run work dir inside the cache dir, output renamed atomically into `<cache_dir>/<key>.scip`. The process group is killed on timeout and also after a normal exit, so lingering children (proc-macro servers) do not outlive the run. If the parent itself crashes nothing kills the group: the indexer finishes or is orphaned, and a stale `.run-*` work dir stays in the cache dir. Failed and timed-out runs write nothing to the cache. The cache is never garbage-collected here.
+- Default timeout 10 minutes (`DEFAULT_TIMEOUT`); override with `with_timeout`.
+
+## Ingestion rules
+
+- Definitions: a definition occurrence maps to our symbol with the smallest `name_span` containing the occurrence. A SCIP symbol that maps to two different entities is dropped as ambiguous (`definitions_ambiguous`, warning); its references count as `references_unmapped`.
+- References: enclosing symbol is the innermost of our symbols whose `span` contains the occurrence; none means `references_unmapped`. Kind: `Call`/`MethodCall`/`MacroCall` give `calls`, `Instantiation` gives `instantiates`, everything else (and no matching fact) gives `references`. A fact matches on exact span, else the smallest containing fact whose last path segment equals the occurrence text.
+- A target that is defined in an indexed project document but unmapped is `references_unmapped`; a target defined nowhere in the project is `references_external` and counted per package in `external_references`. `local N` symbols are ignored and uncounted.
+- Relationships: `is_implementation` gives `implements`, or `extends` when both ends are classes, interfaces or traits of the same kind. rust-analyzer emits no relationships, so trait impls are also derived from `ScipFileContext.trait_impls`. The header is parsed from the source (`impl_header.rs`): impl generics are skipped, the header ends at `{` or a depth-0 `where`, and `for` at angle-bracket depth 0 splits trait from self type. Each side must be a plain path (`a::Foo`; references, tuples, `dyn`, `!Trait` are rejected); occurrences are taken from the path part before any `<`, must all resolve to one symbol, and must map to a project trait and a non-trait. Anything ambiguous, blanket (`impl<T> Tr for T`), or external (`Vec<T>`) emits nothing.
+- Columns: converted to byte offsets using the document's `position_encoding` (UTF-8, UTF-16, UTF-32). Undeclared encoding falls back to UTF-8 for rust-analyzer and UTF-16 otherwise, with a warning when the file is non-ASCII. Out-of-range or mid-character positions are skipped and counted as unmapped.
+- `unmapped_definitions` lists our symbols (in indexed documents) that no SCIP definition matched. Expect fields/variants/modules to appear there when SCIP defines symbols we do not model; a high rate on functions or types signals analyzer/SCIP disagreement.
+
+## Reconciliation
+
+`reconcile(scip_edges, our_edges)` compares only calls/references/instantiates/implements/extends, ignores edge kind and certainty when matching, and returns `agreed`, `ours_only`, `scip_only`, `conflicting`.
+
+- Site key: (enclosing entity, repo, path, span) for reference-style edges, one key per evidence span. Value: set of targets.
+- Relation key: (kind, from) for `implements`/`extends` and for edges without evidence; no spans involved, so impl-block spans do not need to align.
+- Same site, shared target: `agreed`. Extra targets beside an agreed one (heuristic candidates) are `ours_only`. A site where both sides have targets and none is shared is one `Disagreement` in `conflicting` (never also in the `*_only` lists). Relation keys never conflict; each (from, to) pair is agreed or one-sided.
+- Callers scope `our_edges` to the files and kinds the indexer covered; edges for files SCIP never indexed would otherwise count as `ours_only`.

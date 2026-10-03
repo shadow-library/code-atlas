@@ -307,12 +307,16 @@ name = "atlas-scip"
 version = "0.1.0"
 dependencies = [
  "atlas-core",
+ "atlas-lang-rust",
+ "atlas-lang-ts",
+ "blake3",
  "protobuf",
  "scip",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+ "toml",
  "tracing",
 ]
 
