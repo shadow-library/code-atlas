@@ -1,0 +1,245 @@
+---
+source: crates/atlas-lang-rust/tests/snapshots.rs
+expression: facts
+---
+file:
+  repo: fixture
+  path: src/lib.rs
+  language: rust
+  content_hash: bc0edb1d264cfe457d27ecdc37e4c0e6d9535765812aab9c4cf20b3363aa0b05
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: module
+    name: a
+    module_suffix:
+      - a
+    item_path: []
+    span:
+      start_byte: 0
+      end_byte: 10
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 10
+    name_span:
+      start_byte: 8
+      end_byte: 9
+      start_line: 1
+      start_col: 8
+      end_line: 1
+      end_col: 9
+    signature: pub mod a
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 1
+    parent: ~
+    kind: module
+    name: b
+    module_suffix:
+      - b
+    item_path: []
+    span:
+      start_byte: 11
+      end_byte: 21
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 10
+    name_span:
+      start_byte: 19
+      end_byte: 20
+      start_line: 2
+      start_col: 8
+      end_line: 2
+      end_col: 9
+    signature: pub mod b
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 2
+    parent: ~
+    kind: module
+    name: consumer
+    module_suffix:
+      - consumer
+    item_path: []
+    span:
+      start_byte: 22
+      end_byte: 39
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 17
+    name_span:
+      start_byte: 30
+      end_byte: 38
+      start_line: 3
+      start_col: 8
+      end_line: 3
+      end_col: 16
+    signature: pub mod consumer
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 3
+    parent: ~
+    kind: module
+    name: ambiguous
+    module_suffix:
+      - ambiguous
+    item_path: []
+    span:
+      start_byte: 41
+      end_byte: 94
+      start_line: 5
+      start_col: 0
+      end_line: 6
+      end_col: 18
+    name_span:
+      start_byte: 84
+      end_byte: 93
+      start_line: 6
+      start_col: 8
+      end_line: 6
+      end_col: 17
+    signature: pub mod ambiguous
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - cfg
+        args:
+          - type: named
+            value:
+              name: feature
+              value:
+                type: str
+                value: ambiguous-demo
+        span:
+          start_byte: 41
+          end_byte: 75
+          start_line: 5
+          start_col: 0
+          end_line: 5
+          end_col: 34
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+imports: []
+exports: []
+references: []
+module_decls:
+  - name: a
+    body:
+      type: external
+    path_attr: ~
+    module_suffix: []
+    visibility:
+      type: public
+    attributes: []
+    span:
+      start_byte: 0
+      end_byte: 10
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 10
+  - name: b
+    body:
+      type: external
+    path_attr: ~
+    module_suffix: []
+    visibility:
+      type: public
+    attributes: []
+    span:
+      start_byte: 11
+      end_byte: 21
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 10
+  - name: consumer
+    body:
+      type: external
+    path_attr: ~
+    module_suffix: []
+    visibility:
+      type: public
+    attributes: []
+    span:
+      start_byte: 22
+      end_byte: 39
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 17
+  - name: ambiguous
+    body:
+      type: external
+    path_attr: ~
+    module_suffix: []
+    visibility:
+      type: public
+    attributes:
+      - path:
+          - cfg
+        args:
+          - type: named
+            value:
+              name: feature
+              value:
+                type: str
+                value: ambiguous-demo
+        span:
+          start_byte: 41
+          end_byte: 75
+          start_line: 5
+          start_col: 0
+          end_line: 5
+          end_col: 34
+    span:
+      start_byte: 41
+      end_byte: 94
+      start_line: 5
+      start_col: 0
+      end_line: 6
+      end_col: 18
+diagnostics: []
+analyzer:
+  name: atlas-lang-rust
+  version: 1

@@ -1,0 +1,1934 @@
+---
+source: crates/atlas-lang-rust/tests/snapshots.rs
+expression: facts
+---
+file:
+  repo: fixture
+  path: src/store.rs
+  language: rust
+  content_hash: 049430af7edec74077e5a963eb5f826eebb89390b0171906dcfc220806b18e4c
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: struct
+    name: Invoice
+    module_suffix: []
+    item_path:
+      - Invoice
+    span:
+      start_byte: 122
+      end_byte: 270
+      start_line: 8
+      start_col: 0
+      end_line: 13
+      end_col: 1
+    name_span:
+      start_byte: 192
+      end_byte: 199
+      start_line: 9
+      start_col: 11
+      end_line: 9
+      end_col: 18
+    signature: pub struct Invoice
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - derive
+        args:
+          - type: path
+            value:
+              - Clone
+          - type: path
+            value:
+              - Debug
+          - type: path
+            value:
+              - Serialize
+          - type: path
+            value:
+              - Deserialize
+          - type: path
+            value:
+              - PartialEq
+        span:
+          start_byte: 122
+          end_byte: 180
+          start_line: 8
+          start_col: 0
+          end_line: 8
+          end_col: 58
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 1
+    parent: 0
+    kind: field
+    name: id
+    module_suffix: []
+    item_path:
+      - Invoice
+      - id
+    span:
+      start_byte: 204
+      end_byte: 218
+      start_line: 10
+      start_col: 2
+      end_line: 10
+      end_col: 16
+    name_span:
+      start_byte: 208
+      end_byte: 210
+      start_line: 10
+      start_col: 6
+      end_line: 10
+      end_col: 8
+    signature: "pub id: String"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 2
+    parent: 0
+    kind: field
+    name: order_id
+    module_suffix: []
+    item_path:
+      - Invoice
+      - order_id
+    span:
+      start_byte: 222
+      end_byte: 242
+      start_line: 11
+      start_col: 2
+      end_line: 11
+      end_col: 22
+    name_span:
+      start_byte: 226
+      end_byte: 234
+      start_line: 11
+      start_col: 6
+      end_line: 11
+      end_col: 14
+    signature: "pub order_id: String"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 3
+    parent: 0
+    kind: field
+    name: amount_cents
+    module_suffix: []
+    item_path:
+      - Invoice
+      - amount_cents
+    span:
+      start_byte: 246
+      end_byte: 267
+      start_line: 12
+      start_col: 2
+      end_line: 12
+      end_col: 23
+    name_span:
+      start_byte: 250
+      end_byte: 262
+      start_line: 12
+      start_col: 6
+      end_line: 12
+      end_col: 18
+    signature: "pub amount_cents: i64"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 4
+    parent: ~
+    kind: trait
+    name: InvoiceStore
+    module_suffix: []
+    item_path:
+      - InvoiceStore
+    span:
+      start_byte: 272
+      end_byte: 425
+      start_line: 15
+      start_col: 0
+      end_line: 18
+      end_col: 1
+    name_span:
+      start_byte: 282
+      end_byte: 294
+      start_line: 15
+      start_col: 10
+      end_line: 15
+      end_col: 22
+    signature: "pub trait InvoiceStore: Send + Sync"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends:
+      - - Send
+      - - Sync
+    implements: []
+    body: ~
+  - local: 5
+    parent: 4
+    kind: method
+    name: insert
+    module_suffix: []
+    item_path:
+      - InvoiceStore
+      - insert
+    span:
+      start_byte: 312
+      end_byte: 376
+      start_line: 16
+      start_col: 2
+      end_line: 16
+      end_col: 66
+    name_span:
+      start_byte: 315
+      end_byte: 321
+      start_line: 16
+      start_col: 5
+      end_line: 16
+      end_col: 11
+    signature: "fn insert(&self, invoice: Invoice) -> Result<Invoice, ApiError>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers:
+      - abstract
+    attributes: []
+    params:
+      - name: self
+        type_text: "&self"
+        attributes: []
+        span:
+          start_byte: 322
+          end_byte: 327
+          start_line: 16
+          start_col: 12
+          end_line: 16
+          end_col: 17
+      - name: invoice
+        type_text: Invoice
+        attributes: []
+        span:
+          start_byte: 329
+          end_byte: 345
+          start_line: 16
+          start_col: 19
+          end_line: 16
+          end_col: 35
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 6
+    parent: 4
+    kind: method
+    name: find
+    module_suffix: []
+    item_path:
+      - InvoiceStore
+      - find
+    span:
+      start_byte: 379
+      end_byte: 423
+      start_line: 17
+      start_col: 2
+      end_line: 17
+      end_col: 46
+    name_span:
+      start_byte: 382
+      end_byte: 386
+      start_line: 17
+      start_col: 5
+      end_line: 17
+      end_col: 9
+    signature: "fn find(&self, id: &str) -> Option<Invoice>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers:
+      - abstract
+    attributes: []
+    params:
+      - name: self
+        type_text: "&self"
+        attributes: []
+        span:
+          start_byte: 387
+          end_byte: 392
+          start_line: 17
+          start_col: 10
+          end_line: 17
+          end_col: 15
+      - name: id
+        type_text: "&str"
+        attributes: []
+        span:
+          start_byte: 394
+          end_byte: 402
+          start_line: 17
+          start_col: 17
+          end_line: 17
+          end_col: 25
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 7
+    parent: ~
+    kind: struct
+    name: PgInvoiceStore
+    module_suffix: []
+    item_path:
+      - PgInvoiceStore
+    span:
+      start_byte: 427
+      end_byte: 522
+      start_line: 20
+      start_col: 0
+      end_line: 23
+      end_col: 1
+    name_span:
+      start_byte: 438
+      end_byte: 452
+      start_line: 20
+      start_col: 11
+      end_line: 20
+      end_col: 25
+    signature: pub struct PgInvoiceStore
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements:
+      - - InvoiceStore
+    body: ~
+  - local: 8
+    parent: 7
+    kind: field
+    name: database_url
+    module_suffix: []
+    item_path:
+      - PgInvoiceStore
+      - database_url
+    span:
+      start_byte: 457
+      end_byte: 477
+      start_line: 21
+      start_col: 2
+      end_line: 21
+      end_col: 22
+    name_span:
+      start_byte: 457
+      end_byte: 469
+      start_line: 21
+      start_col: 2
+      end_line: 21
+      end_col: 14
+    signature: "database_url: String"
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 9
+    parent: 7
+    kind: field
+    name: rows
+    module_suffix: []
+    item_path:
+      - PgInvoiceStore
+      - rows
+    span:
+      start_byte: 481
+      end_byte: 519
+      start_line: 22
+      start_col: 2
+      end_line: 22
+      end_col: 40
+    name_span:
+      start_byte: 481
+      end_byte: 485
+      start_line: 22
+      start_col: 2
+      end_line: 22
+      end_col: 6
+    signature: "rows: RwLock<HashMap<String, Invoice>>"
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 10
+    parent: ~
+    kind: method
+    name: new
+    module_suffix: []
+    item_path:
+      - PgInvoiceStore
+      - new
+    span:
+      start_byte: 548
+      end_byte: 655
+      start_line: 26
+      start_col: 2
+      end_line: 28
+      end_col: 3
+    name_span:
+      start_byte: 555
+      end_byte: 558
+      start_line: 26
+      start_col: 9
+      end_line: 26
+      end_col: 12
+    signature: "pub fn new(database_url: String) -> Self"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: database_url
+        type_text: String
+        attributes: []
+        span:
+          start_byte: 559
+          end_byte: 579
+          start_line: 26
+          start_col: 13
+          end_line: 26
+          end_col: 33
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - PgInvoiceStore
+        generic_args: ~
+      trait_ref: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 1447977468
+        - 1
+        - 2236525561
+        - 1
+        - 2538522703
+        - 1
+      token_count: 19
+      line_count: 3
+  - local: 11
+    parent: ~
+    kind: method
+    name: database_url
+    module_suffix: []
+    item_path:
+      - PgInvoiceStore
+      - database_url
+    span:
+      start_byte: 659
+      end_byte: 722
+      start_line: 30
+      start_col: 2
+      end_line: 32
+      end_col: 3
+    name_span:
+      start_byte: 666
+      end_byte: 678
+      start_line: 30
+      start_col: 9
+      end_line: 30
+      end_col: 21
+    signature: pub fn database_url(&self) -> &str
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: self
+        type_text: "&self"
+        attributes: []
+        span:
+          start_byte: 679
+          end_byte: 684
+          start_line: 30
+          start_col: 22
+          end_line: 30
+          end_col: 27
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - PgInvoiceStore
+        generic_args: ~
+      trait_ref: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 2337191275
+        - 3318409260
+        - 2202970323
+        - 1
+        - 1414422230
+      token_count: 6
+      line_count: 3
+  - local: 12
+    parent: ~
+    kind: method
+    name: insert
+    module_suffix: []
+    item_path:
+      - PgInvoiceStore
+      - "<InvoiceStore>"
+      - insert
+    span:
+      start_byte: 767
+      end_byte: 997
+      start_line: 36
+      start_col: 2
+      end_line: 40
+      end_col: 3
+    name_span:
+      start_byte: 770
+      end_byte: 776
+      start_line: 36
+      start_col: 5
+      end_line: 36
+      end_col: 11
+    signature: "fn insert(&self, invoice: Invoice) -> Result<Invoice, ApiError>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: self
+        type_text: "&self"
+        attributes: []
+        span:
+          start_byte: 777
+          end_byte: 782
+          start_line: 36
+          start_col: 12
+          end_line: 36
+          end_col: 17
+      - name: invoice
+        type_text: Invoice
+        attributes: []
+        span:
+          start_byte: 784
+          end_byte: 800
+          start_line: 36
+          start_col: 19
+          end_line: 36
+          end_col: 35
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - PgInvoiceStore
+        generic_args: ~
+      trait_ref:
+        segments:
+          - InvoiceStore
+        generic_args: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 245158099
+        - 2070796588
+        - 1
+        - 2488189846
+        - 3318409260
+        - 2202970323
+        - 1
+      token_count: 55
+      line_count: 5
+  - local: 13
+    parent: ~
+    kind: method
+    name: find
+    module_suffix: []
+    item_path:
+      - PgInvoiceStore
+      - "<InvoiceStore>"
+      - find
+    span:
+      start_byte: 1001
+      end_byte: 1094
+      start_line: 42
+      start_col: 2
+      end_line: 44
+      end_col: 3
+    name_span:
+      start_byte: 1004
+      end_byte: 1008
+      start_line: 42
+      start_col: 5
+      end_line: 42
+      end_col: 9
+    signature: "fn find(&self, id: &str) -> Option<Invoice>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: self
+        type_text: "&self"
+        attributes: []
+        span:
+          start_byte: 1009
+          end_byte: 1014
+          start_line: 42
+          start_col: 10
+          end_line: 42
+          end_col: 15
+      - name: id
+        type_text: "&str"
+        attributes: []
+        span:
+          start_byte: 1016
+          end_byte: 1024
+          start_line: 42
+          start_col: 17
+          end_line: 42
+          end_col: 25
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - PgInvoiceStore
+        generic_args: ~
+      trait_ref:
+        segments:
+          - InvoiceStore
+        generic_args: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 3318409260
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+      token_count: 23
+      line_count: 3
+  - local: 14
+    parent: ~
+    kind: struct
+    name: InMemoryInvoiceStore
+    module_suffix: []
+    item_path:
+      - InMemoryInvoiceStore
+    span:
+      start_byte: 1098
+      end_byte: 1182
+      start_line: 47
+      start_col: 0
+      end_line: 50
+      end_col: 1
+    name_span:
+      start_byte: 1128
+      end_byte: 1148
+      start_line: 48
+      start_col: 11
+      end_line: 48
+      end_col: 31
+    signature: pub struct InMemoryInvoiceStore
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - derive
+        args:
+          - type: path
+            value:
+              - Default
+        span:
+          start_byte: 1098
+          end_byte: 1116
+          start_line: 47
+          start_col: 0
+          end_line: 47
+          end_col: 18
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements:
+      - - InvoiceStore
+    body: ~
+  - local: 15
+    parent: 14
+    kind: field
+    name: rows
+    module_suffix: []
+    item_path:
+      - InMemoryInvoiceStore
+      - rows
+    span:
+      start_byte: 1153
+      end_byte: 1179
+      start_line: 49
+      start_col: 2
+      end_line: 49
+      end_col: 28
+    name_span:
+      start_byte: 1153
+      end_byte: 1157
+      start_line: 49
+      start_col: 2
+      end_line: 49
+      end_col: 6
+    signature: "rows: RwLock<Vec<Invoice>>"
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 16
+    parent: ~
+    kind: method
+    name: insert
+    module_suffix: []
+    item_path:
+      - InMemoryInvoiceStore
+      - "<InvoiceStore>"
+      - insert
+    span:
+      start_byte: 1231
+      end_byte: 1439
+      start_line: 53
+      start_col: 2
+      end_line: 57
+      end_col: 3
+    name_span:
+      start_byte: 1234
+      end_byte: 1240
+      start_line: 53
+      start_col: 5
+      end_line: 53
+      end_col: 11
+    signature: "fn insert(&self, invoice: Invoice) -> Result<Invoice, ApiError>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: self
+        type_text: "&self"
+        attributes: []
+        span:
+          start_byte: 1241
+          end_byte: 1246
+          start_line: 53
+          start_col: 12
+          end_line: 53
+          end_col: 17
+      - name: invoice
+        type_text: Invoice
+        attributes: []
+        span:
+          start_byte: 1248
+          end_byte: 1264
+          start_line: 53
+          start_col: 19
+          end_line: 53
+          end_col: 35
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - InMemoryInvoiceStore
+        generic_args: ~
+      trait_ref:
+        segments:
+          - InvoiceStore
+        generic_args: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 245158099
+        - 2070796588
+        - 1
+        - 2488189846
+        - 3318409260
+        - 2202970323
+        - 1
+      token_count: 47
+      line_count: 5
+  - local: 17
+    parent: ~
+    kind: method
+    name: find
+    module_suffix: []
+    item_path:
+      - InMemoryInvoiceStore
+      - "<InvoiceStore>"
+      - find
+    span:
+      start_byte: 1443
+      end_byte: 1568
+      start_line: 59
+      start_col: 2
+      end_line: 61
+      end_col: 3
+    name_span:
+      start_byte: 1446
+      end_byte: 1450
+      start_line: 59
+      start_col: 5
+      end_line: 59
+      end_col: 9
+    signature: "fn find(&self, id: &str) -> Option<Invoice>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: self
+        type_text: "&self"
+        attributes: []
+        span:
+          start_byte: 1451
+          end_byte: 1456
+          start_line: 59
+          start_col: 10
+          end_line: 59
+          end_col: 15
+      - name: id
+        type_text: "&str"
+        attributes: []
+        span:
+          start_byte: 1458
+          end_byte: 1466
+          start_line: 59
+          start_col: 17
+          end_line: 59
+          end_col: 25
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - InMemoryInvoiceStore
+        generic_args: ~
+      trait_ref:
+        segments:
+          - InvoiceStore
+        generic_args: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 3318409260
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+      token_count: 34
+      line_count: 3
+imports:
+  - type: rust_use
+    paths:
+      - segments:
+          - std
+          - collections
+          - HashMap
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 0
+      end_byte: 30
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 30
+  - type: rust_use
+    paths:
+      - segments:
+          - std
+          - sync
+          - RwLock
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 31
+      end_byte: 53
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 22
+  - type: rust_use
+    paths:
+      - segments:
+          - serde
+          - Deserialize
+        binding:
+          type: name
+      - segments:
+          - serde
+          - Serialize
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 55
+      end_byte: 91
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 36
+  - type: rust_use
+    paths:
+      - segments:
+          - crate
+          - error
+          - ApiError
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 93
+      end_byte: 120
+      start_line: 6
+      start_col: 0
+      end_line: 6
+      end_col: 27
+exports: []
+references:
+  - from: 1
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 212
+      end_byte: 218
+      start_line: 10
+      start_col: 10
+      end_line: 10
+      end_col: 16
+  - from: 2
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 236
+      end_byte: 242
+      start_line: 11
+      start_col: 16
+      end_line: 11
+      end_col: 22
+  - from: 4
+    kind: type_ref
+    path:
+      - Send
+    receiver: ~
+    args: []
+    span:
+      start_byte: 296
+      end_byte: 300
+      start_line: 15
+      start_col: 24
+      end_line: 15
+      end_col: 28
+  - from: 4
+    kind: type_ref
+    path:
+      - Sync
+    receiver: ~
+    args: []
+    span:
+      start_byte: 303
+      end_byte: 307
+      start_line: 15
+      start_col: 31
+      end_line: 15
+      end_col: 35
+  - from: 5
+    kind: type_ref
+    path:
+      - Invoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 338
+      end_byte: 345
+      start_line: 16
+      start_col: 28
+      end_line: 16
+      end_col: 35
+  - from: 5
+    kind: type_ref
+    path:
+      - Result
+    receiver: ~
+    args: []
+    span:
+      start_byte: 350
+      end_byte: 356
+      start_line: 16
+      start_col: 40
+      end_line: 16
+      end_col: 46
+  - from: 5
+    kind: type_ref
+    path:
+      - ApiError
+    receiver: ~
+    args: []
+    span:
+      start_byte: 366
+      end_byte: 374
+      start_line: 16
+      start_col: 56
+      end_line: 16
+      end_col: 64
+  - from: 6
+    kind: type_ref
+    path:
+      - Option
+    receiver: ~
+    args: []
+    span:
+      start_byte: 407
+      end_byte: 413
+      start_line: 17
+      start_col: 30
+      end_line: 17
+      end_col: 36
+  - from: 6
+    kind: type_ref
+    path:
+      - Invoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 414
+      end_byte: 421
+      start_line: 17
+      start_col: 37
+      end_line: 17
+      end_col: 44
+  - from: 8
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 471
+      end_byte: 477
+      start_line: 21
+      start_col: 16
+      end_line: 21
+      end_col: 22
+  - from: 9
+    kind: type_ref
+    path:
+      - RwLock
+    receiver: ~
+    args: []
+    span:
+      start_byte: 487
+      end_byte: 493
+      start_line: 22
+      start_col: 8
+      end_line: 22
+      end_col: 14
+  - from: 9
+    kind: type_ref
+    path:
+      - HashMap
+    receiver: ~
+    args: []
+    span:
+      start_byte: 494
+      end_byte: 501
+      start_line: 22
+      start_col: 15
+      end_line: 22
+      end_col: 22
+  - from: 9
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 502
+      end_byte: 508
+      start_line: 22
+      start_col: 23
+      end_line: 22
+      end_col: 29
+  - from: 9
+    kind: type_ref
+    path:
+      - Invoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 510
+      end_byte: 517
+      start_line: 22
+      start_col: 31
+      end_line: 22
+      end_col: 38
+  - from: ~
+    kind: type_ref
+    path:
+      - PgInvoiceStore
+    receiver: ~
+    args: []
+    span:
+      start_byte: 529
+      end_byte: 543
+      start_line: 25
+      start_col: 5
+      end_line: 25
+      end_col: 19
+  - from: 10
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 573
+      end_byte: 579
+      start_line: 26
+      start_col: 27
+      end_line: 26
+      end_col: 33
+  - from: 10
+    kind: instantiation
+    path:
+      - Self
+    receiver: ~
+    args: []
+    span:
+      start_byte: 595
+      end_byte: 599
+      start_line: 27
+      start_col: 4
+      end_line: 27
+      end_col: 8
+  - from: 10
+    kind: call
+    path:
+      - RwLock
+      - new
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - HashMap
+            - new
+          args: []
+    span:
+      start_byte: 630
+      end_byte: 633
+      start_line: 27
+      start_col: 39
+      end_line: 27
+      end_col: 42
+  - from: 10
+    kind: call
+    path:
+      - HashMap
+      - new
+    receiver: ~
+    args: []
+    span:
+      start_byte: 643
+      end_byte: 646
+      start_line: 27
+      start_col: 52
+      end_line: 27
+      end_col: 55
+  - from: ~
+    kind: type_ref
+    path:
+      - InvoiceStore
+    receiver: ~
+    args: []
+    span:
+      start_byte: 731
+      end_byte: 743
+      start_line: 35
+      start_col: 5
+      end_line: 35
+      end_col: 17
+  - from: 12
+    kind: type_ref
+    path:
+      - Invoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 793
+      end_byte: 800
+      start_line: 36
+      start_col: 28
+      end_line: 36
+      end_col: 35
+  - from: 12
+    kind: type_ref
+    path:
+      - Result
+    receiver: ~
+    args: []
+    span:
+      start_byte: 805
+      end_byte: 811
+      start_line: 36
+      start_col: 40
+      end_line: 36
+      end_col: 46
+  - from: 12
+    kind: type_ref
+    path:
+      - ApiError
+    receiver: ~
+    args: []
+    span:
+      start_byte: 821
+      end_byte: 829
+      start_line: 36
+      start_col: 56
+      end_line: 36
+      end_col: 64
+  - from: 12
+    kind: method_call
+    path:
+      - self
+      - rows
+      - write
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 862
+      end_byte: 867
+      start_line: 37
+      start_col: 29
+      end_line: 37
+      end_col: 34
+  - from: 12
+    kind: method_call
+    path:
+      - (self.rows.write())
+      - map_err
+    receiver:
+      type: expr
+      value: self.rows.write()
+    args:
+      - type: closure
+        value:
+          params:
+            - error
+    span:
+      start_byte: 870
+      end_byte: 877
+      start_line: 37
+      start_col: 37
+      end_line: 37
+      end_col: 44
+  - from: 12
+    kind: call
+    path:
+      - ApiError
+      - Store
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - error
+            - to_string
+          args: []
+    span:
+      start_byte: 896
+      end_byte: 901
+      start_line: 37
+      start_col: 63
+      end_line: 37
+      end_col: 68
+  - from: 12
+    kind: method_call
+    path:
+      - error
+      - to_string
+    receiver:
+      type: expr
+      value: error
+    args: []
+    span:
+      start_byte: 908
+      end_byte: 917
+      start_line: 37
+      start_col: 75
+      end_line: 37
+      end_col: 84
+  - from: 12
+    kind: method_call
+    path:
+      - rows
+      - insert
+    receiver:
+      type: expr
+      value: rows
+    args:
+      - type: call
+        value:
+          callee:
+            - invoice
+            - id
+            - clone
+          args: []
+      - type: call
+        value:
+          callee:
+            - invoice
+            - clone
+          args: []
+    span:
+      start_byte: 933
+      end_byte: 939
+      start_line: 38
+      start_col: 9
+      end_line: 38
+      end_col: 15
+  - from: 12
+    kind: method_call
+    path:
+      - invoice
+      - id
+      - clone
+    receiver:
+      type: type_hint
+      value:
+        - Invoice
+    args: []
+    span:
+      start_byte: 951
+      end_byte: 956
+      start_line: 38
+      start_col: 27
+      end_line: 38
+      end_col: 32
+  - from: 12
+    kind: method_call
+    path:
+      - invoice
+      - clone
+    receiver:
+      type: type_hint
+      value:
+        - Invoice
+    args: []
+    span:
+      start_byte: 968
+      end_byte: 973
+      start_line: 38
+      start_col: 44
+      end_line: 38
+      end_col: 49
+  - from: 12
+    kind: call
+    path:
+      - Ok
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - invoice
+    span:
+      start_byte: 982
+      end_byte: 984
+      start_line: 39
+      start_col: 4
+      end_line: 39
+      end_col: 6
+  - from: 13
+    kind: type_ref
+    path:
+      - Option
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1029
+      end_byte: 1035
+      start_line: 42
+      start_col: 30
+      end_line: 42
+      end_col: 36
+  - from: 13
+    kind: type_ref
+    path:
+      - Invoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1036
+      end_byte: 1043
+      start_line: 42
+      start_col: 37
+      end_line: 42
+      end_col: 44
+  - from: 13
+    kind: method_call
+    path:
+      - self
+      - rows
+      - read
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 1061
+      end_byte: 1065
+      start_line: 43
+      start_col: 14
+      end_line: 43
+      end_col: 18
+  - from: 13
+    kind: method_call
+    path:
+      - (self.rows.read())
+      - ok
+    receiver:
+      type: expr
+      value: self.rows.read()
+    args: []
+    span:
+      start_byte: 1068
+      end_byte: 1070
+      start_line: 43
+      start_col: 21
+      end_line: 43
+      end_col: 23
+  - from: 13
+    kind: method_call
+    path:
+      - (self.rows.read().ok()?)
+      - get
+    receiver:
+      type: expr
+      value: self.rows.read().ok()?
+    args:
+      - type: path
+        value:
+          - id
+    span:
+      start_byte: 1074
+      end_byte: 1077
+      start_line: 43
+      start_col: 27
+      end_line: 43
+      end_col: 30
+  - from: 13
+    kind: method_call
+    path:
+      - (self.rows.read().ok()?.get(id))
+      - cloned
+    receiver:
+      type: expr
+      value: self.rows.read().ok()?.get(id)
+    args: []
+    span:
+      start_byte: 1082
+      end_byte: 1088
+      start_line: 43
+      start_col: 35
+      end_line: 43
+      end_col: 41
+  - from: 15
+    kind: type_ref
+    path:
+      - RwLock
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1159
+      end_byte: 1165
+      start_line: 49
+      start_col: 8
+      end_line: 49
+      end_col: 14
+  - from: 15
+    kind: type_ref
+    path:
+      - Vec
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1166
+      end_byte: 1169
+      start_line: 49
+      start_col: 15
+      end_line: 49
+      end_col: 18
+  - from: 15
+    kind: type_ref
+    path:
+      - Invoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1170
+      end_byte: 1177
+      start_line: 49
+      start_col: 19
+      end_line: 49
+      end_col: 26
+  - from: ~
+    kind: type_ref
+    path:
+      - InMemoryInvoiceStore
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1206
+      end_byte: 1226
+      start_line: 52
+      start_col: 22
+      end_line: 52
+      end_col: 42
+  - from: 16
+    kind: type_ref
+    path:
+      - Invoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1257
+      end_byte: 1264
+      start_line: 53
+      start_col: 28
+      end_line: 53
+      end_col: 35
+  - from: 16
+    kind: type_ref
+    path:
+      - Result
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1269
+      end_byte: 1275
+      start_line: 53
+      start_col: 40
+      end_line: 53
+      end_col: 46
+  - from: 16
+    kind: type_ref
+    path:
+      - ApiError
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1285
+      end_byte: 1293
+      start_line: 53
+      start_col: 56
+      end_line: 53
+      end_col: 64
+  - from: 16
+    kind: method_call
+    path:
+      - self
+      - rows
+      - write
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 1326
+      end_byte: 1331
+      start_line: 54
+      start_col: 29
+      end_line: 54
+      end_col: 34
+  - from: 16
+    kind: method_call
+    path:
+      - (self.rows.write())
+      - map_err
+    receiver:
+      type: expr
+      value: self.rows.write()
+    args:
+      - type: closure
+        value:
+          params:
+            - error
+    span:
+      start_byte: 1334
+      end_byte: 1341
+      start_line: 54
+      start_col: 37
+      end_line: 54
+      end_col: 44
+  - from: 16
+    kind: call
+    path:
+      - ApiError
+      - Store
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - error
+            - to_string
+          args: []
+    span:
+      start_byte: 1360
+      end_byte: 1365
+      start_line: 54
+      start_col: 63
+      end_line: 54
+      end_col: 68
+  - from: 16
+    kind: method_call
+    path:
+      - error
+      - to_string
+    receiver:
+      type: expr
+      value: error
+    args: []
+    span:
+      start_byte: 1372
+      end_byte: 1381
+      start_line: 54
+      start_col: 75
+      end_line: 54
+      end_col: 84
+  - from: 16
+    kind: method_call
+    path:
+      - rows
+      - push
+    receiver:
+      type: expr
+      value: rows
+    args:
+      - type: call
+        value:
+          callee:
+            - invoice
+            - clone
+          args: []
+    span:
+      start_byte: 1397
+      end_byte: 1401
+      start_line: 55
+      start_col: 9
+      end_line: 55
+      end_col: 13
+  - from: 16
+    kind: method_call
+    path:
+      - invoice
+      - clone
+    receiver:
+      type: type_hint
+      value:
+        - Invoice
+    args: []
+    span:
+      start_byte: 1410
+      end_byte: 1415
+      start_line: 55
+      start_col: 22
+      end_line: 55
+      end_col: 27
+  - from: 16
+    kind: call
+    path:
+      - Ok
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - invoice
+    span:
+      start_byte: 1424
+      end_byte: 1426
+      start_line: 56
+      start_col: 4
+      end_line: 56
+      end_col: 6
+  - from: 17
+    kind: type_ref
+    path:
+      - Option
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1471
+      end_byte: 1477
+      start_line: 59
+      start_col: 30
+      end_line: 59
+      end_col: 36
+  - from: 17
+    kind: type_ref
+    path:
+      - Invoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1478
+      end_byte: 1485
+      start_line: 59
+      start_col: 37
+      end_line: 59
+      end_col: 44
+  - from: 17
+    kind: method_call
+    path:
+      - self
+      - rows
+      - read
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 1503
+      end_byte: 1507
+      start_line: 60
+      start_col: 14
+      end_line: 60
+      end_col: 18
+  - from: 17
+    kind: method_call
+    path:
+      - (self.rows.read())
+      - ok
+    receiver:
+      type: expr
+      value: self.rows.read()
+    args: []
+    span:
+      start_byte: 1510
+      end_byte: 1512
+      start_line: 60
+      start_col: 21
+      end_line: 60
+      end_col: 23
+  - from: 17
+    kind: method_call
+    path:
+      - (self.rows.read().ok()?)
+      - iter
+    receiver:
+      type: expr
+      value: self.rows.read().ok()?
+    args: []
+    span:
+      start_byte: 1516
+      end_byte: 1520
+      start_line: 60
+      start_col: 27
+      end_line: 60
+      end_col: 31
+  - from: 17
+    kind: method_call
+    path:
+      - (self.rows.read().ok()?.iter())
+      - find
+    receiver:
+      type: expr
+      value: self.rows.read().ok()?.iter()
+    args:
+      - type: closure
+        value:
+          params:
+            - invoice
+    span:
+      start_byte: 1523
+      end_byte: 1527
+      start_line: 60
+      start_col: 34
+      end_line: 60
+      end_col: 38
+  - from: 17
+    kind: method_call
+    path:
+      - (self.rows.read().ok()?.iter().find(|invoice| invoice.id == id))
+      - cloned
+    receiver:
+      type: expr
+      value: self.rows.read().ok()?.iter().find(|invoice| invoice.id == id)
+    args: []
+    span:
+      start_byte: 1556
+      end_byte: 1562
+      start_line: 60
+      start_col: 67
+      end_line: 60
+      end_col: 73
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-rust
+  version: 1
+impls:
+  - self_type:
+      segments:
+        - PgInvoiceStore
+      generic_args: ~
+    trait_ref: ~
+    generic_params: []
+    module_suffix: []
+    scope: ~
+    attributes: []
+    span:
+      start_byte: 524
+      end_byte: 724
+      start_line: 25
+      start_col: 0
+      end_line: 33
+      end_col: 1
+  - self_type:
+      segments:
+        - PgInvoiceStore
+      generic_args: ~
+    trait_ref:
+      segments:
+        - InvoiceStore
+      generic_args: ~
+    generic_params: []
+    module_suffix: []
+    scope: ~
+    attributes: []
+    span:
+      start_byte: 726
+      end_byte: 1096
+      start_line: 35
+      start_col: 0
+      end_line: 45
+      end_col: 1
+  - self_type:
+      segments:
+        - InMemoryInvoiceStore
+      generic_args: ~
+    trait_ref:
+      segments:
+        - InvoiceStore
+      generic_args: ~
+    generic_params: []
+    module_suffix: []
+    scope: ~
+    attributes: []
+    span:
+      start_byte: 1184
+      end_byte: 1570
+      start_line: 52
+      start_col: 0
+      end_line: 62
+      end_col: 1

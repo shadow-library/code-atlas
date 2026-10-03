@@ -1,0 +1,970 @@
+---
+source: crates/atlas-lang-rust/tests/snapshots.rs
+expression: facts
+---
+file:
+  repo: fixture
+  path: src/handlers.rs
+  language: rust
+  content_hash: d6d8315eba263dd83f5d585896d63d480a8d54c2c25c0ed1aa92c83921afeb58
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: struct
+    name: CreateInvoice
+    module_suffix: []
+    item_path:
+      - CreateInvoice
+    span:
+      start_byte: 196
+      end_byte: 271
+      start_line: 10
+      start_col: 0
+      end_line: 13
+      end_col: 1
+    name_span:
+      start_byte: 230
+      end_byte: 243
+      start_line: 11
+      start_col: 11
+      end_line: 11
+      end_col: 24
+    signature: pub struct CreateInvoice
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - derive
+        args:
+          - type: path
+            value:
+              - Deserialize
+        span:
+          start_byte: 196
+          end_byte: 218
+          start_line: 10
+          start_col: 0
+          end_line: 10
+          end_col: 22
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 1
+    parent: 0
+    kind: field
+    name: order_id
+    module_suffix: []
+    item_path:
+      - CreateInvoice
+      - order_id
+    span:
+      start_byte: 248
+      end_byte: 268
+      start_line: 12
+      start_col: 2
+      end_line: 12
+      end_col: 22
+    name_span:
+      start_byte: 252
+      end_byte: 260
+      start_line: 12
+      start_col: 6
+      end_line: 12
+      end_col: 14
+    signature: "pub order_id: String"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 2
+    parent: ~
+    kind: function
+    name: persist
+    module_suffix: []
+    item_path:
+      - persist
+    span:
+      start_byte: 273
+      end_byte: 384
+      start_line: 15
+      start_col: 0
+      end_line: 17
+      end_col: 1
+    name_span:
+      start_byte: 276
+      end_byte: 283
+      start_line: 15
+      start_col: 3
+      end_line: 15
+      end_col: 10
+    signature: "fn persist(store: &dyn InvoiceStore, invoice: Invoice) -> Result<Invoice, ApiError>"
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes: []
+    params:
+      - name: store
+        type_text: "&dyn InvoiceStore"
+        attributes: []
+        span:
+          start_byte: 284
+          end_byte: 308
+          start_line: 15
+          start_col: 11
+          end_line: 15
+          end_col: 35
+      - name: invoice
+        type_text: Invoice
+        attributes: []
+        span:
+          start_byte: 310
+          end_byte: 326
+          start_line: 15
+          start_col: 37
+          end_line: 15
+          end_col: 53
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+        - 1414422230
+      token_count: 8
+      line_count: 3
+  - local: 3
+    parent: ~
+    kind: function
+    name: create_invoice
+    module_suffix: []
+    item_path:
+      - create_invoice
+    span:
+      start_byte: 386
+      end_byte: 805
+      start_line: 19
+      start_col: 0
+      end_line: 24
+      end_col: 1
+    name_span:
+      start_byte: 399
+      end_byte: 413
+      start_line: 19
+      start_col: 13
+      end_line: 19
+      end_col: 27
+    signature: "pub async fn create_invoice(State(state): State<AppState>, Json(request): Json<CreateInvoice>) -> Result<(StatusCode, Json<Invoice>), ApiError>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers:
+      - async
+    attributes: []
+    params:
+      - name: State(state)
+        type_text: State<AppState>
+        attributes: []
+        span:
+          start_byte: 414
+          end_byte: 443
+          start_line: 19
+          start_col: 28
+          end_line: 19
+          end_col: 57
+      - name: Json(request)
+        type_text: Json<CreateInvoice>
+        attributes: []
+        span:
+          start_byte: 445
+          end_byte: 479
+          start_line: 19
+          start_col: 59
+          end_line: 19
+          end_col: 93
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 245158099
+        - 1
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 2202970323
+      token_count: 80
+      line_count: 6
+  - local: 4
+    parent: ~
+    kind: function
+    name: get_invoice
+    module_suffix: []
+    item_path:
+      - get_invoice
+    span:
+      start_byte: 807
+      end_byte: 989
+      start_line: 26
+      start_col: 0
+      end_line: 28
+      end_col: 1
+    name_span:
+      start_byte: 820
+      end_byte: 831
+      start_line: 26
+      start_col: 13
+      end_line: 26
+      end_col: 24
+    signature: "pub async fn get_invoice(State(state): State<AppState>, Path(id): Path<String>) -> Result<Json<Invoice>, ApiError>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers:
+      - async
+    attributes: []
+    params:
+      - name: State(state)
+        type_text: State<AppState>
+        attributes: []
+        span:
+          start_byte: 832
+          end_byte: 861
+          start_line: 26
+          start_col: 25
+          end_line: 26
+          end_col: 54
+      - name: Path(id)
+        type_text: Path<String>
+        attributes: []
+        span:
+          start_byte: 863
+          end_byte: 885
+          start_line: 26
+          start_col: 56
+          end_line: 26
+          end_col: 78
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2202970323
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2337191275
+      token_count: 26
+      line_count: 3
+imports:
+  - type: rust_use
+    paths:
+      - segments:
+          - axum
+          - extract
+          - Path
+        binding:
+          type: name
+      - segments:
+          - axum
+          - extract
+          - State
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 0
+      end_byte: 33
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 33
+  - type: rust_use
+    paths:
+      - segments:
+          - axum
+          - http
+          - StatusCode
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 34
+      end_byte: 61
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 27
+  - type: rust_use
+    paths:
+      - segments:
+          - axum
+          - Json
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 62
+      end_byte: 77
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 15
+  - type: rust_use
+    paths:
+      - segments:
+          - serde
+          - Deserialize
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 78
+      end_byte: 101
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 23
+  - type: rust_use
+    paths:
+      - segments:
+          - crate
+          - error
+          - ApiError
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 103
+      end_byte: 130
+      start_line: 6
+      start_col: 0
+      end_line: 6
+      end_col: 27
+  - type: rust_use
+    paths:
+      - segments:
+          - crate
+          - store
+          - Invoice
+        binding:
+          type: name
+      - segments:
+          - crate
+          - store
+          - InvoiceStore
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 131
+      end_byte: 173
+      start_line: 7
+      start_col: 0
+      end_line: 7
+      end_col: 42
+  - type: rust_use
+    paths:
+      - segments:
+          - crate
+          - AppState
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 174
+      end_byte: 194
+      start_line: 8
+      start_col: 0
+      end_line: 8
+      end_col: 20
+exports: []
+references:
+  - from: 1
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 262
+      end_byte: 268
+      start_line: 12
+      start_col: 16
+      end_line: 12
+      end_col: 22
+  - from: 2
+    kind: type_ref
+    path:
+      - InvoiceStore
+    receiver: ~
+    args: []
+    span:
+      start_byte: 296
+      end_byte: 308
+      start_line: 15
+      start_col: 23
+      end_line: 15
+      end_col: 35
+  - from: 2
+    kind: type_ref
+    path:
+      - Invoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 319
+      end_byte: 326
+      start_line: 15
+      start_col: 46
+      end_line: 15
+      end_col: 53
+  - from: 2
+    kind: type_ref
+    path:
+      - Result
+    receiver: ~
+    args: []
+    span:
+      start_byte: 331
+      end_byte: 337
+      start_line: 15
+      start_col: 58
+      end_line: 15
+      end_col: 64
+  - from: 2
+    kind: type_ref
+    path:
+      - ApiError
+    receiver: ~
+    args: []
+    span:
+      start_byte: 347
+      end_byte: 355
+      start_line: 15
+      start_col: 74
+      end_line: 15
+      end_col: 82
+  - from: 2
+    kind: method_call
+    path:
+      - store
+      - insert
+    receiver:
+      type: type_hint
+      value:
+        - InvoiceStore
+    args:
+      - type: path
+        value:
+          - invoice
+    span:
+      start_byte: 367
+      end_byte: 373
+      start_line: 16
+      start_col: 8
+      end_line: 16
+      end_col: 14
+  - from: 3
+    kind: type_ref
+    path:
+      - State
+    receiver: ~
+    args: []
+    span:
+      start_byte: 428
+      end_byte: 433
+      start_line: 19
+      start_col: 42
+      end_line: 19
+      end_col: 47
+  - from: 3
+    kind: type_ref
+    path:
+      - AppState
+    receiver: ~
+    args: []
+    span:
+      start_byte: 434
+      end_byte: 442
+      start_line: 19
+      start_col: 48
+      end_line: 19
+      end_col: 56
+  - from: 3
+    kind: type_ref
+    path:
+      - Json
+    receiver: ~
+    args: []
+    span:
+      start_byte: 460
+      end_byte: 464
+      start_line: 19
+      start_col: 74
+      end_line: 19
+      end_col: 78
+  - from: 3
+    kind: type_ref
+    path:
+      - CreateInvoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 465
+      end_byte: 478
+      start_line: 19
+      start_col: 79
+      end_line: 19
+      end_col: 92
+  - from: 3
+    kind: type_ref
+    path:
+      - Result
+    receiver: ~
+    args: []
+    span:
+      start_byte: 484
+      end_byte: 490
+      start_line: 19
+      start_col: 98
+      end_line: 19
+      end_col: 104
+  - from: 3
+    kind: type_ref
+    path:
+      - StatusCode
+    receiver: ~
+    args: []
+    span:
+      start_byte: 492
+      end_byte: 502
+      start_line: 19
+      start_col: 106
+      end_line: 19
+      end_col: 116
+  - from: 3
+    kind: type_ref
+    path:
+      - Invoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 509
+      end_byte: 516
+      start_line: 19
+      start_col: 123
+      end_line: 19
+      end_col: 130
+  - from: 3
+    kind: type_ref
+    path:
+      - ApiError
+    receiver: ~
+    args: []
+    span:
+      start_byte: 520
+      end_byte: 528
+      start_line: 19
+      start_col: 134
+      end_line: 19
+      end_col: 142
+  - from: 3
+    kind: method_call
+    path:
+      - state
+      - acme
+      - get_order
+    receiver:
+      type: type_hint
+      value:
+        - AppState
+    args:
+      - type: path
+        value:
+          - request
+          - order_id
+    span:
+      start_byte: 557
+      end_byte: 566
+      start_line: 20
+      start_col: 25
+      end_line: 20
+      end_col: 34
+  - from: 3
+    kind: instantiation
+    path:
+      - Invoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 610
+      end_byte: 617
+      start_line: 21
+      start_col: 16
+      end_line: 21
+      end_col: 23
+  - from: 3
+    kind: macro_call
+    path:
+      - format
+    receiver: ~
+    args:
+      - type: str
+        value: "inv_{}"
+      - type: path
+        value:
+          - order
+          - id
+    span:
+      start_byte: 624
+      end_byte: 630
+      start_line: 21
+      start_col: 30
+      end_line: 21
+      end_col: 36
+  - from: 3
+    kind: call
+    path:
+      - persist
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - state
+            - store
+            - as_ref
+          args: []
+      - type: path
+        value:
+          - invoice
+    span:
+      start_byte: 722
+      end_byte: 729
+      start_line: 22
+      start_col: 14
+      end_line: 22
+      end_col: 21
+  - from: 3
+    kind: method_call
+    path:
+      - state
+      - store
+      - as_ref
+    receiver:
+      type: type_hint
+      value:
+        - AppState
+    args: []
+    span:
+      start_byte: 742
+      end_byte: 748
+      start_line: 22
+      start_col: 34
+      end_line: 22
+      end_col: 40
+  - from: 3
+    kind: call
+    path:
+      - Ok
+    receiver: ~
+    args:
+      - type: array
+        value:
+          - type: path
+            value:
+              - StatusCode
+              - CREATED
+          - type: call
+            value:
+              callee:
+                - Json
+              args:
+                - type: path
+                  value:
+                    - saved
+    span:
+      start_byte: 765
+      end_byte: 767
+      start_line: 23
+      start_col: 2
+      end_line: 23
+      end_col: 4
+  - from: 3
+    kind: value_ref
+    path:
+      - StatusCode
+      - CREATED
+    receiver: ~
+    args: []
+    span:
+      start_byte: 781
+      end_byte: 788
+      start_line: 23
+      start_col: 18
+      end_line: 23
+      end_col: 25
+  - from: 3
+    kind: call
+    path:
+      - Json
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - saved
+    span:
+      start_byte: 790
+      end_byte: 794
+      start_line: 23
+      start_col: 27
+      end_line: 23
+      end_col: 31
+  - from: 4
+    kind: type_ref
+    path:
+      - State
+    receiver: ~
+    args: []
+    span:
+      start_byte: 846
+      end_byte: 851
+      start_line: 26
+      start_col: 39
+      end_line: 26
+      end_col: 44
+  - from: 4
+    kind: type_ref
+    path:
+      - AppState
+    receiver: ~
+    args: []
+    span:
+      start_byte: 852
+      end_byte: 860
+      start_line: 26
+      start_col: 45
+      end_line: 26
+      end_col: 53
+  - from: 4
+    kind: type_ref
+    path:
+      - Path
+    receiver: ~
+    args: []
+    span:
+      start_byte: 873
+      end_byte: 877
+      start_line: 26
+      start_col: 66
+      end_line: 26
+      end_col: 70
+  - from: 4
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 878
+      end_byte: 884
+      start_line: 26
+      start_col: 71
+      end_line: 26
+      end_col: 77
+  - from: 4
+    kind: type_ref
+    path:
+      - Result
+    receiver: ~
+    args: []
+    span:
+      start_byte: 890
+      end_byte: 896
+      start_line: 26
+      start_col: 83
+      end_line: 26
+      end_col: 89
+  - from: 4
+    kind: type_ref
+    path:
+      - Json
+    receiver: ~
+    args: []
+    span:
+      start_byte: 897
+      end_byte: 901
+      start_line: 26
+      start_col: 90
+      end_line: 26
+      end_col: 94
+  - from: 4
+    kind: type_ref
+    path:
+      - Invoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 902
+      end_byte: 909
+      start_line: 26
+      start_col: 95
+      end_line: 26
+      end_col: 102
+  - from: 4
+    kind: type_ref
+    path:
+      - ApiError
+    receiver: ~
+    args: []
+    span:
+      start_byte: 912
+      end_byte: 920
+      start_line: 26
+      start_col: 105
+      end_line: 26
+      end_col: 113
+  - from: 4
+    kind: method_call
+    path:
+      - state
+      - store
+      - find
+    receiver:
+      type: type_hint
+      value:
+        - AppState
+    args:
+      - type: path
+        value:
+          - id
+    span:
+      start_byte: 938
+      end_byte: 942
+      start_line: 27
+      start_col: 14
+      end_line: 27
+      end_col: 18
+  - from: 4
+    kind: method_call
+    path:
+      - (state.store.find(&id))
+      - map
+    receiver:
+      type: expr
+      value: state.store.find(&id)
+    args:
+      - type: path
+        value:
+          - Json
+    span:
+      start_byte: 948
+      end_byte: 951
+      start_line: 27
+      start_col: 24
+      end_line: 27
+      end_col: 27
+  - from: 4
+    kind: value_ref
+    path:
+      - Json
+    receiver: ~
+    args: []
+    span:
+      start_byte: 952
+      end_byte: 956
+      start_line: 27
+      start_col: 28
+      end_line: 27
+      end_col: 32
+  - from: 4
+    kind: method_call
+    path:
+      - (state.store.find(&id).map(Json))
+      - ok_or
+    receiver:
+      type: expr
+      value: state.store.find(&id).map(Json)
+    args:
+      - type: call
+        value:
+          callee:
+            - ApiError
+            - NotFound
+          args:
+            - type: path
+              value:
+                - id
+    span:
+      start_byte: 958
+      end_byte: 963
+      start_line: 27
+      start_col: 34
+      end_line: 27
+      end_col: 39
+  - from: 4
+    kind: call
+    path:
+      - ApiError
+      - NotFound
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - id
+    span:
+      start_byte: 974
+      end_byte: 982
+      start_line: 27
+      start_col: 50
+      end_line: 27
+      end_col: 58
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-rust
+  version: 1

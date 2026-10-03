@@ -1,0 +1,534 @@
+---
+source: crates/atlas-lang-rust/tests/snapshots.rs
+expression: facts
+---
+file:
+  repo: fixture
+  path: src/lib.rs
+  language: rust
+  content_hash: 5d7acc739d7e8ab2def6db4f5571f3602c57d72be935976d5f134d164ef62710
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: macro
+    name: define_ops
+    module_suffix: []
+    item_path:
+      - define_ops
+    span:
+      start_byte: 0
+      end_byte: 156
+      start_line: 1
+      start_col: 0
+      end_line: 9
+      end_col: 1
+    name_span:
+      start_byte: 13
+      end_byte: 23
+      start_line: 1
+      start_col: 13
+      end_line: 1
+      end_col: 23
+    signature: macro_rules! define_ops
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 1
+    parent: ~
+    kind: macro
+    name: getter
+    module_suffix: []
+    item_path:
+      - getter
+    span:
+      start_byte: 158
+      end_byte: 274
+      start_line: 11
+      start_col: 0
+      end_line: 17
+      end_col: 1
+    name_span:
+      start_byte: 171
+      end_byte: 177
+      start_line: 11
+      start_col: 13
+      end_line: 11
+      end_col: 19
+    signature: macro_rules! getter
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 2
+    parent: ~
+    kind: struct
+    name: Point
+    module_suffix: []
+    item_path:
+      - Point
+    span:
+      start_byte: 317
+      end_byte: 357
+      start_line: 24
+      start_col: 0
+      end_line: 27
+      end_col: 1
+    name_span:
+      start_byte: 328
+      end_byte: 333
+      start_line: 24
+      start_col: 11
+      end_line: 24
+      end_col: 16
+    signature: pub struct Point
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 3
+    parent: 2
+    kind: field
+    name: x
+    module_suffix: []
+    item_path:
+      - Point
+      - x
+    span:
+      start_byte: 338
+      end_byte: 344
+      start_line: 25
+      start_col: 2
+      end_line: 25
+      end_col: 8
+    name_span:
+      start_byte: 338
+      end_byte: 339
+      start_line: 25
+      start_col: 2
+      end_line: 25
+      end_col: 3
+    signature: "x: i64"
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 4
+    parent: 2
+    kind: field
+    name: y
+    module_suffix: []
+    item_path:
+      - Point
+      - y
+    span:
+      start_byte: 348
+      end_byte: 354
+      start_line: 26
+      start_col: 2
+      end_line: 26
+      end_col: 8
+    name_span:
+      start_byte: 348
+      end_byte: 349
+      start_line: 26
+      start_col: 2
+      end_line: 26
+      end_col: 3
+    signature: "y: i64"
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 5
+    parent: ~
+    kind: method
+    name: manhattan
+    module_suffix: []
+    item_path:
+      - Point
+      - manhattan
+    span:
+      start_byte: 413
+      end_byte: 477
+      start_line: 33
+      start_col: 2
+      end_line: 35
+      end_col: 3
+    name_span:
+      start_byte: 420
+      end_byte: 429
+      start_line: 33
+      start_col: 9
+      end_line: 33
+      end_col: 18
+    signature: pub fn manhattan(&self) -> i64
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: self
+        type_text: "&self"
+        attributes: []
+        span:
+          start_byte: 430
+          end_byte: 435
+          start_line: 33
+          start_col: 19
+          end_line: 33
+          end_col: 24
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - Point
+        generic_args: ~
+      trait_ref: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2303636037
+        - 3318409260
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+      token_count: 16
+      line_count: 3
+  - local: 6
+    parent: ~
+    kind: function
+    name: helper
+    module_suffix: []
+    item_path:
+      - helper
+    span:
+      start_byte: 481
+      end_byte: 525
+      start_line: 38
+      start_col: 0
+      end_line: 40
+      end_col: 1
+    name_span:
+      start_byte: 484
+      end_byte: 490
+      start_line: 38
+      start_col: 3
+      end_line: 38
+      end_col: 9
+    signature: "fn helper(value: i64) -> i64"
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes: []
+    params:
+      - name: value
+        type_text: i64
+        attributes: []
+        span:
+          start_byte: 491
+          end_byte: 501
+          start_line: 38
+          start_col: 10
+          end_line: 38
+          end_col: 20
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2270080799
+        - 3
+        - 1414422230
+      token_count: 5
+      line_count: 3
+  - local: 7
+    parent: ~
+    kind: function
+    name: plain
+    module_suffix: []
+    item_path:
+      - plain
+    span:
+      start_byte: 527
+      end_byte: 586
+      start_line: 42
+      start_col: 0
+      end_line: 44
+      end_col: 1
+    name_span:
+      start_byte: 534
+      end_byte: 539
+      start_line: 42
+      start_col: 7
+      end_line: 42
+      end_col: 12
+    signature: "pub fn plain(value: i64) -> i64"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: value
+        type_text: i64
+        attributes: []
+        span:
+          start_byte: 540
+          end_byte: 550
+          start_line: 42
+          start_col: 13
+          end_line: 42
+          end_col: 23
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2303636037
+        - 1
+        - 2303636037
+        - 1
+        - 2236525561
+        - 3
+      token_count: 11
+      line_count: 3
+imports: []
+exports: []
+references:
+  - from: ~
+    kind: macro_call
+    path:
+      - define_ops
+    receiver: ~
+    args:
+      - type: other
+        value: add => +
+      - type: other
+        value: sub => -
+    span:
+      start_byte: 276
+      end_byte: 286
+      start_line: 19
+      start_col: 0
+      end_line: 19
+      end_col: 10
+  - from: ~
+    kind: type_ref
+    path:
+      - Point
+    receiver: ~
+    args: []
+    span:
+      start_byte: 364
+      end_byte: 369
+      start_line: 29
+      start_col: 5
+      end_line: 29
+      end_col: 10
+  - from: ~
+    kind: macro_call
+    path:
+      - getter
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - x
+      - type: path
+        value:
+          - i64
+    span:
+      start_byte: 374
+      end_byte: 380
+      start_line: 30
+      start_col: 2
+      end_line: 30
+      end_col: 8
+  - from: ~
+    kind: macro_call
+    path:
+      - getter
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - y
+      - type: path
+        value:
+          - i64
+    span:
+      start_byte: 393
+      end_byte: 399
+      start_line: 31
+      start_col: 2
+      end_line: 31
+      end_col: 8
+  - from: 5
+    kind: call
+    path:
+      - add
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - self
+            - x
+          args: []
+      - type: call
+        value:
+          callee:
+            - self
+            - y
+          args: []
+    span:
+      start_byte: 450
+      end_byte: 453
+      start_line: 34
+      start_col: 4
+      end_line: 34
+      end_col: 7
+  - from: 5
+    kind: method_call
+    path:
+      - self
+      - x
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 459
+      end_byte: 460
+      start_line: 34
+      start_col: 13
+      end_line: 34
+      end_col: 14
+  - from: 5
+    kind: method_call
+    path:
+      - self
+      - y
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 469
+      end_byte: 470
+      start_line: 34
+      start_col: 23
+      end_line: 34
+      end_col: 24
+  - from: 7
+    kind: call
+    path:
+      - helper
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - sub
+          args:
+            - type: path
+              value:
+                - value
+            - type: number
+              value: "1"
+    span:
+      start_byte: 563
+      end_byte: 569
+      start_line: 43
+      start_col: 2
+      end_line: 43
+      end_col: 8
+  - from: 7
+    kind: call
+    path:
+      - sub
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - value
+      - type: number
+        value: "1"
+    span:
+      start_byte: 570
+      end_byte: 573
+      start_line: 43
+      start_col: 9
+      end_line: 43
+      end_col: 12
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-rust
+  version: 1
+impls:
+  - self_type:
+      segments:
+        - Point
+      generic_args: ~
+    trait_ref: ~
+    generic_params: []
+    module_suffix: []
+    scope: ~
+    attributes: []
+    span:
+      start_byte: 359
+      end_byte: 479
+      start_line: 29
+      start_col: 0
+      end_line: 36
+      end_col: 1

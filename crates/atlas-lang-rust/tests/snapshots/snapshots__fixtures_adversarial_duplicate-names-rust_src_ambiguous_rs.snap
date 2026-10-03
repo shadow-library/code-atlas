@@ -1,0 +1,125 @@
+---
+source: crates/atlas-lang-rust/tests/snapshots.rs
+expression: facts
+---
+file:
+  repo: fixture
+  path: src/ambiguous.rs
+  language: rust
+  content_hash: defba2d5ce98464d2b1b8966505631010339ba507c3d6753794fc496c830ee97
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: ambiguous_call
+    module_suffix: []
+    item_path:
+      - ambiguous_call
+    span:
+      start_byte: 35
+      end_byte: 95
+      start_line: 4
+      start_col: 0
+      end_line: 6
+      end_col: 1
+    name_span:
+      start_byte: 42
+      end_byte: 56
+      start_line: 4
+      start_col: 7
+      end_line: 4
+      end_col: 21
+    signature: "pub fn ambiguous_call(line: &str)"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: line
+        type_text: "&str"
+        attributes: []
+        span:
+          start_byte: 57
+          end_byte: 67
+          start_line: 4
+          start_col: 22
+          end_line: 4
+          end_col: 32
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 245158099
+        - 1917750800
+        - 2488189846
+        - 1
+        - 2303636037
+        - 1
+        - 2286858418
+      token_count: 10
+      line_count: 3
+imports:
+  - type: rust_use
+    paths:
+      - segments:
+          - crate
+          - a
+        binding:
+          type: glob
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 0
+      end_byte: 16
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 16
+  - type: rust_use
+    paths:
+      - segments:
+          - crate
+          - b
+        binding:
+          type: glob
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 17
+      end_byte: 33
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 16
+exports: []
+references:
+  - from: 0
+    kind: call
+    path:
+      - parse
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - line
+    span:
+      start_byte: 81
+      end_byte: 86
+      start_line: 5
+      start_col: 10
+      end_line: 5
+      end_col: 15
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-rust
+  version: 1

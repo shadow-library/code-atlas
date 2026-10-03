@@ -1,0 +1,593 @@
+---
+source: crates/atlas-lang-rust/tests/snapshots.rs
+expression: facts
+---
+file:
+  repo: fixture
+  path: src/money.rs
+  language: rust
+  content_hash: 9539b43a8b131ad4d426c94ccc9f84eb7857bbda0540a91a45eeb8c70a429427
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: to_cents
+    module_suffix: []
+    item_path:
+      - to_cents
+    span:
+      start_byte: 0
+      end_byte: 474
+      start_line: 1
+      start_col: 0
+      end_line: 15
+      end_col: 1
+    name_span:
+      start_byte: 7
+      end_byte: 15
+      start_line: 1
+      start_col: 7
+      end_line: 1
+      end_col: 15
+    signature: "pub fn to_cents(amount: &str) -> i64"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: amount
+        type_text: "&str"
+        attributes: []
+        span:
+          start_byte: 16
+          end_byte: 28
+          start_line: 1
+          start_col: 16
+          end_line: 1
+          end_col: 28
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 245158099
+        - 1
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+      token_count: 128
+      line_count: 15
+  - local: 1
+    parent: ~
+    kind: module
+    name: tests
+    module_suffix:
+      - tests
+    item_path: []
+    span:
+      start_byte: 476
+      end_byte: 806
+      start_line: 17
+      start_col: 0
+      end_line: 32
+      end_col: 1
+    name_span:
+      start_byte: 493
+      end_byte: 498
+      start_line: 18
+      start_col: 4
+      end_line: 18
+      end_col: 9
+    signature: mod tests
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes:
+      - path:
+          - cfg
+        args:
+          - type: path
+            value:
+              - test
+        span:
+          start_byte: 476
+          end_byte: 488
+          start_line: 17
+          start_col: 0
+          end_line: 17
+          end_col: 12
+    params: []
+    test:
+      framework: rust
+      kind: suite
+      display_name: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 2
+    parent: 1
+    kind: test
+    name: converts_whole_and_fractional_amounts
+    module_suffix:
+      - tests
+    item_path:
+      - converts_whole_and_fractional_amounts
+    span:
+      start_byte: 527
+      end_byte: 704
+      start_line: 21
+      start_col: 2
+      end_line: 26
+      end_col: 3
+    name_span:
+      start_byte: 540
+      end_byte: 577
+      start_line: 22
+      start_col: 5
+      end_line: 22
+      end_col: 42
+    signature: fn converts_whole_and_fractional_amounts()
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes:
+      - path:
+          - test
+        args: []
+        span:
+          start_byte: 527
+          end_byte: 534
+          start_line: 21
+          start_col: 2
+          end_line: 21
+          end_col: 9
+    params: []
+    test:
+      framework: rust
+      kind: unit
+      display_name: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2421079370
+        - 2303636037
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+      token_count: 35
+      line_count: 5
+  - local: 3
+    parent: 1
+    kind: test
+    name: keeps_the_sign_of_negative_amounts
+    module_suffix:
+      - tests
+    item_path:
+      - keeps_the_sign_of_negative_amounts
+    span:
+      start_byte: 708
+      end_byte: 804
+      start_line: 28
+      start_col: 2
+      end_line: 31
+      end_col: 3
+    name_span:
+      start_byte: 721
+      end_byte: 755
+      start_line: 29
+      start_col: 5
+      end_line: 29
+      end_col: 39
+    signature: fn keeps_the_sign_of_negative_amounts()
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes:
+      - path:
+          - test
+        args: []
+        span:
+          start_byte: 708
+          end_byte: 715
+          start_line: 28
+          start_col: 2
+          end_line: 28
+          end_col: 9
+    params: []
+    test:
+      framework: rust
+      kind: unit
+      display_name: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2421079370
+        - 2303636037
+        - 1
+        - 2303636037
+        - 2
+        - 2286858418
+      token_count: 14
+      line_count: 3
+imports:
+  - type: rust_use
+    paths:
+      - segments:
+          - super
+          - to_cents
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: 1
+    span:
+      start_byte: 503
+      end_byte: 523
+      start_line: 19
+      start_col: 2
+      end_line: 19
+      end_col: 22
+exports: []
+references:
+  - from: 0
+    kind: method_call
+    path:
+      - amount
+      - trim
+    receiver:
+      type: type_hint
+      value:
+        - str
+    args: []
+    span:
+      start_byte: 62
+      end_byte: 66
+      start_line: 2
+      start_col: 23
+      end_line: 2
+      end_col: 27
+  - from: 0
+    kind: method_call
+    path:
+      - trimmed
+      - strip_prefix
+    receiver:
+      type: expr
+      value: trimmed
+    args:
+      - type: other
+        value: "'-'"
+    span:
+      start_byte: 113
+      end_byte: 125
+      start_line: 3
+      start_col: 43
+      end_line: 3
+      end_col: 55
+  - from: 0
+    kind: method_call
+    path:
+      - unsigned
+      - split_once
+    receiver:
+      type: expr
+      value: unsigned
+    args:
+      - type: other
+        value: "'.'"
+    span:
+      start_byte: 235
+      end_byte: 245
+      start_line: 7
+      start_col: 35
+      end_line: 7
+      end_col: 45
+  - from: 0
+    kind: method_call
+    path:
+      - "(unsigned.split_once('.'))"
+      - unwrap_or
+    receiver:
+      type: expr
+      value: "unsigned.split_once('.')"
+    args:
+      - type: array
+        value:
+          - type: path
+            value:
+              - unsigned
+          - type: str
+            value: ""
+    span:
+      start_byte: 251
+      end_byte: 260
+      start_line: 7
+      start_col: 51
+      end_line: 7
+      end_col: 60
+  - from: 0
+    kind: macro_call
+    path:
+      - format
+    receiver: ~
+    args:
+      - type: str
+        value: "{fraction:0<2}"
+    span:
+      start_byte: 295
+      end_byte: 301
+      start_line: 8
+      start_col: 17
+      end_line: 8
+      end_col: 23
+  - from: 0
+    kind: method_call
+    path:
+      - whole
+      - parse
+    receiver:
+      type: expr
+      value: whole
+    args: []
+    span:
+      start_byte: 342
+      end_byte: 347
+      start_line: 9
+      start_col: 20
+      end_line: 9
+      end_col: 25
+  - from: 0
+    kind: method_call
+    path:
+      - "(whole.parse::<i64>())"
+      - unwrap_or
+    receiver:
+      type: expr
+      value: "whole.parse::<i64>()"
+    args:
+      - type: number
+        value: "0"
+    span:
+      start_byte: 357
+      end_byte: 366
+      start_line: 9
+      start_col: 35
+      end_line: 9
+      end_col: 44
+  - from: 0
+    kind: method_call
+    path:
+      - "(fraction[..2])"
+      - parse
+    receiver:
+      type: expr
+      value: "fraction[..2]"
+    args: []
+    span:
+      start_byte: 392
+      end_byte: 397
+      start_line: 9
+      start_col: 70
+      end_line: 9
+      end_col: 75
+  - from: 0
+    kind: method_call
+    path:
+      - "(fraction[..2].parse::<i64>())"
+      - unwrap_or
+    receiver:
+      type: expr
+      value: "fraction[..2].parse::<i64>()"
+    args:
+      - type: number
+        value: "0"
+    span:
+      start_byte: 407
+      end_byte: 416
+      start_line: 9
+      start_col: 85
+      end_line: 9
+      end_col: 94
+  - from: 2
+    kind: macro_call
+    path:
+      - assert_eq
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - to_cents
+          args:
+            - type: str
+              value: "12.34"
+      - type: number
+        value: "1234"
+    span:
+      start_byte: 586
+      end_byte: 595
+      start_line: 23
+      start_col: 4
+      end_line: 23
+      end_col: 13
+  - from: 2
+    kind: call
+    path:
+      - to_cents
+    receiver: ~
+    args:
+      - type: str
+        value: "12.34"
+    span:
+      start_byte: 597
+      end_byte: 605
+      start_line: 23
+      start_col: 15
+      end_line: 23
+      end_col: 23
+  - from: 2
+    kind: macro_call
+    path:
+      - assert_eq
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - to_cents
+          args:
+            - type: str
+              value: "12.3"
+      - type: number
+        value: "1230"
+    span:
+      start_byte: 627
+      end_byte: 636
+      start_line: 24
+      start_col: 4
+      end_line: 24
+      end_col: 13
+  - from: 2
+    kind: call
+    path:
+      - to_cents
+    receiver: ~
+    args:
+      - type: str
+        value: "12.3"
+    span:
+      start_byte: 638
+      end_byte: 646
+      start_line: 24
+      start_col: 15
+      end_line: 24
+      end_col: 23
+  - from: 2
+    kind: macro_call
+    path:
+      - assert_eq
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - to_cents
+          args:
+            - type: str
+              value: "12"
+      - type: number
+        value: "1200"
+    span:
+      start_byte: 667
+      end_byte: 676
+      start_line: 25
+      start_col: 4
+      end_line: 25
+      end_col: 13
+  - from: 2
+    kind: call
+    path:
+      - to_cents
+    receiver: ~
+    args:
+      - type: str
+        value: "12"
+    span:
+      start_byte: 678
+      end_byte: 686
+      start_line: 25
+      start_col: 15
+      end_line: 25
+      end_col: 23
+  - from: 3
+    kind: macro_call
+    path:
+      - assert_eq
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - to_cents
+          args:
+            - type: str
+              value: "-1.50"
+      - type: number
+        value: "-150"
+    span:
+      start_byte: 764
+      end_byte: 773
+      start_line: 30
+      start_col: 4
+      end_line: 30
+      end_col: 13
+  - from: 3
+    kind: call
+    path:
+      - to_cents
+    receiver: ~
+    args:
+      - type: str
+        value: "-1.50"
+    span:
+      start_byte: 775
+      end_byte: 783
+      start_line: 30
+      start_col: 15
+      end_line: 30
+      end_col: 23
+module_decls:
+  - name: tests
+    body:
+      type: inline
+      value: 1
+    path_attr: ~
+    module_suffix: []
+    visibility:
+      type: private
+    attributes:
+      - path:
+          - cfg
+        args:
+          - type: path
+            value:
+              - test
+        span:
+          start_byte: 476
+          end_byte: 488
+          start_line: 17
+          start_col: 0
+          end_line: 17
+          end_col: 12
+    span:
+      start_byte: 476
+      end_byte: 806
+      start_line: 17
+      start_col: 0
+      end_line: 32
+      end_col: 1
+diagnostics: []
+analyzer:
+  name: atlas-lang-rust
+  version: 1

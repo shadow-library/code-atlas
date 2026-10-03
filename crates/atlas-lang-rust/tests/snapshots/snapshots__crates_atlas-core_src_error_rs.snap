@@ -1,0 +1,795 @@
+---
+source: crates/atlas-lang-rust/tests/snapshots.rs
+expression: facts
+---
+file:
+  repo: fixture
+  path: src/error.rs
+  language: rust
+  content_hash: 2acb70e40f8fb289c24044d518ab1a7f73cc2b2cd665bd7d4de8ff7a03e07686
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: enum
+    name: CoreError
+    module_suffix: []
+    item_path:
+      - CoreError
+    span:
+      start_byte: 23
+      end_byte: 902
+      start_line: 3
+      start_col: 0
+      end_line: 24
+      end_col: 1
+    name_span:
+      start_byte: 92
+      end_byte: 101
+      start_line: 5
+      start_col: 9
+      end_line: 5
+      end_col: 18
+    signature: pub enum CoreError
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - derive
+        args:
+          - type: path
+            value:
+              - Debug
+          - type: path
+            value:
+              - Clone
+          - type: path
+            value:
+              - PartialEq
+          - type: path
+            value:
+              - Error
+        span:
+          start_byte: 23
+          end_byte: 64
+          start_line: 3
+          start_col: 0
+          end_line: 3
+          end_col: 41
+      - path:
+          - non_exhaustive
+        args: []
+        span:
+          start_byte: 65
+          end_byte: 82
+          start_line: 4
+          start_col: 0
+          end_line: 4
+          end_col: 17
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 1
+    parent: 0
+    kind: variant
+    name: InvalidRelPath
+    module_suffix: []
+    item_path:
+      - CoreError
+      - InvalidRelPath
+    span:
+      start_byte: 106
+      end_byte: 214
+      start_line: 6
+      start_col: 2
+      end_line: 7
+      end_col: 55
+    name_span:
+      start_byte: 161
+      end_byte: 175
+      start_line: 7
+      start_col: 2
+      end_line: 7
+      end_col: 16
+    signature: "InvalidRelPath { path: String, reason: &'static str }"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - error
+        args:
+          - type: str
+            value: "invalid relative path {path:?}: {reason}"
+        span:
+          start_byte: 106
+          end_byte: 158
+          start_line: 6
+          start_col: 2
+          end_line: 6
+          end_col: 54
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 2
+    parent: 0
+    kind: variant
+    name: InvalidName
+    module_suffix: []
+    item_path:
+      - CoreError
+      - InvalidName
+    span:
+      start_byte: 218
+      end_byte: 338
+      start_line: 8
+      start_col: 2
+      end_line: 9
+      end_col: 73
+    name_span:
+      start_byte: 267
+      end_byte: 278
+      start_line: 9
+      start_col: 2
+      end_line: 9
+      end_col: 13
+    signature: "InvalidName { what: &'static str, value: String, reason: &'static str }"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - error
+        args:
+          - type: str
+            value: "invalid {what} {value:?}: {reason}"
+        span:
+          start_byte: 218
+          end_byte: 264
+          start_line: 8
+          start_col: 2
+          end_line: 8
+          end_col: 48
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 3
+    parent: 0
+    kind: variant
+    name: InvalidKey
+    module_suffix: []
+    item_path:
+      - CoreError
+      - InvalidKey
+    span:
+      start_byte: 342
+      end_byte: 428
+      start_line: 10
+      start_col: 2
+      end_line: 11
+      end_col: 44
+    name_span:
+      start_byte: 386
+      end_byte: 396
+      start_line: 11
+      start_col: 2
+      end_line: 11
+      end_col: 12
+    signature: "InvalidKey { key: String, reason: String }"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - error
+        args:
+          - type: str
+            value: "invalid key {key:?}: {reason}"
+        span:
+          start_byte: 342
+          end_byte: 383
+          start_line: 10
+          start_col: 2
+          end_line: 10
+          end_col: 43
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 4
+    parent: 0
+    kind: variant
+    name: InvalidConfidence
+    module_suffix: []
+    item_path:
+      - CoreError
+      - InvalidConfidence
+    span:
+      start_byte: 432
+      end_byte: 515
+      start_line: 12
+      start_col: 2
+      end_line: 13
+      end_col: 24
+    name_span:
+      start_byte: 493
+      end_byte: 510
+      start_line: 13
+      start_col: 2
+      end_line: 13
+      end_col: 19
+    signature: InvalidConfidence(f32)
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - error
+        args:
+          - type: str
+            value: "confidence must be a number in [0, 1], got {0}"
+        span:
+          start_byte: 432
+          end_byte: 490
+          start_line: 12
+          start_col: 2
+          end_line: 12
+          end_col: 60
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 5
+    parent: 0
+    kind: variant
+    name: InvalidContentHash
+    module_suffix: []
+    item_path:
+      - CoreError
+      - InvalidContentHash
+    span:
+      start_byte: 519
+      end_byte: 586
+      start_line: 14
+      start_col: 2
+      end_line: 15
+      end_col: 28
+    name_span:
+      start_byte: 560
+      end_byte: 578
+      start_line: 15
+      start_col: 2
+      end_line: 15
+      end_col: 20
+    signature: InvalidContentHash(String)
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - error
+        args:
+          - type: str
+            value: "invalid content hash {0:?}"
+        span:
+          start_byte: 519
+          end_byte: 557
+          start_line: 14
+          start_col: 2
+          end_line: 14
+          end_col: 40
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 6
+    parent: 0
+    kind: variant
+    name: InvalidEntityId
+    module_suffix: []
+    item_path:
+      - CoreError
+      - InvalidEntityId
+    span:
+      start_byte: 590
+      end_byte: 651
+      start_line: 16
+      start_col: 2
+      end_line: 17
+      end_col: 25
+    name_span:
+      start_byte: 628
+      end_byte: 643
+      start_line: 17
+      start_col: 2
+      end_line: 17
+      end_col: 17
+    signature: InvalidEntityId(String)
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - error
+        args:
+          - type: str
+            value: "invalid entity id {0:?}"
+        span:
+          start_byte: 590
+          end_byte: 625
+          start_line: 16
+          start_col: 2
+          end_line: 16
+          end_col: 37
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 7
+    parent: 0
+    kind: variant
+    name: UnknownVariant
+    module_suffix: []
+    item_path:
+      - CoreError
+      - UnknownVariant
+    span:
+      start_byte: 655
+      end_byte: 746
+      start_line: 18
+      start_col: 2
+      end_line: 19
+      end_col: 54
+    name_span:
+      start_byte: 694
+      end_byte: 708
+      start_line: 19
+      start_col: 2
+      end_line: 19
+      end_col: 16
+    signature: "UnknownVariant { what: &'static str, value: String }"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - error
+        args:
+          - type: str
+            value: "unknown {what} {value:?}"
+        span:
+          start_byte: 655
+          end_byte: 691
+          start_line: 18
+          start_col: 2
+          end_line: 18
+          end_col: 38
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 8
+    parent: 0
+    kind: variant
+    name: UnsupportedPath
+    module_suffix: []
+    item_path:
+      - CoreError
+      - UnsupportedPath
+    span:
+      start_byte: 750
+      end_byte: 824
+      start_line: 20
+      start_col: 2
+      end_line: 21
+      end_col: 25
+    name_span:
+      start_byte: 801
+      end_byte: 816
+      start_line: 21
+      start_col: 2
+      end_line: 21
+      end_col: 17
+    signature: UnsupportedPath(String)
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - error
+        args:
+          - type: str
+            value: "no supported language for path {0:?}"
+        span:
+          start_byte: 750
+          end_byte: 798
+          start_line: 20
+          start_col: 2
+          end_line: 20
+          end_col: 50
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 9
+    parent: 0
+    kind: variant
+    name: InvalidFacts
+    module_suffix: []
+    item_path:
+      - CoreError
+      - InvalidFacts
+    span:
+      start_byte: 828
+      end_byte: 899
+      start_line: 22
+      start_col: 2
+      end_line: 23
+      end_col: 22
+    name_span:
+      start_byte: 879
+      end_byte: 891
+      start_line: 23
+      start_col: 2
+      end_line: 23
+      end_col: 14
+    signature: InvalidFacts(String)
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - error
+        args:
+          - type: str
+            value: "file facts violate an invariant: {0}"
+        span:
+          start_byte: 828
+          end_byte: 876
+          start_line: 22
+          start_col: 2
+          end_line: 22
+          end_col: 50
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 10
+    parent: ~
+    kind: method
+    name: invalid_key
+    module_suffix: []
+    item_path:
+      - CoreError
+      - invalid_key
+    span:
+      start_byte: 923
+      end_byte: 1085
+      start_line: 27
+      start_col: 2
+      end_line: 32
+      end_col: 3
+    name_span:
+      start_byte: 937
+      end_byte: 948
+      start_line: 27
+      start_col: 16
+      end_line: 27
+      end_col: 27
+    signature: "pub(crate) fn invalid_key(key: &str, reason: impl Into<String>) -> Self"
+    doc: ~
+    visibility:
+      type: crate
+    modifiers: []
+    attributes: []
+    params:
+      - name: key
+        type_text: "&str"
+        attributes: []
+        span:
+          start_byte: 949
+          end_byte: 958
+          start_line: 27
+          start_col: 28
+          end_line: 27
+          end_col: 37
+      - name: reason
+        type_text: impl Into<String>
+        attributes: []
+        span:
+          start_byte: 960
+          end_byte: 985
+          start_line: 27
+          start_col: 39
+          end_line: 27
+          end_col: 64
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - CoreError
+        generic_args: ~
+      trait_ref: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2785382447
+        - 1
+        - 1447977468
+        - 1
+        - 2538522703
+        - 1
+      token_count: 23
+      line_count: 6
+imports:
+  - type: rust_use
+    paths:
+      - segments:
+          - thiserror
+          - Error
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 0
+      end_byte: 21
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 21
+exports: []
+references:
+  - from: 1
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 184
+      end_byte: 190
+      start_line: 7
+      start_col: 25
+      end_line: 7
+      end_col: 31
+  - from: 2
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 308
+      end_byte: 314
+      start_line: 9
+      start_col: 43
+      end_line: 9
+      end_col: 49
+  - from: 3
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 404
+      end_byte: 410
+      start_line: 11
+      start_col: 20
+      end_line: 11
+      end_col: 26
+  - from: 5
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 579
+      end_byte: 585
+      start_line: 15
+      start_col: 21
+      end_line: 15
+      end_col: 27
+  - from: 6
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 644
+      end_byte: 650
+      start_line: 17
+      start_col: 18
+      end_line: 17
+      end_col: 24
+  - from: 7
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 738
+      end_byte: 744
+      start_line: 19
+      start_col: 46
+      end_line: 19
+      end_col: 52
+  - from: 8
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 817
+      end_byte: 823
+      start_line: 21
+      start_col: 18
+      end_line: 21
+      end_col: 24
+  - from: 9
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 892
+      end_byte: 898
+      start_line: 23
+      start_col: 15
+      end_line: 23
+      end_col: 21
+  - from: ~
+    kind: type_ref
+    path:
+      - CoreError
+    receiver: ~
+    args: []
+    span:
+      start_byte: 909
+      end_byte: 918
+      start_line: 26
+      start_col: 5
+      end_line: 26
+      end_col: 14
+  - from: 10
+    kind: type_ref
+    path:
+      - Into
+    receiver: ~
+    args: []
+    span:
+      start_byte: 973
+      end_byte: 977
+      start_line: 27
+      start_col: 52
+      end_line: 27
+      end_col: 56
+  - from: 10
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 978
+      end_byte: 984
+      start_line: 27
+      start_col: 57
+      end_line: 27
+      end_col: 63
+  - from: 10
+    kind: instantiation
+    path:
+      - Self
+      - InvalidKey
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1007
+      end_byte: 1017
+      start_line: 28
+      start_col: 10
+      end_line: 28
+      end_col: 20
+  - from: 10
+    kind: method_call
+    path:
+      - key
+      - to_owned
+    receiver:
+      type: type_hint
+      value:
+        - str
+    args: []
+    span:
+      start_byte: 1035
+      end_byte: 1043
+      start_line: 29
+      start_col: 15
+      end_line: 29
+      end_col: 23
+  - from: 10
+    kind: method_call
+    path:
+      - reason
+      - into
+    receiver:
+      type: type_hint
+      value:
+        - Into
+    args: []
+    span:
+      start_byte: 1068
+      end_byte: 1072
+      start_line: 30
+      start_col: 21
+      end_line: 30
+      end_col: 25
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-rust
+  version: 1
+impls:
+  - self_type:
+      segments:
+        - CoreError
+      generic_args: ~
+    trait_ref: ~
+    generic_params: []
+    module_suffix: []
+    scope: ~
+    attributes: []
+    span:
+      start_byte: 904
+      end_byte: 1087
+      start_line: 26
+      start_col: 0
+      end_line: 33
+      end_col: 1

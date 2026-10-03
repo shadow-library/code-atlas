@@ -1,0 +1,731 @@
+---
+source: crates/atlas-lang-rust/tests/snapshots.rs
+expression: facts
+---
+file:
+  repo: fixture
+  path: src/events.rs
+  language: rust
+  content_hash: 1fd059afa26b722a2e605830613c926c71c6bad60284fdab84218b36e01425c6
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: struct
+    name: Message
+    module_suffix: []
+    item_path:
+      - Message
+    span:
+      start_byte: 97
+      end_byte: 163
+      start_line: 6
+      start_col: 0
+      end_line: 9
+      end_col: 1
+    name_span:
+      start_byte: 108
+      end_byte: 115
+      start_line: 6
+      start_col: 11
+      end_line: 6
+      end_col: 18
+    signature: pub struct Message
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 1
+    parent: 0
+    kind: field
+    name: topic
+    module_suffix: []
+    item_path:
+      - Message
+      - topic
+    span:
+      start_byte: 120
+      end_byte: 137
+      start_line: 7
+      start_col: 2
+      end_line: 7
+      end_col: 19
+    name_span:
+      start_byte: 124
+      end_byte: 129
+      start_line: 7
+      start_col: 6
+      end_line: 7
+      end_col: 11
+    signature: "pub topic: String"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 2
+    parent: 0
+    kind: field
+    name: payload
+    module_suffix: []
+    item_path:
+      - Message
+      - payload
+    span:
+      start_byte: 141
+      end_byte: 160
+      start_line: 8
+      start_col: 2
+      end_line: 8
+      end_col: 21
+    name_span:
+      start_byte: 145
+      end_byte: 152
+      start_line: 8
+      start_col: 6
+      end_line: 8
+      end_col: 13
+    signature: "pub payload: String"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 3
+    parent: ~
+    kind: trait
+    name: MessageQueue
+    module_suffix: []
+    item_path:
+      - MessageQueue
+    span:
+      start_byte: 165
+      end_byte: 247
+      start_line: 11
+      start_col: 0
+      end_line: 13
+      end_col: 1
+    name_span:
+      start_byte: 175
+      end_byte: 187
+      start_line: 11
+      start_col: 10
+      end_line: 11
+      end_col: 22
+    signature: pub trait MessageQueue
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 4
+    parent: 3
+    kind: method
+    name: subscribe
+    module_suffix: []
+    item_path:
+      - MessageQueue
+      - subscribe
+    span:
+      start_byte: 192
+      end_byte: 245
+      start_line: 12
+      start_col: 2
+      end_line: 12
+      end_col: 55
+    name_span:
+      start_byte: 195
+      end_byte: 204
+      start_line: 12
+      start_col: 5
+      end_line: 12
+      end_col: 14
+    signature: "fn subscribe(&mut self, topic: &str) -> Vec<Message>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers:
+      - abstract
+    attributes: []
+    params:
+      - name: self
+        type_text: "&mut self"
+        attributes: []
+        span:
+          start_byte: 205
+          end_byte: 214
+          start_line: 12
+          start_col: 15
+          end_line: 12
+          end_col: 24
+      - name: topic
+        type_text: "&str"
+        attributes: []
+        span:
+          start_byte: 216
+          end_byte: 227
+          start_line: 12
+          start_col: 26
+          end_line: 12
+          end_col: 37
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 5
+    parent: ~
+    kind: struct
+    name: OrderCreated
+    module_suffix: []
+    item_path:
+      - OrderCreated
+    span:
+      start_byte: 249
+      end_byte: 400
+      start_line: 15
+      start_col: 0
+      end_line: 21
+      end_col: 1
+    name_span:
+      start_byte: 279
+      end_byte: 291
+      start_line: 16
+      start_col: 7
+      end_line: 16
+      end_col: 19
+    signature: struct OrderCreated
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes:
+      - path:
+          - derive
+        args:
+          - type: path
+            value:
+              - Deserialize
+        span:
+          start_byte: 249
+          end_byte: 271
+          start_line: 15
+          start_col: 0
+          end_line: 15
+          end_col: 22
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 6
+    parent: 5
+    kind: field
+    name: order_id
+    module_suffix: []
+    item_path:
+      - OrderCreated
+      - order_id
+    span:
+      start_byte: 296
+      end_byte: 343
+      start_line: 17
+      start_col: 2
+      end_line: 18
+      end_col: 18
+    name_span:
+      start_byte: 327
+      end_byte: 335
+      start_line: 18
+      start_col: 2
+      end_line: 18
+      end_col: 10
+    signature: "order_id: String"
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes:
+      - path:
+          - serde
+        args:
+          - type: named
+            value:
+              name: rename
+              value:
+                type: str
+                value: orderId
+        span:
+          start_byte: 296
+          end_byte: 324
+          start_line: 17
+          start_col: 2
+          end_line: 17
+          end_col: 30
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 7
+    parent: 5
+    kind: field
+    name: total_cents
+    module_suffix: []
+    item_path:
+      - OrderCreated
+      - total_cents
+    span:
+      start_byte: 347
+      end_byte: 397
+      start_line: 19
+      start_col: 2
+      end_line: 20
+      end_col: 18
+    name_span:
+      start_byte: 381
+      end_byte: 392
+      start_line: 20
+      start_col: 2
+      end_line: 20
+      end_col: 13
+    signature: "total_cents: i64"
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes:
+      - path:
+          - serde
+        args:
+          - type: named
+            value:
+              name: rename
+              value:
+                type: str
+                value: totalCents
+        span:
+          start_byte: 347
+          end_byte: 378
+          start_line: 19
+          start_col: 2
+          end_line: 19
+          end_col: 33
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 8
+    parent: ~
+    kind: function
+    name: consume_order_created
+    module_suffix: []
+    item_path:
+      - consume_order_created
+    span:
+      start_byte: 402
+      end_byte: 988
+      start_line: 23
+      start_col: 0
+      end_line: 35
+      end_col: 1
+    name_span:
+      start_byte: 409
+      end_byte: 430
+      start_line: 23
+      start_col: 7
+      end_line: 23
+      end_col: 28
+    signature: "pub fn consume_order_created(queue: &mut dyn MessageQueue, store: &dyn InvoiceStore) -> usize"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: queue
+        type_text: "&mut dyn MessageQueue"
+        attributes: []
+        span:
+          start_byte: 431
+          end_byte: 459
+          start_line: 23
+          start_col: 29
+          end_line: 23
+          end_col: 57
+      - name: store
+        type_text: "&dyn InvoiceStore"
+        attributes: []
+        span:
+          start_byte: 461
+          end_byte: 485
+          start_line: 23
+          start_col: 59
+          end_line: 23
+          end_col: 83
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 245158099
+        - 1
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+      token_count: 117
+      line_count: 13
+imports:
+  - type: rust_use
+    paths:
+      - segments:
+          - serde
+          - Deserialize
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 0
+      end_byte: 23
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 23
+  - type: rust_use
+    paths:
+      - segments:
+          - crate
+          - money
+          - to_cents
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 25
+      end_byte: 52
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 27
+  - type: rust_use
+    paths:
+      - segments:
+          - crate
+          - store
+          - Invoice
+        binding:
+          type: name
+      - segments:
+          - crate
+          - store
+          - InvoiceStore
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 53
+      end_byte: 95
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 42
+exports: []
+references:
+  - from: 1
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 131
+      end_byte: 137
+      start_line: 7
+      start_col: 13
+      end_line: 7
+      end_col: 19
+  - from: 2
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 154
+      end_byte: 160
+      start_line: 8
+      start_col: 15
+      end_line: 8
+      end_col: 21
+  - from: 4
+    kind: type_ref
+    path:
+      - Vec
+    receiver: ~
+    args: []
+    span:
+      start_byte: 232
+      end_byte: 235
+      start_line: 12
+      start_col: 42
+      end_line: 12
+      end_col: 45
+  - from: 4
+    kind: type_ref
+    path:
+      - Message
+    receiver: ~
+    args: []
+    span:
+      start_byte: 236
+      end_byte: 243
+      start_line: 12
+      start_col: 46
+      end_line: 12
+      end_col: 53
+  - from: 6
+    kind: type_ref
+    path:
+      - String
+    receiver: ~
+    args: []
+    span:
+      start_byte: 337
+      end_byte: 343
+      start_line: 18
+      start_col: 12
+      end_line: 18
+      end_col: 18
+  - from: 8
+    kind: type_ref
+    path:
+      - MessageQueue
+    receiver: ~
+    args: []
+    span:
+      start_byte: 447
+      end_byte: 459
+      start_line: 23
+      start_col: 45
+      end_line: 23
+      end_col: 57
+  - from: 8
+    kind: type_ref
+    path:
+      - InvoiceStore
+    receiver: ~
+    args: []
+    span:
+      start_byte: 473
+      end_byte: 485
+      start_line: 23
+      start_col: 71
+      end_line: 23
+      end_col: 83
+  - from: 8
+    kind: method_call
+    path:
+      - queue
+      - subscribe
+    receiver:
+      type: type_hint
+      value:
+        - MessageQueue
+    args:
+      - type: str
+        value: order.created
+    span:
+      start_byte: 521
+      end_byte: 530
+      start_line: 24
+      start_col: 23
+      end_line: 24
+      end_col: 32
+  - from: 8
+    kind: type_ref
+    path:
+      - OrderCreated
+    receiver: ~
+    args: []
+    span:
+      start_byte: 643
+      end_byte: 655
+      start_line: 27
+      start_col: 43
+      end_line: 27
+      end_col: 55
+  - from: 8
+    kind: call
+    path:
+      - serde_json
+      - from_str
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - message
+          - payload
+    span:
+      start_byte: 632
+      end_byte: 640
+      start_line: 27
+      start_col: 32
+      end_line: 27
+      end_col: 40
+  - from: 8
+    kind: call
+    path:
+      - to_cents
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - format!
+          args:
+            - type: str
+              value: "{}.{:02}"
+            - type: other
+              value: event.total_cents / 100
+            - type: other
+              value: event.total_cents % 100
+    span:
+      start_byte: 717
+      end_byte: 725
+      start_line: 28
+      start_col: 23
+      end_line: 28
+      end_col: 31
+  - from: 8
+    kind: macro_call
+    path:
+      - format
+    receiver: ~
+    args:
+      - type: str
+        value: "{}.{:02}"
+      - type: other
+        value: event.total_cents / 100
+      - type: other
+        value: event.total_cents % 100
+    span:
+      start_byte: 727
+      end_byte: 733
+      start_line: 28
+      start_col: 33
+      end_line: 28
+      end_col: 39
+  - from: 8
+    kind: instantiation
+    path:
+      - Invoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 817
+      end_byte: 824
+      start_line: 29
+      start_col: 18
+      end_line: 29
+      end_col: 25
+  - from: 8
+    kind: macro_call
+    path:
+      - format
+    receiver: ~
+    args:
+      - type: str
+        value: "inv_{}"
+      - type: path
+        value:
+          - event
+          - order_id
+    span:
+      start_byte: 831
+      end_byte: 837
+      start_line: 29
+      start_col: 32
+      end_line: 29
+      end_col: 38
+  - from: 8
+    kind: method_call
+    path:
+      - store
+      - insert
+    receiver:
+      type: type_hint
+      value:
+        - InvoiceStore
+    args:
+      - type: path
+        value:
+          - invoice
+    span:
+      start_byte: 921
+      end_byte: 927
+      start_line: 30
+      start_col: 13
+      end_line: 30
+      end_col: 19
+  - from: 8
+    kind: method_call
+    path:
+      - (store.insert(invoice))
+      - is_ok
+    receiver:
+      type: expr
+      value: store.insert(invoice)
+    args: []
+    span:
+      start_byte: 937
+      end_byte: 942
+      start_line: 30
+      start_col: 29
+      end_line: 30
+      end_col: 34
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-rust
+  version: 1

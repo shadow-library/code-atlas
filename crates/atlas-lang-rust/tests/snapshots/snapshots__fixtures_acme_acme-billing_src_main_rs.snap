@@ -1,0 +1,451 @@
+---
+source: crates/atlas-lang-rust/tests/snapshots.rs
+expression: facts
+---
+file:
+  repo: fixture
+  path: src/main.rs
+  language: rust
+  content_hash: 920e7201b362cc8c64d2185f1d8692c210fd46ec89df60968dd72c6ea38b7ca8
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: main
+    module_suffix: []
+    item_path:
+      - main
+    span:
+      start_byte: 163
+      end_byte: 707
+      start_line: 7
+      start_col: 0
+      end_line: 17
+      end_col: 1
+    name_span:
+      start_byte: 187
+      end_byte: 191
+      start_line: 8
+      start_col: 9
+      end_line: 8
+      end_col: 13
+    signature: "async fn main() -> Result<(), Box<dyn std::error::Error>>"
+    doc: ~
+    visibility:
+      type: private
+    modifiers:
+      - async
+    attributes:
+      - path:
+          - tokio
+          - main
+        args: []
+        span:
+          start_byte: 163
+          end_byte: 177
+          start_line: 7
+          start_col: 0
+          end_line: 7
+          end_col: 14
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 245158099
+        - 1
+        - 2488189846
+        - 1
+        - 2785382447
+        - 1
+        - 2785382447
+      token_count: 118
+      line_count: 10
+imports:
+  - type: rust_use
+    paths:
+      - segments:
+          - std
+          - sync
+          - Arc
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 0
+      end_byte: 19
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 19
+  - type: rust_use
+    paths:
+      - segments:
+          - acme_billing
+          - acme_client
+          - AcmeApiClient
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 21
+      end_byte: 66
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 45
+  - type: rust_use
+    paths:
+      - segments:
+          - acme_billing
+          - store
+          - InvoiceStore
+        binding:
+          type: name
+      - segments:
+          - acme_billing
+          - store
+          - PgInvoiceStore
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 67
+      end_byte: 123
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 56
+  - type: rust_use
+    paths:
+      - segments:
+          - acme_billing
+          - router
+        binding:
+          type: name
+      - segments:
+          - acme_billing
+          - AppState
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 124
+      end_byte: 161
+      start_line: 5
+      start_col: 0
+      end_line: 5
+      end_col: 37
+exports: []
+references:
+  - from: 0
+    kind: type_ref
+    path:
+      - Result
+    receiver: ~
+    args: []
+    span:
+      start_byte: 197
+      end_byte: 203
+      start_line: 8
+      start_col: 19
+      end_line: 8
+      end_col: 25
+  - from: 0
+    kind: type_ref
+    path:
+      - Box
+    receiver: ~
+    args: []
+    span:
+      start_byte: 208
+      end_byte: 211
+      start_line: 8
+      start_col: 30
+      end_line: 8
+      end_col: 33
+  - from: 0
+    kind: type_ref
+    path:
+      - std
+      - error
+      - Error
+    receiver: ~
+    args: []
+    span:
+      start_byte: 228
+      end_byte: 233
+      start_line: 8
+      start_col: 50
+      end_line: 8
+      end_col: 55
+  - from: 0
+    kind: call
+    path:
+      - std
+      - env
+      - var
+    receiver: ~
+    args:
+      - type: str
+        value: DATABASE_URL
+    span:
+      start_byte: 269
+      end_byte: 272
+      start_line: 9
+      start_col: 31
+      end_line: 9
+      end_col: 34
+  - from: 0
+    kind: method_call
+    path:
+      - "(std::env::var(\"DATABASE_URL\"))"
+      - unwrap_or_else
+    receiver:
+      type: expr
+      value: "std::env::var(\"DATABASE_URL\")"
+    args:
+      - type: closure
+        value:
+          params:
+            - _
+    span:
+      start_byte: 289
+      end_byte: 303
+      start_line: 9
+      start_col: 51
+      end_line: 9
+      end_col: 65
+  - from: 0
+    kind: method_call
+    path:
+      - "(\"postgres://localhost/billing\")"
+      - to_string
+    receiver:
+      type: expr
+      value: "\"postgres://localhost/billing\""
+    args: []
+    span:
+      start_byte: 339
+      end_byte: 348
+      start_line: 9
+      start_col: 101
+      end_line: 9
+      end_col: 110
+  - from: 0
+    kind: call
+    path:
+      - PgInvoiceStore
+      - new
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - database_url
+    span:
+      start_byte: 380
+      end_byte: 383
+      start_line: 10
+      start_col: 27
+      end_line: 10
+      end_col: 30
+  - from: 0
+    kind: macro_call
+    path:
+      - println
+    receiver: ~
+    args:
+      - type: str
+        value: "billing store backed by {}"
+      - type: call
+        value:
+          callee:
+            - pg
+            - database_url
+          args: []
+    span:
+      start_byte: 401
+      end_byte: 408
+      start_line: 11
+      start_col: 2
+      end_line: 11
+      end_col: 9
+  - from: 0
+    kind: method_call
+    path:
+      - pg
+      - database_url
+    receiver:
+      type: expr
+      value: pg
+    args: []
+    span:
+      start_byte: 443
+      end_byte: 455
+      start_line: 11
+      start_col: 44
+      end_line: 11
+      end_col: 56
+  - from: 0
+    kind: type_ref
+    path:
+      - Arc
+    receiver: ~
+    args: []
+    span:
+      start_byte: 473
+      end_byte: 476
+      start_line: 12
+      start_col: 13
+      end_line: 12
+      end_col: 16
+  - from: 0
+    kind: type_ref
+    path:
+      - InvoiceStore
+    receiver: ~
+    args: []
+    span:
+      start_byte: 481
+      end_byte: 493
+      start_line: 12
+      start_col: 21
+      end_line: 12
+      end_col: 33
+  - from: 0
+    kind: call
+    path:
+      - Arc
+      - new
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - pg
+    span:
+      start_byte: 502
+      end_byte: 505
+      start_line: 12
+      start_col: 42
+      end_line: 12
+      end_col: 45
+  - from: 0
+    kind: instantiation
+    path:
+      - AppState
+    receiver: ~
+    args: []
+    span:
+      start_byte: 525
+      end_byte: 533
+      start_line: 13
+      start_col: 14
+      end_line: 13
+      end_col: 22
+  - from: 0
+    kind: call
+    path:
+      - AcmeApiClient
+      - from_env
+    receiver: ~
+    args: []
+    span:
+      start_byte: 564
+      end_byte: 572
+      start_line: 13
+      start_col: 53
+      end_line: 13
+      end_col: 61
+  - from: 0
+    kind: call
+    path:
+      - tokio
+      - net
+      - TcpListener
+      - bind
+    receiver: ~
+    args:
+      - type: str
+        value: "0.0.0.0:4000"
+    span:
+      start_byte: 621
+      end_byte: 625
+      start_line: 14
+      start_col: 42
+      end_line: 14
+      end_col: 46
+  - from: 0
+    kind: call
+    path:
+      - axum
+      - serve
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - listener
+      - type: call
+        value:
+          callee:
+            - router
+          args:
+            - type: path
+              value:
+                - state
+    span:
+      start_byte: 658
+      end_byte: 663
+      start_line: 15
+      start_col: 8
+      end_line: 15
+      end_col: 13
+  - from: 0
+    kind: call
+    path:
+      - router
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - state
+    span:
+      start_byte: 674
+      end_byte: 680
+      start_line: 15
+      start_col: 24
+      end_line: 15
+      end_col: 30
+  - from: 0
+    kind: call
+    path:
+      - Ok
+    receiver: ~
+    args:
+      - type: other
+        value: ()
+    span:
+      start_byte: 699
+      end_byte: 701
+      start_line: 16
+      start_col: 2
+      end_line: 16
+      end_col: 4
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-rust
+  version: 1

@@ -520,6 +520,21 @@ pub enum ReceiverHint {
   TypeHint(Vec<String>),
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum RefOrigin {
+  #[default]
+  Syntax,
+  MacroTokenScan,
+}
+
+impl RefOrigin {
+  pub fn is_syntax(&self) -> bool {
+    *self == Self::Syntax
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ReferenceFact {
   pub from: Option<LocalSymbolId>,
@@ -528,6 +543,8 @@ pub struct ReferenceFact {
   pub receiver: Option<ReceiverHint>,
   pub args: Vec<ArgSummary>,
   pub span: Span,
+  #[serde(default, skip_serializing_if = "RefOrigin::is_syntax")]
+  pub origin: RefOrigin,
 }
 
 impl ReferenceFact {
@@ -555,6 +572,17 @@ pub struct ModuleDeclFact {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ImplFact {
+  pub self_type: TypePath,
+  pub trait_ref: Option<TypePath>,
+  pub generic_params: Vec<String>,
+  pub module_suffix: Vec<String>,
+  pub scope: Option<LocalSymbolId>,
+  pub attributes: Vec<AttributeFact>,
+  pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct KeyContext {
   pub package: String,
   pub module_path: Vec<String>,
@@ -571,6 +599,10 @@ pub struct FileFacts {
   pub module_decls: Vec<ModuleDeclFact>,
   pub diagnostics: Vec<Diagnostic>,
   pub analyzer: Producer,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub impls: Vec<ImplFact>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub file_doc: Option<String>,
 }
 
 impl FileFacts {
@@ -585,6 +617,8 @@ impl FileFacts {
       module_decls: Vec::new(),
       diagnostics: Vec::new(),
       analyzer,
+      impls: Vec::new(),
+      file_doc: None,
     }
   }
 
@@ -670,6 +704,11 @@ impl FileFacts {
     for export in &self.exports {
       if !span_ok(&export.span()) {
         return violation("export has a malformed span".to_owned());
+      }
+    }
+    for implementation in &self.impls {
+      if implementation.scope.is_some_and(|local| !known(local)) || !span_ok(&implementation.span) || implementation.module_suffix.iter().any(String::is_empty) {
+        return violation("impl has an unknown scope, a malformed span or an empty module segment".to_owned());
       }
     }
     for declaration in &self.module_decls {
@@ -782,8 +821,57 @@ mod tests {
         }]),
       ],
       span: span(50, 75),
+      origin: RefOrigin::Syntax,
     });
     facts
+  }
+
+  #[test]
+  fn should_omit_empty_impls_file_doc_and_syntax_origin_from_serialized_output() {
+    let facts = sample_facts();
+    let json = serde_json::to_value(&facts).unwrap();
+    let keys: Vec<&str> = json.as_object().unwrap().keys().map(String::as_str).collect();
+    assert_eq!(
+      keys,
+      [
+        "analyzer",
+        "diagnostics",
+        "exports",
+        "file",
+        "imports",
+        "module_decls",
+        "parse_status",
+        "references",
+        "symbols"
+      ]
+    );
+    let reference = serde_json::to_value(&facts.references[0]).unwrap();
+    assert!(reference.get("origin").is_none());
+    let legacy = serde_json::to_string(&facts).unwrap();
+    assert_eq!(serde_json::from_str::<FileFacts>(&legacy).unwrap(), facts);
+  }
+
+  #[test]
+  fn should_round_trip_impls_file_docs_and_macro_scan_origins() {
+    let mut facts = sample_facts();
+    facts.file_doc = Some("Users API.".into());
+    facts.references[0].origin = RefOrigin::MacroTokenScan;
+    facts.impls.push(ImplFact {
+      self_type: TypePath::new(strings(&["UsersController"])),
+      trait_ref: Some(TypePath::new(strings(&["std", "error", "Error"]))),
+      generic_params: strings(&["T"]),
+      module_suffix: strings(&["inner"]),
+      scope: Some(LocalSymbolId(1)),
+      attributes: vec![],
+      span: span(0, 10),
+    });
+    facts.check_invariants(100).unwrap();
+    let json = serde_json::to_value(&facts).unwrap();
+    assert_eq!(json["file_doc"], "Users API.");
+    assert_eq!(json["references"][0]["origin"], "macro_token_scan");
+    assert_eq!(serde_json::from_value::<FileFacts>(json).unwrap(), facts);
+    facts.impls[0].scope = Some(LocalSymbolId(7));
+    assert!(facts.check_invariants(100).is_err());
   }
 
   #[test]

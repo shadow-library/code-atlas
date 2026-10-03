@@ -6,7 +6,8 @@ mod test_symbols;
 use std::collections::HashMap;
 
 use atlas_core::{
-  ArgSummary, AttributeFact, EntityKind, ExportFact, FileFacts, FileRef, ImportBinding, ImportFact, LocalSymbolId, Producer, RefKind, ReferenceFact, Span, SymbolFact, Visibility,
+  ArgSummary, AttributeFact, EntityKind, ExportFact, FileFacts, FileRef, ImportBinding, ImportFact, LocalSymbolId, Producer, RefKind, RefOrigin, ReferenceFact, Span, SymbolFact,
+  Visibility,
 };
 use tree_sitter::Node;
 
@@ -313,6 +314,7 @@ impl<'s, 't> Extractor<'s, 't> {
       receiver,
       args,
       span,
+      origin: RefOrigin::Syntax,
     });
   }
 

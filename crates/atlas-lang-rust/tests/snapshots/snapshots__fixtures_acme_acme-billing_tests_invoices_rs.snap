@@ -1,0 +1,1027 @@
+---
+source: crates/atlas-lang-rust/tests/snapshots.rs
+expression: facts
+---
+file:
+  repo: fixture
+  path: tests/invoices.rs
+  language: rust
+  content_hash: 3df809126d64b8c4c6216965496fb83de40e0168bead9d7bbf8b3484fbd3422e
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: app_with
+    module_suffix: []
+    item_path:
+      - app_with
+    span:
+      start_byte: 262
+      end_byte: 436
+      start_line: 10
+      start_col: 0
+      end_line: 12
+      end_col: 1
+    name_span:
+      start_byte: 265
+      end_byte: 273
+      start_line: 10
+      start_col: 3
+      end_line: 10
+      end_col: 11
+    signature: "fn app_with(store: Arc<dyn InvoiceStore>) -> axum::Router"
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes: []
+    params:
+      - name: store
+        type_text: Arc<dyn InvoiceStore>
+        attributes: []
+        span:
+          start_byte: 274
+          end_byte: 302
+          start_line: 10
+          start_col: 12
+          end_line: 10
+          end_col: 40
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2303636037
+        - 1
+        - 1447977468
+        - 1
+        - 2236525561
+        - 1
+      token_count: 28
+      line_count: 3
+  - local: 1
+    parent: ~
+    kind: test
+    name: unknown_invoice_returns_404
+    module_suffix: []
+    item_path:
+      - unknown_invoice_returns_404
+    span:
+      start_byte: 438
+      end_byte: 737
+      start_line: 14
+      start_col: 0
+      end_line: 21
+      end_col: 1
+    name_span:
+      start_byte: 462
+      end_byte: 489
+      start_line: 15
+      start_col: 9
+      end_line: 15
+      end_col: 36
+    signature: async fn unknown_invoice_returns_404()
+    doc: ~
+    visibility:
+      type: private
+    modifiers:
+      - async
+    attributes:
+      - path:
+          - tokio
+          - test
+        args: []
+        span:
+          start_byte: 438
+          end_byte: 452
+          start_line: 14
+          start_col: 0
+          end_line: 14
+          end_col: 14
+    params: []
+    test:
+      framework: tokio
+      kind: integration
+      display_name: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 245158099
+        - 1
+        - 2488189846
+        - 1
+        - 2303636037
+        - 1
+        - 2785382447
+      token_count: 66
+      line_count: 7
+  - local: 2
+    parent: ~
+    kind: test
+    name: stored_invoice_is_returned
+    module_suffix: []
+    item_path:
+      - stored_invoice_is_returned
+    span:
+      start_byte: 739
+      end_byte: 1140
+      start_line: 23
+      start_col: 0
+      end_line: 29
+      end_col: 1
+    name_span:
+      start_byte: 763
+      end_byte: 789
+      start_line: 24
+      start_col: 9
+      end_line: 24
+      end_col: 35
+    signature: async fn stored_invoice_is_returned()
+    doc: ~
+    visibility:
+      type: private
+    modifiers:
+      - async
+    attributes:
+      - path:
+          - tokio
+          - test
+        args: []
+        span:
+          start_byte: 739
+          end_byte: 753
+          start_line: 23
+          start_col: 0
+          end_line: 23
+          end_col: 14
+    params: []
+    test:
+      framework: tokio
+      kind: integration
+      display_name: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 245158099
+        - 1
+        - 2488189846
+        - 1
+        - 2785382447
+        - 1
+        - 2303636037
+      token_count: 103
+      line_count: 6
+imports:
+  - type: rust_use
+    paths:
+      - segments:
+          - std
+          - sync
+          - Arc
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 0
+      end_byte: 19
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 19
+  - type: rust_use
+    paths:
+      - segments:
+          - acme_billing
+          - acme_client
+          - AcmeApiClient
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 21
+      end_byte: 66
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 45
+  - type: rust_use
+    paths:
+      - segments:
+          - acme_billing
+          - store
+          - InMemoryInvoiceStore
+        binding:
+          type: name
+      - segments:
+          - acme_billing
+          - store
+          - Invoice
+        binding:
+          type: name
+      - segments:
+          - acme_billing
+          - store
+          - InvoiceStore
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 67
+      end_byte: 138
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 71
+  - type: rust_use
+    paths:
+      - segments:
+          - acme_billing
+          - router
+        binding:
+          type: name
+      - segments:
+          - acme_billing
+          - AppState
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 139
+      end_byte: 176
+      start_line: 5
+      start_col: 0
+      end_line: 5
+      end_col: 37
+  - type: rust_use
+    paths:
+      - segments:
+          - axum
+          - body
+          - Body
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 177
+      end_byte: 198
+      start_line: 6
+      start_col: 0
+      end_line: 6
+      end_col: 21
+  - type: rust_use
+    paths:
+      - segments:
+          - axum
+          - http
+          - Request
+        binding:
+          type: name
+      - segments:
+          - axum
+          - http
+          - StatusCode
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 199
+      end_byte: 237
+      start_line: 7
+      start_col: 0
+      end_line: 7
+      end_col: 38
+  - type: rust_use
+    paths:
+      - segments:
+          - tower
+          - ServiceExt
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 238
+      end_byte: 260
+      start_line: 8
+      start_col: 0
+      end_line: 8
+      end_col: 22
+exports: []
+references:
+  - from: 0
+    kind: type_ref
+    path:
+      - Arc
+    receiver: ~
+    args: []
+    span:
+      start_byte: 281
+      end_byte: 284
+      start_line: 10
+      start_col: 19
+      end_line: 10
+      end_col: 22
+  - from: 0
+    kind: type_ref
+    path:
+      - InvoiceStore
+    receiver: ~
+    args: []
+    span:
+      start_byte: 289
+      end_byte: 301
+      start_line: 10
+      start_col: 27
+      end_line: 10
+      end_col: 39
+  - from: 0
+    kind: type_ref
+    path:
+      - axum
+      - Router
+    receiver: ~
+    args: []
+    span:
+      start_byte: 313
+      end_byte: 319
+      start_line: 10
+      start_col: 51
+      end_line: 10
+      end_col: 57
+  - from: 0
+    kind: call
+    path:
+      - router
+    receiver: ~
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: store
+            value:
+              type: path
+              value:
+                - store
+          - key:
+              type: ident
+              value: acme
+            value:
+              type: call
+              value:
+                callee:
+                  - AcmeApiClient
+                  - new
+                args:
+                  - type: str
+                    value: "http://127.0.0.1:1"
+                  - type: str
+                    value: test-key
+    span:
+      start_byte: 324
+      end_byte: 330
+      start_line: 11
+      start_col: 2
+      end_line: 11
+      end_col: 8
+  - from: 0
+    kind: instantiation
+    path:
+      - AppState
+    receiver: ~
+    args: []
+    span:
+      start_byte: 331
+      end_byte: 339
+      start_line: 11
+      start_col: 9
+      end_line: 11
+      end_col: 17
+  - from: 0
+    kind: call
+    path:
+      - AcmeApiClient
+      - new
+    receiver: ~
+    args:
+      - type: str
+        value: "http://127.0.0.1:1"
+      - type: str
+        value: test-key
+    span:
+      start_byte: 370
+      end_byte: 373
+      start_line: 11
+      start_col: 48
+      end_line: 11
+      end_col: 51
+  - from: 0
+    kind: method_call
+    path:
+      - "(\"http://127.0.0.1:1\")"
+      - to_string
+    receiver:
+      type: expr
+      value: "\"http://127.0.0.1:1\""
+    args: []
+    span:
+      start_byte: 395
+      end_byte: 404
+      start_line: 11
+      start_col: 73
+      end_line: 11
+      end_col: 82
+  - from: 0
+    kind: method_call
+    path:
+      - "(\"test-key\")"
+      - to_string
+    receiver:
+      type: expr
+      value: "\"test-key\""
+    args: []
+    span:
+      start_byte: 419
+      end_byte: 428
+      start_line: 11
+      start_col: 97
+      end_line: 11
+      end_col: 106
+  - from: 1
+    kind: call
+    path:
+      - app_with
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - Arc
+            - new
+          args:
+            - type: call
+              value:
+                callee:
+                  - InMemoryInvoiceStore
+                  - default
+                args: []
+    span:
+      start_byte: 511
+      end_byte: 519
+      start_line: 16
+      start_col: 17
+      end_line: 16
+      end_col: 25
+  - from: 1
+    kind: call
+    path:
+      - Arc
+      - new
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - InMemoryInvoiceStore
+            - default
+          args: []
+    span:
+      start_byte: 525
+      end_byte: 528
+      start_line: 16
+      start_col: 31
+      end_line: 16
+      end_col: 34
+  - from: 1
+    kind: call
+    path:
+      - InMemoryInvoiceStore
+      - default
+    receiver: ~
+    args: []
+    span:
+      start_byte: 551
+      end_byte: 558
+      start_line: 16
+      start_col: 57
+      end_line: 16
+      end_col: 64
+  - from: 1
+    kind: method_call
+    path:
+      - "(app_with(Arc::new(InMemoryInvoiceStore::default())))"
+      - oneshot
+    receiver:
+      type: expr
+      value: "app_with(Arc::new(InMemoryInvoiceStore::default()))"
+    args:
+      - type: other
+        value: "Request::builder().uri(\"/invoices/inv_missing\").body(Body::empty()).unwrap()"
+    span:
+      start_byte: 568
+      end_byte: 575
+      start_line: 17
+      start_col: 5
+      end_line: 17
+      end_col: 12
+  - from: 1
+    kind: call
+    path:
+      - Request
+      - builder
+    receiver: ~
+    args: []
+    span:
+      start_byte: 585
+      end_byte: 592
+      start_line: 17
+      start_col: 22
+      end_line: 17
+      end_col: 29
+  - from: 1
+    kind: method_call
+    path:
+      - "(Request::builder())"
+      - uri
+    receiver:
+      type: expr
+      value: "Request::builder()"
+    args:
+      - type: str
+        value: /invoices/inv_missing
+    span:
+      start_byte: 595
+      end_byte: 598
+      start_line: 17
+      start_col: 32
+      end_line: 17
+      end_col: 35
+  - from: 1
+    kind: method_call
+    path:
+      - "(Request::builder().uri(\"/invoices/inv_missing\"))"
+      - body
+    receiver:
+      type: expr
+      value: "Request::builder().uri(\"/invoices/inv_missing\")"
+    args:
+      - type: call
+        value:
+          callee:
+            - Body
+            - empty
+          args: []
+    span:
+      start_byte: 624
+      end_byte: 628
+      start_line: 17
+      start_col: 61
+      end_line: 17
+      end_col: 65
+  - from: 1
+    kind: call
+    path:
+      - Body
+      - empty
+    receiver: ~
+    args: []
+    span:
+      start_byte: 635
+      end_byte: 640
+      start_line: 17
+      start_col: 72
+      end_line: 17
+      end_col: 77
+  - from: 1
+    kind: method_call
+    path:
+      - "(Request::builder().uri(\"/invoices/inv_missing\").body(Body::empty()))"
+      - unwrap
+    receiver:
+      type: expr
+      value: "Request::builder().uri(\"/invoices/inv_missing\").body(Body::empty())"
+    args: []
+    span:
+      start_byte: 644
+      end_byte: 650
+      start_line: 17
+      start_col: 81
+      end_line: 17
+      end_col: 87
+  - from: 1
+    kind: method_call
+    path:
+      - "(app_with(Arc::new(InMemoryInvoiceStore::default())) .oneshot(Request::builder().uri(\"/invoices/inv_missing\").body(Body::empty()).unwrap()) .await)"
+      - unwrap
+    receiver:
+      type: expr
+      value: "app_with(Arc::new(InMemoryInvoiceStore::default())) .oneshot(Request::builder().uri(\"/invoices/inv_missing\").body(Body::empty()).unwrap()) .await"
+    args: []
+    span:
+      start_byte: 670
+      end_byte: 676
+      start_line: 19
+      start_col: 5
+      end_line: 19
+      end_col: 11
+  - from: 1
+    kind: macro_call
+    path:
+      - assert_eq
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - response
+            - status
+          args: []
+      - type: path
+        value:
+          - StatusCode
+          - NOT_FOUND
+    span:
+      start_byte: 682
+      end_byte: 691
+      start_line: 20
+      start_col: 2
+      end_line: 20
+      end_col: 11
+  - from: 1
+    kind: method_call
+    path:
+      - response
+      - status
+    receiver:
+      type: expr
+      value: response
+    args: []
+    span:
+      start_byte: 702
+      end_byte: 708
+      start_line: 20
+      start_col: 22
+      end_line: 20
+      end_col: 28
+  - from: 1
+    kind: value_ref
+    path:
+      - StatusCode
+      - NOT_FOUND
+    receiver: ~
+    args: []
+    span:
+      start_byte: 724
+      end_byte: 733
+      start_line: 20
+      start_col: 44
+      end_line: 20
+      end_col: 53
+  - from: 2
+    kind: call
+    path:
+      - Arc
+      - new
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - InMemoryInvoiceStore
+            - default
+          args: []
+    span:
+      start_byte: 813
+      end_byte: 816
+      start_line: 25
+      start_col: 19
+      end_line: 25
+      end_col: 22
+  - from: 2
+    kind: call
+    path:
+      - InMemoryInvoiceStore
+      - default
+    receiver: ~
+    args: []
+    span:
+      start_byte: 839
+      end_byte: 846
+      start_line: 25
+      start_col: 45
+      end_line: 25
+      end_col: 52
+  - from: 2
+    kind: method_call
+    path:
+      - store
+      - insert
+    receiver:
+      type: expr
+      value: store
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: id
+            value:
+              type: str
+              value: inv_1
+          - key:
+              type: ident
+              value: order_id
+            value:
+              type: str
+              value: o1
+          - key:
+              type: ident
+              value: amount_cents
+            value:
+              type: number
+              value: "1234"
+    span:
+      start_byte: 859
+      end_byte: 865
+      start_line: 26
+      start_col: 8
+      end_line: 26
+      end_col: 14
+  - from: 2
+    kind: instantiation
+    path:
+      - Invoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 866
+      end_byte: 873
+      start_line: 26
+      start_col: 15
+      end_line: 26
+      end_col: 22
+  - from: 2
+    kind: method_call
+    path:
+      - "(\"inv_1\")"
+      - to_string
+    receiver:
+      type: expr
+      value: "\"inv_1\""
+    args: []
+    span:
+      start_byte: 888
+      end_byte: 897
+      start_line: 26
+      start_col: 37
+      end_line: 26
+      end_col: 46
+  - from: 2
+    kind: method_call
+    path:
+      - "(\"o1\")"
+      - to_string
+    receiver:
+      type: expr
+      value: "\"o1\""
+    args: []
+    span:
+      start_byte: 916
+      end_byte: 925
+      start_line: 26
+      start_col: 65
+      end_line: 26
+      end_col: 74
+  - from: 2
+    kind: method_call
+    path:
+      - "(store.insert(Invoice { id: \"inv_1\".to_string(), order_id: \"o1\".to_string(), amount_cents: 1234 }))"
+      - unwrap
+    receiver:
+      type: expr
+      value: "store.insert(Invoice { id: \"inv_1\".to_string(), order_id: \"o1\".to_string(), amount_cents: 1234 })"
+    args: []
+    span:
+      start_byte: 951
+      end_byte: 957
+      start_line: 26
+      start_col: 100
+      end_line: 26
+      end_col: 106
+  - from: 2
+    kind: call
+    path:
+      - app_with
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - store
+    span:
+      start_byte: 978
+      end_byte: 986
+      start_line: 27
+      start_col: 17
+      end_line: 27
+      end_col: 25
+  - from: 2
+    kind: method_call
+    path:
+      - (app_with(store))
+      - oneshot
+    receiver:
+      type: expr
+      value: app_with(store)
+    args:
+      - type: other
+        value: "Request::builder().uri(\"/invoices/inv_1\").body(Body::empty()).unwrap()"
+    span:
+      start_byte: 994
+      end_byte: 1001
+      start_line: 27
+      start_col: 33
+      end_line: 27
+      end_col: 40
+  - from: 2
+    kind: call
+    path:
+      - Request
+      - builder
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1011
+      end_byte: 1018
+      start_line: 27
+      start_col: 50
+      end_line: 27
+      end_col: 57
+  - from: 2
+    kind: method_call
+    path:
+      - "(Request::builder())"
+      - uri
+    receiver:
+      type: expr
+      value: "Request::builder()"
+    args:
+      - type: str
+        value: /invoices/inv_1
+    span:
+      start_byte: 1021
+      end_byte: 1024
+      start_line: 27
+      start_col: 60
+      end_line: 27
+      end_col: 63
+  - from: 2
+    kind: method_call
+    path:
+      - "(Request::builder().uri(\"/invoices/inv_1\"))"
+      - body
+    receiver:
+      type: expr
+      value: "Request::builder().uri(\"/invoices/inv_1\")"
+    args:
+      - type: call
+        value:
+          callee:
+            - Body
+            - empty
+          args: []
+    span:
+      start_byte: 1044
+      end_byte: 1048
+      start_line: 27
+      start_col: 83
+      end_line: 27
+      end_col: 87
+  - from: 2
+    kind: call
+    path:
+      - Body
+      - empty
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1055
+      end_byte: 1060
+      start_line: 27
+      start_col: 94
+      end_line: 27
+      end_col: 99
+  - from: 2
+    kind: method_call
+    path:
+      - "(Request::builder().uri(\"/invoices/inv_1\").body(Body::empty()))"
+      - unwrap
+    receiver:
+      type: expr
+      value: "Request::builder().uri(\"/invoices/inv_1\").body(Body::empty())"
+    args: []
+    span:
+      start_byte: 1064
+      end_byte: 1070
+      start_line: 27
+      start_col: 103
+      end_line: 27
+      end_col: 109
+  - from: 2
+    kind: method_call
+    path:
+      - "(app_with(store).oneshot(Request::builder().uri(\"/invoices/inv_1\").body(Body::empty()).unwrap()).await)"
+      - unwrap
+    receiver:
+      type: expr
+      value: "app_with(store).oneshot(Request::builder().uri(\"/invoices/inv_1\").body(Body::empty()).unwrap()).await"
+    args: []
+    span:
+      start_byte: 1080
+      end_byte: 1086
+      start_line: 27
+      start_col: 119
+      end_line: 27
+      end_col: 125
+  - from: 2
+    kind: macro_call
+    path:
+      - assert_eq
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - response
+            - status
+          args: []
+      - type: path
+        value:
+          - StatusCode
+          - OK
+    span:
+      start_byte: 1092
+      end_byte: 1101
+      start_line: 28
+      start_col: 2
+      end_line: 28
+      end_col: 11
+  - from: 2
+    kind: method_call
+    path:
+      - response
+      - status
+    receiver:
+      type: expr
+      value: response
+    args: []
+    span:
+      start_byte: 1112
+      end_byte: 1118
+      start_line: 28
+      start_col: 22
+      end_line: 28
+      end_col: 28
+  - from: 2
+    kind: value_ref
+    path:
+      - StatusCode
+      - OK
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1134
+      end_byte: 1136
+      start_line: 28
+      start_col: 44
+      end_line: 28
+      end_col: 46
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-rust
+  version: 1

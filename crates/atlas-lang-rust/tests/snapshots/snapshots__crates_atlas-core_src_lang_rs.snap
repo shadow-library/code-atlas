@@ -1,0 +1,4206 @@
+---
+source: crates/atlas-lang-rust/tests/snapshots.rs
+expression: facts
+---
+file:
+  repo: fixture
+  path: src/lang.rs
+  language: rust
+  content_hash: e43b83584e444b1742879420cff6e45a12233e383b3dc609879c1974e29f067a
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: enum
+    name: Language
+    module_suffix: []
+    item_path:
+      - Language
+    span:
+      start_byte: 106
+      end_byte: 391
+      start_line: 8
+      start_col: 0
+      end_line: 19
+      end_col: 1
+    name_span:
+      start_byte: 261
+      end_byte: 269
+      start_line: 11
+      start_col: 9
+      end_line: 11
+      end_col: 17
+    signature: pub enum Language
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - derive
+        args:
+          - type: path
+            value:
+              - Debug
+          - type: path
+            value:
+              - Clone
+          - type: path
+            value:
+              - Copy
+          - type: path
+            value:
+              - PartialEq
+          - type: path
+            value:
+              - Eq
+          - type: path
+            value:
+              - PartialOrd
+          - type: path
+            value:
+              - Ord
+          - type: path
+            value:
+              - Hash
+          - type: path
+            value:
+              - Serialize
+          - type: path
+            value:
+              - Deserialize
+        span:
+          start_byte: 106
+          end_byte: 197
+          start_line: 8
+          start_col: 0
+          end_line: 8
+          end_col: 91
+      - path:
+          - serde
+        args:
+          - type: named
+            value:
+              name: rename_all
+              value:
+                type: str
+                value: snake_case
+        span:
+          start_byte: 198
+          end_byte: 233
+          start_line: 9
+          start_col: 0
+          end_line: 9
+          end_col: 35
+      - path:
+          - non_exhaustive
+        args: []
+        span:
+          start_byte: 234
+          end_byte: 251
+          start_line: 10
+          start_col: 0
+          end_line: 10
+          end_col: 17
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements:
+      - - fmt
+        - Display
+      - - FromStr
+    body: ~
+  - local: 1
+    parent: 0
+    kind: variant
+    name: Rust
+    module_suffix: []
+    item_path:
+      - Language
+      - Rust
+    span:
+      start_byte: 274
+      end_byte: 278
+      start_line: 12
+      start_col: 2
+      end_line: 12
+      end_col: 6
+    name_span:
+      start_byte: 274
+      end_byte: 278
+      start_line: 12
+      start_col: 2
+      end_line: 12
+      end_col: 6
+    signature: Rust
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 2
+    parent: 0
+    kind: variant
+    name: TypeScript
+    module_suffix: []
+    item_path:
+      - Language
+      - TypeScript
+    span:
+      start_byte: 282
+      end_byte: 326
+      start_line: 13
+      start_col: 2
+      end_line: 14
+      end_col: 12
+    name_span:
+      start_byte: 316
+      end_byte: 326
+      start_line: 14
+      start_col: 2
+      end_line: 14
+      end_col: 12
+    signature: TypeScript
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - serde
+        args:
+          - type: named
+            value:
+              name: rename
+              value:
+                type: str
+                value: typescript
+        span:
+          start_byte: 282
+          end_byte: 313
+          start_line: 13
+          start_col: 2
+          end_line: 13
+          end_col: 33
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 3
+    parent: 0
+    kind: variant
+    name: Tsx
+    module_suffix: []
+    item_path:
+      - Language
+      - Tsx
+    span:
+      start_byte: 330
+      end_byte: 333
+      start_line: 15
+      start_col: 2
+      end_line: 15
+      end_col: 5
+    name_span:
+      start_byte: 330
+      end_byte: 333
+      start_line: 15
+      start_col: 2
+      end_line: 15
+      end_col: 5
+    signature: Tsx
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 4
+    parent: 0
+    kind: variant
+    name: JavaScript
+    module_suffix: []
+    item_path:
+      - Language
+      - JavaScript
+    span:
+      start_byte: 337
+      end_byte: 381
+      start_line: 16
+      start_col: 2
+      end_line: 17
+      end_col: 12
+    name_span:
+      start_byte: 371
+      end_byte: 381
+      start_line: 17
+      start_col: 2
+      end_line: 17
+      end_col: 12
+    signature: JavaScript
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - serde
+        args:
+          - type: named
+            value:
+              name: rename
+              value:
+                type: str
+                value: javascript
+        span:
+          start_byte: 337
+          end_byte: 368
+          start_line: 16
+          start_col: 2
+          end_line: 16
+          end_col: 33
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 5
+    parent: 0
+    kind: variant
+    name: Jsx
+    module_suffix: []
+    item_path:
+      - Language
+      - Jsx
+    span:
+      start_byte: 385
+      end_byte: 388
+      start_line: 18
+      start_col: 2
+      end_line: 18
+      end_col: 5
+    name_span:
+      start_byte: 385
+      end_byte: 388
+      start_line: 18
+      start_col: 2
+      end_line: 18
+      end_col: 5
+    signature: Jsx
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 6
+    parent: ~
+    kind: enum
+    name: LanguageFamily
+    module_suffix: []
+    item_path:
+      - LanguageFamily
+    span:
+      start_byte: 393
+      end_byte: 580
+      start_line: 21
+      start_col: 0
+      end_line: 27
+      end_col: 1
+    name_span:
+      start_byte: 548
+      end_byte: 562
+      start_line: 24
+      start_col: 9
+      end_line: 24
+      end_col: 23
+    signature: pub enum LanguageFamily
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - derive
+        args:
+          - type: path
+            value:
+              - Debug
+          - type: path
+            value:
+              - Clone
+          - type: path
+            value:
+              - Copy
+          - type: path
+            value:
+              - PartialEq
+          - type: path
+            value:
+              - Eq
+          - type: path
+            value:
+              - PartialOrd
+          - type: path
+            value:
+              - Ord
+          - type: path
+            value:
+              - Hash
+          - type: path
+            value:
+              - Serialize
+          - type: path
+            value:
+              - Deserialize
+        span:
+          start_byte: 393
+          end_byte: 484
+          start_line: 21
+          start_col: 0
+          end_line: 21
+          end_col: 91
+      - path:
+          - serde
+        args:
+          - type: named
+            value:
+              name: rename_all
+              value:
+                type: str
+                value: snake_case
+        span:
+          start_byte: 485
+          end_byte: 520
+          start_line: 22
+          start_col: 0
+          end_line: 22
+          end_col: 35
+      - path:
+          - non_exhaustive
+        args: []
+        span:
+          start_byte: 521
+          end_byte: 538
+          start_line: 23
+          start_col: 0
+          end_line: 23
+          end_col: 17
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements:
+      - - fmt
+        - Display
+      - - FromStr
+    body: ~
+  - local: 7
+    parent: 6
+    kind: variant
+    name: Rust
+    module_suffix: []
+    item_path:
+      - LanguageFamily
+      - Rust
+    span:
+      start_byte: 567
+      end_byte: 571
+      start_line: 25
+      start_col: 2
+      end_line: 25
+      end_col: 6
+    name_span:
+      start_byte: 567
+      end_byte: 571
+      start_line: 25
+      start_col: 2
+      end_line: 25
+      end_col: 6
+    signature: Rust
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 8
+    parent: 6
+    kind: variant
+    name: Ts
+    module_suffix: []
+    item_path:
+      - LanguageFamily
+      - Ts
+    span:
+      start_byte: 575
+      end_byte: 577
+      start_line: 26
+      start_col: 2
+      end_line: 26
+      end_col: 4
+    name_span:
+      start_byte: 575
+      end_byte: 577
+      start_line: 26
+      start_col: 2
+      end_line: 26
+      end_col: 4
+    signature: Ts
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 9
+    parent: ~
+    kind: constant
+    name: DECLARATION_SUFFIXES
+    module_suffix: []
+    item_path:
+      - DECLARATION_SUFFIXES
+    span:
+      start_byte: 582
+      end_byte: 652
+      start_line: 29
+      start_col: 0
+      end_line: 29
+      end_col: 70
+    name_span:
+      start_byte: 588
+      end_byte: 608
+      start_line: 29
+      start_col: 6
+      end_line: 29
+      end_col: 26
+    signature: "const DECLARATION_SUFFIXES: [&str; 3]"
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 10
+    parent: ~
+    kind: constant
+    name: ALL
+    module_suffix: []
+    item_path:
+      - Language
+      - ALL
+    span:
+      start_byte: 672
+      end_byte: 794
+      start_line: 32
+      start_col: 2
+      end_line: 32
+      end_col: 124
+    name_span:
+      start_byte: 682
+      end_byte: 685
+      start_line: 32
+      start_col: 12
+      end_line: 32
+      end_col: 15
+    signature: "pub const ALL: [Language; 5]"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - Language
+        generic_args: ~
+      trait_ref: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 11
+    parent: ~
+    kind: method
+    name: from_extension
+    module_suffix: []
+    item_path:
+      - Language
+      - from_extension
+    span:
+      start_byte: 798
+      end_byte: 1137
+      start_line: 34
+      start_col: 2
+      end_line: 43
+      end_col: 3
+    name_span:
+      start_byte: 805
+      end_byte: 819
+      start_line: 34
+      start_col: 9
+      end_line: 34
+      end_col: 23
+    signature: "pub fn from_extension(extension: &str) -> Option<Self>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: extension
+        type_text: "&str"
+        attributes: []
+        span:
+          start_byte: 820
+          end_byte: 835
+          start_line: 34
+          start_col: 24
+          end_line: 34
+          end_col: 39
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - Language
+        generic_args: ~
+      trait_ref: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 2004775835
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2202970323
+      token_count: 71
+      line_count: 10
+  - local: 12
+    parent: ~
+    kind: method
+    name: from_path
+    module_suffix: []
+    item_path:
+      - Language
+      - from_path
+    span:
+      start_byte: 1141
+      end_byte: 1403
+      start_line: 45
+      start_col: 2
+      end_line: 52
+      end_col: 3
+    name_span:
+      start_byte: 1148
+      end_byte: 1157
+      start_line: 45
+      start_col: 9
+      end_line: 45
+      end_col: 18
+    signature: "pub fn from_path(path: &str) -> Option<Self>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: path
+        type_text: "&str"
+        attributes: []
+        span:
+          start_byte: 1158
+          end_byte: 1168
+          start_line: 45
+          start_col: 19
+          end_line: 45
+          end_col: 29
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - Language
+        generic_args: ~
+      trait_ref: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 245158099
+        - 1
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+      token_count: 57
+      line_count: 8
+  - local: 13
+    parent: ~
+    kind: method
+    name: is_declaration_file
+    module_suffix: []
+    item_path:
+      - Language
+      - is_declaration_file
+    span:
+      start_byte: 1407
+      end_byte: 1602
+      start_line: 54
+      start_col: 2
+      end_line: 57
+      end_col: 3
+    name_span:
+      start_byte: 1414
+      end_byte: 1433
+      start_line: 54
+      start_col: 9
+      end_line: 54
+      end_col: 28
+    signature: "pub fn is_declaration_file(path: &str) -> bool"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: path
+        type_text: "&str"
+        attributes: []
+        span:
+          start_byte: 1434
+          end_byte: 1444
+          start_line: 54
+          start_col: 29
+          end_line: 54
+          end_col: 39
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - Language
+        generic_args: ~
+      trait_ref: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 245158099
+        - 1
+        - 2488189846
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+      token_count: 41
+      line_count: 4
+  - local: 14
+    parent: ~
+    kind: method
+    name: family
+    module_suffix: []
+    item_path:
+      - Language
+      - family
+    span:
+      start_byte: 1606
+      end_byte: 1803
+      start_line: 59
+      start_col: 2
+      end_line: 64
+      end_col: 3
+    name_span:
+      start_byte: 1613
+      end_byte: 1619
+      start_line: 59
+      start_col: 9
+      end_line: 59
+      end_col: 15
+    signature: pub fn family(self) -> LanguageFamily
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: self
+        type_text: self
+        attributes: []
+        span:
+          start_byte: 1620
+          end_byte: 1624
+          start_line: 59
+          start_col: 16
+          end_line: 59
+          end_col: 20
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - Language
+        generic_args: ~
+      trait_ref: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 2004775835
+        - 3318409260
+        - 1447977468
+        - 1
+        - 2785382447
+        - 1
+        - 536740216
+      token_count: 34
+      line_count: 6
+  - local: 15
+    parent: ~
+    kind: method
+    name: as_str
+    module_suffix: []
+    item_path:
+      - Language
+      - as_str
+    span:
+      start_byte: 1807
+      end_byte: 2031
+      start_line: 66
+      start_col: 2
+      end_line: 74
+      end_col: 3
+    name_span:
+      start_byte: 1814
+      end_byte: 1820
+      start_line: 66
+      start_col: 9
+      end_line: 66
+      end_col: 15
+    signature: "pub fn as_str(self) -> &'static str"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: self
+        type_text: self
+        attributes: []
+        span:
+          start_byte: 1821
+          end_byte: 1825
+          start_line: 66
+          start_col: 16
+          end_line: 66
+          end_col: 20
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - Language
+        generic_args: ~
+      trait_ref: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 2004775835
+        - 3318409260
+        - 1447977468
+        - 1
+        - 2785382447
+        - 1
+        - 536740216
+      token_count: 36
+      line_count: 9
+  - local: 16
+    parent: ~
+    kind: method
+    name: fmt
+    module_suffix: []
+    item_path:
+      - Language
+      - "<Display>"
+      - fmt
+    span:
+      start_byte: 2070
+      end_byte: 2163
+      start_line: 78
+      start_col: 2
+      end_line: 80
+      end_col: 3
+    name_span:
+      start_byte: 2073
+      end_byte: 2076
+      start_line: 78
+      start_col: 5
+      end_line: 78
+      end_col: 8
+    signature: "fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: self
+        type_text: "&self"
+        attributes: []
+        span:
+          start_byte: 2077
+          end_byte: 2082
+          start_line: 78
+          start_col: 9
+          end_line: 78
+          end_col: 14
+      - name: f
+        type_text: "&mut fmt::Formatter<'_>"
+        attributes: []
+        span:
+          start_byte: 2084
+          end_byte: 2110
+          start_line: 78
+          start_col: 16
+          end_line: 78
+          end_col: 42
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - Language
+        generic_args: ~
+      trait_ref:
+        segments:
+          - fmt
+          - Display
+        generic_args: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 3318409260
+        - 2202970323
+        - 1
+      token_count: 12
+      line_count: 3
+  - local: 17
+    parent: ~
+    kind: type_alias
+    name: Err
+    module_suffix: []
+    item_path:
+      - Language
+      - "<FromStr>"
+      - Err
+    span:
+      start_byte: 2197
+      end_byte: 2218
+      start_line: 84
+      start_col: 2
+      end_line: 84
+      end_col: 23
+    name_span:
+      start_byte: 2202
+      end_byte: 2205
+      start_line: 84
+      start_col: 7
+      end_line: 84
+      end_col: 10
+    signature: type Err = CoreError
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - Language
+        generic_args: ~
+      trait_ref:
+        segments:
+          - FromStr
+        generic_args: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 18
+    parent: ~
+    kind: method
+    name: from_str
+    module_suffix: []
+    item_path:
+      - Language
+      - "<FromStr>"
+      - from_str
+    span:
+      start_byte: 2222
+      end_byte: 2453
+      start_line: 86
+      start_col: 2
+      end_line: 91
+      end_col: 3
+    name_span:
+      start_byte: 2225
+      end_byte: 2233
+      start_line: 86
+      start_col: 5
+      end_line: 86
+      end_col: 13
+    signature: "fn from_str(value: &str) -> Result<Self, Self::Err>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: value
+        type_text: "&str"
+        attributes: []
+        span:
+          start_byte: 2234
+          end_byte: 2245
+          start_line: 86
+          start_col: 14
+          end_line: 86
+          end_col: 25
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - Language
+        generic_args: ~
+      trait_ref:
+        segments:
+          - FromStr
+        generic_args: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2785382447
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+      token_count: 46
+      line_count: 6
+  - local: 19
+    parent: ~
+    kind: method
+    name: as_str
+    module_suffix: []
+    item_path:
+      - LanguageFamily
+      - as_str
+    span:
+      start_byte: 2481
+      end_byte: 2597
+      start_line: 95
+      start_col: 2
+      end_line: 100
+      end_col: 3
+    name_span:
+      start_byte: 2488
+      end_byte: 2494
+      start_line: 95
+      start_col: 9
+      end_line: 95
+      end_col: 15
+    signature: "pub fn as_str(self) -> &'static str"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: self
+        type_text: self
+        attributes: []
+        span:
+          start_byte: 2495
+          end_byte: 2499
+          start_line: 95
+          start_col: 16
+          end_line: 95
+          end_col: 20
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - LanguageFamily
+        generic_args: ~
+      trait_ref: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 2004775835
+        - 3318409260
+        - 1447977468
+        - 1
+        - 2785382447
+        - 1
+        - 536740216
+      token_count: 18
+      line_count: 6
+  - local: 20
+    parent: ~
+    kind: method
+    name: fmt
+    module_suffix: []
+    item_path:
+      - LanguageFamily
+      - "<Display>"
+      - fmt
+    span:
+      start_byte: 2642
+      end_byte: 2735
+      start_line: 104
+      start_col: 2
+      end_line: 106
+      end_col: 3
+    name_span:
+      start_byte: 2645
+      end_byte: 2648
+      start_line: 104
+      start_col: 5
+      end_line: 104
+      end_col: 8
+    signature: "fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: self
+        type_text: "&self"
+        attributes: []
+        span:
+          start_byte: 2649
+          end_byte: 2654
+          start_line: 104
+          start_col: 9
+          end_line: 104
+          end_col: 14
+      - name: f
+        type_text: "&mut fmt::Formatter<'_>"
+        attributes: []
+        span:
+          start_byte: 2656
+          end_byte: 2682
+          start_line: 104
+          start_col: 16
+          end_line: 104
+          end_col: 42
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - LanguageFamily
+        generic_args: ~
+      trait_ref:
+        segments:
+          - fmt
+          - Display
+        generic_args: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 3318409260
+        - 2202970323
+        - 1
+      token_count: 12
+      line_count: 3
+  - local: 21
+    parent: ~
+    kind: type_alias
+    name: Err
+    module_suffix: []
+    item_path:
+      - LanguageFamily
+      - "<FromStr>"
+      - Err
+    span:
+      start_byte: 2775
+      end_byte: 2796
+      start_line: 110
+      start_col: 2
+      end_line: 110
+      end_col: 23
+    name_span:
+      start_byte: 2780
+      end_byte: 2783
+      start_line: 110
+      start_col: 7
+      end_line: 110
+      end_col: 10
+    signature: type Err = CoreError
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - LanguageFamily
+        generic_args: ~
+      trait_ref:
+        segments:
+          - FromStr
+        generic_args: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 22
+    parent: ~
+    kind: method
+    name: from_str
+    module_suffix: []
+    item_path:
+      - LanguageFamily
+      - "<FromStr>"
+      - from_str
+    span:
+      start_byte: 2800
+      end_byte: 3064
+      start_line: 112
+      start_col: 2
+      end_line: 121
+      end_col: 3
+    name_span:
+      start_byte: 2803
+      end_byte: 2811
+      start_line: 112
+      start_col: 5
+      end_line: 112
+      end_col: 13
+    signature: "fn from_str(value: &str) -> Result<Self, Self::Err>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: value
+        type_text: "&str"
+        attributes: []
+        span:
+          start_byte: 2812
+          end_byte: 2823
+          start_line: 112
+          start_col: 14
+          end_line: 112
+          end_col: 25
+    test: ~
+    impl_of:
+      self_type:
+        segments:
+          - LanguageFamily
+        generic_args: ~
+      trait_ref:
+        segments:
+          - FromStr
+        generic_args: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 2004775835
+        - 1
+        - 1447977468
+        - 2
+        - 536740216
+        - 1
+        - 2303636037
+      token_count: 47
+      line_count: 10
+  - local: 23
+    parent: ~
+    kind: module
+    name: tests
+    module_suffix:
+      - tests
+    item_path: []
+    span:
+      start_byte: 3068
+      end_byte: 5024
+      start_line: 124
+      start_col: 0
+      end_line: 180
+      end_col: 1
+    name_span:
+      start_byte: 3085
+      end_byte: 3090
+      start_line: 125
+      start_col: 4
+      end_line: 125
+      end_col: 9
+    signature: mod tests
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes:
+      - path:
+          - cfg
+        args:
+          - type: path
+            value:
+              - test
+        span:
+          start_byte: 3068
+          end_byte: 3080
+          start_line: 124
+          start_col: 0
+          end_line: 124
+          end_col: 12
+    params: []
+    test:
+      framework: rust
+      kind: suite
+      display_name: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 24
+    parent: 23
+    kind: test
+    name: should_detect_language_from_path
+    module_suffix:
+      - tests
+    item_path:
+      - should_detect_language_from_path
+    span:
+      start_byte: 3112
+      end_byte: 3943
+      start_line: 128
+      start_col: 2
+      end_line: 151
+      end_col: 3
+    name_span:
+      start_byte: 3125
+      end_byte: 3157
+      start_line: 129
+      start_col: 5
+      end_line: 129
+      end_col: 37
+    signature: fn should_detect_language_from_path()
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes:
+      - path:
+          - test
+        args: []
+        span:
+          start_byte: 3112
+          end_byte: 3119
+          start_line: 128
+          start_col: 2
+          end_line: 128
+          end_col: 9
+    params: []
+    test:
+      framework: rust
+      kind: unit
+      display_name: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 245158099
+        - 1
+        - 2488189846
+        - 1984861276
+        - 2303636037
+        - 2
+        - 2236525561
+      token_count: 189
+      line_count: 23
+  - local: 25
+    parent: 23
+    kind: test
+    name: should_flag_declaration_files
+    module_suffix:
+      - tests
+    item_path:
+      - should_flag_declaration_files
+    span:
+      start_byte: 3947
+      end_byte: 4337
+      start_line: 153
+      start_col: 2
+      end_line: 161
+      end_col: 3
+    name_span:
+      start_byte: 3960
+      end_byte: 3989
+      start_line: 154
+      start_col: 5
+      end_line: 154
+      end_col: 34
+    signature: fn should_flag_declaration_files()
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes:
+      - path:
+          - test
+        args: []
+        span:
+          start_byte: 3947
+          end_byte: 3954
+          start_line: 153
+          start_col: 2
+          end_line: 153
+          end_col: 9
+    params: []
+    test:
+      framework: rust
+      kind: unit
+      display_name: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2421079370
+        - 2303636037
+        - 1
+        - 2785382447
+        - 1
+        - 2303636037
+      token_count: 71
+      line_count: 8
+  - local: 26
+    parent: 23
+    kind: test
+    name: should_map_languages_to_families
+    module_suffix:
+      - tests
+    item_path:
+      - should_map_languages_to_families
+    span:
+      start_byte: 4341
+      end_byte: 4617
+      start_line: 163
+      start_col: 2
+      end_line: 169
+      end_col: 3
+    name_span:
+      start_byte: 4354
+      end_byte: 4386
+      start_line: 164
+      start_col: 5
+      end_line: 164
+      end_col: 37
+    signature: fn should_map_languages_to_families()
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes:
+      - path:
+          - test
+        args: []
+        span:
+          start_byte: 4341
+          end_byte: 4348
+          start_line: 163
+          start_col: 2
+          end_line: 163
+          end_col: 9
+    params: []
+    test:
+      framework: rust
+      kind: unit
+      display_name: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2421079370
+        - 2303636037
+        - 1
+        - 2785382447
+        - 1
+        - 2202970323
+      token_count: 54
+      line_count: 6
+  - local: 27
+    parent: 23
+    kind: test
+    name: should_round_trip_language_strings
+    module_suffix:
+      - tests
+    item_path:
+      - should_round_trip_language_strings
+    span:
+      start_byte: 4621
+      end_byte: 5022
+      start_line: 171
+      start_col: 2
+      end_line: 179
+      end_col: 3
+    name_span:
+      start_byte: 4634
+      end_byte: 4668
+      start_line: 172
+      start_col: 5
+      end_line: 172
+      end_col: 39
+    signature: fn should_round_trip_language_strings()
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes:
+      - path:
+          - test
+        args: []
+        span:
+          start_byte: 4621
+          end_byte: 4628
+          start_line: 171
+          start_col: 2
+          end_line: 171
+          end_col: 9
+    params: []
+    test:
+      framework: rust
+      kind: unit
+      display_name: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 2584321561
+        - 1
+        - 1995950837
+        - 1
+        - 2785382447
+        - 1
+        - 1447977468
+      token_count: 102
+      line_count: 8
+imports:
+  - type: rust_use
+    paths:
+      - segments:
+          - std
+          - fmt
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 0
+      end_byte: 13
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 13
+  - type: rust_use
+    paths:
+      - segments:
+          - std
+          - str
+          - FromStr
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 14
+      end_byte: 36
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 22
+  - type: rust_use
+    paths:
+      - segments:
+          - serde
+          - Deserialize
+        binding:
+          type: name
+      - segments:
+          - serde
+          - Serialize
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 38
+      end_byte: 74
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 36
+  - type: rust_use
+    paths:
+      - segments:
+          - crate
+          - error
+          - CoreError
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 76
+      end_byte: 104
+      start_line: 6
+      start_col: 0
+      end_line: 6
+      end_col: 28
+  - type: rust_use
+    paths:
+      - segments:
+          - super
+        binding:
+          type: glob
+    visibility:
+      type: private
+    scope: 23
+    span:
+      start_byte: 3095
+      end_byte: 3108
+      start_line: 126
+      start_col: 2
+      end_line: 126
+      end_col: 15
+exports: []
+references:
+  - from: ~
+    kind: type_ref
+    path:
+      - Language
+    receiver: ~
+    args: []
+    span:
+      start_byte: 659
+      end_byte: 667
+      start_line: 31
+      start_col: 5
+      end_line: 31
+      end_col: 13
+  - from: 10
+    kind: type_ref
+    path:
+      - Language
+    receiver: ~
+    args: []
+    span:
+      start_byte: 688
+      end_byte: 696
+      start_line: 32
+      start_col: 18
+      end_line: 32
+      end_col: 26
+  - from: 10
+    kind: value_ref
+    path:
+      - Language
+      - Rust
+    receiver: ~
+    args: []
+    span:
+      start_byte: 714
+      end_byte: 718
+      start_line: 32
+      start_col: 44
+      end_line: 32
+      end_col: 48
+  - from: 10
+    kind: value_ref
+    path:
+      - Language
+      - TypeScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 730
+      end_byte: 740
+      start_line: 32
+      start_col: 60
+      end_line: 32
+      end_col: 70
+  - from: 10
+    kind: value_ref
+    path:
+      - Language
+      - Tsx
+    receiver: ~
+    args: []
+    span:
+      start_byte: 752
+      end_byte: 755
+      start_line: 32
+      start_col: 82
+      end_line: 32
+      end_col: 85
+  - from: 10
+    kind: value_ref
+    path:
+      - Language
+      - JavaScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 767
+      end_byte: 777
+      start_line: 32
+      start_col: 97
+      end_line: 32
+      end_col: 107
+  - from: 10
+    kind: value_ref
+    path:
+      - Language
+      - Jsx
+    receiver: ~
+    args: []
+    span:
+      start_byte: 789
+      end_byte: 792
+      start_line: 32
+      start_col: 119
+      end_line: 32
+      end_col: 122
+  - from: 11
+    kind: type_ref
+    path:
+      - Option
+    receiver: ~
+    args: []
+    span:
+      start_byte: 840
+      end_byte: 846
+      start_line: 34
+      start_col: 44
+      end_line: 34
+      end_col: 50
+  - from: 11
+    kind: method_call
+    path:
+      - extension
+      - to_ascii_lowercase
+    receiver:
+      type: type_hint
+      value:
+        - str
+    args: []
+    span:
+      start_byte: 875
+      end_byte: 893
+      start_line: 35
+      start_col: 20
+      end_line: 35
+      end_col: 38
+  - from: 11
+    kind: method_call
+    path:
+      - (extension.to_ascii_lowercase())
+      - as_str
+    receiver:
+      type: expr
+      value: extension.to_ascii_lowercase()
+    args: []
+    span:
+      start_byte: 896
+      end_byte: 902
+      start_line: 35
+      start_col: 41
+      end_line: 35
+      end_col: 47
+  - from: 11
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Self
+          - Rust
+    span:
+      start_byte: 921
+      end_byte: 925
+      start_line: 36
+      start_col: 14
+      end_line: 36
+      end_col: 18
+  - from: 11
+    kind: value_ref
+    path:
+      - Self
+      - Rust
+    receiver: ~
+    args: []
+    span:
+      start_byte: 932
+      end_byte: 936
+      start_line: 36
+      start_col: 25
+      end_line: 36
+      end_col: 29
+  - from: 11
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Self
+          - TypeScript
+    span:
+      start_byte: 969
+      end_byte: 973
+      start_line: 37
+      start_col: 30
+      end_line: 37
+      end_col: 34
+  - from: 11
+    kind: value_ref
+    path:
+      - Self
+      - TypeScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 980
+      end_byte: 990
+      start_line: 37
+      start_col: 41
+      end_line: 37
+      end_col: 51
+  - from: 11
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Self
+          - Tsx
+    span:
+      start_byte: 1008
+      end_byte: 1012
+      start_line: 38
+      start_col: 15
+      end_line: 38
+      end_col: 19
+  - from: 11
+    kind: value_ref
+    path:
+      - Self
+      - Tsx
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1019
+      end_byte: 1022
+      start_line: 38
+      start_col: 26
+      end_line: 38
+      end_col: 29
+  - from: 11
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Self
+          - JavaScript
+    span:
+      start_byte: 1055
+      end_byte: 1059
+      start_line: 39
+      start_col: 30
+      end_line: 39
+      end_col: 34
+  - from: 11
+    kind: value_ref
+    path:
+      - Self
+      - JavaScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1066
+      end_byte: 1076
+      start_line: 39
+      start_col: 41
+      end_line: 39
+      end_col: 51
+  - from: 11
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Self
+          - Jsx
+    span:
+      start_byte: 1094
+      end_byte: 1098
+      start_line: 40
+      start_col: 15
+      end_line: 40
+      end_col: 19
+  - from: 11
+    kind: value_ref
+    path:
+      - Self
+      - Jsx
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1105
+      end_byte: 1108
+      start_line: 40
+      start_col: 26
+      end_line: 40
+      end_col: 29
+  - from: 11
+    kind: value_ref
+    path:
+      - None
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1122
+      end_byte: 1126
+      start_line: 41
+      start_col: 11
+      end_line: 41
+      end_col: 15
+  - from: 12
+    kind: type_ref
+    path:
+      - Option
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1173
+      end_byte: 1179
+      start_line: 45
+      start_col: 34
+      end_line: 45
+      end_col: 40
+  - from: 12
+    kind: method_call
+    path:
+      - path
+      - rsplit
+    receiver:
+      type: type_hint
+      value:
+        - str
+    args:
+      - type: array
+        value:
+          - type: other
+            value: "'/'"
+          - type: other
+            value: "'\\\\'"
+    span:
+      start_byte: 1213
+      end_byte: 1219
+      start_line: 46
+      start_col: 25
+      end_line: 46
+      end_col: 31
+  - from: 12
+    kind: method_call
+    path:
+      - "(path.rsplit(['/', '\\\\']))"
+      - next
+    receiver:
+      type: expr
+      value: "path.rsplit(['/', '\\\\'])"
+    args: []
+    span:
+      start_byte: 1233
+      end_byte: 1237
+      start_line: 46
+      start_col: 45
+      end_line: 46
+      end_col: 49
+  - from: 12
+    kind: method_call
+    path:
+      - "(path.rsplit(['/', '\\\\']).next())"
+      - unwrap_or
+    receiver:
+      type: expr
+      value: "path.rsplit(['/', '\\\\']).next()"
+    args:
+      - type: path
+        value:
+          - path
+    span:
+      start_byte: 1240
+      end_byte: 1249
+      start_line: 46
+      start_col: 52
+      end_line: 46
+      end_col: 61
+  - from: 12
+    kind: method_call
+    path:
+      - file_name
+      - rsplit_once
+    receiver:
+      type: expr
+      value: file_name
+    args:
+      - type: other
+        value: "'.'"
+    span:
+      start_byte: 1295
+      end_byte: 1306
+      start_line: 47
+      start_col: 38
+      end_line: 47
+      end_col: 49
+  - from: 12
+    kind: method_call
+    path:
+      - stem
+      - is_empty
+    receiver:
+      type: expr
+      value: stem
+    args: []
+    span:
+      start_byte: 1326
+      end_byte: 1334
+      start_line: 48
+      start_col: 12
+      end_line: 48
+      end_col: 20
+  - from: 12
+    kind: value_ref
+    path:
+      - None
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1352
+      end_byte: 1356
+      start_line: 49
+      start_col: 13
+      end_line: 49
+      end_col: 17
+  - from: 12
+    kind: call
+    path:
+      - Self
+      - from_extension
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - extension
+    span:
+      start_byte: 1374
+      end_byte: 1388
+      start_line: 51
+      start_col: 10
+      end_line: 51
+      end_col: 24
+  - from: 13
+    kind: method_call
+    path:
+      - path
+      - to_ascii_lowercase
+    receiver:
+      type: type_hint
+      value:
+        - str
+    args: []
+    span:
+      start_byte: 1477
+      end_byte: 1495
+      start_line: 55
+      start_col: 21
+      end_line: 55
+      end_col: 39
+  - from: 13
+    kind: value_ref
+    path:
+      - DECLARATION_SUFFIXES
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1503
+      end_byte: 1523
+      start_line: 56
+      start_col: 4
+      end_line: 56
+      end_col: 24
+  - from: 13
+    kind: method_call
+    path:
+      - DECLARATION_SUFFIXES
+      - iter
+    receiver:
+      type: identifier
+      value: DECLARATION_SUFFIXES
+    args: []
+    span:
+      start_byte: 1524
+      end_byte: 1528
+      start_line: 56
+      start_col: 25
+      end_line: 56
+      end_col: 29
+  - from: 13
+    kind: method_call
+    path:
+      - (DECLARATION_SUFFIXES.iter())
+      - any
+    receiver:
+      type: expr
+      value: DECLARATION_SUFFIXES.iter()
+    args:
+      - type: closure
+        value:
+          params:
+            - suffix
+    span:
+      start_byte: 1531
+      end_byte: 1534
+      start_line: 56
+      start_col: 32
+      end_line: 56
+      end_col: 35
+  - from: 13
+    kind: method_call
+    path:
+      - lower
+      - len
+    receiver:
+      type: expr
+      value: lower
+    args: []
+    span:
+      start_byte: 1550
+      end_byte: 1553
+      start_line: 56
+      start_col: 51
+      end_line: 56
+      end_col: 54
+  - from: 13
+    kind: method_call
+    path:
+      - suffix
+      - len
+    receiver:
+      type: expr
+      value: suffix
+    args: []
+    span:
+      start_byte: 1565
+      end_byte: 1568
+      start_line: 56
+      start_col: 66
+      end_line: 56
+      end_col: 69
+  - from: 13
+    kind: method_call
+    path:
+      - lower
+      - ends_with
+    receiver:
+      type: expr
+      value: lower
+    args:
+      - type: path
+        value:
+          - suffix
+    span:
+      start_byte: 1580
+      end_byte: 1589
+      start_line: 56
+      start_col: 81
+      end_line: 56
+      end_col: 90
+  - from: 14
+    kind: type_ref
+    path:
+      - LanguageFamily
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1629
+      end_byte: 1643
+      start_line: 59
+      start_col: 25
+      end_line: 59
+      end_col: 39
+  - from: 14
+    kind: value_ref
+    path:
+      - Self
+      - Rust
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1675
+      end_byte: 1679
+      start_line: 61
+      start_col: 12
+      end_line: 61
+      end_col: 16
+  - from: 14
+    kind: value_ref
+    path:
+      - LanguageFamily
+      - Rust
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1699
+      end_byte: 1703
+      start_line: 61
+      start_col: 36
+      end_line: 61
+      end_col: 40
+  - from: 14
+    kind: value_ref
+    path:
+      - Self
+      - TypeScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1717
+      end_byte: 1727
+      start_line: 62
+      start_col: 12
+      end_line: 62
+      end_col: 22
+  - from: 14
+    kind: value_ref
+    path:
+      - Self
+      - Tsx
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1736
+      end_byte: 1739
+      start_line: 62
+      start_col: 31
+      end_line: 62
+      end_col: 34
+  - from: 14
+    kind: value_ref
+    path:
+      - Self
+      - JavaScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1748
+      end_byte: 1758
+      start_line: 62
+      start_col: 43
+      end_line: 62
+      end_col: 53
+  - from: 14
+    kind: value_ref
+    path:
+      - Self
+      - Jsx
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1767
+      end_byte: 1770
+      start_line: 62
+      start_col: 62
+      end_line: 62
+      end_col: 65
+  - from: 14
+    kind: value_ref
+    path:
+      - LanguageFamily
+      - Ts
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1790
+      end_byte: 1792
+      start_line: 62
+      start_col: 85
+      end_line: 62
+      end_col: 87
+  - from: 15
+    kind: value_ref
+    path:
+      - Self
+      - Rust
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1874
+      end_byte: 1878
+      start_line: 68
+      start_col: 12
+      end_line: 68
+      end_col: 16
+  - from: 15
+    kind: value_ref
+    path:
+      - Self
+      - TypeScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1902
+      end_byte: 1912
+      start_line: 69
+      start_col: 12
+      end_line: 69
+      end_col: 22
+  - from: 15
+    kind: value_ref
+    path:
+      - Self
+      - Tsx
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1942
+      end_byte: 1945
+      start_line: 70
+      start_col: 12
+      end_line: 70
+      end_col: 15
+  - from: 15
+    kind: value_ref
+    path:
+      - Self
+      - JavaScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 1968
+      end_byte: 1978
+      start_line: 71
+      start_col: 12
+      end_line: 71
+      end_col: 22
+  - from: 15
+    kind: value_ref
+    path:
+      - Self
+      - Jsx
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2008
+      end_byte: 2011
+      start_line: 72
+      start_col: 12
+      end_line: 72
+      end_col: 15
+  - from: ~
+    kind: type_ref
+    path:
+      - fmt
+      - Display
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2045
+      end_byte: 2052
+      start_line: 77
+      start_col: 10
+      end_line: 77
+      end_col: 17
+  - from: 16
+    kind: type_ref
+    path:
+      - fmt
+      - Formatter
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2097
+      end_byte: 2106
+      start_line: 78
+      start_col: 29
+      end_line: 78
+      end_col: 38
+  - from: 16
+    kind: type_ref
+    path:
+      - fmt
+      - Result
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2120
+      end_byte: 2126
+      start_line: 78
+      start_col: 52
+      end_line: 78
+      end_col: 58
+  - from: 16
+    kind: method_call
+    path:
+      - f
+      - write_str
+    receiver:
+      type: type_hint
+      value:
+        - fmt
+        - Formatter
+    args:
+      - type: call
+        value:
+          callee:
+            - self
+            - as_str
+          args: []
+    span:
+      start_byte: 2135
+      end_byte: 2144
+      start_line: 79
+      start_col: 6
+      end_line: 79
+      end_col: 15
+  - from: 16
+    kind: method_call
+    path:
+      - self
+      - as_str
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2150
+      end_byte: 2156
+      start_line: 79
+      start_col: 21
+      end_line: 79
+      end_col: 27
+  - from: ~
+    kind: type_ref
+    path:
+      - FromStr
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2172
+      end_byte: 2179
+      start_line: 83
+      start_col: 5
+      end_line: 83
+      end_col: 12
+  - from: 17
+    kind: type_ref
+    path:
+      - CoreError
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2208
+      end_byte: 2217
+      start_line: 84
+      start_col: 13
+      end_line: 84
+      end_col: 22
+  - from: 18
+    kind: type_ref
+    path:
+      - Result
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2250
+      end_byte: 2256
+      start_line: 86
+      start_col: 30
+      end_line: 86
+      end_col: 36
+  - from: 18
+    kind: value_ref
+    path:
+      - Self
+      - ALL
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2286
+      end_byte: 2289
+      start_line: 87
+      start_col: 10
+      end_line: 87
+      end_col: 13
+  - from: 18
+    kind: method_call
+    path:
+      - Self
+      - ALL
+      - into_iter
+    receiver:
+      type: identifier
+      value: Self
+    args: []
+    span:
+      start_byte: 2290
+      end_byte: 2299
+      start_line: 87
+      start_col: 14
+      end_line: 87
+      end_col: 23
+  - from: 18
+    kind: method_call
+    path:
+      - "(Self::ALL.into_iter())"
+      - find
+    receiver:
+      type: expr
+      value: "Self::ALL.into_iter()"
+    args:
+      - type: closure
+        value:
+          params:
+            - language
+    span:
+      start_byte: 2302
+      end_byte: 2306
+      start_line: 87
+      start_col: 26
+      end_line: 87
+      end_col: 30
+  - from: 18
+    kind: method_call
+    path:
+      - language
+      - as_str
+    receiver:
+      type: expr
+      value: language
+    args: []
+    span:
+      start_byte: 2327
+      end_byte: 2333
+      start_line: 87
+      start_col: 51
+      end_line: 87
+      end_col: 57
+  - from: 18
+    kind: method_call
+    path:
+      - "(Self::ALL.into_iter().find(|language| language.as_str() == value))"
+      - ok_or_else
+    receiver:
+      type: expr
+      value: "Self::ALL.into_iter().find(|language| language.as_str() == value)"
+    args:
+      - type: closure
+        value:
+          params: []
+    span:
+      start_byte: 2346
+      end_byte: 2356
+      start_line: 87
+      start_col: 70
+      end_line: 87
+      end_col: 80
+  - from: 18
+    kind: instantiation
+    path:
+      - CoreError
+      - UnknownVariant
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2371
+      end_byte: 2385
+      start_line: 87
+      start_col: 95
+      end_line: 87
+      end_col: 109
+  - from: 18
+    kind: method_call
+    path:
+      - value
+      - to_owned
+    receiver:
+      type: type_hint
+      value:
+        - str
+    args: []
+    span:
+      start_byte: 2431
+      end_byte: 2439
+      start_line: 89
+      start_col: 19
+      end_line: 89
+      end_col: 27
+  - from: ~
+    kind: type_ref
+    path:
+      - LanguageFamily
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2462
+      end_byte: 2476
+      start_line: 94
+      start_col: 5
+      end_line: 94
+      end_col: 19
+  - from: 19
+    kind: value_ref
+    path:
+      - Self
+      - Rust
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2548
+      end_byte: 2552
+      start_line: 97
+      start_col: 12
+      end_line: 97
+      end_col: 16
+  - from: 19
+    kind: value_ref
+    path:
+      - Self
+      - Ts
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2576
+      end_byte: 2578
+      start_line: 98
+      start_col: 12
+      end_line: 98
+      end_col: 14
+  - from: 20
+    kind: type_ref
+    path:
+      - fmt
+      - Formatter
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2669
+      end_byte: 2678
+      start_line: 104
+      start_col: 29
+      end_line: 104
+      end_col: 38
+  - from: 20
+    kind: type_ref
+    path:
+      - fmt
+      - Result
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2692
+      end_byte: 2698
+      start_line: 104
+      start_col: 52
+      end_line: 104
+      end_col: 58
+  - from: 20
+    kind: method_call
+    path:
+      - f
+      - write_str
+    receiver:
+      type: type_hint
+      value:
+        - fmt
+        - Formatter
+    args:
+      - type: call
+        value:
+          callee:
+            - self
+            - as_str
+          args: []
+    span:
+      start_byte: 2707
+      end_byte: 2716
+      start_line: 105
+      start_col: 6
+      end_line: 105
+      end_col: 15
+  - from: 20
+    kind: method_call
+    path:
+      - self
+      - as_str
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2722
+      end_byte: 2728
+      start_line: 105
+      start_col: 21
+      end_line: 105
+      end_col: 27
+  - from: 21
+    kind: type_ref
+    path:
+      - CoreError
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2786
+      end_byte: 2795
+      start_line: 110
+      start_col: 13
+      end_line: 110
+      end_col: 22
+  - from: 22
+    kind: type_ref
+    path:
+      - Result
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2828
+      end_byte: 2834
+      start_line: 112
+      start_col: 30
+      end_line: 112
+      end_col: 36
+  - from: 22
+    kind: call
+    path:
+      - Ok
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Self
+          - Rust
+    span:
+      start_byte: 2888
+      end_byte: 2890
+      start_line: 114
+      start_col: 16
+      end_line: 114
+      end_col: 18
+  - from: 22
+    kind: value_ref
+    path:
+      - Self
+      - Rust
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2897
+      end_byte: 2901
+      start_line: 114
+      start_col: 25
+      end_line: 114
+      end_col: 29
+  - from: 22
+    kind: call
+    path:
+      - Ok
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Self
+          - Ts
+    span:
+      start_byte: 2918
+      end_byte: 2920
+      start_line: 115
+      start_col: 14
+      end_line: 115
+      end_col: 16
+  - from: 22
+    kind: value_ref
+    path:
+      - Self
+      - Ts
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2927
+      end_byte: 2929
+      start_line: 115
+      start_col: 23
+      end_line: 115
+      end_col: 25
+  - from: 22
+    kind: call
+    path:
+      - Err
+    receiver: ~
+    args:
+      - type: object
+        value:
+          - key:
+              type: ident
+              value: what
+            value:
+              type: str
+              value: language family
+          - key:
+              type: ident
+              value: value
+            value:
+              type: call
+              value:
+                callee:
+                  - other
+                  - to_owned
+                args: []
+    span:
+      start_byte: 2947
+      end_byte: 2950
+      start_line: 116
+      start_col: 15
+      end_line: 116
+      end_col: 18
+  - from: 22
+    kind: instantiation
+    path:
+      - CoreError
+      - UnknownVariant
+    receiver: ~
+    args: []
+    span:
+      start_byte: 2962
+      end_byte: 2976
+      start_line: 116
+      start_col: 30
+      end_line: 116
+      end_col: 44
+  - from: 22
+    kind: method_call
+    path:
+      - other
+      - to_owned
+    receiver:
+      type: expr
+      value: other
+    args: []
+    span:
+      start_byte: 3033
+      end_byte: 3041
+      start_line: 118
+      start_col: 21
+      end_line: 118
+      end_col: 29
+  - from: 24
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Language
+          - Rust
+    span:
+      start_byte: 3201
+      end_byte: 3205
+      start_line: 131
+      start_col: 21
+      end_line: 131
+      end_col: 25
+  - from: 24
+    kind: value_ref
+    path:
+      - Language
+      - Rust
+    receiver: ~
+    args: []
+    span:
+      start_byte: 3216
+      end_byte: 3220
+      start_line: 131
+      start_col: 36
+      end_line: 131
+      end_col: 40
+  - from: 24
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Language
+          - TypeScript
+    span:
+      start_byte: 3239
+      end_byte: 3243
+      start_line: 132
+      start_col: 15
+      end_line: 132
+      end_col: 19
+  - from: 24
+    kind: value_ref
+    path:
+      - Language
+      - TypeScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 3254
+      end_byte: 3264
+      start_line: 132
+      start_col: 30
+      end_line: 132
+      end_col: 40
+  - from: 24
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Language
+          - TypeScript
+    span:
+      start_byte: 3284
+      end_byte: 3288
+      start_line: 133
+      start_col: 16
+      end_line: 133
+      end_col: 20
+  - from: 24
+    kind: value_ref
+    path:
+      - Language
+      - TypeScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 3299
+      end_byte: 3309
+      start_line: 133
+      start_col: 31
+      end_line: 133
+      end_col: 41
+  - from: 24
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Language
+          - TypeScript
+    span:
+      start_byte: 3329
+      end_byte: 3333
+      start_line: 134
+      start_col: 16
+      end_line: 134
+      end_col: 20
+  - from: 24
+    kind: value_ref
+    path:
+      - Language
+      - TypeScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 3344
+      end_byte: 3354
+      start_line: 134
+      start_col: 31
+      end_line: 134
+      end_col: 41
+  - from: 24
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Language
+          - TypeScript
+    span:
+      start_byte: 3385
+      end_byte: 3389
+      start_line: 135
+      start_col: 27
+      end_line: 135
+      end_col: 31
+  - from: 24
+    kind: value_ref
+    path:
+      - Language
+      - TypeScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 3400
+      end_byte: 3410
+      start_line: 135
+      start_col: 42
+      end_line: 135
+      end_col: 52
+  - from: 24
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Language
+          - Tsx
+    span:
+      start_byte: 3432
+      end_byte: 3436
+      start_line: 136
+      start_col: 18
+      end_line: 136
+      end_col: 22
+  - from: 24
+    kind: value_ref
+    path:
+      - Language
+      - Tsx
+    receiver: ~
+    args: []
+    span:
+      start_byte: 3447
+      end_byte: 3450
+      start_line: 136
+      start_col: 33
+      end_line: 136
+      end_col: 36
+  - from: 24
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Language
+          - JavaScript
+    span:
+      start_byte: 3469
+      end_byte: 3473
+      start_line: 137
+      start_col: 15
+      end_line: 137
+      end_col: 19
+  - from: 24
+    kind: value_ref
+    path:
+      - Language
+      - JavaScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 3484
+      end_byte: 3494
+      start_line: 137
+      start_col: 30
+      end_line: 137
+      end_col: 40
+  - from: 24
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Language
+          - JavaScript
+    span:
+      start_byte: 3514
+      end_byte: 3518
+      start_line: 138
+      start_col: 16
+      end_line: 138
+      end_col: 20
+  - from: 24
+    kind: value_ref
+    path:
+      - Language
+      - JavaScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 3529
+      end_byte: 3539
+      start_line: 138
+      start_col: 31
+      end_line: 138
+      end_col: 41
+  - from: 24
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Language
+          - JavaScript
+    span:
+      start_byte: 3559
+      end_byte: 3563
+      start_line: 139
+      start_col: 16
+      end_line: 139
+      end_col: 20
+  - from: 24
+    kind: value_ref
+    path:
+      - Language
+      - JavaScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 3574
+      end_byte: 3584
+      start_line: 139
+      start_col: 31
+      end_line: 139
+      end_col: 41
+  - from: 24
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Language
+          - Jsx
+    span:
+      start_byte: 3609
+      end_byte: 3613
+      start_line: 140
+      start_col: 21
+      end_line: 140
+      end_col: 25
+  - from: 24
+    kind: value_ref
+    path:
+      - Language
+      - Jsx
+    receiver: ~
+    args: []
+    span:
+      start_byte: 3624
+      end_byte: 3627
+      start_line: 140
+      start_col: 36
+      end_line: 140
+      end_col: 39
+  - from: 24
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Language
+          - TypeScript
+    span:
+      start_byte: 3649
+      end_byte: 3653
+      start_line: 141
+      start_col: 18
+      end_line: 141
+      end_col: 22
+  - from: 24
+    kind: value_ref
+    path:
+      - Language
+      - TypeScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 3664
+      end_byte: 3674
+      start_line: 141
+      start_col: 33
+      end_line: 141
+      end_col: 43
+  - from: 24
+    kind: call
+    path:
+      - Some
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - Language
+          - Rust
+    span:
+      start_byte: 3700
+      end_byte: 3704
+      start_line: 142
+      start_col: 22
+      end_line: 142
+      end_col: 26
+  - from: 24
+    kind: value_ref
+    path:
+      - Language
+      - Rust
+    receiver: ~
+    args: []
+    span:
+      start_byte: 3715
+      end_byte: 3719
+      start_line: 142
+      start_col: 37
+      end_line: 142
+      end_col: 41
+  - from: 24
+    kind: value_ref
+    path:
+      - None
+    receiver: ~
+    args: []
+    span:
+      start_byte: 3743
+      end_byte: 3747
+      start_line: 143
+      start_col: 20
+      end_line: 143
+      end_col: 24
+  - from: 24
+    kind: value_ref
+    path:
+      - None
+    receiver: ~
+    args: []
+    span:
+      start_byte: 3769
+      end_byte: 3773
+      start_line: 144
+      start_col: 19
+      end_line: 144
+      end_col: 23
+  - from: 24
+    kind: value_ref
+    path:
+      - None
+    receiver: ~
+    args: []
+    span:
+      start_byte: 3790
+      end_byte: 3794
+      start_line: 145
+      start_col: 14
+      end_line: 145
+      end_col: 18
+  - from: 24
+    kind: value_ref
+    path:
+      - None
+    receiver: ~
+    args: []
+    span:
+      start_byte: 3819
+      end_byte: 3823
+      start_line: 146
+      start_col: 22
+      end_line: 146
+      end_col: 26
+  - from: 24
+    kind: macro_call
+    path:
+      - assert_eq
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - Language
+            - from_path
+          args:
+            - type: path
+              value:
+                - path
+      - type: path
+        value:
+          - expected
+      - type: str
+        value: "{path}"
+    span:
+      start_byte: 3875
+      end_byte: 3884
+      start_line: 149
+      start_col: 6
+      end_line: 149
+      end_col: 15
+  - from: 24
+    kind: call
+    path:
+      - Language
+      - from_path
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - path
+    span:
+      start_byte: 3896
+      end_byte: 3905
+      start_line: 149
+      start_col: 27
+      end_line: 149
+      end_col: 36
+  - from: 25
+    kind: macro_call
+    path:
+      - assert
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - Language
+            - is_declaration_file
+          args:
+            - type: str
+              value: types/index.d.ts
+    span:
+      start_byte: 3998
+      end_byte: 4004
+      start_line: 155
+      start_col: 4
+      end_line: 155
+      end_col: 10
+  - from: 25
+    kind: call
+    path:
+      - Language
+      - is_declaration_file
+    receiver: ~
+    args:
+      - type: str
+        value: types/index.d.ts
+    span:
+      start_byte: 4016
+      end_byte: 4035
+      start_line: 155
+      start_col: 22
+      end_line: 155
+      end_col: 41
+  - from: 25
+    kind: macro_call
+    path:
+      - assert
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - Language
+            - is_declaration_file
+          args:
+            - type: str
+              value: x.d.mts
+    span:
+      start_byte: 4062
+      end_byte: 4068
+      start_line: 156
+      start_col: 4
+      end_line: 156
+      end_col: 10
+  - from: 25
+    kind: call
+    path:
+      - Language
+      - is_declaration_file
+    receiver: ~
+    args:
+      - type: str
+        value: x.d.mts
+    span:
+      start_byte: 4080
+      end_byte: 4099
+      start_line: 156
+      start_col: 22
+      end_line: 156
+      end_col: 41
+  - from: 25
+    kind: macro_call
+    path:
+      - assert
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - Language
+            - is_declaration_file
+          args:
+            - type: str
+              value: x.d.cts
+    span:
+      start_byte: 4117
+      end_byte: 4123
+      start_line: 157
+      start_col: 4
+      end_line: 157
+      end_col: 10
+  - from: 25
+    kind: call
+    path:
+      - Language
+      - is_declaration_file
+    receiver: ~
+    args:
+      - type: str
+        value: x.d.cts
+    span:
+      start_byte: 4135
+      end_byte: 4154
+      start_line: 157
+      start_col: 22
+      end_line: 157
+      end_col: 41
+  - from: 25
+    kind: macro_call
+    path:
+      - assert
+    receiver: ~
+    args:
+      - type: other
+        value: "!Language::is_declaration_file(\"index.ts\")"
+    span:
+      start_byte: 4172
+      end_byte: 4178
+      start_line: 158
+      start_col: 4
+      end_line: 158
+      end_col: 10
+  - from: 25
+    kind: call
+    path:
+      - Language
+      - is_declaration_file
+    receiver: ~
+    args:
+      - type: str
+        value: index.ts
+    span:
+      start_byte: 4191
+      end_byte: 4210
+      start_line: 158
+      start_col: 23
+      end_line: 158
+      end_col: 42
+  - from: 25
+    kind: macro_call
+    path:
+      - assert
+    receiver: ~
+    args:
+      - type: other
+        value: "!Language::is_declaration_file(\"dts.ts\")"
+    span:
+      start_byte: 4229
+      end_byte: 4235
+      start_line: 159
+      start_col: 4
+      end_line: 159
+      end_col: 10
+  - from: 25
+    kind: call
+    path:
+      - Language
+      - is_declaration_file
+    receiver: ~
+    args:
+      - type: str
+        value: dts.ts
+    span:
+      start_byte: 4248
+      end_byte: 4267
+      start_line: 159
+      start_col: 23
+      end_line: 159
+      end_col: 42
+  - from: 25
+    kind: macro_call
+    path:
+      - assert
+    receiver: ~
+    args:
+      - type: other
+        value: "!Language::is_declaration_file(\".d.ts\")"
+    span:
+      start_byte: 4284
+      end_byte: 4290
+      start_line: 160
+      start_col: 4
+      end_line: 160
+      end_col: 10
+  - from: 25
+    kind: call
+    path:
+      - Language
+      - is_declaration_file
+    receiver: ~
+    args:
+      - type: str
+        value: ".d.ts"
+    span:
+      start_byte: 4303
+      end_byte: 4322
+      start_line: 160
+      start_col: 23
+      end_line: 160
+      end_col: 42
+  - from: 26
+    kind: macro_call
+    path:
+      - assert_eq
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - Language
+            - Rust
+            - family
+          args: []
+      - type: path
+        value:
+          - LanguageFamily
+          - Rust
+    span:
+      start_byte: 4395
+      end_byte: 4404
+      start_line: 165
+      start_col: 4
+      end_line: 165
+      end_col: 13
+  - from: 26
+    kind: value_ref
+    path:
+      - Language
+      - Rust
+    receiver: ~
+    args: []
+    span:
+      start_byte: 4416
+      end_byte: 4420
+      start_line: 165
+      start_col: 25
+      end_line: 165
+      end_col: 29
+  - from: 26
+    kind: method_call
+    path:
+      - Language
+      - Rust
+      - family
+    receiver:
+      type: identifier
+      value: Language
+    args: []
+    span:
+      start_byte: 4421
+      end_byte: 4427
+      start_line: 165
+      start_col: 30
+      end_line: 165
+      end_col: 36
+  - from: 26
+    kind: value_ref
+    path:
+      - LanguageFamily
+      - Rust
+    receiver: ~
+    args: []
+    span:
+      start_byte: 4447
+      end_byte: 4451
+      start_line: 165
+      start_col: 56
+      end_line: 165
+      end_col: 60
+  - from: 26
+    kind: value_ref
+    path:
+      - Language
+      - TypeScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 4485
+      end_byte: 4495
+      start_line: 166
+      start_col: 31
+      end_line: 166
+      end_col: 41
+  - from: 26
+    kind: value_ref
+    path:
+      - Language
+      - Tsx
+    receiver: ~
+    args: []
+    span:
+      start_byte: 4507
+      end_byte: 4510
+      start_line: 166
+      start_col: 53
+      end_line: 166
+      end_col: 56
+  - from: 26
+    kind: value_ref
+    path:
+      - Language
+      - JavaScript
+    receiver: ~
+    args: []
+    span:
+      start_byte: 4522
+      end_byte: 4532
+      start_line: 166
+      start_col: 68
+      end_line: 166
+      end_col: 78
+  - from: 26
+    kind: value_ref
+    path:
+      - Language
+      - Jsx
+    receiver: ~
+    args: []
+    span:
+      start_byte: 4544
+      end_byte: 4547
+      start_line: 166
+      start_col: 90
+      end_line: 166
+      end_col: 93
+  - from: 26
+    kind: macro_call
+    path:
+      - assert_eq
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - language
+            - family
+          args: []
+      - type: path
+        value:
+          - LanguageFamily
+          - Ts
+    span:
+      start_byte: 4557
+      end_byte: 4566
+      start_line: 167
+      start_col: 6
+      end_line: 167
+      end_col: 15
+  - from: 26
+    kind: method_call
+    path:
+      - language
+      - family
+    receiver:
+      type: expr
+      value: language
+    args: []
+    span:
+      start_byte: 4577
+      end_byte: 4583
+      start_line: 167
+      start_col: 26
+      end_line: 167
+      end_col: 32
+  - from: 26
+    kind: value_ref
+    path:
+      - LanguageFamily
+      - Ts
+    receiver: ~
+    args: []
+    span:
+      start_byte: 4603
+      end_byte: 4605
+      start_line: 167
+      start_col: 52
+      end_line: 167
+      end_col: 54
+  - from: 27
+    kind: value_ref
+    path:
+      - Language
+      - ALL
+    receiver: ~
+    args: []
+    span:
+      start_byte: 4703
+      end_byte: 4706
+      start_line: 173
+      start_col: 30
+      end_line: 173
+      end_col: 33
+  - from: 27
+    kind: macro_call
+    path:
+      - assert_eq
+    receiver: ~
+    args:
+      - type: other
+        value: "language.as_str().parse::<Language>().unwrap()"
+      - type: path
+        value:
+          - language
+    span:
+      start_byte: 4715
+      end_byte: 4724
+      start_line: 174
+      start_col: 6
+      end_line: 174
+      end_col: 15
+  - from: 27
+    kind: type_ref
+    path:
+      - Language
+    receiver: ~
+    args: []
+    span:
+      start_byte: 4752
+      end_byte: 4760
+      start_line: 174
+      start_col: 43
+      end_line: 174
+      end_col: 51
+  - from: 27
+    kind: method_call
+    path:
+      - language
+      - as_str
+    receiver:
+      type: expr
+      value: language
+    args: []
+    span:
+      start_byte: 4735
+      end_byte: 4741
+      start_line: 174
+      start_col: 26
+      end_line: 174
+      end_col: 32
+  - from: 27
+    kind: method_call
+    path:
+      - (language.as_str())
+      - parse
+    receiver:
+      type: expr
+      value: language.as_str()
+    args: []
+    span:
+      start_byte: 4744
+      end_byte: 4749
+      start_line: 174
+      start_col: 35
+      end_line: 174
+      end_col: 40
+  - from: 27
+    kind: method_call
+    path:
+      - "(language.as_str().parse::<Language>())"
+      - unwrap
+    receiver:
+      type: expr
+      value: "language.as_str().parse::<Language>()"
+    args: []
+    span:
+      start_byte: 4764
+      end_byte: 4770
+      start_line: 174
+      start_col: 55
+      end_line: 174
+      end_col: 61
+  - from: 27
+    kind: macro_call
+    path:
+      - assert_eq
+    receiver: ~
+    args:
+      - type: other
+        value: "serde_json::to_string(&language).unwrap()"
+      - type: call
+        value:
+          callee:
+            - format!
+          args:
+            - type: str
+              value: "\"{}\""
+            - type: call
+              value:
+                callee:
+                  - language
+                  - as_str
+                args: []
+    span:
+      start_byte: 4791
+      end_byte: 4800
+      start_line: 175
+      start_col: 6
+      end_line: 175
+      end_col: 15
+  - from: 27
+    kind: call
+    path:
+      - serde_json
+      - to_string
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - language
+    span:
+      start_byte: 4814
+      end_byte: 4823
+      start_line: 175
+      start_col: 29
+      end_line: 175
+      end_col: 38
+  - from: 27
+    kind: method_call
+    path:
+      - "(serde_json::to_string(&language))"
+      - unwrap
+    receiver:
+      type: expr
+      value: "serde_json::to_string(&language)"
+    args: []
+    span:
+      start_byte: 4835
+      end_byte: 4841
+      start_line: 175
+      start_col: 50
+      end_line: 175
+      end_col: 56
+  - from: 27
+    kind: macro_call
+    path:
+      - format
+    receiver: ~
+    args:
+      - type: str
+        value: "\"{}\""
+      - type: call
+        value:
+          callee:
+            - language
+            - as_str
+          args: []
+    span:
+      start_byte: 4845
+      end_byte: 4851
+      start_line: 175
+      start_col: 60
+      end_line: 175
+      end_col: 66
+  - from: 27
+    kind: method_call
+    path:
+      - language
+      - as_str
+    receiver:
+      type: expr
+      value: language
+    args: []
+    span:
+      start_byte: 4872
+      end_byte: 4878
+      start_line: 175
+      start_col: 87
+      end_line: 175
+      end_col: 93
+  - from: 27
+    kind: macro_call
+    path:
+      - assert_eq
+    receiver: ~
+    args:
+      - type: other
+        value: "\"ts\".parse::<LanguageFamily>().unwrap()"
+      - type: path
+        value:
+          - LanguageFamily
+          - Ts
+    span:
+      start_byte: 4894
+      end_byte: 4903
+      start_line: 177
+      start_col: 4
+      end_line: 177
+      end_col: 13
+  - from: 27
+    kind: type_ref
+    path:
+      - LanguageFamily
+    receiver: ~
+    args: []
+    span:
+      start_byte: 4918
+      end_byte: 4932
+      start_line: 177
+      start_col: 28
+      end_line: 177
+      end_col: 42
+  - from: 27
+    kind: method_call
+    path:
+      - "(\"ts\")"
+      - parse
+    receiver:
+      type: expr
+      value: "\"ts\""
+    args: []
+    span:
+      start_byte: 4910
+      end_byte: 4915
+      start_line: 177
+      start_col: 20
+      end_line: 177
+      end_col: 25
+  - from: 27
+    kind: method_call
+    path:
+      - "(\"ts\".parse::<LanguageFamily>())"
+      - unwrap
+    receiver:
+      type: expr
+      value: "\"ts\".parse::<LanguageFamily>()"
+    args: []
+    span:
+      start_byte: 4936
+      end_byte: 4942
+      start_line: 177
+      start_col: 46
+      end_line: 177
+      end_col: 52
+  - from: 27
+    kind: value_ref
+    path:
+      - LanguageFamily
+      - Ts
+    receiver: ~
+    args: []
+    span:
+      start_byte: 4962
+      end_byte: 4964
+      start_line: 177
+      start_col: 72
+      end_line: 177
+      end_col: 74
+  - from: 27
+    kind: macro_call
+    path:
+      - assert
+    receiver: ~
+    args:
+      - type: other
+        value: "\"python\".parse::<Language>().is_err()"
+    span:
+      start_byte: 4971
+      end_byte: 4977
+      start_line: 178
+      start_col: 4
+      end_line: 178
+      end_col: 10
+  - from: 27
+    kind: method_call
+    path:
+      - "(\"python\")"
+      - parse
+    receiver:
+      type: expr
+      value: "\"python\""
+    args: []
+    span:
+      start_byte: 4988
+      end_byte: 4993
+      start_line: 178
+      start_col: 21
+      end_line: 178
+      end_col: 26
+  - from: 27
+    kind: method_call
+    path:
+      - "(\"python\".parse::<Language>())"
+      - is_err
+    receiver:
+      type: expr
+      value: "\"python\".parse::<Language>()"
+    args: []
+    span:
+      start_byte: 5008
+      end_byte: 5014
+      start_line: 178
+      start_col: 41
+      end_line: 178
+      end_col: 47
+module_decls:
+  - name: tests
+    body:
+      type: inline
+      value: 23
+    path_attr: ~
+    module_suffix: []
+    visibility:
+      type: private
+    attributes:
+      - path:
+          - cfg
+        args:
+          - type: path
+            value:
+              - test
+        span:
+          start_byte: 3068
+          end_byte: 3080
+          start_line: 124
+          start_col: 0
+          end_line: 124
+          end_col: 12
+    span:
+      start_byte: 3068
+      end_byte: 5024
+      start_line: 124
+      start_col: 0
+      end_line: 180
+      end_col: 1
+diagnostics: []
+analyzer:
+  name: atlas-lang-rust
+  version: 1
+impls:
+  - self_type:
+      segments:
+        - Language
+      generic_args: ~
+    trait_ref: ~
+    generic_params: []
+    module_suffix: []
+    scope: ~
+    attributes: []
+    span:
+      start_byte: 654
+      end_byte: 2033
+      start_line: 31
+      start_col: 0
+      end_line: 75
+      end_col: 1
+  - self_type:
+      segments:
+        - Language
+      generic_args: ~
+    trait_ref:
+      segments:
+        - fmt
+        - Display
+      generic_args: ~
+    generic_params: []
+    module_suffix: []
+    scope: ~
+    attributes: []
+    span:
+      start_byte: 2035
+      end_byte: 2165
+      start_line: 77
+      start_col: 0
+      end_line: 81
+      end_col: 1
+  - self_type:
+      segments:
+        - Language
+      generic_args: ~
+    trait_ref:
+      segments:
+        - FromStr
+      generic_args: ~
+    generic_params: []
+    module_suffix: []
+    scope: ~
+    attributes: []
+    span:
+      start_byte: 2167
+      end_byte: 2455
+      start_line: 83
+      start_col: 0
+      end_line: 92
+      end_col: 1
+  - self_type:
+      segments:
+        - LanguageFamily
+      generic_args: ~
+    trait_ref: ~
+    generic_params: []
+    module_suffix: []
+    scope: ~
+    attributes: []
+    span:
+      start_byte: 2457
+      end_byte: 2599
+      start_line: 94
+      start_col: 0
+      end_line: 101
+      end_col: 1
+  - self_type:
+      segments:
+        - LanguageFamily
+      generic_args: ~
+    trait_ref:
+      segments:
+        - fmt
+        - Display
+      generic_args: ~
+    generic_params: []
+    module_suffix: []
+    scope: ~
+    attributes: []
+    span:
+      start_byte: 2601
+      end_byte: 2737
+      start_line: 103
+      start_col: 0
+      end_line: 107
+      end_col: 1
+  - self_type:
+      segments:
+        - LanguageFamily
+      generic_args: ~
+    trait_ref:
+      segments:
+        - FromStr
+      generic_args: ~
+    generic_params: []
+    module_suffix: []
+    scope: ~
+    attributes: []
+    span:
+      start_byte: 2739
+      end_byte: 3066
+      start_line: 109
+      start_col: 0
+      end_line: 122
+      end_col: 1

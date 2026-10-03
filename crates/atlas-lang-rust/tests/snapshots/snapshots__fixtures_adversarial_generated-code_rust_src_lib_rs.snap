@@ -1,0 +1,249 @@
+---
+source: crates/atlas-lang-rust/tests/snapshots.rs
+expression: facts
+---
+file:
+  repo: fixture
+  path: rust/src/lib.rs
+  language: rust
+  content_hash: c8e45a0ea72c9eb3a479cd1eb3368b22fc193373f38a10541053baa38f7415b1
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: capacity
+    module_suffix: []
+    item_path:
+      - capacity
+    span:
+      start_byte: 54
+      end_byte: 100
+      start_line: 3
+      start_col: 0
+      end_line: 5
+      end_col: 1
+    name_span:
+      start_byte: 61
+      end_byte: 69
+      start_line: 3
+      start_col: 7
+      end_line: 3
+      end_col: 15
+    signature: pub fn capacity() -> usize
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2270080799
+        - 3
+        - 1414422230
+      token_count: 5
+      line_count: 3
+  - local: 1
+    parent: ~
+    kind: function
+    name: label
+    module_suffix: []
+    item_path:
+      - label
+    span:
+      start_byte: 102
+      end_byte: 154
+      start_line: 7
+      start_col: 0
+      end_line: 9
+      end_col: 1
+    name_span:
+      start_byte: 109
+      end_byte: 114
+      start_line: 7
+      start_col: 7
+      end_line: 7
+      end_col: 12
+    signature: "pub fn label() -> &'static str"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2303636037
+        - 2286858418
+        - 1414422230
+      token_count: 5
+      line_count: 3
+  - local: 2
+    parent: ~
+    kind: function
+    name: handwritten
+    module_suffix: []
+    item_path:
+      - handwritten
+    span:
+      start_byte: 156
+      end_byte: 206
+      start_line: 11
+      start_col: 0
+      end_line: 13
+      end_col: 1
+    name_span:
+      start_byte: 163
+      end_byte: 174
+      start_line: 11
+      start_col: 7
+      end_line: 11
+      end_col: 18
+    signature: pub fn handwritten() -> usize
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2253303180
+        - 3
+        - 1414422230
+      token_count: 7
+      line_count: 3
+imports: []
+exports: []
+references:
+  - from: ~
+    kind: macro_call
+    path:
+      - include
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - concat!
+          args:
+            - type: call
+              value:
+                callee:
+                  - env!
+                args:
+                  - type: str
+                    value: OUT_DIR
+            - type: str
+              value: /constants.rs
+    span:
+      start_byte: 0
+      end_byte: 7
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 7
+  - from: ~
+    kind: macro_call
+    path:
+      - concat
+    receiver: ~
+    args:
+      - type: call
+        value:
+          callee:
+            - env!
+          args:
+            - type: str
+              value: OUT_DIR
+      - type: str
+        value: /constants.rs
+    span:
+      start_byte: 9
+      end_byte: 15
+      start_line: 1
+      start_col: 9
+      end_line: 1
+      end_col: 15
+  - from: ~
+    kind: macro_call
+    path:
+      - env
+    receiver: ~
+    args:
+      - type: str
+        value: OUT_DIR
+    span:
+      start_byte: 17
+      end_byte: 20
+      start_line: 1
+      start_col: 17
+      end_line: 1
+      end_col: 20
+  - from: 0
+    kind: value_ref
+    path:
+      - MAX_ITEMS
+    receiver: ~
+    args: []
+    span:
+      start_byte: 85
+      end_byte: 94
+      start_line: 4
+      start_col: 2
+      end_line: 4
+      end_col: 11
+  - from: 1
+    kind: call
+    path:
+      - default_label
+    receiver: ~
+    args: []
+    span:
+      start_byte: 137
+      end_byte: 150
+      start_line: 8
+      start_col: 2
+      end_line: 8
+      end_col: 15
+  - from: 2
+    kind: call
+    path:
+      - capacity
+    receiver: ~
+    args: []
+    span:
+      start_byte: 190
+      end_byte: 198
+      start_line: 12
+      start_col: 2
+      end_line: 12
+      end_col: 10
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-rust
+  version: 1

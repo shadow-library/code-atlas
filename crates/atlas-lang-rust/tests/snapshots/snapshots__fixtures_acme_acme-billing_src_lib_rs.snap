@@ -1,0 +1,792 @@
+---
+source: crates/atlas-lang-rust/tests/snapshots.rs
+expression: facts
+---
+file:
+  repo: fixture
+  path: src/lib.rs
+  language: rust
+  content_hash: db097d693236b38655f8d34512bdc65373303b9ab5e6fc3b8d7745f1e75b0170
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: module
+    name: acme_client
+    module_suffix:
+      - acme_client
+    item_path: []
+    span:
+      start_byte: 0
+      end_byte: 20
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 20
+    name_span:
+      start_byte: 8
+      end_byte: 19
+      start_line: 1
+      start_col: 8
+      end_line: 1
+      end_col: 19
+    signature: pub mod acme_client
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 1
+    parent: ~
+    kind: module
+    name: error
+    module_suffix:
+      - error
+    item_path: []
+    span:
+      start_byte: 21
+      end_byte: 35
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 14
+    name_span:
+      start_byte: 29
+      end_byte: 34
+      start_line: 2
+      start_col: 8
+      end_line: 2
+      end_col: 13
+    signature: pub mod error
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 2
+    parent: ~
+    kind: module
+    name: events
+    module_suffix:
+      - events
+    item_path: []
+    span:
+      start_byte: 36
+      end_byte: 51
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 15
+    name_span:
+      start_byte: 44
+      end_byte: 50
+      start_line: 3
+      start_col: 8
+      end_line: 3
+      end_col: 14
+    signature: pub mod events
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 3
+    parent: ~
+    kind: module
+    name: handlers
+    module_suffix:
+      - handlers
+    item_path: []
+    span:
+      start_byte: 52
+      end_byte: 69
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 17
+    name_span:
+      start_byte: 60
+      end_byte: 68
+      start_line: 4
+      start_col: 8
+      end_line: 4
+      end_col: 16
+    signature: pub mod handlers
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 4
+    parent: ~
+    kind: module
+    name: money
+    module_suffix:
+      - money
+    item_path: []
+    span:
+      start_byte: 70
+      end_byte: 84
+      start_line: 5
+      start_col: 0
+      end_line: 5
+      end_col: 14
+    name_span:
+      start_byte: 78
+      end_byte: 83
+      start_line: 5
+      start_col: 8
+      end_line: 5
+      end_col: 13
+    signature: pub mod money
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 5
+    parent: ~
+    kind: module
+    name: store
+    module_suffix:
+      - store
+    item_path: []
+    span:
+      start_byte: 85
+      end_byte: 99
+      start_line: 6
+      start_col: 0
+      end_line: 6
+      end_col: 14
+    name_span:
+      start_byte: 93
+      end_byte: 98
+      start_line: 6
+      start_col: 8
+      end_line: 6
+      end_col: 13
+    signature: pub mod store
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 6
+    parent: ~
+    kind: struct
+    name: AppState
+    module_suffix: []
+    item_path:
+      - AppState
+    span:
+      start_byte: 296
+      end_byte: 399
+      start_line: 19
+      start_col: 0
+      end_line: 23
+      end_col: 1
+    name_span:
+      start_byte: 324
+      end_byte: 332
+      start_line: 20
+      start_col: 11
+      end_line: 20
+      end_col: 19
+    signature: pub struct AppState
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes:
+      - path:
+          - derive
+        args:
+          - type: path
+            value:
+              - Clone
+        span:
+          start_byte: 296
+          end_byte: 312
+          start_line: 19
+          start_col: 0
+          end_line: 19
+          end_col: 16
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 7
+    parent: 6
+    kind: field
+    name: store
+    module_suffix: []
+    item_path:
+      - AppState
+      - store
+    span:
+      start_byte: 337
+      end_byte: 369
+      start_line: 21
+      start_col: 2
+      end_line: 21
+      end_col: 34
+    name_span:
+      start_byte: 341
+      end_byte: 346
+      start_line: 21
+      start_col: 6
+      end_line: 21
+      end_col: 11
+    signature: "pub store: Arc<dyn InvoiceStore>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 8
+    parent: 6
+    kind: field
+    name: acme
+    module_suffix: []
+    item_path:
+      - AppState
+      - acme
+    span:
+      start_byte: 373
+      end_byte: 396
+      start_line: 22
+      start_col: 2
+      end_line: 22
+      end_col: 25
+    name_span:
+      start_byte: 377
+      end_byte: 381
+      start_line: 22
+      start_col: 6
+      end_line: 22
+      end_col: 10
+    signature: "pub acme: AcmeApiClient"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body: ~
+  - local: 9
+    parent: ~
+    kind: function
+    name: router
+    module_suffix: []
+    item_path:
+      - router
+    span:
+      start_byte: 401
+      end_byte: 562
+      start_line: 25
+      start_col: 0
+      end_line: 27
+      end_col: 1
+    name_span:
+      start_byte: 408
+      end_byte: 414
+      start_line: 25
+      start_col: 7
+      end_line: 25
+      end_col: 13
+    signature: "pub fn router(state: AppState) -> Router"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: state
+        type_text: AppState
+        attributes: []
+        span:
+          start_byte: 415
+          end_byte: 430
+          start_line: 25
+          start_col: 14
+          end_line: 25
+          end_col: 29
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2785382447
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2202970323
+        - 1
+      token_count: 32
+      line_count: 3
+imports:
+  - type: rust_use
+    paths:
+      - segments:
+          - std
+          - sync
+          - Arc
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 101
+      end_byte: 120
+      start_line: 8
+      start_col: 0
+      end_line: 8
+      end_col: 19
+  - type: rust_use
+    paths:
+      - segments:
+          - axum
+          - routing
+          - get
+        binding:
+          type: name
+      - segments:
+          - axum
+          - routing
+          - post
+        binding:
+          type: name
+      - segments:
+          - axum
+          - Router
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 122
+      end_byte: 170
+      start_line: 10
+      start_col: 0
+      end_line: 13
+      end_col: 2
+  - type: rust_use
+    paths:
+      - segments:
+          - crate
+          - acme_client
+          - AcmeApiClient
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 172
+      end_byte: 210
+      start_line: 15
+      start_col: 0
+      end_line: 15
+      end_col: 38
+  - type: rust_use
+    paths:
+      - segments:
+          - crate
+          - handlers
+          - create_invoice
+        binding:
+          type: name
+      - segments:
+          - crate
+          - handlers
+          - get_invoice
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 211
+      end_byte: 262
+      start_line: 16
+      start_col: 0
+      end_line: 16
+      end_col: 51
+  - type: rust_use
+    paths:
+      - segments:
+          - crate
+          - store
+          - InvoiceStore
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 263
+      end_byte: 294
+      start_line: 17
+      start_col: 0
+      end_line: 17
+      end_col: 31
+exports: []
+references:
+  - from: 7
+    kind: type_ref
+    path:
+      - Arc
+    receiver: ~
+    args: []
+    span:
+      start_byte: 348
+      end_byte: 351
+      start_line: 21
+      start_col: 13
+      end_line: 21
+      end_col: 16
+  - from: 7
+    kind: type_ref
+    path:
+      - InvoiceStore
+    receiver: ~
+    args: []
+    span:
+      start_byte: 356
+      end_byte: 368
+      start_line: 21
+      start_col: 21
+      end_line: 21
+      end_col: 33
+  - from: 8
+    kind: type_ref
+    path:
+      - AcmeApiClient
+    receiver: ~
+    args: []
+    span:
+      start_byte: 383
+      end_byte: 396
+      start_line: 22
+      start_col: 12
+      end_line: 22
+      end_col: 25
+  - from: 9
+    kind: type_ref
+    path:
+      - AppState
+    receiver: ~
+    args: []
+    span:
+      start_byte: 422
+      end_byte: 430
+      start_line: 25
+      start_col: 21
+      end_line: 25
+      end_col: 29
+  - from: 9
+    kind: type_ref
+    path:
+      - Router
+    receiver: ~
+    args: []
+    span:
+      start_byte: 435
+      end_byte: 441
+      start_line: 25
+      start_col: 34
+      end_line: 25
+      end_col: 40
+  - from: 9
+    kind: call
+    path:
+      - Router
+      - new
+    receiver: ~
+    args: []
+    span:
+      start_byte: 454
+      end_byte: 457
+      start_line: 26
+      start_col: 10
+      end_line: 26
+      end_col: 13
+  - from: 9
+    kind: method_call
+    path:
+      - "(Router::new())"
+      - route
+    receiver:
+      type: expr
+      value: "Router::new()"
+    args:
+      - type: str
+        value: /invoices
+      - type: call
+        value:
+          callee:
+            - post
+          args:
+            - type: path
+              value:
+                - create_invoice
+    span:
+      start_byte: 460
+      end_byte: 465
+      start_line: 26
+      start_col: 16
+      end_line: 26
+      end_col: 21
+  - from: 9
+    kind: call
+    path:
+      - post
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - create_invoice
+    span:
+      start_byte: 479
+      end_byte: 483
+      start_line: 26
+      start_col: 35
+      end_line: 26
+      end_col: 39
+  - from: 9
+    kind: value_ref
+    path:
+      - create_invoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 484
+      end_byte: 498
+      start_line: 26
+      start_col: 40
+      end_line: 26
+      end_col: 54
+  - from: 9
+    kind: method_call
+    path:
+      - "(Router::new().route(\"/invoices\", post(create_invoice)))"
+      - route
+    receiver:
+      type: expr
+      value: "Router::new().route(\"/invoices\", post(create_invoice))"
+    args:
+      - type: str
+        value: "/invoices/{id}"
+      - type: call
+        value:
+          callee:
+            - get
+          args:
+            - type: path
+              value:
+                - get_invoice
+    span:
+      start_byte: 501
+      end_byte: 506
+      start_line: 26
+      start_col: 57
+      end_line: 26
+      end_col: 62
+  - from: 9
+    kind: call
+    path:
+      - get
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - get_invoice
+    span:
+      start_byte: 525
+      end_byte: 528
+      start_line: 26
+      start_col: 81
+      end_line: 26
+      end_col: 84
+  - from: 9
+    kind: value_ref
+    path:
+      - get_invoice
+    receiver: ~
+    args: []
+    span:
+      start_byte: 529
+      end_byte: 540
+      start_line: 26
+      start_col: 85
+      end_line: 26
+      end_col: 96
+  - from: 9
+    kind: method_call
+    path:
+      - "(Router::new().route(\"/invoices\", post(create_invoice)).route(\"/invoices/{id}\", get(get_invoice)))"
+      - with_state
+    receiver:
+      type: expr
+      value: "Router::new().route(\"/invoices\", post(create_invoice)).route(\"/invoices/{id}\", get(get_invoice))"
+    args:
+      - type: path
+        value:
+          - state
+    span:
+      start_byte: 543
+      end_byte: 553
+      start_line: 26
+      start_col: 99
+      end_line: 26
+      end_col: 109
+module_decls:
+  - name: acme_client
+    body:
+      type: external
+    path_attr: ~
+    module_suffix: []
+    visibility:
+      type: public
+    attributes: []
+    span:
+      start_byte: 0
+      end_byte: 20
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 20
+  - name: error
+    body:
+      type: external
+    path_attr: ~
+    module_suffix: []
+    visibility:
+      type: public
+    attributes: []
+    span:
+      start_byte: 21
+      end_byte: 35
+      start_line: 2
+      start_col: 0
+      end_line: 2
+      end_col: 14
+  - name: events
+    body:
+      type: external
+    path_attr: ~
+    module_suffix: []
+    visibility:
+      type: public
+    attributes: []
+    span:
+      start_byte: 36
+      end_byte: 51
+      start_line: 3
+      start_col: 0
+      end_line: 3
+      end_col: 15
+  - name: handlers
+    body:
+      type: external
+    path_attr: ~
+    module_suffix: []
+    visibility:
+      type: public
+    attributes: []
+    span:
+      start_byte: 52
+      end_byte: 69
+      start_line: 4
+      start_col: 0
+      end_line: 4
+      end_col: 17
+  - name: money
+    body:
+      type: external
+    path_attr: ~
+    module_suffix: []
+    visibility:
+      type: public
+    attributes: []
+    span:
+      start_byte: 70
+      end_byte: 84
+      start_line: 5
+      start_col: 0
+      end_line: 5
+      end_col: 14
+  - name: store
+    body:
+      type: external
+    path_attr: ~
+    module_suffix: []
+    visibility:
+      type: public
+    attributes: []
+    span:
+      start_byte: 85
+      end_byte: 99
+      start_line: 6
+      start_col: 0
+      end_line: 6
+      end_col: 14
+diagnostics: []
+analyzer:
+  name: atlas-lang-rust
+  version: 1

@@ -1,0 +1,137 @@
+---
+source: crates/atlas-lang-rust/tests/snapshots.rs
+expression: facts
+---
+file:
+  repo: fixture
+  path: src/b.rs
+  language: rust
+  content_hash: 766576d47f98ee5ca6ed4360d7067d68836839ea44cc7d4ca34aa830f690b5dd
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: parse
+    module_suffix: []
+    item_path:
+      - parse
+    span:
+      start_byte: 0
+      end_byte: 72
+      start_line: 1
+      start_col: 0
+      end_line: 3
+      end_col: 1
+    name_span:
+      start_byte: 7
+      end_byte: 12
+      start_line: 1
+      start_col: 7
+      end_line: 1
+      end_col: 12
+    signature: "pub fn parse(input: &str) -> Option<i64>"
+    doc: ~
+    visibility:
+      type: public
+    modifiers: []
+    attributes: []
+    params:
+      - name: input
+        type_text: "&str"
+        attributes: []
+        span:
+          start_byte: 13
+          end_byte: 24
+          start_line: 1
+          start_col: 13
+          end_line: 1
+          end_col: 24
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 1
+        - 2202970323
+        - 1
+        - 2303636037
+        - 2286858418
+        - 2202970323
+        - 1
+      token_count: 15
+      line_count: 3
+imports: []
+exports: []
+references:
+  - from: 0
+    kind: type_ref
+    path:
+      - Option
+    receiver: ~
+    args: []
+    span:
+      start_byte: 29
+      end_byte: 35
+      start_line: 1
+      start_col: 29
+      end_line: 1
+      end_col: 35
+  - from: 0
+    kind: method_call
+    path:
+      - input
+      - trim
+    receiver:
+      type: type_hint
+      value:
+        - str
+    args: []
+    span:
+      start_byte: 51
+      end_byte: 55
+      start_line: 2
+      start_col: 8
+      end_line: 2
+      end_col: 12
+  - from: 0
+    kind: method_call
+    path:
+      - (input.trim())
+      - parse
+    receiver:
+      type: expr
+      value: input.trim()
+    args: []
+    span:
+      start_byte: 58
+      end_byte: 63
+      start_line: 2
+      start_col: 15
+      end_line: 2
+      end_col: 20
+  - from: 0
+    kind: method_call
+    path:
+      - (input.trim().parse())
+      - ok
+    receiver:
+      type: expr
+      value: input.trim().parse()
+    args: []
+    span:
+      start_byte: 66
+      end_byte: 68
+      start_line: 2
+      start_col: 23
+      end_line: 2
+      end_col: 25
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-rust
+  version: 1

@@ -1,0 +1,214 @@
+---
+source: crates/atlas-lang-rust/tests/snapshots.rs
+expression: facts
+---
+file:
+  repo: fixture
+  path: rust/build.rs
+  language: rust
+  content_hash: ad95a18075d209773fff1b087eb0f395ea744ca79bb28a8328e8f72e5fa2dc8f
+  is_declaration_file: false
+parse_status:
+  status: ok
+symbols:
+  - local: 0
+    parent: ~
+    kind: function
+    name: main
+    module_suffix: []
+    item_path:
+      - main
+    span:
+      start_byte: 33
+      end_byte: 365
+      start_line: 3
+      start_col: 0
+      end_line: 8
+      end_col: 1
+    name_span:
+      start_byte: 36
+      end_byte: 40
+      start_line: 3
+      start_col: 3
+      end_line: 3
+      end_col: 7
+    signature: fn main()
+    doc: ~
+    visibility:
+      type: private
+    modifiers: []
+    attributes: []
+    params: []
+    test: ~
+    impl_of: ~
+    extends: []
+    implements: []
+    body:
+      normalized_tokens:
+        - 1447977468
+        - 245158099
+        - 1
+        - 2488189846
+        - 1
+        - 2785382447
+        - 1
+        - 2303636037
+      token_count: 53
+      line_count: 6
+imports:
+  - type: rust_use
+    paths:
+      - segments:
+          - std
+          - env
+        binding:
+          type: name
+      - segments:
+          - std
+          - fs
+        binding:
+          type: name
+      - segments:
+          - std
+          - path
+          - Path
+        binding:
+          type: name
+    visibility:
+      type: private
+    scope: ~
+    span:
+      start_byte: 0
+      end_byte: 31
+      start_line: 1
+      start_col: 0
+      end_line: 1
+      end_col: 31
+exports: []
+references:
+  - from: 0
+    kind: call
+    path:
+      - env
+      - var
+    receiver: ~
+    args:
+      - type: str
+        value: OUT_DIR
+    span:
+      start_byte: 66
+      end_byte: 69
+      start_line: 4
+      start_col: 21
+      end_line: 4
+      end_col: 24
+  - from: 0
+    kind: method_call
+    path:
+      - "(env::var(\"OUT_DIR\"))"
+      - expect
+    receiver:
+      type: expr
+      value: "env::var(\"OUT_DIR\")"
+    args:
+      - type: str
+        value: OUT_DIR is set by cargo
+    span:
+      start_byte: 81
+      end_byte: 87
+      start_line: 4
+      start_col: 36
+      end_line: 4
+      end_col: 42
+  - from: 0
+    kind: call
+    path:
+      - Path
+      - new
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - out_dir
+    span:
+      start_byte: 137
+      end_byte: 140
+      start_line: 5
+      start_col: 21
+      end_line: 5
+      end_col: 24
+  - from: 0
+    kind: method_call
+    path:
+      - "(Path::new(&out_dir))"
+      - join
+    receiver:
+      type: expr
+      value: "Path::new(&out_dir)"
+    args:
+      - type: str
+        value: constants.rs
+    span:
+      start_byte: 151
+      end_byte: 155
+      start_line: 5
+      start_col: 35
+      end_line: 5
+      end_col: 39
+  - from: 0
+    kind: call
+    path:
+      - fs
+      - write
+    receiver: ~
+    args:
+      - type: path
+        value:
+          - target
+      - type: str
+        value: "pub const MAX_ITEMS: usize = 128;\npub fn default_label() -> &'static str { \"generated\" }\n"
+    span:
+      start_byte: 179
+      end_byte: 184
+      start_line: 6
+      start_col: 6
+      end_line: 6
+      end_col: 11
+  - from: 0
+    kind: method_call
+    path:
+      - "(fs::write(target, \"pub const MAX_ITEMS: usize = 128;\\npub fn default_label() -> &'static str { \\\"generated\\\" }\\n\"))"
+      - expect
+    receiver:
+      type: expr
+      value: "fs::write(target, \"pub const MAX_ITEMS: usize = 128;\\npub fn default_label() -> &'static str { \\\"generated\\\" }\\n\")"
+    args:
+      - type: str
+        value: write constants
+    span:
+      start_byte: 290
+      end_byte: 296
+      start_line: 6
+      start_col: 117
+      end_line: 6
+      end_col: 123
+  - from: 0
+    kind: macro_call
+    path:
+      - println
+    receiver: ~
+    args:
+      - type: str
+        value: "cargo:rerun-if-changed=build.rs"
+    span:
+      start_byte: 319
+      end_byte: 326
+      start_line: 7
+      start_col: 2
+      end_line: 7
+      end_col: 9
+module_decls: []
+diagnostics: []
+analyzer:
+  name: atlas-lang-rust
+  version: 1
