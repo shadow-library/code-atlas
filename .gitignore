@@ -1,0 +1,4 @@
+scratch-pad/
+.worktrees/
+/target/
+**/target/
