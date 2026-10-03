@@ -65,6 +65,7 @@ pub struct DetectInput<'a> {
 pub enum NodeRef {
   Local(LocalSymbolId),
   Key(EntityKey),
+  Unresolved { path: Vec<String>, from: Option<LocalSymbolId> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -282,6 +283,19 @@ mod tests {
     assert!(Detection::default().is_empty());
     let json = serde_json::to_string(&detection).unwrap();
     assert_eq!(serde_json::from_str::<Detection>(&json).unwrap(), detection);
+  }
+
+  #[test]
+  fn should_serialise_unresolved_node_refs_as_tagged_paths() {
+    let node = NodeRef::Unresolved {
+      path: vec!["JwtAuthGuard".into()],
+      from: Some(LocalSymbolId(3)),
+    };
+    let json = serde_json::to_value(&node).unwrap();
+    assert_eq!(json, serde_json::json!({ "type": "unresolved", "value": { "path": ["JwtAuthGuard"], "from": 3 } }));
+    assert_eq!(serde_json::from_value::<NodeRef>(json).unwrap(), node);
+    let local = serde_json::to_value(NodeRef::Local(LocalSymbolId(1))).unwrap();
+    assert_eq!(local, serde_json::json!({ "type": "local", "value": 1 }));
   }
 
   #[test]

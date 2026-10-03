@@ -140,6 +140,9 @@ kind_enum!(EdgeKind, "edge kind", {
   RenamedFrom => "renamed_from",
   PartOfApp => "part_of_app",
   MapsToTable => "maps_to_table",
+  MakesRequest => "makes_request",
+  ImplementsAuth => "implements_auth",
+  RequiresGuard => "requires_guard",
 });
 
 impl EntityKind {
@@ -214,6 +217,9 @@ impl EdgeKind {
       Self::RenamedFrom => "renamed to",
       Self::PartOfApp => "has part",
       Self::MapsToTable => "table mapped by",
+      Self::MakesRequest => "request made by",
+      Self::ImplementsAuth => "auth implemented by",
+      Self::RequiresGuard => "guard required by",
       Self::Custom(name) => return Cow::Owned(format!("{} (reverse)", name.replace('_', " "))),
     };
     Cow::Borrowed(label)
@@ -240,9 +246,13 @@ mod tests {
       assert_eq!(kind.as_str().parse::<EdgeKind>().unwrap(), *kind);
       assert_eq!(serde_json::from_str::<EdgeKind>(&serde_json::to_string(kind).unwrap()).unwrap(), *kind);
     }
-    assert_eq!(EdgeKind::BUILTIN.len(), 30);
+    assert_eq!(EdgeKind::BUILTIN.len(), 33);
     assert_eq!(EdgeKind::MapsToTable.as_str(), "maps_to_table");
     assert_eq!(EdgeKind::MapsToTable.forward_label(), "maps to table");
+    assert_eq!(EdgeKind::MakesRequest.as_str(), "makes_request");
+    assert_eq!(EdgeKind::ImplementsAuth.as_str(), "implements_auth");
+    assert_eq!(EdgeKind::RequiresGuard.as_str(), "requires_guard");
+    assert_eq!(EdgeKind::RequiresGuard.reverse_label(), "guard required by");
   }
 
   #[test]
