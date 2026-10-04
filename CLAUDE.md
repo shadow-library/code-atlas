@@ -65,3 +65,44 @@ The plan lives in `docs/plan/implementation-plan.md`.
 ```
 ./scripts/check.sh   # fmt --check, clippy -D warnings, test --workspace
 ```
+
+## Engine contracts (`atlas-engine`)
+
+### Freshness
+
+- `Engine::ensure_fresh()` is the barrier every query runs first. It stat-scans every repo and runs an incremental update when anything changed. With a healthy watcher it skips the scan only if no event arrived since the last scan and that scan is younger than `full_scan_interval` (60 s). Events mark the watcher dirty inside the notify callback. A watcher error, overflow or rescan event forces the next barrier to scan, and a dead worker or channel makes every barrier scan. Residual risk: an edit whose event has not been delivered yet.
+- The barrier returns `FreshnessReport::Fresh(header)` or `Degraded { failed_files, reason }`, and queries must surface `Degraded`. It is degraded in these cases:
+  - the update failed (store error, lock timeout, a panic inside the update);
+  - a file could not be read or analysed during this update;
+  - a project pass failed or panicked (the run is `partial`);
+  - a repo root is unavailable;
+  - another engine adopted a different project configuration.
+
+  Facts of failed or removed files are deleted, never kept stale. `header.files_failed_analysis` keeps counting files that failed in earlier runs.
+- Scans pass the start time of the scan that produced the stored stamps as `previous_scan_ns` (persisted per repo in the `engine:meta` blob); an unknown time hashes everything.
+- Concurrency:
+  - Barriers in one process serialize on the engine mutex; the waiter re-scans (usually a no-op).
+  - Across processes, `<db>.index.lock` is held for a whole run, and the store write lock only per persist batch. After taking the index lock, the engine always re-reads the persisted generation (the last finished run in `engine:meta`). If it moved, the engine reloads its state and re-plans from a fresh scan.
+  - The `engine:dirty` blob exists while a run is in flight. A barrier that sees it waits for the index lock. A dirty marker found while holding the lock means a crashed run: the engine reloads (ignoring the persisted similarity index), marks the orphaned `barrier`/`index` runs `failed`, recomputes SCIP lag, and the next run re-resolves every file. If dependency rounds do not converge, the run stays `partial` and keeps the dirty marker, so the next run re-resolves everything.
+- Project configuration: `engine:project` holds a fingerprint of the repos (name, path, include/exclude, languages) and `max_file_bytes`. `Engine::open` and `Engine::reload_project` adopt their configuration. Any other engine whose fingerprint differs reports `Degraded("project configuration changed; reopen the engine")` and neither purges nor indexes. Long-lived servers must call `reload_project` when the registry changes. Always open an engine with the full registry `Project`: opening with a subset adopts it and purges every other repo. The transaction that begins a run records the configured repos in `engine:repos` before any file owner is written. On the next run, repos from `engine:repos`, Repository entities and meta that are absent from the adopted configuration are purged, even when the previous run crashed. Stale entries are cleared only after a run finishes.
+- SCIP and LLM enrichment never run inside the barrier. Every file owner written by a run, whether its content changed or it was only re-resolved, loses its `scip:` owner. If SCIP has ever run, it is added to `engine:scip.lagging` in the same transaction, and `header.scip` reports the lag.
+- The similarity index is updated in memory every run and persisted on `Engine` drop, after `similarity_persist_idle` in the watcher, or via `persist_similarity()`. Long-lived processes, the MCP server in particular, must call `persist_similarity()` on SIGTERM/SIGINT, because signals skip drops. The blob is stamped with its generation; a stale or missing blob is rebuilt from the artifacts at open.
+- `Engine::scip` syncs the generation before planning. It ingests a file only when the stored artifact, the hash the indexer was given and the disk agree; any other file stays lagging. Before writing `scip:` owners under the index lock, it re-checks the hash in the files table.
+
+### Incremental ≡ full
+
+- A file owner's facts are a pure function of its persisted artifact (`artifact:<repo>:<path>` blob: `FileFacts`, detector outputs, package context, generated flag), the symbol table, and the set of entities asserted by file owners. Never put run ids, timings or absolute paths into file- or pass-owned facts.
+- The re-resolve set is the changed files, plus resolver relocations and `affected_files`, plus files whose detector `Key` targets appeared or disappeared, plus the safety nets `owners_referencing` (collected ids) and `unresolved_by_names` (created symbols). Any package-graph change re-resolves every file of the project.
+- A detector `Key` target exists only if a file owner (including manifest owners) asserts it. Entities owned by project passes or SCIP never keep a detector edge alive.
+- `renamed_from` edges (owner `Project { pass: "lineage" }`) are history and cannot be derived from the tree; digest comparisons import that owner first.
+  - Identical bodies need at least 12 tokens. Across files that are not renamed, they need 30.
+  - Bodies under 30 tokens whose names share no meaningful token are capped at confidence 0.6.
+  - Inferred facts migrate only for lineage with confidence ≥ 0.85.
+- `tests/incremental_equivalence.rs` and `tests/regressions.rs` (seeded random edit sequences and batches against a fresh full index) must keep passing.
+
+### `ProjectPass` (for `atlas-link` and later passes)
+
+- `trait ProjectPass { fn name(&self) -> &'static str; fn run(&self, tx: &ReadTx<'_>, context: &PassContext<'_>) -> Result<PassOutput, PassError>; }`, with `PassOutput { entities, edges }`. Register passes through `EngineOptions::passes`; every engine that opens a database must register the same passes.
+- Passes run on every index run, after all file and manifest owners are committed: `structure` first, then the registered passes in order. Each output replaces the owner `Project { pass: name }` wholesale.
+- A pass must be a deterministic function of file-owned facts, `PassContext` (project, package graphs, manifest hashes) and earlier passes. It must not read its own previous output or the `lineage` and `scip:*` owners.
+- An error or panic in a pass removes its facts and makes the run partial. The names `repos`, `structure`, `lineage` and the prefix `scip:` are reserved, and `Engine::open` rejects them and duplicate names.
