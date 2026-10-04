@@ -88,3 +88,4 @@ Project-wide Rust and TypeScript name, module and import resolution. It turns pe
 - Impl-level generic bounds are not available (`ImplFact.generic_params` has names only), so those generics are unknown receivers.
 - When a deref wrapper's inner type lacks a method, the method is attributed to `std`.
 - Methods of derived std or serde traits, and blanket std methods, on project types are `External`.
+- A path call or value (`T::m()`, `<T as Trait>::m`, `T::CONST`, TS `Class.m`) whose method is external, unresolved or ambiguous still emits a `references` edge from the caller to `T`, with the type segment's certainty and the call's span, when `T` is a project struct, enum, trait, alias or class (TS: class or enum). Resolved project methods emit no extra edge. `Self`, generic params and `crate`/`self`/`super` heads never get one, and `MacroTokenScan` refs cap it at `macro-token-scan`.

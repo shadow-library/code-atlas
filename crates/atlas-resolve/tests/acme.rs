@@ -258,3 +258,17 @@ fn should_classify_every_reference_exactly_once() {
     );
   }
 }
+
+#[test]
+fn should_link_billing_tests_to_the_in_memory_store_through_its_derived_default() {
+  let project = acme();
+  let store = billing(&["store"], &["InMemoryInvoiceStore"], EntityKind::Struct);
+  let from_tests: Vec<_> = project
+    .result("acme-billing", "tests/invoices.rs")
+    .edges
+    .iter()
+    .filter(|edge| edge.kind == EdgeKind::References && edge.to == store)
+    .collect();
+  assert_eq!(from_tests.len(), 2);
+  assert!(from_tests.iter().all(|edge| edge.certainty.class() == CertaintyClass::Resolved));
+}

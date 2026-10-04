@@ -266,6 +266,26 @@ impl Resolver<'_> {
     Outcome::from_lookup(self.ts_static_path(self.file, from, path, ns, &mut Guard::default()))
   }
 
+  pub(crate) fn ts_type_anchor(&self, reference: &ReferenceFact) -> Option<Hit> {
+    let (_, chain) = reference.path.split_last()?;
+    let head = chain.first()?;
+    if matches!(head.as_str(), "this" | "super") {
+      return None;
+    }
+    match &reference.receiver {
+      None => {}
+      Some(ReceiverHint::Identifier(name)) if name == head => {}
+      Some(_) => return None,
+    }
+    let from = reference.from.map(|local| local.0);
+    if chain.len() == 1 && self.ts_is_type_param(self.file, from, head) {
+      return None;
+    }
+    let hit = self.ts_static_path(self.file, from, chain, TsNs::Value, &mut Guard::default()).ok()?;
+    let symbol = hit.symbol()?;
+    matches!(self.sym_kind(symbol), Some(EntityKind::Class | EntityKind::Enum)).then_some(hit)
+  }
+
   fn ts_is_type_param(&self, file: FileIdx, from: Option<u32>, name: &str) -> bool {
     let (Some(surface), Some(from)) = (self.table.file(file), from) else { return false };
     surface

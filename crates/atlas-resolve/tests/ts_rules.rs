@@ -291,3 +291,30 @@ fn should_resolve_in_project_packages_through_exports_and_dist_to_src() {
   );
   assert_eq!(built.certainty, Certainty::heuristic(Confidence::new(0.85).unwrap(), "dist-to-src"));
 }
+
+#[test]
+fn should_keep_the_class_edge_when_a_static_comes_from_an_external_base() {
+  let synthetic = single(
+    "app",
+    &[
+      ("package.json", PACKAGE),
+      (
+        "src/main.ts",
+        r#"import { Base } from 'lib';
+export class Model extends Base {
+  static own() {}
+}
+export function useExternal() { Model.table; Model.find(); }
+export function useOwn() { Model.own(); }
+export function useGeneric<Model>() { Model.thing; }
+"#,
+      ),
+    ],
+  );
+  let project = &synthetic.project;
+  let model = app(&["src", "main"], &["Model"], EntityKind::Class);
+  let external = app(&["src", "main"], &["useExternal"], EntityKind::Function);
+  project.assert_edge(EdgeKind::References, external, model, RESOLVED);
+  project.assert_no_edge(EdgeKind::References, app(&["src", "main"], &["useOwn"], EntityKind::Function), model);
+  project.assert_no_edge(EdgeKind::References, app(&["src", "main"], &["useGeneric"], EntityKind::Function), model);
+}

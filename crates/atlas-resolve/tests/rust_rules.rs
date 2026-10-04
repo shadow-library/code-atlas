@@ -298,3 +298,85 @@ fn should_refuse_to_resolve_against_a_stale_table_or_file() {
     })
   );
 }
+
+fn type_anchor_project() -> common::Synthetic {
+  let manifest = manifest("demo", "");
+  single(
+    "demo",
+    &[
+      ("Cargo.toml", &manifest),
+      (
+        "src/lib.rs",
+        r#"pub mod store;
+pub struct Foo;
+pub struct T;
+pub struct Config;
+pub trait Shape { fn area(&self) -> u32; }
+
+pub fn uses_derived() { store::InMemory::default(); }
+pub fn uses_std_trait() { Config::from_str("x"); }
+pub fn uses_turbofish() { Vec::<Foo>::new(); }
+pub fn uses_generic<T: Default>() { T::default(); }
+pub fn uses_qualified() { <Config as Default>::default(); }
+pub fn uses_project_method() { store::InMemory::make(); }
+pub fn uses_const() { Config::LIMIT; }
+pub fn uses_trait_external() { Shape::describe(); }
+"#,
+      ),
+      (
+        "src/store.rs",
+        "#[derive(Default)]\npub struct InMemory;\nimpl InMemory {\n  pub fn make() -> Self { InMemory }\n}\n",
+      ),
+    ],
+  )
+}
+
+#[test]
+fn should_keep_the_type_edge_when_a_derived_method_is_external() {
+  let synthetic = type_anchor_project();
+  let project = &synthetic.project;
+  let caller = item(&[], &["uses_derived"], EntityKind::Function);
+  project.assert_edge(EdgeKind::References, caller, item(&["store"], &["InMemory"], EntityKind::Struct), RESOLVED);
+  project.assert_unresolved(caller, "default", &UnresolvedReason::External { package: "std".to_owned() });
+}
+
+#[test]
+fn should_keep_the_type_edge_when_a_std_trait_method_is_not_a_project_method() {
+  let synthetic = type_anchor_project();
+  let project = &synthetic.project;
+  let caller = item(&[], &["uses_std_trait"], EntityKind::Function);
+  project.assert_edge(EdgeKind::References, caller, item(&[], &["Config"], EntityKind::Struct), RESOLVED);
+  assert_eq!(project.unresolved_named(caller, "from_str").len(), 1);
+}
+
+#[test]
+fn should_keep_the_type_edge_for_qualified_paths_and_associated_items() {
+  let synthetic = type_anchor_project();
+  let project = &synthetic.project;
+  let config = item(&[], &["Config"], EntityKind::Struct);
+  project.assert_edge(EdgeKind::References, item(&[], &["uses_qualified"], EntityKind::Function), config, RESOLVED);
+  project.assert_edge(EdgeKind::References, item(&[], &["uses_const"], EntityKind::Function), config, RESOLVED);
+  project.assert_edge(
+    EdgeKind::References,
+    item(&[], &["uses_trait_external"], EntityKind::Function),
+    item(&[], &["Shape"], EntityKind::Trait),
+    RESOLVED,
+  );
+}
+
+#[test]
+fn should_not_add_a_type_edge_for_project_methods_turbofish_or_generic_params() {
+  let synthetic = type_anchor_project();
+  let project = &synthetic.project;
+  let in_memory = item(&["store"], &["InMemory"], EntityKind::Struct);
+  let make = item(&["store"], &["InMemory", "make"], EntityKind::Method);
+  let caller = item(&[], &["uses_project_method"], EntityKind::Function);
+  project.assert_edge(EdgeKind::Calls, caller, make, RESOLVED);
+  project.assert_no_edge(EdgeKind::References, caller, in_memory);
+  let foo = item(&[], &["Foo"], EntityKind::Struct);
+  let turbofish = item(&[], &["uses_turbofish"], EntityKind::Function);
+  project.assert_edge(EdgeKind::References, turbofish, foo, RESOLVED);
+  assert_eq!(project.edges_from(EdgeKind::References, turbofish).len(), 1);
+  let generic = item(&[], &["uses_generic"], EntityKind::Function);
+  project.assert_no_edge(EdgeKind::References, generic, item(&[], &["T"], EntityKind::Struct));
+}

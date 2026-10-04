@@ -392,6 +392,30 @@ impl Resolver<'_> {
     }
   }
 
+  pub(crate) fn rust_type_anchor(&self, reference: &ReferenceFact) -> Option<Hit> {
+    if !matches!(reference.kind, RefKind::Call | RefKind::ValueRef) || reference.path.len() < 2 {
+      return None;
+    }
+    let scope = self.rust_scope_at(self.file, reference.from.map(|local| local.0), Some(reference.span))?;
+    let path = &reference.path;
+    let qualified_at = path.iter().position(|segment| qualified_trait(segment).is_some());
+    let type_path = &path[..qualified_at.unwrap_or(path.len() - 1)];
+    let head = type_path.first()?;
+    if matches!(head.as_str(), "Self" | "crate" | "self" | "super" | "$crate" | "_") {
+      return None;
+    }
+    if type_path.len() == 1 && scope.generics.iter().any(|(generic, _)| generic == head) {
+      return None;
+    }
+    let hit = self.rust_resolve_path(&scope, type_path, Ns::Type, &mut Guard::default()).ok()?;
+    let symbol = hit.symbol()?;
+    matches!(
+      self.sym_kind(symbol),
+      Some(EntityKind::Struct | EntityKind::Enum | EntityKind::Trait | EntityKind::TypeAlias)
+    )
+    .then_some(hit)
+  }
+
   pub(crate) fn rust_resolve_path(&self, scope: &RustScope, segments: &[String], ns: Ns, guard: &mut Guard) -> Lookup {
     let Some((first, rest)) = segments.split_first() else { return Err(Miss::NotFound) };
     if segments.iter().any(|segment| is_dynamic_segment(segment)) {

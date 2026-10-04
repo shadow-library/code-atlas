@@ -96,7 +96,14 @@ pub fn resolve_file(facts: &FileFacts, table: &ProjectSymbolTable) -> Result<Res
   let mut emitter = Emitter::new(&resolver, facts.file.content_hash);
   for reference in &facts.references {
     let outcome = cap_origin(resolver.resolve_reference(reference), reference.origin);
+    let anchor = resolver.type_anchor(reference, &outcome).map(|hit| match reference.origin {
+      RefOrigin::Syntax => hit,
+      _ => cap_hit(hit),
+    });
     emitter.reference(reference, outcome);
+    if let Some(anchor) = anchor {
+      emitter.anchor(reference, &anchor);
+    }
   }
   emitter.containment();
   match surface.family {
@@ -154,19 +161,20 @@ pub fn resolve_path_in_file(file: &FileFacts, path: &[String], from: Option<Loca
   Ok(resolution)
 }
 
+fn cap_hit(hit: Hit) -> Hit {
+  match hit.heuristic {
+    None => Hit::heuristic(hit.found, MACRO_TOKEN_SCAN_CONFIDENCE, RULE_MACRO_TOKEN_SCAN),
+    Some(_) => hit,
+  }
+}
+
 fn cap_origin(outcome: Outcome, origin: RefOrigin) -> Outcome {
   if origin == RefOrigin::Syntax {
     return outcome;
   }
-  let cap = |hit: Hit| -> Hit {
-    match hit.heuristic {
-      None => Hit::heuristic(hit.found, MACRO_TOKEN_SCAN_CONFIDENCE, RULE_MACRO_TOKEN_SCAN),
-      Some(_) => hit,
-    }
-  };
   match outcome {
-    Outcome::Targets { primary, extra } => Outcome::Candidates(std::iter::once(cap(primary)).chain(extra).collect()),
-    Outcome::Candidates(hits) => Outcome::Candidates(hits.into_iter().map(cap).collect()),
+    Outcome::Targets { primary, extra } => Outcome::Candidates(std::iter::once(cap_hit(primary)).chain(extra).collect()),
+    Outcome::Candidates(hits) => Outcome::Candidates(hits.into_iter().map(cap_hit).collect()),
     other => other,
   }
 }
@@ -191,6 +199,17 @@ impl Resolver<'_> {
       _ => self.ts_reference(reference),
     };
     self.collapse_same_entity(outcome)
+  }
+
+  pub(crate) fn type_anchor(&self, reference: &ReferenceFact, outcome: &Outcome) -> Option<Hit> {
+    match outcome {
+      Outcome::External(_) | Outcome::Unresolved(Miss::NotFound | Miss::MacroGenerated | Miss::Ambiguous(_) | Miss::NameOnly(_) | Miss::Unsupported(_)) => {}
+      _ => return None,
+    }
+    match self.surface.family {
+      LanguageFamily::Rust => self.rust_type_anchor(reference),
+      _ => self.ts_type_anchor(reference),
+    }
   }
 
   fn collapse_same_entity(&self, outcome: Outcome) -> Outcome {
@@ -390,6 +409,11 @@ impl<'r, 't> Emitter<'r, 't> {
       }
     };
     self.stats.by_kind.entry(reference.kind).or_default().record(class);
+  }
+
+  fn anchor(&mut self, reference: &ReferenceFact, hit: &Hit) {
+    let Some(from) = self.local_entity(reference.from.map(|local| local.0)) else { return };
+    self.add_hit(Bucket::Reference, EdgeKind::References, from, hit, reference.span);
   }
 
   fn unresolved(&mut self, reference: &ReferenceFact, from: EntityId, reason: UnresolvedReason) -> RefOutcome {
