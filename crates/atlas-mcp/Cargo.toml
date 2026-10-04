@@ -25,3 +25,4 @@ tracing-subscriber.workspace = true
 rmcp = { workspace = true, features = ["client"] }
 atlas-store.workspace = true
 tempfile.workspace = true
+tokio = { workspace = true, features = ["signal", "process"] }
