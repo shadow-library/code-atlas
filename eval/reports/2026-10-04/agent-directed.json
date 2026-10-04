@@ -1,0 +1,5239 @@
+{
+  "environment": {
+    "date": "2026-10-04",
+    "seed": 1,
+    "claude_version": "2.1.289 (Claude Code)",
+    "model": "claude-sonnet-5-5",
+    "judge_model": "claude-sonnet-5-5",
+    "config_isolation": "user",
+    "code_atlas_commit": "3c54d92821abe63e4e25508b9fa7d3e6c4ae7d84",
+    "code_atlas_version": "code-atlas 0.1.0 (commit 6a2854f4df88e1e5705f8fae091824ec290e3cee)",
+    "atlas_bin_blake3": "ddbc1afe75ba566247744839faffbe9c145dfd64cc89b6734af90ad3f8e133b8",
+    "atlas_bin": "/Users/leander-paul/repositories/shadow-library/code-atlas/target/release/code-atlas",
+    "preamble_version": 2,
+    "preamble_variant": "directed",
+    "repo_override": null,
+    "probe": {
+      "exit": {
+        "kind": "exited",
+        "code": 0
+      },
+      "claude_code_version": "2.1.289",
+      "model_reported": [
+        "claude-sonnet-5-5"
+      ],
+      "permission_mode": "bypassPermissions",
+      "tools": [
+        "Bash",
+        "Edit",
+        "Glob",
+        "Grep",
+        "Read",
+        "Write"
+      ],
+      "mcp_servers": [],
+      "skills": [],
+      "slash_commands": [],
+      "plugins": [
+        "cc-plugin-agents-md",
+        "cc-plugin-telemetry",
+        "cc-plugin-plugin-authoring"
+      ],
+      "agents": [
+        "claude",
+        "Explore",
+        "general-purpose",
+        "Plan",
+        "statusline-setup"
+      ],
+      "project_claude_md": {
+        "verdict": "not_seen"
+      },
+      "user_claude_md": {
+        "verdict": "not_seen"
+      },
+      "hello_file": {
+        "state": "matches"
+      },
+      "tool_calls": [
+        "Write"
+      ],
+      "cost_usd": 0.0089912,
+      "answer": "I created `hello.txt` in the current directory with the text `hi`. No project CLAUDE.md or user-level `~/.claude/CLAUDE.md` was in my context, so both values below are `none`.\n\nPROJECT_CANARY=none\nUSER_MD_HEADING=none"
+    }
+  },
+  "tasks": [
+    {
+      "task_id": "t00-smoke",
+      "conditions": {
+        "baseline": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 1573.0,
+              "min": 1573.0,
+              "max": 1573.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 3539.0,
+              "min": 3228.0,
+              "max": 3850.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 31466.5,
+              "min": 26961.0,
+              "max": 35972.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.0357573,
+              "min": 0.0324002,
+              "max": 0.0391144,
+              "n": 2
+            },
+            "duplication_introduced": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "n": 2
+            },
+            "first_edit_ms": {
+              "mean": 6885.0,
+              "min": 6510.0,
+              "max": 7260.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.6053188769831525,
+              "min": 0.5001589825119237,
+              "max": 0.7104787714543812,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 9.0,
+              "min": 8.0,
+              "max": 10.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 55.0,
+              "min": 55.0,
+              "max": 55.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 0.5,
+              "min": 0.5,
+              "max": 0.5,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 7.5,
+              "min": 7.0,
+              "max": 8.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 1529.0,
+              "min": 1408.0,
+              "max": 1650.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 2.5,
+              "min": 2.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 12264.0,
+              "min": 11696.0,
+              "max": 12832.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 6.5,
+              "min": 6.0,
+              "max": 7.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 36543.5,
+              "min": 31605.0,
+              "max": 41482.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 13430.5,
+              "min": 12946.0,
+              "max": 13915.0,
+              "n": 2
+            }
+          }
+        },
+        "atlas": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 11205.0,
+              "min": 11205.0,
+              "max": 11205.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "atlas_index_ms": {
+              "mean": 65.5,
+              "min": 61.0,
+              "max": 70.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 456.5,
+              "min": 334.0,
+              "max": 579.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 8352.0,
+              "min": 8119.0,
+              "max": 8585.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 116757.5,
+              "min": 116413.0,
+              "max": 117102.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.07437250000000001,
+              "min": 0.0714366,
+              "max": 0.0773084,
+              "n": 2
+            },
+            "duplication_introduced": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 1.5,
+              "min": 1.0,
+              "max": 2.0,
+              "n": 2
+            },
+            "first_edit_ms": {
+              "mean": 7799.0,
+              "min": 7154.0,
+              "max": 8444.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.16825248652721336,
+              "min": 0.16785079928952043,
+              "max": 0.1686541737649063,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 14.0,
+              "min": 14.0,
+              "max": 14.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.5,
+              "min": 0.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 2.5,
+              "min": 2.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 22.0,
+              "min": 17.0,
+              "max": 27.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 8.5,
+              "min": 8.0,
+              "max": 9.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 1758.5,
+              "min": 1565.0,
+              "max": 1952.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 2.5,
+              "min": 2.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 15702.0,
+              "min": 14610.0,
+              "max": 16794.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 7.5,
+              "min": 7.0,
+              "max": 8.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 126882.0,
+              "min": 126111.0,
+              "max": 127653.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 17338.0,
+              "min": 16263.0,
+              "max": 18413.0,
+              "n": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "task_id": "t01-cwd-relative-targets",
+      "conditions": {
+        "baseline": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 13909.0,
+              "min": 12165.0,
+              "max": 15653.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 15772.0,
+              "min": 14874.0,
+              "max": 16670.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 206685.5,
+              "min": 200171.0,
+              "max": 213200.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.1477071,
+              "min": 0.14149,
+              "max": 0.1539242,
+              "n": 2
+            },
+            "duplication_introduced": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.6014826858745158,
+              "min": 0.4952612393681653,
+              "max": 0.7077041323808663,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 21.0,
+              "min": 20.0,
+              "max": 22.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.5,
+              "min": 0.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 355.0,
+              "min": 310.0,
+              "max": 400.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 10.5,
+              "min": 10.0,
+              "max": 11.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 4324.0,
+              "min": 3931.0,
+              "max": 4717.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "reuse_targets_referenced": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 3.0,
+              "min": 2.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 140890.0,
+              "min": 78089.0,
+              "max": 203691.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 9.5,
+              "min": 9.0,
+              "max": 10.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 226802.5,
+              "min": 221578.0,
+              "max": 232027.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 144529.5,
+              "min": 79033.0,
+              "max": 210026.0,
+              "n": 2
+            }
+          }
+        },
+        "atlas": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 19705.0,
+              "min": 18916.0,
+              "max": 20494.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "atlas_index_ms": {
+              "mean": 855.5,
+              "min": 849.0,
+              "max": 862.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 12360.5,
+              "min": 11895.0,
+              "max": 12826.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 21934.0,
+              "min": 19990.0,
+              "max": 23878.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 271404.5,
+              "min": 169691.0,
+              "max": 373118.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.1819209,
+              "min": 0.14841220000000002,
+              "max": 0.21542959999999997,
+              "n": 2
+            },
+            "duplication_introduced": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.45297150093274013,
+              "min": 0.4083201329559324,
+              "max": 0.4976228689095479,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 17.0,
+              "min": 12.0,
+              "max": 22.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 305.5,
+              "min": 299.0,
+              "max": 312.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 0.125,
+              "min": 0.0,
+              "max": 0.25,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 10.0,
+              "min": 7.0,
+              "max": 13.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 3987.0,
+              "min": 3449.0,
+              "max": 4525.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 2.5,
+              "min": 2.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "reuse_targets_referenced": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 1.5,
+              "min": 1.0,
+              "max": 2.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 134366.0,
+              "min": 65889.0,
+              "max": 202843.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 9.0,
+              "min": 6.0,
+              "max": 12.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 297342.5,
+              "min": 193142.0,
+              "max": 401543.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 0.5,
+              "min": 0.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 138390.5,
+              "min": 67358.0,
+              "max": 209423.0,
+              "n": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "task_id": "t02-typed-degraded-cause",
+      "conditions": {
+        "baseline": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 15179.5,
+              "min": 14771.0,
+              "max": 15588.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 19196.0,
+              "min": 18612.0,
+              "max": 19780.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 193400.0,
+              "min": 138268.0,
+              "max": 248532.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.16958499999999999,
+              "min": 0.1495696,
+              "max": 0.18960039999999995,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 6.0,
+              "min": 5.0,
+              "max": 7.0,
+              "n": 2
+            },
+            "first_edit_ms": {
+              "mean": 16447.0,
+              "min": 16447.0,
+              "max": 16447.0,
+              "n": 1
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 6.0,
+              "min": 6.0,
+              "max": 6.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.5549055401891572,
+              "min": 0.5222941197270252,
+              "max": 0.587516960651289,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 18.0,
+              "min": 14.0,
+              "max": 22.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 353.5,
+              "min": 312.0,
+              "max": 395.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 0.14285714285714285,
+              "min": 0.14285714285714285,
+              "max": 0.14285714285714285,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 12.0,
+              "min": 9.0,
+              "max": 15.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 5408.5,
+              "min": 4744.0,
+              "max": 6073.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 3.0,
+              "min": 2.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 264647.5,
+              "min": 202058.0,
+              "max": 327237.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 11.0,
+              "min": 8.0,
+              "max": 14.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 218022.5,
+              "min": 161638.0,
+              "max": 274407.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 265744.0,
+              "min": 203137.0,
+              "max": 328351.0,
+              "n": 2
+            }
+          }
+        },
+        "atlas": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 14276.5,
+              "min": 14274.0,
+              "max": 14279.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "atlas_index_ms": {
+              "mean": 921.0,
+              "min": 809.0,
+              "max": 1033.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 12612.5,
+              "min": 10557.0,
+              "max": 14668.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 26997.5,
+              "min": 22549.0,
+              "max": 31446.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 278882.0,
+              "min": 244126.0,
+              "max": 313638.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.2341704,
+              "min": 0.1905932,
+              "max": 0.2777476,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 5.5,
+              "min": 4.0,
+              "max": 7.0,
+              "n": 2
+            },
+            "first_edit_ms": {
+              "mean": 13123.0,
+              "min": 13123.0,
+              "max": 13123.0,
+              "n": 1
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 6.0,
+              "min": 6.0,
+              "max": 6.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.6593642199347219,
+              "min": 0.6395843735882255,
+              "max": 0.6791440662812184,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 17.0,
+              "min": 16.0,
+              "max": 18.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 323.0,
+              "min": 275.0,
+              "max": 371.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 0.14285714285714285,
+              "min": 0.14285714285714285,
+              "max": 0.14285714285714285,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 23.5,
+              "min": 13.0,
+              "max": 34.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 7037.0,
+              "min": 5154.0,
+              "max": 8920.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 2.5,
+              "min": 2.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 336345.5,
+              "min": 330735.0,
+              "max": 341956.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 22.5,
+              "min": 12.0,
+              "max": 33.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 312933.5,
+              "min": 271845.0,
+              "max": 354022.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 0.5,
+              "min": 0.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 337972.5,
+              "min": 332360.0,
+              "max": 343585.0,
+              "n": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "task_id": "t03-nested-router-links",
+      "conditions": {
+        "baseline": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 17798.5,
+              "min": 17089.0,
+              "max": 18508.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 18749.5,
+              "min": 18526.0,
+              "max": 18973.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 225963.0,
+              "min": 218704.0,
+              "max": 233222.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.1583596,
+              "min": 0.1545424,
+              "max": 0.1621768,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 3.5,
+              "min": 3.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "first_edit_ms": {
+              "mean": 15571.5,
+              "min": 12010.0,
+              "max": 19133.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.5752733940464418,
+              "min": 0.5039339243120082,
+              "max": 0.6466128637808756,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 22.0,
+              "min": 22.0,
+              "max": 22.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.5,
+              "min": 0.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 1
+            },
+            "judge_architectural_consistency": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 1
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 1
+            },
+            "judge_completeness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 1
+            },
+            "judge_correctness": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 1
+            },
+            "lines_read": {
+              "mean": 428.5,
+              "min": 406.0,
+              "max": 451.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 17.0,
+              "min": 17.0,
+              "max": 17.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 3812.5,
+              "min": 3375.0,
+              "max": 4250.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 7.0,
+              "min": 7.0,
+              "max": 7.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 325226.5,
+              "min": 314754.0,
+              "max": 335699.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 16.0,
+              "min": 16.0,
+              "max": 16.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 248547.0,
+              "min": 241949.0,
+              "max": 255145.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 326358.0,
+              "min": 315909.0,
+              "max": 336807.0,
+              "n": 2
+            }
+          }
+        },
+        "atlas": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 16217.5,
+              "min": 12853.0,
+              "max": 19582.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "atlas_index_ms": {
+              "mean": 874.0,
+              "min": 804.0,
+              "max": 944.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 18049.0,
+              "min": 14359.0,
+              "max": 21739.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 26295.5,
+              "min": 23859.0,
+              "max": 28732.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 335185.5,
+              "min": 323490.0,
+              "max": 346881.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.2128811,
+              "min": 0.199888,
+              "max": 0.2258742,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "first_edit_ms": {
+              "mean": 15206.5,
+              "min": 12616.0,
+              "max": 17797.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.6282960266400064,
+              "min": 0.6083950617283951,
+              "max": 0.6481969915516176,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 21.0,
+              "min": 20.0,
+              "max": 22.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.5,
+              "min": 0.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 418.5,
+              "min": 316.0,
+              "max": 521.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 16.0,
+              "min": 15.0,
+              "max": 17.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 4062.0,
+              "min": 3971.0,
+              "max": 4153.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 5.0,
+              "min": 4.0,
+              "max": 6.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 315944.5,
+              "min": 308226.0,
+              "max": 323663.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 15.0,
+              "min": 14.0,
+              "max": 16.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 365564.0,
+              "min": 351342.0,
+              "max": 379786.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 317600.0,
+              "min": 309837.0,
+              "max": 325363.0,
+              "n": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "task_id": "t04-detector-import-gates",
+      "conditions": {
+        "baseline": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 15046.0,
+              "min": 14439.0,
+              "max": 15653.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 16568.5,
+              "min": 16369.0,
+              "max": 16768.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 212404.5,
+              "min": 210508.0,
+              "max": 214301.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.1575849,
+              "min": 0.1552976,
+              "max": 0.1598722,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 7.0,
+              "min": 7.0,
+              "max": 7.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.6691767306639519,
+              "min": 0.6279191128506197,
+              "max": 0.710434348477284,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 20.0,
+              "min": 20.0,
+              "max": 20.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 409.5,
+              "min": 387.0,
+              "max": 432.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 11.0,
+              "min": 11.0,
+              "max": 11.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 4879.0,
+              "min": 4768.0,
+              "max": 4990.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 2.5,
+              "min": 2.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 326848.0,
+              "min": 204513.0,
+              "max": 449183.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 10.0,
+              "min": 10.0,
+              "max": 10.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 233872.0,
+              "min": 231665.0,
+              "max": 236079.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 2.0,
+              "min": 1.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 330509.5,
+              "min": 210764.0,
+              "max": 450255.0,
+              "n": 2
+            }
+          }
+        },
+        "atlas": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 16837.5,
+              "min": 16126.0,
+              "max": 17549.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "atlas_index_ms": {
+              "mean": 938.0,
+              "min": 805.0,
+              "max": 1071.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 15329.0,
+              "min": 14917.0,
+              "max": 15741.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 28135.0,
+              "min": 26689.0,
+              "max": 29581.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 220993.5,
+              "min": 179815.0,
+              "max": 262172.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.2186117,
+              "min": 0.2182324,
+              "max": 0.218991,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 3.5,
+              "min": 3.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "first_edit_ms": {
+              "mean": 16294.0,
+              "min": 16066.0,
+              "max": 16522.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 7.0,
+              "min": 7.0,
+              "max": 7.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.49715627139608526,
+              "min": 0.4884721947358005,
+              "max": 0.50584034805637,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 14.0,
+              "min": 12.0,
+              "max": 16.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 435.0,
+              "min": 430.0,
+              "max": 440.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 0.3333333333333333,
+              "min": 0.3333333333333333,
+              "max": 0.3333333333333333,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 17.0,
+              "min": 12.0,
+              "max": 22.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 6184.5,
+              "min": 5901.0,
+              "max": 6468.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 2.0,
+              "min": 1.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 61829.5,
+              "min": 60232.0,
+              "max": 63427.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 16.0,
+              "min": 11.0,
+              "max": 21.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 255327.0,
+              "min": 215876.0,
+              "max": 294778.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 63372.5,
+              "min": 61757.0,
+              "max": 64988.0,
+              "n": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "task_id": "t05-mcp-dependency-tools",
+      "conditions": {
+        "baseline": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 30614.0,
+              "min": 29425.0,
+              "max": 31803.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 31755.5,
+              "min": 30714.0,
+              "max": 32797.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 270724.5,
+              "min": 251364.0,
+              "max": 290085.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.23326990000000003,
+              "min": 0.22759480000000004,
+              "max": 0.238945,
+              "n": 2
+            },
+            "duplication_introduced": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "first_edit_ms": {
+              "mean": 21694.5,
+              "min": 21165.0,
+              "max": 22224.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 28.0,
+              "min": 28.0,
+              "max": 28.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.5475275825502643,
+              "min": 0.4931360190637357,
+              "max": 0.6019191460367931,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 19.0,
+              "min": 18.0,
+              "max": 20.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.5,
+              "min": 0.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 710.5,
+              "min": 683.0,
+              "max": 738.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 0.5,
+              "min": 0.5,
+              "max": 0.5,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 17.0,
+              "min": 16.0,
+              "max": 18.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 5206.5,
+              "min": 4970.0,
+              "max": 5443.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "reuse_targets_referenced": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 5.0,
+              "min": 4.0,
+              "max": 6.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 84799.0,
+              "min": 75937.0,
+              "max": 93661.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 16.0,
+              "min": 15.0,
+              "max": 17.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 307705.5,
+              "min": 287539.0,
+              "max": 327872.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 0.5,
+              "min": 0.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 85853.0,
+              "min": 76963.0,
+              "max": 94743.0,
+              "n": 2
+            }
+          }
+        },
+        "atlas": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 12893.5,
+              "min": 12886.0,
+              "max": 12901.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "atlas_index_ms": {
+              "mean": 801.0,
+              "min": 787.0,
+              "max": 815.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 13655.0,
+              "min": 9169.0,
+              "max": 18141.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 24174.0,
+              "min": 20030.0,
+              "max": 28318.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 319161.0,
+              "min": 227676.0,
+              "max": 410646.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.20907820000000002,
+              "min": 0.1644272,
+              "max": 0.25372920000000004,
+              "n": 2
+            },
+            "duplication_introduced": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "first_edit_ms": {
+              "mean": 17538.0,
+              "min": 16180.0,
+              "max": 18896.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 27.5,
+              "min": 27.0,
+              "max": 28.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.6148130136494308,
+              "min": 0.5952225232800772,
+              "max": 0.6344035040187844,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 20.0,
+              "min": 16.0,
+              "max": 24.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 3.5,
+              "min": 3.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 3.5,
+              "min": 3.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 289.0,
+              "min": 182.0,
+              "max": 396.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 0.75,
+              "min": 0.75,
+              "max": 0.75,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 19.0,
+              "min": 15.0,
+              "max": 23.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 4851.0,
+              "min": 3874.0,
+              "max": 5828.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "n": 2
+            },
+            "reuse_targets_referenced": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 3.5,
+              "min": 3.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 176975.5,
+              "min": 78960.0,
+              "max": 274991.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 18.0,
+              "min": 14.0,
+              "max": 22.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 348206.0,
+              "min": 251596.0,
+              "max": 444816.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 178538.0,
+              "min": 80551.0,
+              "max": 276525.0,
+              "n": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "task_id": "t06-repo-file-size-limit",
+      "conditions": {
+        "baseline": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 14697.5,
+              "min": 14540.0,
+              "max": 14855.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 20273.0,
+              "min": 17034.0,
+              "max": 23512.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 278842.0,
+              "min": 207708.0,
+              "max": 349976.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.18242840000000002,
+              "min": 0.1542976,
+              "max": 0.21055920000000003,
+              "n": 2
+            },
+            "duplication_introduced": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 3.0,
+              "min": 2.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.5280560512154302,
+              "min": 0.4291988096269972,
+              "max": 0.6269132928038632,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 24.0,
+              "min": 20.0,
+              "max": 28.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 3.5,
+              "min": 3.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 400.5,
+              "min": 387.0,
+              "max": 414.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 0.625,
+              "min": 0.5,
+              "max": 0.75,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 13.5,
+              "min": 11.0,
+              "max": 16.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 4552.0,
+              "min": 4458.0,
+              "max": 4646.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 1.5,
+              "min": 1.0,
+              "max": 2.0,
+              "n": 2
+            },
+            "reuse_targets_referenced": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 5.0,
+              "min": 4.0,
+              "max": 6.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 290623.0,
+              "min": 277486.0,
+              "max": 303760.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 12.5,
+              "min": 10.0,
+              "max": 15.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 303691.0,
+              "min": 229220.0,
+              "max": 378162.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 0.5,
+              "min": 0.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 291647.0,
+              "min": 278459.0,
+              "max": 304835.0,
+              "n": 2
+            }
+          }
+        },
+        "atlas": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 12922.5,
+              "min": 12782.0,
+              "max": 13063.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "atlas_index_ms": {
+              "mean": 839.0,
+              "min": 809.0,
+              "max": 869.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 9922.5,
+              "min": 9703.0,
+              "max": 10142.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 22586.0,
+              "min": 22461.0,
+              "max": 22711.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 307641.0,
+              "min": 275260.0,
+              "max": 340022.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.1954672,
+              "min": 0.185132,
+              "max": 0.2058024,
+              "n": 2
+            },
+            "duplication_introduced": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 3.5,
+              "min": 3.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.5410164228429422,
+              "min": 0.5251573230654292,
+              "max": 0.556875522620455,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 20.0,
+              "min": 18.0,
+              "max": 22.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 3.5,
+              "min": 3.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 280.0,
+              "min": 270.0,
+              "max": 290.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 0.75,
+              "min": 0.75,
+              "max": 0.75,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 14.0,
+              "min": 14.0,
+              "max": 14.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 4355.5,
+              "min": 4020.0,
+              "max": 4691.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "reuse_targets_referenced": {
+              "mean": 0.5,
+              "min": 0.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 323699.0,
+              "min": 306769.0,
+              "max": 340629.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 13.0,
+              "min": 13.0,
+              "max": 13.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 334602.5,
+              "min": 301759.0,
+              "max": 367446.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 325317.5,
+              "min": 308393.0,
+              "max": 342242.0,
+              "n": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "task_id": "t07-static-precompressed-quality",
+      "conditions": {
+        "baseline": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 18149.5,
+              "min": 17072.0,
+              "max": 19227.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 13959.0,
+              "min": 12534.0,
+              "max": 15384.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 102306.0,
+              "min": 96922.0,
+              "max": 107690.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.11238419999999999,
+              "min": 0.0980824,
+              "max": 0.126686,
+              "n": 2
+            },
+            "duplication_introduced": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 3.5,
+              "min": 3.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "first_edit_ms": {
+              "mean": 19496.0,
+              "min": 19496.0,
+              "max": 19496.0,
+              "n": 1
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 8.0,
+              "min": 8.0,
+              "max": 8.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.5666749775268721,
+              "min": 0.28025740025740026,
+              "max": 0.8530925547963439,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 16.0,
+              "min": 16.0,
+              "max": 16.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 1.0,
+              "min": 0.0,
+              "max": 2.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 586.5,
+              "min": 582.0,
+              "max": 591.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 0.3333333333333333,
+              "min": 0.3333333333333333,
+              "max": 0.3333333333333333,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 10.5,
+              "min": 8.0,
+              "max": 13.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 3605.5,
+              "min": 2853.0,
+              "max": 4358.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "n": 2
+            },
+            "reuse_targets_referenced": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 1.5,
+              "min": 0.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 34838.5,
+              "min": 29603.0,
+              "max": 40074.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 9.5,
+              "min": 7.0,
+              "max": 12.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 119886.5,
+              "min": 112325.0,
+              "max": 127448.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 36015.0,
+              "min": 30971.0,
+              "max": 41059.0,
+              "n": 2
+            }
+          }
+        },
+        "atlas": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 7912.5,
+              "min": 7521.0,
+              "max": 8304.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "atlas_index_ms": {
+              "mean": 520.0,
+              "min": 514.0,
+              "max": 526.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 11839.0,
+              "min": 10888.0,
+              "max": 12790.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 16213.5,
+              "min": 15420.0,
+              "max": 17007.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 139093.0,
+              "min": 139078.0,
+              "max": 139108.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.1353356,
+              "min": 0.1285436,
+              "max": 0.1421276,
+              "n": 2
+            },
+            "duplication_introduced": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 2.5,
+              "min": 2.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "first_edit_ms": {
+              "mean": 15613.0,
+              "min": 15211.0,
+              "max": 16015.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 8.0,
+              "min": 8.0,
+              "max": 8.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.745370292406605,
+              "min": 0.6755378132623642,
+              "max": 0.8152027715508458,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 14.0,
+              "min": 14.0,
+              "max": 14.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 354.5,
+              "min": 322.0,
+              "max": 387.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 0.41666666666666663,
+              "min": 0.3333333333333333,
+              "max": 0.5,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 13.5,
+              "min": 12.0,
+              "max": 15.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 4263.5,
+              "min": 3902.0,
+              "max": 4625.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 1.5,
+              "min": 1.0,
+              "max": 2.0,
+              "n": 2
+            },
+            "reuse_targets_referenced": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 2.0,
+              "min": 1.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 39175.5,
+              "min": 38456.0,
+              "max": 39895.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 12.5,
+              "min": 11.0,
+              "max": 14.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 159584.0,
+              "min": 158414.0,
+              "max": 160754.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 40709.5,
+              "min": 40007.0,
+              "max": 41412.0,
+              "n": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "task_id": "t08-cookie-samesite-default",
+      "conditions": {
+        "baseline": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 14761.0,
+              "min": 13029.0,
+              "max": 16493.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 23450.5,
+              "min": 22306.0,
+              "max": 24595.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 300513.0,
+              "min": 270807.0,
+              "max": 330219.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.22011560000000002,
+              "min": 0.2051154,
+              "max": 0.2351158,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 6.5,
+              "min": 6.0,
+              "max": 7.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 336.0,
+              "min": 336.0,
+              "max": 336.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.3854046659024576,
+              "min": 0.3641360063788586,
+              "max": 0.40667332542605655,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 33.0,
+              "min": 30.0,
+              "max": 36.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.5,
+              "min": 0.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 402.5,
+              "min": 372.0,
+              "max": 433.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 0.125,
+              "min": 0.0,
+              "max": 0.25,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 17.0,
+              "min": 16.0,
+              "max": 18.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 6614.5,
+              "min": 6167.0,
+              "max": 7062.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 0.5,
+              "min": 0.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 118348.5,
+              "min": 98520.0,
+              "max": 138177.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 16.0,
+              "min": 15.0,
+              "max": 17.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 330611.0,
+              "min": 299310.0,
+              "max": 361912.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 119457.0,
+              "min": 99524.0,
+              "max": 139390.0,
+              "n": 2
+            }
+          }
+        },
+        "atlas": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 8472.5,
+              "min": 8381.0,
+              "max": 8564.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "atlas_index_ms": {
+              "mean": 508.5,
+              "min": 478.0,
+              "max": 539.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 15920.0,
+              "min": 8208.0,
+              "max": 23632.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 26411.5,
+              "min": 22954.0,
+              "max": 29869.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 401870.0,
+              "min": 376559.0,
+              "max": 427181.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.241265,
+              "min": 0.2223478,
+              "max": 0.26018220000000003,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 5.5,
+              "min": 4.0,
+              "max": 7.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 336.0,
+              "min": 336.0,
+              "max": 336.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.45801104237177415,
+              "min": 0.41995860703680377,
+              "max": 0.4960634777067445,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 30.0,
+              "min": 30.0,
+              "max": 30.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 1.0,
+              "min": 0.0,
+              "max": 2.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 3.5,
+              "min": 3.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 452.0,
+              "min": 257.0,
+              "max": 647.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 16.0,
+              "min": 16.0,
+              "max": 16.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 5518.5,
+              "min": 5516.0,
+              "max": 5521.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 99548.5,
+              "min": 93227.0,
+              "max": 105870.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 15.0,
+              "min": 15.0,
+              "max": 15.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 433830.0,
+              "min": 405059.0,
+              "max": 462601.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 2.0,
+              "min": 1.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 101022.0,
+              "min": 94710.0,
+              "max": 107334.0,
+              "n": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "task_id": "t09-lambda-text-content-types",
+      "conditions": {
+        "baseline": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 4085.5,
+              "min": 4008.0,
+              "max": 4163.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 19439.5,
+              "min": 18968.0,
+              "max": 19911.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 173514.5,
+              "min": 147415.0,
+              "max": 199614.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.15044790000000002,
+              "min": 0.148933,
+              "max": 0.1519628,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 4.0,
+              "min": 3.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 76.0,
+              "min": 76.0,
+              "max": 76.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.10560459172872816,
+              "min": 0.09196679521537356,
+              "max": 0.11924238824208276,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 21.0,
+              "min": 18.0,
+              "max": 24.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 100.0,
+              "min": 88.0,
+              "max": 112.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 11.5,
+              "min": 10.0,
+              "max": 13.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 3794.5,
+              "min": 3612.0,
+              "max": 3977.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 3.5,
+              "min": 2.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 50979.0,
+              "min": 47235.0,
+              "max": 54723.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 10.5,
+              "min": 9.0,
+              "max": 12.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 196769.5,
+              "min": 171321.0,
+              "max": 222218.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 2.0,
+              "min": 1.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 52006.0,
+              "min": 48254.0,
+              "max": 55758.0,
+              "n": 2
+            }
+          }
+        },
+        "atlas": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 2147.0,
+              "min": 0.0,
+              "max": 4294.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 0.5,
+              "min": 0.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "atlas_index_ms": {
+              "mean": 542.0,
+              "min": 534.0,
+              "max": 550.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 3098.0,
+              "min": 511.0,
+              "max": 5685.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 15715.0,
+              "min": 13779.0,
+              "max": 17651.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 157833.0,
+              "min": 147886.0,
+              "max": 167780.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.1239186,
+              "min": 0.1175052,
+              "max": 0.130332,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 3.0,
+              "min": 1.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 76.0,
+              "min": 76.0,
+              "max": 76.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.22138403295846787,
+              "min": 0.0,
+              "max": 0.44276806591693574,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 16.0,
+              "min": 16.0,
+              "max": 16.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 73.5,
+              "min": 16.0,
+              "max": 131.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 9.0,
+              "min": 8.0,
+              "max": 10.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 2946.0,
+              "min": 2614.0,
+              "max": 3278.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 33681.0,
+              "min": 30680.0,
+              "max": 36682.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 8.0,
+              "min": 7.0,
+              "max": 9.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 176510.0,
+              "min": 164959.0,
+              "max": 188061.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 2.0,
+              "min": 1.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 35185.0,
+              "min": 32178.0,
+              "max": 38192.0,
+              "n": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "task_id": "t10-auth-challenge-quoting",
+      "conditions": {
+        "baseline": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 17463.0,
+              "min": 12942.0,
+              "max": 21984.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 22233.0,
+              "min": 19902.0,
+              "max": 24564.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 179035.0,
+              "min": 156860.0,
+              "max": 201210.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.18532900000000002,
+              "min": 0.16742,
+              "max": 0.203238,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 8.0,
+              "min": 8.0,
+              "max": 8.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 6.0,
+              "min": 6.0,
+              "max": 6.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.5405058565483315,
+              "min": 0.34307072420740115,
+              "max": 0.7379409888892619,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 20.0,
+              "min": 20.0,
+              "max": 20.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 438.5,
+              "min": 359.0,
+              "max": 518.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 12.0,
+              "min": 11.0,
+              "max": 13.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 6055.0,
+              "min": 5640.0,
+              "max": 6470.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 56862.0,
+              "min": 46253.0,
+              "max": 67471.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 11.0,
+              "min": 10.0,
+              "max": 12.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 207343.0,
+              "min": 182422.0,
+              "max": 232264.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 1.5,
+              "min": 1.0,
+              "max": 2.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 57868.5,
+              "min": 47244.0,
+              "max": 68493.0,
+              "n": 2
+            }
+          }
+        },
+        "atlas": {
+          "runs": 2,
+          "outcomes": {
+            "completed": 2,
+            "max_turns": 0,
+            "reported_error": 0,
+            "timed_out": 0,
+            "no_result": 0,
+            "setup_failed": 0,
+            "contaminated": 0
+          },
+          "estimated_costs": 0,
+          "metrics": {
+            "atlas_bytes": {
+              "mean": 588.5,
+              "min": 588.0,
+              "max": 589.0,
+              "n": 2
+            },
+            "atlas_calls": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "atlas_index_ms": {
+              "mean": 530.0,
+              "min": 522.0,
+              "max": 538.0,
+              "n": 2
+            },
+            "bytes_read": {
+              "mean": 12546.0,
+              "min": 12455.0,
+              "max": 12637.0,
+              "n": 2
+            },
+            "cache_creation_tokens": {
+              "mean": 18104.0,
+              "min": 17094.0,
+              "max": 19114.0,
+              "n": 2
+            },
+            "cache_read_tokens": {
+              "mean": 196487.0,
+              "min": 189042.0,
+              "max": 203932.0,
+              "n": 2
+            },
+            "cost_usd": {
+              "mean": 0.17241140000000005,
+              "min": 0.17175040000000005,
+              "max": 0.17307240000000002,
+              "n": 2
+            },
+            "files_read": {
+              "mean": 6.5,
+              "min": 6.0,
+              "max": 7.0,
+              "n": 2
+            },
+            "hidden_tests_pass": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "hidden_tests_passed": {
+              "mean": 6.0,
+              "min": 6.0,
+              "max": 6.0,
+              "n": 2
+            },
+            "information_density": {
+              "mean": 0.5408567529697709,
+              "min": 0.4644615155131265,
+              "max": 0.6172519904264153,
+              "n": 2
+            },
+            "input_tokens": {
+              "mean": 19.0,
+              "min": 18.0,
+              "max": 20.0,
+              "n": 2
+            },
+            "irrelevant_files_read": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "judge_appropriate_reuse": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_architectural_consistency": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_blast_radius_handling": {
+              "mean": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "n": 2
+            },
+            "judge_completeness": {
+              "mean": 4.5,
+              "min": 4.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "judge_correctness": {
+              "mean": 5.0,
+              "min": 5.0,
+              "max": 5.0,
+              "n": 2
+            },
+            "lines_read": {
+              "mean": 308.5,
+              "min": 303.0,
+              "max": 314.0,
+              "n": 2
+            },
+            "must_change_coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "must_consider_coverage": {
+              "mean": 0.875,
+              "min": 0.75,
+              "max": 1.0,
+              "n": 2
+            },
+            "num_turns": {
+              "mean": 14.0,
+              "min": 13.0,
+              "max": 15.0,
+              "n": 2
+            },
+            "output_tokens": {
+              "mean": 6066.0,
+              "min": 5745.0,
+              "max": 6387.0,
+              "n": 2
+            },
+            "regressions": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
+            "relevant_files_missed": {
+              "mean": 0.5,
+              "min": 0.0,
+              "max": 1.0,
+              "n": 2
+            },
+            "search_calls": {
+              "mean": 2.5,
+              "min": 2.0,
+              "max": 3.0,
+              "n": 2
+            },
+            "session_ms": {
+              "mean": 52695.0,
+              "min": 52261.0,
+              "max": 53129.0,
+              "n": 2
+            },
+            "tool_calls": {
+              "mean": 13.0,
+              "min": 12.0,
+              "max": 14.0,
+              "n": 2
+            },
+            "total_tokens": {
+              "mean": 220676.0,
+              "min": 213919.0,
+              "max": 227433.0,
+              "n": 2
+            },
+            "unparsed_bash_reads": {
+              "mean": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "n": 2
+            },
+            "wall_ms": {
+              "mean": 54313.5,
+              "min": 53972.0,
+              "max": 54655.0,
+              "n": 2
+            }
+          }
+        }
+      }
+    }
+  ],
+  "paired_tasks": [
+    "t00-smoke",
+    "t01-cwd-relative-targets",
+    "t02-typed-degraded-cause",
+    "t03-nested-router-links",
+    "t04-detector-import-gates",
+    "t05-mcp-dependency-tools",
+    "t06-repo-file-size-limit",
+    "t07-static-precompressed-quality",
+    "t08-cookie-samesite-default",
+    "t09-lambda-text-content-types",
+    "t10-auth-challenge-quoting"
+  ],
+  "aggregates": {
+    "baseline": {
+      "atlas_bytes": {
+        "mean": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 11
+      },
+      "atlas_calls": {
+        "mean": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 11
+      },
+      "bytes_read": {
+        "mean": 14843.318181818182,
+        "min": 1573.0,
+        "max": 30614.0,
+        "n": 11
+      },
+      "cache_creation_tokens": {
+        "mean": 18630.5,
+        "min": 3539.0,
+        "max": 31755.5,
+        "n": 11
+      },
+      "cache_read_tokens": {
+        "mean": 197714.04545454544,
+        "min": 31466.5,
+        "max": 300513.0,
+        "n": 11
+      },
+      "cost_usd": {
+        "mean": 0.1593608090909091,
+        "min": 0.0357573,
+        "max": 0.23326990000000003,
+        "n": 11
+      },
+      "duplication_introduced": {
+        "mean": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 5
+      },
+      "files_read": {
+        "mean": 4.363636363636363,
+        "min": 2.0,
+        "max": 8.0,
+        "n": 11
+      },
+      "first_edit_ms": {
+        "mean": 16018.8,
+        "min": 6885.0,
+        "max": 21694.5,
+        "n": 5
+      },
+      "hidden_tests_pass": {
+        "mean": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 11
+      },
+      "hidden_tests_passed": {
+        "mean": 43.81818181818182,
+        "min": 3.0,
+        "max": 336.0,
+        "n": 11
+      },
+      "information_density": {
+        "mean": 0.5163573593844821,
+        "min": 0.10560459172872816,
+        "max": 0.6691767306639519,
+        "n": 11
+      },
+      "input_tokens": {
+        "mean": 20.272727272727273,
+        "min": 9.0,
+        "max": 33.0,
+        "n": 11
+      },
+      "irrelevant_files_read": {
+        "mean": 0.36363636363636365,
+        "min": 0.0,
+        "max": 1.0,
+        "n": 11
+      },
+      "judge_appropriate_reuse": {
+        "mean": 4.409090909090909,
+        "min": 3.0,
+        "max": 5.0,
+        "n": 11
+      },
+      "judge_architectural_consistency": {
+        "mean": 4.636363636363637,
+        "min": 4.0,
+        "max": 5.0,
+        "n": 11
+      },
+      "judge_blast_radius_handling": {
+        "mean": 4.090909090909091,
+        "min": 4.0,
+        "max": 5.0,
+        "n": 11
+      },
+      "judge_completeness": {
+        "mean": 4.045454545454546,
+        "min": 3.5,
+        "max": 4.5,
+        "n": 11
+      },
+      "judge_correctness": {
+        "mean": 4.545454545454546,
+        "min": 4.0,
+        "max": 5.0,
+        "n": 11
+      },
+      "lines_read": {
+        "mean": 385.45454545454544,
+        "min": 55.0,
+        "max": 710.5,
+        "n": 11
+      },
+      "must_change_coverage": {
+        "mean": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 11
+      },
+      "must_consider_coverage": {
+        "mean": 0.4751082251082251,
+        "min": 0.0,
+        "max": 1.0,
+        "n": 11
+      },
+      "num_turns": {
+        "mean": 12.681818181818182,
+        "min": 7.5,
+        "max": 17.0,
+        "n": 11
+      },
+      "output_tokens": {
+        "mean": 4525.545454545455,
+        "min": 1529.0,
+        "max": 6614.5,
+        "n": 11
+      },
+      "regressions": {
+        "mean": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 11
+      },
+      "relevant_files_missed": {
+        "mean": 1.6363636363636365,
+        "min": 0.0,
+        "max": 4.0,
+        "n": 11
+      },
+      "reuse_targets_referenced": {
+        "mean": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 4
+      },
+      "search_calls": {
+        "mean": 3.4545454545454546,
+        "min": 1.5,
+        "max": 7.0,
+        "n": 11
+      },
+      "session_ms": {
+        "mean": 155120.54545454544,
+        "min": 12264.0,
+        "max": 326848.0,
+        "n": 11
+      },
+      "tool_calls": {
+        "mean": 11.681818181818182,
+        "min": 6.5,
+        "max": 16.0,
+        "n": 11
+      },
+      "total_tokens": {
+        "mean": 220890.36363636365,
+        "min": 36543.5,
+        "max": 330611.0,
+        "n": 11
+      },
+      "unparsed_bash_reads": {
+        "mean": 0.8636363636363636,
+        "min": 0.0,
+        "max": 2.0,
+        "n": 11
+      },
+      "wall_ms": {
+        "mean": 156674.36363636365,
+        "min": 13430.5,
+        "max": 330509.5,
+        "n": 11
+      }
+    },
+    "atlas": {
+      "atlas_bytes": {
+        "mean": 11198.0,
+        "min": 588.5,
+        "max": 19705.0,
+        "n": 11
+      },
+      "atlas_calls": {
+        "mean": 0.9545454545454546,
+        "min": 0.5,
+        "max": 1.0,
+        "n": 11
+      },
+      "atlas_index_ms": {
+        "mean": 672.2272727272727,
+        "min": 65.5,
+        "max": 938.0,
+        "n": 11
+      },
+      "bytes_read": {
+        "mean": 11435.272727272728,
+        "min": 456.5,
+        "max": 18049.0,
+        "n": 11
+      },
+      "cache_creation_tokens": {
+        "mean": 21356.18181818182,
+        "min": 8352.0,
+        "max": 28135.0,
+        "n": 11
+      },
+      "cache_read_tokens": {
+        "mean": 249573.45454545456,
+        "min": 116757.5,
+        "max": 401870.0,
+        "n": 11
+      },
+      "cost_usd": {
+        "mean": 0.18176660000000003,
+        "min": 0.07437250000000001,
+        "max": 0.241265,
+        "n": 11
+      },
+      "duplication_introduced": {
+        "mean": 0.2,
+        "min": 0.0,
+        "max": 1.0,
+        "n": 5
+      },
+      "files_read": {
+        "mean": 3.727272727272727,
+        "min": 1.5,
+        "max": 6.5,
+        "n": 11
+      },
+      "first_edit_ms": {
+        "mean": 14262.25,
+        "min": 7799.0,
+        "max": 17538.0,
+        "n": 6
+      },
+      "hidden_tests_pass": {
+        "mean": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 11
+      },
+      "hidden_tests_passed": {
+        "mean": 43.77272727272727,
+        "min": 3.0,
+        "max": 336.0,
+        "n": 11
+      },
+      "information_density": {
+        "mean": 0.502499278420887,
+        "min": 0.16825248652721336,
+        "max": 0.745370292406605,
+        "n": 11
+      },
+      "input_tokens": {
+        "mean": 18.363636363636363,
+        "min": 14.0,
+        "max": 30.0,
+        "n": 11
+      },
+      "irrelevant_files_read": {
+        "mean": 0.2727272727272727,
+        "min": 0.0,
+        "max": 1.0,
+        "n": 11
+      },
+      "judge_appropriate_reuse": {
+        "mean": 4.7727272727272725,
+        "min": 3.5,
+        "max": 5.0,
+        "n": 11
+      },
+      "judge_architectural_consistency": {
+        "mean": 4.590909090909091,
+        "min": 4.0,
+        "max": 5.0,
+        "n": 11
+      },
+      "judge_blast_radius_handling": {
+        "mean": 3.8636363636363638,
+        "min": 2.5,
+        "max": 4.5,
+        "n": 11
+      },
+      "judge_completeness": {
+        "mean": 4.045454545454546,
+        "min": 3.0,
+        "max": 5.0,
+        "n": 11
+      },
+      "judge_correctness": {
+        "mean": 4.590909090909091,
+        "min": 4.0,
+        "max": 5.0,
+        "n": 11
+      },
+      "lines_read": {
+        "mean": 296.5,
+        "min": 22.0,
+        "max": 452.0,
+        "n": 11
+      },
+      "must_change_coverage": {
+        "mean": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 11
+      },
+      "must_consider_coverage": {
+        "mean": 0.5811688311688312,
+        "min": 0.0,
+        "max": 1.0,
+        "n": 11
+      },
+      "num_turns": {
+        "mean": 14.590909090909092,
+        "min": 8.5,
+        "max": 23.5,
+        "n": 11
+      },
+      "output_tokens": {
+        "mean": 4639.045454545455,
+        "min": 1758.5,
+        "max": 7037.0,
+        "n": 11
+      },
+      "regressions": {
+        "mean": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 11
+      },
+      "relevant_files_missed": {
+        "mean": 1.4090909090909092,
+        "min": 0.0,
+        "max": 4.0,
+        "n": 11
+      },
+      "reuse_targets_referenced": {
+        "mean": 0.875,
+        "min": 0.5,
+        "max": 1.0,
+        "n": 4
+      },
+      "search_calls": {
+        "mean": 2.9545454545454546,
+        "min": 1.5,
+        "max": 5.0,
+        "n": 11
+      },
+      "session_ms": {
+        "mean": 144542.0,
+        "min": 15702.0,
+        "max": 336345.5,
+        "n": 11
+      },
+      "tool_calls": {
+        "mean": 13.590909090909092,
+        "min": 7.5,
+        "max": 22.5,
+        "n": 11
+      },
+      "total_tokens": {
+        "mean": 275587.04545454547,
+        "min": 126882.0,
+        "max": 433830.0,
+        "n": 11
+      },
+      "unparsed_bash_reads": {
+        "mean": 0.6363636363636364,
+        "min": 0.0,
+        "max": 2.0,
+        "n": 11
+      },
+      "wall_ms": {
+        "mean": 146341.72727272726,
+        "min": 17338.0,
+        "max": 337972.5,
+        "n": 11
+      }
+    }
+  },
+  "negative_results": [
+    {
+      "task_id": "t00-smoke",
+      "metric": "judge_completeness",
+      "baseline_mean": 4.0,
+      "atlas_mean": 3.0,
+      "transcripts": [
+        "t00-smoke.atlas.r0/transcript.jsonl",
+        "t00-smoke.atlas.r1/transcript.jsonl",
+        "t00-smoke.baseline.r0/transcript.jsonl",
+        "t00-smoke.baseline.r1/transcript.jsonl"
+      ]
+    },
+    {
+      "task_id": "t00-smoke",
+      "metric": "total_tokens",
+      "baseline_mean": 36543.5,
+      "atlas_mean": 126882.0,
+      "transcripts": [
+        "t00-smoke.atlas.r0/transcript.jsonl",
+        "t00-smoke.atlas.r1/transcript.jsonl",
+        "t00-smoke.baseline.r0/transcript.jsonl",
+        "t00-smoke.baseline.r1/transcript.jsonl"
+      ]
+    },
+    {
+      "task_id": "t01-cwd-relative-targets",
+      "metric": "total_tokens",
+      "baseline_mean": 226802.5,
+      "atlas_mean": 297342.5,
+      "transcripts": [
+        "t01-cwd-relative-targets.atlas.r0/transcript.jsonl",
+        "t01-cwd-relative-targets.atlas.r1/transcript.jsonl",
+        "t01-cwd-relative-targets.baseline.r0/transcript.jsonl",
+        "t01-cwd-relative-targets.baseline.r1/transcript.jsonl"
+      ]
+    },
+    {
+      "task_id": "t02-typed-degraded-cause",
+      "metric": "total_tokens",
+      "baseline_mean": 218022.5,
+      "atlas_mean": 312933.5,
+      "transcripts": [
+        "t02-typed-degraded-cause.atlas.r0/transcript.jsonl",
+        "t02-typed-degraded-cause.atlas.r1/transcript.jsonl",
+        "t02-typed-degraded-cause.baseline.r0/transcript.jsonl",
+        "t02-typed-degraded-cause.baseline.r1/transcript.jsonl"
+      ]
+    },
+    {
+      "task_id": "t03-nested-router-links",
+      "metric": "total_tokens",
+      "baseline_mean": 248547.0,
+      "atlas_mean": 365564.0,
+      "transcripts": [
+        "t03-nested-router-links.atlas.r0/transcript.jsonl",
+        "t03-nested-router-links.atlas.r1/transcript.jsonl",
+        "t03-nested-router-links.baseline.r0/transcript.jsonl",
+        "t03-nested-router-links.baseline.r1/transcript.jsonl"
+      ]
+    },
+    {
+      "task_id": "t04-detector-import-gates",
+      "metric": "total_tokens",
+      "baseline_mean": 233872.0,
+      "atlas_mean": 255327.0,
+      "transcripts": [
+        "t04-detector-import-gates.atlas.r0/transcript.jsonl",
+        "t04-detector-import-gates.atlas.r1/transcript.jsonl",
+        "t04-detector-import-gates.baseline.r0/transcript.jsonl",
+        "t04-detector-import-gates.baseline.r1/transcript.jsonl"
+      ]
+    },
+    {
+      "task_id": "t05-mcp-dependency-tools",
+      "metric": "hidden_tests_passed",
+      "baseline_mean": 28.0,
+      "atlas_mean": 27.5,
+      "transcripts": [
+        "t05-mcp-dependency-tools.atlas.r0/transcript.jsonl",
+        "t05-mcp-dependency-tools.atlas.r1/transcript.jsonl",
+        "t05-mcp-dependency-tools.baseline.r0/transcript.jsonl",
+        "t05-mcp-dependency-tools.baseline.r1/transcript.jsonl"
+      ]
+    },
+    {
+      "task_id": "t05-mcp-dependency-tools",
+      "metric": "total_tokens",
+      "baseline_mean": 307705.5,
+      "atlas_mean": 348206.0,
+      "transcripts": [
+        "t05-mcp-dependency-tools.atlas.r0/transcript.jsonl",
+        "t05-mcp-dependency-tools.atlas.r1/transcript.jsonl",
+        "t05-mcp-dependency-tools.baseline.r0/transcript.jsonl",
+        "t05-mcp-dependency-tools.baseline.r1/transcript.jsonl"
+      ]
+    },
+    {
+      "task_id": "t06-repo-file-size-limit",
+      "metric": "total_tokens",
+      "baseline_mean": 303691.0,
+      "atlas_mean": 334602.5,
+      "transcripts": [
+        "t06-repo-file-size-limit.atlas.r0/transcript.jsonl",
+        "t06-repo-file-size-limit.atlas.r1/transcript.jsonl",
+        "t06-repo-file-size-limit.baseline.r0/transcript.jsonl",
+        "t06-repo-file-size-limit.baseline.r1/transcript.jsonl"
+      ]
+    },
+    {
+      "task_id": "t07-static-precompressed-quality",
+      "metric": "total_tokens",
+      "baseline_mean": 119886.5,
+      "atlas_mean": 159584.0,
+      "transcripts": [
+        "t07-static-precompressed-quality.atlas.r0/transcript.jsonl",
+        "t07-static-precompressed-quality.atlas.r1/transcript.jsonl",
+        "t07-static-precompressed-quality.baseline.r0/transcript.jsonl",
+        "t07-static-precompressed-quality.baseline.r1/transcript.jsonl"
+      ]
+    },
+    {
+      "task_id": "t08-cookie-samesite-default",
+      "metric": "judge_completeness",
+      "baseline_mean": 4.5,
+      "atlas_mean": 3.5,
+      "transcripts": [
+        "t08-cookie-samesite-default.atlas.r0/transcript.jsonl",
+        "t08-cookie-samesite-default.atlas.r1/transcript.jsonl",
+        "t08-cookie-samesite-default.baseline.r0/transcript.jsonl",
+        "t08-cookie-samesite-default.baseline.r1/transcript.jsonl"
+      ]
+    },
+    {
+      "task_id": "t08-cookie-samesite-default",
+      "metric": "total_tokens",
+      "baseline_mean": 330611.0,
+      "atlas_mean": 433830.0,
+      "transcripts": [
+        "t08-cookie-samesite-default.atlas.r0/transcript.jsonl",
+        "t08-cookie-samesite-default.atlas.r1/transcript.jsonl",
+        "t08-cookie-samesite-default.baseline.r0/transcript.jsonl",
+        "t08-cookie-samesite-default.baseline.r1/transcript.jsonl"
+      ]
+    },
+    {
+      "task_id": "t10-auth-challenge-quoting",
+      "metric": "total_tokens",
+      "baseline_mean": 207343.0,
+      "atlas_mean": 220676.0,
+      "transcripts": [
+        "t10-auth-challenge-quoting.atlas.r0/transcript.jsonl",
+        "t10-auth-challenge-quoting.atlas.r1/transcript.jsonl",
+        "t10-auth-challenge-quoting.baseline.r0/transcript.jsonl",
+        "t10-auth-challenge-quoting.baseline.r1/transcript.jsonl"
+      ]
+    }
+  ],
+  "setup_failures": [],
+  "contaminated_runs": [],
+  "skipped_for_budget": [],
+  "judge_failures": [
+    "t03-nested-router-links.baseline.r1: Exited { code: Some(1) }: "
+  ],
+  "spent_usd": 9.819252200000005,
+  "comparison": []
+}
