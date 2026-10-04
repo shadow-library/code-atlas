@@ -14,8 +14,9 @@ expression: render_markdown(&report)
 | session model | claude-haiku-4-5-20251001 |
 | judge model | claude-sonnet-5-5 |
 | claude config | user |
-| code-atlas commit | 9b1fc2d |
-| code-atlas version | unknown |
+| eval repository commit | 9b1fc2d |
+| code-atlas binary version (build commit) | unknown |
+| code-atlas binary blake3 | unknown |
 | preamble version | 1 |
 | repo override | none |
 | spent (reported) | $2.00 |

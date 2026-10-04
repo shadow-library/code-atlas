@@ -1,0 +1,53 @@
+id = "t04-detector-import-gates"
+title = "Refactor: one shared place for detector import checks"
+repo = "self"
+base_commit = "327f4dc99bfcab783d882d8fa39f5b7eb2bbb22f"
+prompt = """
+Tech debt in atlas-detect: several framework detectors decide whether they apply to a file by pattern-matching `atlas_core::ImportFact` \
+variants by hand (TS `import` vs `require()` specifiers, Rust `use` roots, plus a fallback on path-qualified references), and the \
+same logic exists a second time for detectors that already work on a parsed file. Every new detector copies one of these snippets \
+and they have started to drift.
+
+Extract one shared abstraction inside atlas-detect for "which modules/crates does this file import" and route every existing \
+check through it. After the change, no file under `crates/atlas-detect/src/detectors/` may mention `ImportFact` any more.
+
+This is a pure refactor: no detector may start or stop applying to any file, and detection output must stay byte-identical. The \
+existing checks are not all equally permissive (for example in how they treat `require()` or `extern crate`); keep each one exactly \
+as it is today and do not "fix" those differences in this change. Keep the existing tests green.
+"""
+category = ["refactor"]
+timeout_minutes = 30
+max_turns = 100
+
+[validation]
+hidden_tests = ["hidden/crates/atlas-detect/tests/import_gates.rs"]
+commands = [
+  "cargo test --no-fail-fast -p atlas-detect --test import_gates",
+  '! grep -rn "ImportFact" crates/atlas-detect/src/detectors',
+]
+regression = [
+  "cargo test --no-fail-fast -p atlas-detect --lib --test auth --test clients --test config_env --test coverage --test endpoints --test experimental --test false_positives --test registry --test test_coverage",
+]
+
+[ground_truth]
+relevant_files = [
+  "crates/atlas-detect/src/view.rs",
+  "crates/atlas-detect/src/detectors/express.rs",
+  "crates/atlas-detect/src/detectors/nest.rs",
+  "crates/atlas-detect/src/detectors/clients.rs",
+  "crates/atlas-detect/src/detectors/axum.rs",
+  "crates/atlas-detect/src/detectors/auth.rs",
+  "crates/atlas-detect/src/detectors/mod.rs",
+  "crates/atlas-detect/src/lib.rs",
+  "crates/atlas-core/src/facts.rs",
+]
+must_change = [
+  "crates/atlas-detect/src/view.rs",
+  "crates/atlas-detect/src/detectors/express.rs",
+  "crates/atlas-detect/src/detectors/nest.rs",
+  "crates/atlas-detect/src/detectors/clients.rs",
+  "crates/atlas-detect/src/detectors/axum.rs",
+]
+must_consider = ["crates/atlas-detect/src/detectors/auth.rs", "crates/atlas-detect/src/detectors/mod.rs", "crates/atlas-core/src/facts.rs"]
+reuse_targets = []
+forbidden_duplicates = []

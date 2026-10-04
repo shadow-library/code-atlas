@@ -1,0 +1,68 @@
+id = "t09-lambda-text-content-types"
+title = "Lambda adapters base64-encode textual responses such as text/markdown and text/event-stream"
+repo = { git = "https://github.com/honojs/hono.git", commit = "f23b146afcec63606144cde50b5fbd360dd60238" }
+setup = ["npx --yes pnpm@12.6.0 install --frozen-lockfile --prefer-offline"]
+prompt = """
+Responses with `Content-Type: text/markdown`, `text/event-stream`, `text/calendar` or `application/javascript` come back \
+base64-encoded from our AWS Lambda deployment (API Gateway REST without binary media types configured shows the base64 text \
+to the client), and Lambda@Edge marks the same responses with `bodyEncoding: 'base64'`. Only a short allowlist of `text/*` \
+subtypes is treated as text today.
+
+Expected: the default binary detection treats every `text/*` media type, plus `application/javascript` and \
+`application/x-www-form-urlencoded`, as text (case-insensitive, with or without parameters such as `charset`). \
+Everything else keeps today's behaviour: JSON and `+json`/`+xml` types stay text, the Apple installer and Mozilla XUL `+xml` \
+types stay binary, and other types (images, fonts, `application/octet-stream`, ...) stay binary.
+
+We reproduce this with both the built-in `hono/aws-lambda` / `hono/lambda-edge` adapters and the standalone \
+`@hono/aws-lambda` / `@hono/lambda-edge` packages, so please fix it everywhere it applies and cover it with tests. \
+The standalone packages test against a `vp pack` build of hono.
+
+Environment note: dependencies are already installed. The global `pnpm` shim on this machine cannot run the pinned pnpm 12.6.0, \
+so use `npx pnpm@12.6.0 ...` or the binaries in `./node_modules/.bin` (for example `./node_modules/.bin/vitest run --project main <files>`).
+"""
+category = ["cross-package", "consistency"]
+timeout_minutes = 30
+max_turns = 80
+
+[validation]
+hidden_tests = [
+  "hidden/src/adapter/aws-lambda/text-content-types.test.ts",
+  "hidden/src/adapter/lambda-edge/text-content-types.test.ts",
+  "hidden/adapters/aws-lambda/src/text-content-types.test.ts",
+  "hidden/adapters/lambda-edge/src/text-content-types.test.ts",
+]
+commands = [
+  "./node_modules/.bin/vitest run --project main --coverage.enabled=false src/adapter/aws-lambda/text-content-types.test.ts src/adapter/lambda-edge/text-content-types.test.ts",
+  "./node_modules/.bin/vp pack > /dev/null && cd adapters/aws-lambda && ../../node_modules/.bin/vitest run src/text-content-types.test.ts && cd ../lambda-edge && ../../node_modules/.bin/vitest run src/text-content-types.test.ts",
+]
+regression = [
+  "./node_modules/.bin/vitest run --project main --coverage.enabled=false src/adapter/aws-lambda/handler.test.ts src/adapter/aws-lambda/conninfo.test.ts src/adapter/lambda-edge/handler.test.ts src/adapter/lambda-edge/conninfo.test.ts",
+  "./node_modules/.bin/vp pack > /dev/null && cd adapters/aws-lambda && ../../node_modules/.bin/vitest run --exclude src/text-content-types.test.ts && cd ../lambda-edge && ../../node_modules/.bin/vitest run --exclude src/text-content-types.test.ts",
+  "./node_modules/.bin/tsc -p tsconfig.spec.json",
+]
+
+[ground_truth]
+relevant_files = [
+  "src/adapter/aws-lambda/handler.ts",
+  "src/adapter/lambda-edge/handler.ts",
+  "adapters/aws-lambda/src/handler.ts",
+  "adapters/lambda-edge/src/handler.ts",
+  "src/adapter/aws-lambda/handler.test.ts",
+  "src/adapter/lambda-edge/handler.test.ts",
+  "adapters/aws-lambda/src/handler.test.ts",
+  "adapters/lambda-edge/src/handler.test.ts",
+]
+must_change = [
+  "src/adapter/aws-lambda/handler.ts",
+  "src/adapter/lambda-edge/handler.ts",
+  "adapters/aws-lambda/src/handler.ts",
+  "adapters/lambda-edge/src/handler.ts",
+]
+must_consider = [
+  "src/adapter/aws-lambda/handler.test.ts",
+  "src/adapter/lambda-edge/handler.test.ts",
+  "adapters/aws-lambda/src/handler.test.ts",
+  "adapters/lambda-edge/src/handler.test.ts",
+]
+reuse_targets = []
+forbidden_duplicates = []

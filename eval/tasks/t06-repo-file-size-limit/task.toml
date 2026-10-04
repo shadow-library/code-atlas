@@ -1,0 +1,62 @@
+id = "t06-repo-file-size-limit"
+title = "Per-repository max_file_bytes override"
+repo = "self"
+base_commit = "327f4dc99bfcab783d882d8fa39f5b7eb2bbb22f"
+prompt = """
+Per-repository file size limit.
+
+A project has a single `max_file_bytes` setting (`[project.settings]` in `projects.toml`) that applies to every repo in the project. In mixed \
+projects that is too blunt: one of our repos has large hand-maintained TypeScript files that we want indexed, another vendors huge files we never \
+want to parse, and raising or lowering the project-wide value fixes one repo while breaking the other.
+
+Please let each `[[project.repo]]` entry in `projects.toml` optionally set its own `max_file_bytes`. When a repo sets it, that value replaces the \
+project setting for that repo, whether it is larger or smaller; repos that don't set it keep using the project setting. The limit must be honoured \
+consistently, for the first full index as well as for later freshness scans and incremental updates. Registries written by the current version \
+must keep loading, and saving the registry must not add the key to repos that don't use it. No CLI flag is needed for now. Keep the whole \
+workspace (including every test target) compiling and the existing tests passing.
+"""
+category = ["config-impact", "blast-radius"]
+timeout_minutes = 35
+max_turns = 120
+
+[validation]
+hidden_tests = ["hidden/crates/atlas-engine/tests/repo_file_limit.rs"]
+commands = ["cargo test --no-fail-fast -p atlas-engine --test repo_file_limit"]
+regression = [
+  "cargo test --no-fail-fast -p atlas-project --lib",
+  "cargo test --no-fail-fast -p atlas-engine --lib --test engine --test incremental_equivalence --test regressions --test scip",
+  "cargo test --no-fail-fast -p atlas-resolve -p atlas-query -p atlas-link",
+  "cargo test --workspace --no-run",
+]
+
+[ground_truth]
+relevant_files = [
+  "crates/atlas-project/src/registry.rs",
+  "crates/atlas-project/src/discovery.rs",
+  "crates/atlas-engine/src/engine.rs",
+  "crates/atlas-engine/src/scan.rs",
+  "crates/atlas-engine/src/state.rs",
+  "crates/atlas-engine/src/watch.rs",
+  "crates/atlas-cli/src/commands/project.rs",
+]
+must_change = [
+  "crates/atlas-project/src/registry.rs",
+  "crates/atlas-project/src/discovery.rs",
+  "crates/atlas-project/src/manifest/tests.rs",
+  "crates/atlas-engine/src/watch.rs",
+  "crates/atlas-engine/tests/common/mod.rs",
+  "crates/atlas-resolve/tests/common/mod.rs",
+  "crates/atlas-resolve/tests/incremental.rs",
+  "crates/atlas-resolve/tests/workspace_quality.rs",
+  "crates/atlas-query/tests/common/mod.rs",
+  "crates/atlas-query/tests/perf.rs",
+  "crates/atlas-link/tests/common/mod.rs",
+]
+must_consider = [
+  "crates/atlas-engine/src/engine.rs",
+  "crates/atlas-engine/src/scan.rs",
+  "crates/atlas-engine/src/state.rs",
+  "crates/atlas-cli/src/commands/project.rs",
+]
+reuse_targets = ["discovery::discover"]
+forbidden_duplicates = []

@@ -1,0 +1,41 @@
+diff --git a/crates/atlas-detect/src/detectors/express.rs b/crates/atlas-detect/src/detectors/express.rs
+index e050b84..ce4484a 100644
+--- a/crates/atlas-detect/src/detectors/express.rs
++++ b/crates/atlas-detect/src/detectors/express.rs
+@@ -367,7 +367,7 @@ fn emit_cross_file_mount(view: &FileView<'_>, sink: &mut Sink, reference: &Refer
+     attrs([
+       ("framework", json!(kind.framework)),
+       ("mount_prefix", json!(normalize_route(prefix))),
+-      ("mounted_on", json!(child)),
++      ("mounted_on", json!(parent)),
+       ("mounted_on_scope", json!(scope)),
+     ]),
+   );
+diff --git a/crates/atlas-detect/tests/endpoints.rs b/crates/atlas-detect/tests/endpoints.rs
+index 3d2aebc..a775be3 100644
+--- a/crates/atlas-detect/tests/endpoints.rs
++++ b/crates/atlas-detect/tests/endpoints.rs
+@@ -202,6 +202,23 @@ fn should_resolve_computed_routes_without_inventing_dynamic_ones() {
+   assert_eq!(diagnostics.iter().map(|diagnostic| diagnostic.code.as_str()).collect::<Vec<_>>(), ["route-dynamic"]);
+ }
+ 
++#[test]
++fn should_record_the_parent_router_of_cross_file_mounts() {
++  let mounts: Vec<(serde_json::Value, serde_json::Value, serde_json::Value)> = common::fixture_files("adversarial/computed-routes-ts")
++    .into_iter()
++    .flat_map(|(_, analyzed)| run(&ExpressEndpointDetector, &analyzed).0.edges)
++    .filter(|edge| edge.kind.to_string() == "mounts")
++    .map(|edge| (edge.attrs["mount_prefix"].clone(), edge.attrs["mounted_on"].clone(), edge.attrs["mounted_on_scope"].clone()))
++    .collect();
++  assert_eq!(
++    mounts,
++    [
++      (serde_json::json!("/items"), serde_json::json!("apiRouter"), serde_json::json!("router_relative")),
++      (serde_json::json!("/api"), serde_json::json!("app"), serde_json::json!("absolute")),
++    ]
++  );
++}
++
+ #[test]
+ fn should_mark_unmounted_router_routes_as_router_relative() {
+   let analyzed = common::fixture_files("adversarial/computed-routes-ts")

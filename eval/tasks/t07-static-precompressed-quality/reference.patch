@@ -1,0 +1,126 @@
+diff --git a/src/middleware/compress/index.ts b/src/middleware/compress/index.ts
+index 691bb4f..e717f02 100644
+--- a/src/middleware/compress/index.ts
++++ b/src/middleware/compress/index.ts
+@@ -4,8 +4,7 @@
+  */
+ 
+ import type { MiddlewareHandler } from '../../types'
+-import { parseAccept } from '../../utils/accept'
+-import { COMPRESSIBLE_CONTENT_TYPE_REGEX } from '../../utils/compress'
++import { COMPRESSIBLE_CONTENT_TYPE_REGEX, rankAcceptedEncodings } from '../../utils/compress'
+ 
+ export { COMPRESSIBLE_CONTENT_TYPE_REGEX }
+ 
+@@ -21,28 +20,6 @@ interface CompressionOptions {
+   contentTypeFilter?: ContentTypeFilter
+ }
+ 
+-const selectEncoding = (
+-  header: string | undefined,
+-  candidates: readonly Encoding[]
+-): Encoding | undefined => {
+-  if (header === undefined) {
+-    return undefined
+-  }
+-  const accepts = parseAccept(header)
+-  const wildcardQ = accepts.find((a) => a.type === '*')?.q
+-  let best: { encoding: Encoding; q: number } | undefined
+-  for (const enc of candidates) {
+-    const explicit = accepts.find((a) => a.type.toLowerCase() === enc)
+-    const q = explicit ? explicit.q : (wildcardQ ?? 0)
+-    if (q === 1) {
+-      return enc
+-    } else if (q > 0 && (!best || q > best.q)) {
+-      best = { encoding: enc, q }
+-    }
+-  }
+-  return best?.encoding
+-}
+-
+ const varyAcceptEncodingRegExp = /(?:^|,)\s*accept-encoding\s*(?:,|$)/i
+ 
+ /**
+@@ -116,7 +93,7 @@ export const compress = (options?: CompressionOptions): MiddlewareHandler => {
+     }
+ 
+     const accepted = ctx.req.header('Accept-Encoding')
+-    const encoding = selectEncoding(accepted, candidates)
++    const [encoding] = rankAcceptedEncodings(accepted, candidates)
+     if (!encoding || !ctx.res.body) {
+       return
+     }
+diff --git a/src/middleware/serve-static/index.ts b/src/middleware/serve-static/index.ts
+index d8e17c9..acbc1df 100644
+--- a/src/middleware/serve-static/index.ts
++++ b/src/middleware/serve-static/index.ts
+@@ -5,7 +5,7 @@
+ 
+ import type { Context, Data } from '../../context'
+ import type { Env, MiddlewareHandler } from '../../types'
+-import { COMPRESSIBLE_CONTENT_TYPE_REGEX } from '../../utils/compress'
++import { COMPRESSIBLE_CONTENT_TYPE_REGEX, rankAcceptedEncodings } from '../../utils/compress'
+ import { getMimeType } from '../../utils/mime'
+ import { tryDecodeURI } from '../../utils/url'
+ import { defaultJoin } from './path'
+@@ -99,17 +99,12 @@ export const serveStatic = <E extends Env = Env>(
+       c.header('Content-Type', mimeType || 'application/octet-stream')
+ 
+       if (options.precompressed && (!mimeType || COMPRESSIBLE_CONTENT_TYPE_REGEX.test(mimeType))) {
+-        const acceptEncodingSet = new Set(
+-          c.req
+-            .header('Accept-Encoding')
+-            ?.split(',')
+-            .map((encoding) => encoding.trim())
++        const encodings = rankAcceptedEncodings(
++          c.req.header('Accept-Encoding'),
++          ENCODINGS_ORDERED_KEYS
+         )
+ 
+-        for (const encoding of ENCODINGS_ORDERED_KEYS) {
+-          if (!acceptEncodingSet.has(encoding)) {
+-            continue
+-          }
++        for (const encoding of encodings) {
+           const compressedContent = (await getContent(path + ENCODINGS[encoding], c)) as Data | null
+ 
+           if (compressedContent) {
+diff --git a/src/utils/compress.ts b/src/utils/compress.ts
+index 4398173..86cee7d 100644
+--- a/src/utils/compress.ts
++++ b/src/utils/compress.ts
+@@ -3,8 +3,34 @@
+  * Constants for compression.
+  */
+ 
++import { parseAccept } from './accept'
++
+ /**
+  * Match for compressible content type.
+  */
+ export const COMPRESSIBLE_CONTENT_TYPE_REGEX =
+   /^\s*(?:text\/(?!event-stream(?:[;\s]|$))[^;\s]+|application\/(?:javascript|json|xml|xml-dtd|ecmascript|dart|msgpack|postscript|rtf|tar|toml|vnd\.dart|vnd\.ms-fontobject|vnd\.ms-opentype|vnd\.msgpack|wasm|x-httpd-php|x-javascript|x-msgpack|x-ns-proxy-autoconfig|x-sh|x-tar|x-virtualbox-hdd|x-virtualbox-ova|x-virtualbox-ovf|x-virtualbox-vbox|x-virtualbox-vdi|x-virtualbox-vhd|x-virtualbox-vmdk|x-www-form-urlencoded)|font\/(?:otf|ttf)|image\/(?:bmp|vnd\.adobe\.photoshop|vnd\.microsoft\.icon|vnd\.ms-dds|x-icon|x-ms-bmp)|message\/rfc822|model\/gltf-binary|x-shader\/x-fragment|x-shader\/x-vertex|[^;\s]+?\+(?:json|text|xml|yaml|msgpack))(?:[;\s]|$)/i
++
++/**
++ * Order the candidate content codings by the client's Accept-Encoding preference.
++ * Codings the client refuses (q=0) or does not mention (without a wildcard) are dropped,
++ * and codings with the same quality keep the order of `candidates`.
++ */
++export const rankAcceptedEncodings = <T extends string>(
++  acceptEncoding: string | undefined,
++  candidates: readonly T[]
++): T[] => {
++  if (!acceptEncoding) {
++    return []
++  }
++  const accepts = parseAccept(acceptEncoding)
++  const wildcardQ = accepts.find((accept) => accept.type === '*')?.q ?? 0
++  return candidates
++    .map((encoding) => {
++      const explicit = accepts.find((accept) => accept.type.toLowerCase() === encoding)
++      return { encoding, q: explicit ? explicit.q : wildcardQ }
++    })
++    .filter(({ q }) => q > 0)
++    .sort((a, b) => b.q - a.q)
++    .map(({ encoding }) => encoding)
++}

@@ -1,0 +1,95 @@
+diff --git a/crates/atlas-cli/src/commands/query.rs b/crates/atlas-cli/src/commands/query.rs
+index be4c8ec..53752c8 100644
+--- a/crates/atlas-cli/src/commands/query.rs
++++ b/crates/atlas-cli/src/commands/query.rs
+@@ -71,16 +71,16 @@ fn search(ctx: &Context, args: SearchArgs) -> CliResult<Outcome> {
+ }
+ 
+ fn symbol(ctx: &Context, args: SymbolArgs) -> CliResult<Outcome> {
+-  let (query, _) = open(ctx)?;
+-  let mut request = SymbolRequest::new(args.target);
++  let (query, project) = open(ctx)?;
++  let mut request = SymbolRequest::new(cwd_target(&args.target, &ctx.cwd, &project));
+   request.filter = target_filter(&args.filter);
+   request.body = args.body;
+   finish_targeted(query.symbol(&request)?, args.common.json)
+ }
+ 
+ fn traverse(ctx: &Context, kind: TraversalKind, args: TraverseArgs) -> CliResult<Outcome> {
+-  let (query, _) = open(ctx)?;
+-  let mut request = TraverseRequest::new(args.target);
++  let (query, project) = open(ctx)?;
++  let mut request = TraverseRequest::new(cwd_target(&args.target, &ctx.cwd, &project));
+   request.filter = target_filter(&args.filter);
+   request.min_confidence = args.min_confidence;
+   if let Some(depth) = args.depth {
+@@ -93,8 +93,8 @@ fn traverse(ctx: &Context, kind: TraversalKind, args: TraverseArgs) -> CliResult
+ }
+ 
+ fn impact(ctx: &Context, args: ImpactArgs) -> CliResult<Outcome> {
+-  let (query, _) = open(ctx)?;
+-  let mut request = ImpactRequest::new(args.targets);
++  let (query, project) = open(ctx)?;
++  let mut request = ImpactRequest::new(args.targets.iter().map(|target| cwd_target(target, &ctx.cwd, &project)));
+   request.filter = target_filter(&args.filter);
+   request.min_confidence = args.min_confidence;
+   if let Some(depth) = args.depth {
+@@ -107,8 +107,8 @@ fn impact(ctx: &Context, args: ImpactArgs) -> CliResult<Outcome> {
+ }
+ 
+ fn tests_for(ctx: &Context, args: TestsForArgs) -> CliResult<Outcome> {
+-  let (query, _) = open(ctx)?;
+-  let mut request = TestsForRequest::new(args.target);
++  let (query, project) = open(ctx)?;
++  let mut request = TestsForRequest::new(cwd_target(&args.target, &ctx.cwd, &project));
+   request.filter = target_filter(&args.filter);
+   request.min_confidence = args.min_confidence;
+   if let Some(limit) = args.limit {
+@@ -135,7 +135,7 @@ fn similar(ctx: &Context, args: SimilarArgs) -> CliResult<Outcome> {
+   let (query, project) = open(ctx)?;
+   let target = match (&args.snippet, &args.target) {
+     (Some(snippet), _) => snippet_target(snippet, &ctx.cwd, &project)?,
+-    (None, Some(target)) => target.clone(),
++    (None, Some(target)) => cwd_target(target, &ctx.cwd, &project),
+     (None, None) => return Err(CliError::InvalidSnippet(String::new())),
+   };
+   let mut request = SimilarRequest::new(target);
+@@ -186,15 +186,15 @@ fn context(ctx: &Context, args: ContextArgs) -> CliResult<Outcome> {
+ }
+ 
+ fn explain(ctx: &Context, args: ExplainArgs) -> CliResult<Outcome> {
+-  let (query, _) = open(ctx)?;
+-  let mut request = ExplainRequest::new(args.target);
++  let (query, project) = open(ctx)?;
++  let mut request = ExplainRequest::new(cwd_target(&args.target, &ctx.cwd, &project));
+   request.filter = target_filter(&args.filter);
+   finish_targeted(query.explain(&request)?, args.common.json)
+ }
+ 
+ fn read(ctx: &Context, args: ReadArgs) -> CliResult<Outcome> {
+-  let (query, _) = open(ctx)?;
+-  let mut request = ReadRequest::new(args.target);
++  let (query, project) = open(ctx)?;
++  let mut request = ReadRequest::new(cwd_target(&args.target, &ctx.cwd, &project));
+   request.filter = target_filter(&args.filter);
+   request.body = !args.signature;
+   request.context = args.context;
+@@ -246,6 +246,18 @@ fn snippet_target(raw: &str, cwd: &Path, project: &Project) -> CliResult<String>
+   }
+ }
+ 
++fn cwd_target(raw: &str, cwd: &Path, project: &Project) -> String {
++  let (location, line) = match raw.rsplit_once(':') {
++    Some((location, line)) if line.parse::<u32>().is_ok() => (location, Some(line)),
++    _ => (raw, None),
++  };
++  match (repo_relative(location, cwd, project), line) {
++    (Some((repo, path)), Some(line)) => format!("{repo}:{path}:{line}"),
++    (Some((repo, path)), None) => format!("{repo}:{path}"),
++    (None, _) => raw.to_owned(),
++  }
++}
++
+ fn repo_relative(location: &str, cwd: &Path, project: &Project) -> Option<(String, String)> {
+   let canonical = fs::canonicalize(cwd.join(location)).ok().filter(|path| path.is_file())?;
+   let (repo, relative) = project

@@ -1,0 +1,288 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 014f15d..192bab7 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -71,7 +71,7 @@ The plan lives in `docs/plan/implementation-plan.md`.
+ ### Freshness
+ 
+ - `Engine::ensure_fresh()` is the barrier every query runs first. It stat-scans every repo and runs an incremental update when anything changed. With a healthy watcher it skips the scan only if no event arrived since the last scan and that scan is younger than `full_scan_interval` (60 s). Events mark the watcher dirty inside the notify callback. A watcher error, overflow or rescan event forces the next barrier to scan, and a dead worker or channel makes every barrier scan. Residual risk: an edit whose event has not been delivered yet.
+-- The barrier returns `FreshnessReport::Fresh(header)` or `Degraded { failed_files, reason }`, and queries must surface `Degraded`. It is degraded in these cases:
++- The barrier returns `FreshnessReport::Fresh(header)` or `Degraded { failed_files, cause }` (a typed `DegradedCause`), and queries must surface `Degraded`. It is degraded in these cases:
+   - the update failed (store error, lock timeout, a panic inside the update);
+   - a file could not be read or analysed during this update;
+   - a project pass failed or panicked (the run is `partial`);
+@@ -84,7 +84,7 @@ The plan lives in `docs/plan/implementation-plan.md`.
+   - Barriers in one process serialize on the engine mutex; the waiter re-scans (usually a no-op).
+   - Across processes, `<db>.index.lock` is held for a whole run, and the store write lock only per persist batch. After taking the index lock, the engine always re-reads the persisted generation (the last finished run in `engine:meta`). If it moved, the engine reloads its state and re-plans from a fresh scan.
+   - The `engine:dirty` blob exists while a run is in flight. A barrier that sees it waits for the index lock. A dirty marker found while holding the lock means a crashed run: the engine reloads (ignoring the persisted similarity index), marks the orphaned `barrier`/`index` runs `failed`, recomputes SCIP lag, and the next run re-resolves every file. If dependency rounds do not converge, the run stays `partial` and keeps the dirty marker, so the next run re-resolves everything.
+-- Project configuration: `engine:project` holds a fingerprint of the repos (name, path, include/exclude, languages) and `max_file_bytes`. `Engine::open` and `Engine::reload_project` adopt their configuration. Any other engine whose fingerprint differs reports `Degraded("project configuration changed; reopen the engine")` and neither purges nor indexes. Long-lived servers must call `reload_project` when the registry changes. Always open an engine with the full registry `Project`: opening with a subset adopts it and purges every other repo. The transaction that begins a run records the configured repos in `engine:repos` before any file owner is written. On the next run, repos from `engine:repos`, Repository entities and meta that are absent from the adopted configuration are purged, even when the previous run crashed. Stale entries are cleared only after a run finishes.
++- Project configuration: `engine:project` holds a fingerprint of the repos (name, path, include/exclude, languages) and `max_file_bytes`. `Engine::open` and `Engine::reload_project` adopt their configuration. Any other engine whose fingerprint differs reports `Degraded` with `DegradedCause::ProjectConfigChanged` ("project configuration changed; reopen the engine") and neither purges nor indexes. Long-lived servers must call `reload_project` when the registry changes. Always open an engine with the full registry `Project`: opening with a subset adopts it and purges every other repo. The transaction that begins a run records the configured repos in `engine:repos` before any file owner is written. On the next run, repos from `engine:repos`, Repository entities and meta that are absent from the adopted configuration are purged, even when the previous run crashed. Stale entries are cleared only after a run finishes.
+ - SCIP and LLM enrichment never run inside the barrier. Every file owner written by a run, whether its content changed or it was only re-resolved, loses its `scip:` owner. It is added to `engine:scip.lagging` and stamped in `dropped_in` in the same transaction, whether or not SCIP has run, and `header.scip` reports the lag once SCIP has run.
+ - The similarity index is updated in memory every run and persisted on `Engine` drop, after `similarity_persist_idle` in the watcher, or via `persist_similarity()`. Long-lived processes, the MCP server in particular, must call `persist_similarity()` on SIGTERM/SIGINT, because signals skip drops. The blob is stamped with its generation; a stale or missing blob is rebuilt from the artifacts at open.
+ - `Engine::scip` syncs the generation before planning. It ingests a file only when the stored artifact, the hash the indexer was given and the disk agree; any other file stays lagging. Before writing `scip:` owners under the index lock, it re-checks the hash in the files table. If the persisted generation moved since the jobs were built, it also re-reads the repo's graph fingerprint and the lag set: a changed fingerprint leaves the whole package lagging, and a file whose `dropped_in` stamp (the run that last dropped its `scip:` owner) differs from the job's snapshot is skipped. Deleted files are removed from `engine:scip.lagging` when the run removes them, and ingest drops every lagging entry without a file record.
+diff --git a/crates/atlas-cli/src/commands/watch.rs b/crates/atlas-cli/src/commands/watch.rs
+index 8395c70..0aebb97 100644
+--- a/crates/atlas-cli/src/commands/watch.rs
++++ b/crates/atlas-cli/src/commands/watch.rs
+@@ -1,6 +1,6 @@
+ use std::time::Duration;
+ 
+-use atlas_engine::{Engine, FreshnessReport};
++use atlas_engine::{DegradedCause, Engine, FreshnessReport};
+ use atlas_project::Project;
+ use tokio::runtime::Runtime;
+ use tokio::signal::unix::{Signal, SignalKind, signal};
+@@ -10,7 +10,6 @@ use crate::error::{CliError, CliResult};
+ use crate::output::{Outcome, note};
+ 
+ const POLL_INTERVAL: Duration = Duration::from_secs(2);
+-const CONFIG_CHANGED_MARKER: &str = "project configuration changed";
+ 
+ struct Shutdown {
+   runtime: Runtime,
+@@ -71,7 +70,13 @@ pub fn run(ctx: &Context) -> CliResult<Outcome> {
+ }
+ 
+ fn config_changed(report: &FreshnessReport) -> bool {
+-  matches!(report, FreshnessReport::Degraded { reason, .. } if reason.contains(CONFIG_CHANGED_MARKER))
++  matches!(
++    report,
++    FreshnessReport::Degraded {
++      cause: DegradedCause::ProjectConfigChanged,
++      ..
++    }
++  )
+ }
+ 
+ fn reload(ctx: &Context, engine: &Engine, project: &Project) -> CliResult<Project> {
+diff --git a/crates/atlas-engine/src/engine.rs b/crates/atlas-engine/src/engine.rs
+index e85839d..666ef31 100644
+--- a/crates/atlas-engine/src/engine.rs
++++ b/crates/atlas-engine/src/engine.rs
+@@ -13,7 +13,7 @@ use crate::error::{EngineError, EngineResult};
+ use crate::lock::{Contention, IndexLock};
+ use crate::options::{EngineOptions, IndexMode};
+ use crate::passes::is_reserved_pass_name;
+-use crate::report::{FailedFile, FreshnessHeader, FreshnessReport, RunOutcomeKind, RunSummary, ScanKind, ScipLag};
++use crate::report::{DegradedCause, FailedFile, FreshnessHeader, FreshnessReport, RunOutcomeKind, RunSummary, ScanKind, ScipLag};
+ use crate::run::{RunEnv, execute, key_label};
+ use crate::scan::{RepoScan, ScanOutcome, scan_repo};
+ use crate::similarity::{SIMILARITY_BLOB, SIMILARITY_BLOB_VERSION, encode_persisted};
+@@ -22,7 +22,6 @@ use crate::watch::WatchSignals;
+ 
+ const INTERRUPTED_RUN_SCAN: usize = 100;
+ const INDEX_TRIGGERS: [&str; 2] = ["barrier", "index"];
+-pub(crate) const PROJECT_CHANGED: &str = "project configuration changed; reopen the engine";
+ 
+ pub(crate) struct Inner {
+   pub state: EngineState,
+@@ -184,7 +183,7 @@ impl Engine {
+       Err(EngineError::ProjectConfigChanged) => Ok(FreshnessReport::Degraded {
+         header: self.header(&inner.state, None, 0, started.elapsed(), ScanKind::StatScan),
+         failed_files: Vec::new(),
+-        reason: PROJECT_CHANGED.to_owned(),
++        cause: DegradedCause::ProjectConfigChanged,
+       }),
+       Err(error) => {
+         tracing::error!(error = %error, "freshness barrier could not bring the index up to date");
+@@ -192,7 +191,7 @@ impl Engine {
+         Ok(FreshnessReport::Degraded {
+           header: self.header(&inner.state, None, 0, started.elapsed(), ScanKind::StatScan),
+           failed_files: Vec::new(),
+-          reason: format!("index update failed: {error}"),
++          cause: DegradedCause::UpdateFailed { error: error.to_string() },
+         })
+       }
+     }
+@@ -272,16 +271,19 @@ impl Engine {
+     let run = Some(summary.run);
+     Ok(match summary.outcome {
+       RunOutcomeKind::Ok if failures.is_empty() => FreshnessReport::Fresh(self.header(&inner.state, run, summary.files_updated, started.elapsed(), ScanKind::StatScan)),
+-      RunOutcomeKind::Ok => self.degraded(
++      RunOutcomeKind::Ok => {
++        let cause = DegradedCause::FilesNotIndexed { count: failures.len() };
++        self.degraded(&inner.state, run, summary.files_updated, started, ScanKind::StatScan, failures, cause)
++      }
++      RunOutcomeKind::Partial { reason } => self.degraded(
+         &inner.state,
+         run,
+         summary.files_updated,
+         started,
+         ScanKind::StatScan,
+         failures,
+-        "some files or repositories could not be indexed".to_owned(),
++        DegradedCause::PartialRun { reason },
+       ),
+-      RunOutcomeKind::Partial { reason } => self.degraded(&inner.state, run, summary.files_updated, started, ScanKind::StatScan, failures, reason),
+     })
+   }
+ 
+@@ -292,18 +294,27 @@ impl Engine {
+     match failures.is_empty() {
+       true => FreshnessReport::Fresh(self.header(state, run, files, started.elapsed(), scan)),
+       false => {
+-        let reason = format!("{} file(s) or repositories could not be indexed", failures.len());
+-        self.degraded(state, run, files, started, scan, failures, reason)
++        let cause = DegradedCause::FilesNotIndexed { count: failures.len() };
++        self.degraded(state, run, files, started, scan, failures, cause)
+       }
+     }
+   }
+ 
+   #[allow(clippy::too_many_arguments)]
+-  fn degraded(&self, state: &EngineState, run: Option<RunId>, files: u64, started: Instant, scan: ScanKind, failed_files: Vec<FailedFile>, reason: String) -> FreshnessReport {
++  fn degraded(
++    &self,
++    state: &EngineState,
++    run: Option<RunId>,
++    files: u64,
++    started: Instant,
++    scan: ScanKind,
++    failed_files: Vec<FailedFile>,
++    cause: DegradedCause,
++  ) -> FreshnessReport {
+     FreshnessReport::Degraded {
+       header: self.header(state, run, files, started.elapsed(), scan),
+       failed_files,
+-      reason,
++      cause,
+     }
+   }
+ 
+diff --git a/crates/atlas-engine/src/report.rs b/crates/atlas-engine/src/report.rs
+index 201d1ef..ad7fd14 100644
+--- a/crates/atlas-engine/src/report.rs
++++ b/crates/atlas-engine/src/report.rs
+@@ -1,4 +1,5 @@
+ use std::collections::BTreeMap;
++use std::fmt;
+ use std::time::Duration;
+ 
+ use atlas_core::{RelPath, RepoName, RunId};
+@@ -42,10 +43,29 @@ pub enum FreshnessReport {
+   Degraded {
+     header: FreshnessHeader,
+     failed_files: Vec<FailedFile>,
+-    reason: String,
++    cause: DegradedCause,
+   },
+ }
+ 
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub enum DegradedCause {
++  ProjectConfigChanged,
++  UpdateFailed { error: String },
++  PartialRun { reason: String },
++  FilesNotIndexed { count: usize },
++}
++
++impl fmt::Display for DegradedCause {
++  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++    match self {
++      Self::ProjectConfigChanged => f.write_str("project configuration changed; reopen the engine"),
++      Self::UpdateFailed { error } => write!(f, "index update failed: {error}"),
++      Self::PartialRun { reason } => f.write_str(reason),
++      Self::FilesNotIndexed { count } => write!(f, "{count} file(s) or repositories could not be indexed"),
++    }
++  }
++}
++
+ impl FreshnessReport {
+   pub fn header(&self) -> &FreshnessHeader {
+     match self {
+diff --git a/crates/atlas-engine/tests/engine.rs b/crates/atlas-engine/tests/engine.rs
+index 0820fbb..f5693ec 100644
+--- a/crates/atlas-engine/tests/engine.rs
++++ b/crates/atlas-engine/tests/engine.rs
+@@ -8,7 +8,7 @@ use std::thread;
+ use std::time::{Duration, Instant};
+ 
+ use atlas_core::{Certainty, Confidence, ContentHash, EdgeKind, Entity, EntityKind, Evidence, Freshness, Owner, Producer, RelPath, RepoName, Span};
+-use atlas_engine::{Engine, EngineOptions, FaultInjection, FreshnessReport, IndexMode, ScanKind, ScipLag};
++use atlas_engine::{DegradedCause, Engine, EngineOptions, FaultInjection, FreshnessReport, IndexMode, ScanKind, ScipLag};
+ use atlas_store::{EdgeFilter, EntityFilter, FreshnessPolicy, InferredQuery, NewInferredFact, RunStatus};
+ use common::edits::replace_word;
+ use common::{acme_copy, copy_dir, digest, fixtures_root, fresh, import_lineage, open, open_with, project, repo_config};
+@@ -455,12 +455,12 @@ fn should_remove_facts_and_report_an_error_when_a_repo_directory_is_deleted() {
+ 
+   let report = fresh(&engine);
+ 
+-  let FreshnessReport::Degraded { failed_files, reason, .. } = &report else {
++  let FreshnessReport::Degraded { failed_files, cause, .. } = &report else {
+     panic!("{report:?}")
+   };
+   assert!(
+     failed_files.iter().any(|failed| failed.repo == repo("acme-sdk") && failed.path.is_none()),
+-    "{failed_files:?} {reason}"
++    "{failed_files:?} {cause}"
+   );
+   assert!(named(&engine, "toCents", "acme-sdk").is_empty());
+   assert!(engine.store().read(|tx| tx.files_in_repo(&repo("acme-sdk"))).unwrap().is_empty());
+@@ -629,7 +629,13 @@ fn should_turn_a_panicking_project_pass_into_a_partial_degraded_run() {
+ 
+   let report = fresh(&engine);
+ 
+-  let FreshnessReport::Degraded { reason, .. } = &report else { panic!("{report:?}") };
++  let FreshnessReport::Degraded {
++    cause: DegradedCause::PartialRun { reason },
++    ..
++  } = &report
++  else {
++    panic!("{report:?}")
++  };
+   assert!(reason.contains("project pass panicking failed: panicked: pass bug"), "{reason}");
+   let run = engine.store().read(|tx| tx.runs(1)).unwrap().remove(0);
+   assert!(matches!(&run.status, RunStatus::Partial { reason } if reason.contains("panicking")), "{:?}", run.status);
+@@ -655,7 +661,7 @@ fn should_recover_a_consistent_index_after_an_interrupted_run() {
+   armed.store(true, std::sync::atomic::Ordering::SeqCst);
+   let crashed = fresh(&crashing);
+   assert!(
+-    matches!(&crashed, FreshnessReport::Degraded { reason, .. } if reason.contains("injected crash")),
++    matches!(&crashed, FreshnessReport::Degraded { cause: DegradedCause::UpdateFailed { error }, .. } if error.contains("injected crash")),
+     "{crashed:?}"
+   );
+   std::mem::forget(crashing);
+diff --git a/crates/atlas-engine/tests/regressions.rs b/crates/atlas-engine/tests/regressions.rs
+index 5a734ac..59131cf 100644
+--- a/crates/atlas-engine/tests/regressions.rs
++++ b/crates/atlas-engine/tests/regressions.rs
+@@ -14,7 +14,9 @@ use atlas_core::{
+   Producer, RelPath, RepoName, Span,
+ };
+ use atlas_detect::DiagnosingDetector;
+-use atlas_engine::{Engine, EngineError, EngineOptions, FaultInjection, FreshnessReport, IndexMode, PassContext, PassError, PassOutput, ProjectPass, ScipIndexers, ScipLag};
++use atlas_engine::{
++  DegradedCause, Engine, EngineError, EngineOptions, FaultInjection, FreshnessReport, IndexMode, PassContext, PassError, PassOutput, ProjectPass, ScipIndexers, ScipLag,
++};
+ use atlas_project::Project;
+ use atlas_scip::{CacheStatus, ScipFacts, ScipIndexer, ScipOutcome, ScipRequest, ScipRun};
+ use atlas_store::{EdgeFilter, EntityFilter, FreshnessPolicy, InferredQuery, NewInferredFact, ReadTx};
+@@ -242,10 +244,11 @@ fn should_report_a_project_configuration_change_until_the_engine_adopts_it() {
+ 
+   let report = fresh(&old);
+ 
+-  let FreshnessReport::Degraded { reason, header, .. } = &report else {
++  let FreshnessReport::Degraded { cause, header, .. } = &report else {
+     panic!("{report:?}")
+   };
+-  assert_eq!(reason, "project configuration changed; reopen the engine");
++  assert_eq!(cause, &DegradedCause::ProjectConfigChanged);
++  assert_eq!(cause.to_string(), "project configuration changed; reopen the engine");
+   assert_eq!(header.run, None);
+   assert!(matches!(old.index(IndexMode::Incremental), Err(EngineError::ProjectConfigChanged)));
+   old.reload_project(&project).unwrap();
+diff --git a/crates/atlas-query/src/freshness.rs b/crates/atlas-query/src/freshness.rs
+index 388160c..7ed7495 100644
+--- a/crates/atlas-query/src/freshness.rs
++++ b/crates/atlas-query/src/freshness.rs
+@@ -42,8 +42,8 @@ impl Freshness {
+     let header = report.header();
+     let state = match report {
+       FreshnessReport::Fresh(_) => FreshnessState::Fresh,
+-      FreshnessReport::Degraded { failed_files, reason, .. } => FreshnessState::Degraded {
+-        reason: reason.clone(),
++      FreshnessReport::Degraded { failed_files, cause, .. } => FreshnessState::Degraded {
++        reason: cause.to_string(),
+         failed_files: failed_files.iter().map(failed_view).collect(),
+       },
+     };

@@ -3,10 +3,12 @@ use std::path::PathBuf;
 use atlas_core::EntityKind;
 use clap::{ArgGroup, Args, Parser, Subcommand, ValueEnum};
 
+const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (commit ", env!("CODE_ATLAS_BUILD_COMMIT"), ")");
+
 #[derive(Debug, Parser)]
 #[command(
   name = "code-atlas",
-  version,
+  version = VERSION,
   about = "Cross-repo code knowledge graph for coding agents",
   after_help = "Exit codes:\n  0  answered with results\n  1  runtime error\n  2  usage or config error (bad flags, ambiguous or no project, invalid values)\n  3  degraded: results were printed but the index is stale, partial or incomplete\n  4  answered, but nothing matched (target not found or ambiguous, run or file not found)"
 )]

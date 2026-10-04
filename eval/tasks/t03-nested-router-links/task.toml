@@ -1,0 +1,63 @@
+id = "t03-nested-router-links"
+title = "Planted bug: routes of Express routers nested across files are never composed or linked"
+repo = "self"
+base_commit = "327f4dc99bfcab783d882d8fa39f5b7eb2bbb22f"
+base_patch = "base.patch"
+prompt = """
+Bug report: Code Atlas stopped linking our web client to endpoints that live on Express routers nested more than one level deep \
+across files.
+
+Our API is laid out like this:
+
+```ts
+// src/server.ts
+import express from 'express';
+import { apiRouter } from './routes';
+import { healthRouter } from './health';
+const app = express();
+app.use('/api', apiRouter);
+app.use('/health', healthRouter);
+
+// src/routes/index.ts
+import { Router } from 'express';
+import { ordersRouter } from './orders';
+export const apiRouter = Router();
+apiRouter.use('/orders', ordersRouter);
+
+// src/routes/orders.ts
+import { Router } from 'express';
+export const ordersRouter = Router();
+ordersRouter.get('/:id', (req, res) => res.json({ id: req.params.id }));
+```
+
+After indexing, there is no composed endpoint `GET /api/orders/{id}`; only the router-relative `GET /{id}` exists, and the web app's \
+`fetch(`${process.env.STORE_API_URL}/api/orders/${id}`)` gets no `calls_endpoint` link at all. Routers mounted directly on the app \
+from another file (`app.use('/health', healthRouter)` with routes in `health.ts`) still compose and link correctly, so it is only \
+the deeper nesting that is broken.
+
+Find the root cause and fix it there (not with a workaround downstream), and add a regression test at the level where the bug lives. \
+Keep the existing tests green.
+"""
+category = ["planted-bug", "dependency-trace"]
+timeout_minutes = 30
+max_turns = 100
+
+[validation]
+hidden_tests = ["hidden/crates/atlas-link/tests/nested_router_links.rs", "hidden/crates/atlas-detect/tests/cross_file_mounts.rs"]
+commands = ["cargo test --no-fail-fast -p atlas-link --test nested_router_links", "cargo test --no-fail-fast -p atlas-detect --test cross_file_mounts"]
+regression = [
+  "cargo test --no-fail-fast -p atlas-detect --lib --test auth --test clients --test config_env --test coverage --test endpoints --test experimental --test false_positives --test registry --test test_coverage",
+  "cargo test --no-fail-fast -p atlas-link --lib --test fixtures --test incremental --test synthetic --test base_evidence",
+]
+
+[ground_truth]
+relevant_files = [
+  "crates/atlas-detect/src/detectors/express.rs",
+  "crates/atlas-link/src/compose.rs",
+  "crates/atlas-link/src/http.rs",
+  "crates/atlas-detect/tests/endpoints.rs",
+]
+must_change = ["crates/atlas-detect/src/detectors/express.rs"]
+must_consider = ["crates/atlas-link/src/compose.rs", "crates/atlas-detect/tests/endpoints.rs"]
+reuse_targets = []
+forbidden_duplicates = []

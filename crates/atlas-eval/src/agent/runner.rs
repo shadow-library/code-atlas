@@ -26,13 +26,16 @@ use super::record::{
 use super::reuse::{analyze_source, duplication_findings, new_functions, reuse_references, same_name_as_targets};
 use super::spec::LoadedTask;
 use super::transcript::{TokenUsage, Transcript};
-use super::validation::{SuiteResult, regressions, run_suite};
-use super::workspace::{StripPlan, TreeSource, base_file, check_isolated_location, copy_hidden, diff_against, head_commit, init_base, materialize, resolve_source, scratch_dir};
+use super::validation::{SuiteResult, regressions, run_command, run_suite};
+use super::workspace::{
+  StripPlan, TreeSource, apply_patch, base_file, check_isolated_location, copy_hidden, diff_against, head_commit, init_base, materialize, resolve_source, scratch_dir,
+};
 
 const MAX_TURNS_SUBTYPE: &str = "error_max_turns";
 const ATLAS_HOME: &str = "atlas-home";
 const ATLAS_POST_HOME: &str = "atlas-post-home";
 const ATLAS_INDEX_LOG: &str = "atlas-index.log";
+const CARGO_TARGET: &str = "cargo-target";
 const INDEX_DATA_SUFFIXES: [&str; 6] = [".db", ".db-wal", ".db-shm", ".sqlite", ".sqlite-wal", ".sqlite-shm"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
@@ -88,6 +91,7 @@ pub fn environment(config: &RunnerConfig) -> Environment {
     config_isolation: config.claude.config_isolation,
     code_atlas_commit: head_commit(&config.repo_root),
     code_atlas_version: AtlasCli::new(&config.atlas_bin, config.cache_dir.join("atlas-version-home"), Duration::from_secs(10)).version(),
+    atlas_bin_blake3: fs::read(&config.atlas_bin).ok().map(|bytes| blake3::hash(&bytes).to_hex().to_string()),
     atlas_bin: config.atlas_bin.display().to_string(),
     preamble_version: PREAMBLE_VERSION,
     repo_override: config.repo_override.as_ref().map(|path| path.display().to_string()),
@@ -234,13 +238,13 @@ fn base_check(config: &RunnerConfig, task: &LoadedTask, source: &TreeSource, str
   fs::create_dir_all(&dir).map_err(|error| AgentError::io(&dir, error))?;
   let scratch = isolated_scratch(config, &format!("{BASE_DIR}/{}", task.spec.id))?;
   let tree = scratch.join("tree");
-  materialize(source, &tree, strip)?;
-  init_base(&tree)?;
+  let env = tree_env(&scratch);
+  build_base_tree(task, source, strip, &tree, &env, config.validation_timeout).map_err(|(_, error)| error)?;
   copy_hidden(task, &tree)?;
   let check = BaseCheck {
     task_id: task.spec.id.clone(),
-    validation: run_suite(&validation.commands, &tree, config.validation_timeout),
-    regression: run_suite(&validation.regression, &tree, config.validation_timeout),
+    validation: run_suite(&validation.commands, &tree, &env, config.validation_timeout),
+    regression: run_suite(&validation.regression, &tree, &env, config.validation_timeout),
   };
   release_scratch(config, &scratch);
   if check.validation.all_passed() && !check.validation.commands.is_empty() {
@@ -328,8 +332,9 @@ fn score_session(context: &RunContext<'_>, scratch: &Path, tree: &Path, base_sha
   let duplication = duplication_check(context, scratch, tree, base_sha, &diff);
   copy_hidden(context.task, tree)?;
   let spec = &context.task.spec;
-  let validation = run_suite(&spec.validation.commands, tree, context.config.validation_timeout);
-  let regression = run_suite(&spec.validation.regression, tree, context.config.validation_timeout);
+  let env = tree_env(scratch);
+  let validation = run_suite(&spec.validation.commands, tree, &env, context.config.validation_timeout);
+  let regression = run_suite(&spec.validation.regression, tree, &env, context.config.validation_timeout);
   let changed = diff.changed_files();
   let mut metrics = compute_metrics(&MetricsInput {
     transcript: &session,
@@ -367,7 +372,7 @@ fn score_session(context: &RunContext<'_>, scratch: &Path, tree: &Path, base_sha
 }
 
 fn access_policy(config: &RunnerConfig, scratch: &Path, tree: &Path, session: &Transcript) -> AccessPolicy {
-  let mut trees = vec![tree.to_owned()];
+  let mut trees = vec![tree.to_owned(), scratch.join(CARGO_TARGET)];
   trees.extend(tree.canonicalize().ok());
   trees.extend(session.init.as_ref().and_then(|init| init.cwd.as_deref()).map(PathBuf::from));
   AccessPolicy {
@@ -383,8 +388,7 @@ fn access_policy(config: &RunnerConfig, scratch: &Path, tree: &Path, session: &T
 fn prepare_tree(context: &RunContext<'_>, scratch: &Path, manifest: &mut RunManifest) -> Result<String, (&'static str, AgentError)> {
   let tree = &scratch.join("tree");
   manifest.tree = Some(tree.display().to_string());
-  materialize(context.source, tree, context.strip).map_err(|error| ("materialize", error))?;
-  let base_sha = init_base(tree).map_err(|error| ("git-base", error))?;
+  let base_sha = build_base_tree(context.task, context.source, context.strip, tree, &tree_env(scratch), context.config.validation_timeout)?;
   manifest.base_sha = Some(base_sha.clone());
   let mcp_path = scratch.join("mcp.json");
   let mcp_config = match context.planned.condition {
@@ -408,6 +412,39 @@ fn prepare_tree(context: &RunContext<'_>, scratch: &Path, manifest: &mut RunMani
     fs::write(&path, &mcp_config).map_err(|error| ("mcp-config", AgentError::io(&path, error)))?;
   }
   Ok(base_sha)
+}
+
+fn tree_env(scratch: &Path) -> Vec<(String, String)> {
+  vec![("CARGO_TARGET_DIR".to_owned(), scratch.join(CARGO_TARGET).display().to_string())]
+}
+
+fn build_base_tree(
+  task: &LoadedTask,
+  source: &TreeSource,
+  strip: &StripPlan,
+  tree: &Path,
+  env: &[(String, String)],
+  timeout: Duration,
+) -> Result<String, (&'static str, AgentError)> {
+  materialize(source, tree, strip).map_err(|error| ("materialize", error))?;
+  if let Some(patch) = task.base_patch_file() {
+    apply_patch(tree, &patch).map_err(|error| ("materialize", error))?;
+  }
+  run_setup(&task.spec.setup, tree, env, timeout).map_err(|error| ("setup", error))?;
+  init_base(tree).map_err(|error| ("git-base", error))
+}
+
+fn run_setup(commands: &[String], tree: &Path, env: &[(String, String)], timeout: Duration) -> AgentResult<()> {
+  for command in commands {
+    let result = run_command(command, tree, env, timeout);
+    if !result.passed() {
+      return Err(AgentError::Command {
+        command: result.command,
+        detail: format!("{:?}: {}", result.exit, result.output_tail),
+      });
+    }
+  }
+  Ok(())
 }
 
 fn atlas_repos(task: &LoadedTask, tree: &Path) -> Vec<PathBuf> {
@@ -435,6 +472,7 @@ fn run_session(context: &RunContext<'_>, scratch: &Path, tree: &Path, manifest: 
     with_atlas_tools: context.planned.condition == Condition::Atlas,
     config_dir: scratch.join("claude-config"),
     project_instructions: instructions.map(|(text, _)| text),
+    tree_env: tree_env(scratch),
   };
   let invocation = session_invocation(&context.config.claude, &request, &host_env());
   manifest.args = invocation.args.clone();

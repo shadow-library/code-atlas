@@ -1,0 +1,69 @@
+id = "t08-cookie-samesite-default"
+title = "Default SameSite=Lax for cookies created by the cookie helper"
+repo = { git = "https://github.com/honojs/hono.git", commit = "f23b146afcec63606144cde50b5fbd360dd60238" }
+setup = ["npx --yes pnpm@12.6.0 install --frozen-lockfile --prefer-offline"]
+prompt = """
+Cookies created through `hono/cookie` (`setCookie`, `setSignedCookie`, `generateCookie`, `generateSignedCookie`, `deleteCookie`) \
+omit the `SameSite` attribute unless the caller passes `sameSite`. Browsers disagree on what a missing attribute means, \
+and security scanners flag every `Set-Cookie` header we emit.
+
+Please make `SameSite=Lax` the default when no `sameSite` option is given:
+
+- it applies to plain, signed, `__Secure-` and `__Host-` prefixed cookies, and to the cookie that `deleteCookie` sends;
+- an explicit `sameSite` option always wins;
+- the low-level `serialize()` / `serializeSigned()` in `hono/utils/cookie` keep their current output (no implicit default), \
+because other code builds raw cookies with them.
+
+This changes the exact `Set-Cookie` strings Hono produces, so existing tests that assert on them will need updating. \
+CI runs the core test suite and the tests of every adapter package in the workspace (`pnpm test:adapters`, which needs a fresh \
+`vp pack` build of hono first); both must stay green.
+
+Environment note: dependencies are already installed. The global `pnpm` shim on this machine cannot run the pinned pnpm 12.6.0, \
+so use `npx pnpm@12.6.0 ...` or the binaries in `./node_modules/.bin` (for example `./node_modules/.bin/vitest run --project main <files>`).
+"""
+category = ["test-discovery", "cross-package"]
+timeout_minutes = 40
+max_turns = 100
+
+[validation]
+hidden_tests = ["hidden/src/helper/cookie/same-site-default.test.ts"]
+commands = [
+  "./node_modules/.bin/vitest run --project main --coverage.enabled=false src/helper/cookie/same-site-default.test.ts",
+  "./node_modules/.bin/vitest run --project main --coverage.enabled=false src/helper/cookie/index.test.ts src/context.test.ts src/adapter/aws-lambda src/adapter/lambda-edge",
+  "./node_modules/.bin/vp pack > /dev/null && cd adapters/aws-lambda && ../../node_modules/.bin/vitest run && cd ../lambda-edge && ../../node_modules/.bin/vitest run",
+]
+regression = [
+  "./node_modules/.bin/vitest run --project main --coverage.enabled=false src/utils/cookie.test.ts src/middleware src/adapter src/hono.test.ts src/context.test.ts src/helper/cookie/index.test.ts",
+  "./node_modules/.bin/tsc -p tsconfig.spec.json",
+]
+
+[ground_truth]
+relevant_files = [
+  "src/helper/cookie/index.ts",
+  "src/utils/cookie.ts",
+  "src/helper/cookie/index.test.ts",
+  "src/context.test.ts",
+  "src/adapter/aws-lambda/handler.test.ts",
+  "src/adapter/lambda-edge/handler.test.ts",
+  "adapters/aws-lambda/src/handler.test.ts",
+  "adapters/aws-lambda/test/index.test.ts",
+  "adapters/lambda-edge/src/handler.test.ts",
+]
+must_change = [
+  "src/helper/cookie/index.ts",
+  "src/helper/cookie/index.test.ts",
+  "src/context.test.ts",
+  "src/adapter/aws-lambda/handler.test.ts",
+  "src/adapter/lambda-edge/handler.test.ts",
+  "adapters/aws-lambda/src/handler.test.ts",
+  "adapters/aws-lambda/test/index.test.ts",
+  "adapters/lambda-edge/src/handler.test.ts",
+]
+must_consider = [
+  "src/utils/cookie.ts",
+  "src/utils/cookie.test.ts",
+  "src/adapter/aws-lambda/handler.ts",
+  "adapters/aws-lambda/src/handler.ts",
+]
+reuse_targets = []
+forbidden_duplicates = []

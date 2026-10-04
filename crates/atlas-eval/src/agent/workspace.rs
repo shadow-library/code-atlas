@@ -132,6 +132,25 @@ pub fn materialize(source: &TreeSource, tree: &Path, plan: &StripPlan) -> AgentR
   strip(tree, plan)
 }
 
+pub fn apply_patch(tree: &Path, patch: &Path) -> AgentResult<()> {
+  let patch = patch.canonicalize().map_err(|error| AgentError::io(patch, error))?;
+  let tree = tree.canonicalize().map_err(|error| AgentError::io(tree, error))?;
+  let mut command = git_command(&tree);
+  command.args(["apply", "--whitespace=nowarn"]).arg(&patch);
+  if let Some(parent) = tree.parent() {
+    // Outside a repository `git apply` patches the cwd; the ceiling keeps it from adopting an ancestor repository.
+    command.env("GIT_CEILING_DIRECTORIES", parent);
+  }
+  let output = run_captured(command, None, GIT_TIMEOUT);
+  match output.exit {
+    ProcessExit::Exited { code: Some(0) } => Ok(()),
+    exit => Err(AgentError::Command {
+      command: format!("git apply {}", patch.display()),
+      detail: format!("{exit:?}: {}", tail(output.stderr.trim(), 2000)),
+    }),
+  }
+}
+
 fn remove_file(path: &Path) -> AgentResult<()> {
   match fs::remove_file(path) {
     Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(AgentError::io(path, error)),
@@ -202,10 +221,6 @@ pub fn strip(tree: &Path, plan: &StripPlan) -> AgentResult<()> {
     StripProfile::ThisRepository => {
       for dir in REPOSITORY_ONLY_DIRS {
         remove_dir(&tree.join(dir))?;
-      }
-      let fixtures = tree.join("fixtures");
-      if fixtures.is_dir() {
-        remove_ground_truth(&fixtures)?;
       }
       Ok(())
     }
@@ -387,7 +402,15 @@ mod tests {
     .unwrap();
     assert_eq!(
       files_under(&tree),
-      vec!["crates/x/hidden/keep.rs", "docs/guide.md", "fixtures/acme/acme-api/src/main.ts", "src/lib.rs"]
+      vec![
+        "crates/x/hidden/keep.rs",
+        "docs/guide.md",
+        "fixtures/acme/acme-api/src/main.ts",
+        "fixtures/acme/acme-web/expected.toml",
+        "fixtures/acme/expected.schema.md",
+        "fixtures/acme/expected.toml",
+        "src/lib.rs"
+      ]
     );
     let base = init_base(&tree).unwrap();
     assert_ne!(base, commit);
@@ -429,6 +452,38 @@ mod tests {
         "src/lib.rs"
       ]
     );
+  }
+
+  #[test]
+  fn should_apply_a_base_patch_to_an_archived_tree_before_the_base_commit() {
+    let repo = source_repo();
+    let commit = head_commit(repo.path()).unwrap();
+    let out = tempfile::tempdir().unwrap();
+    let tree = out.path().join("tree");
+    let source = TreeSource::GitArchive {
+      repo: repo.path().to_owned(),
+      commit,
+      subdir: None,
+    };
+    materialize(&source, &tree, &plan(StripProfile::ThisRepository)).unwrap();
+    let patch = out.path().join("base.patch");
+    fs::write(&patch, "--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-pub fn a() {}\n+pub fn a() -> u8 { 1 }\n").unwrap();
+    apply_patch(&tree, &patch).unwrap();
+    let base = init_base(&tree).unwrap();
+    assert_eq!(base_file(&tree, &base, "src/lib.rs").as_deref(), Some("pub fn a() -> u8 { 1 }\n"));
+    assert_eq!(diff_against(&tree, &base).unwrap(), "");
+  }
+
+  #[test]
+  fn should_fail_when_a_base_patch_does_not_apply() {
+    let repo = source_repo();
+    let out = tempfile::tempdir().unwrap();
+    let tree = out.path().join("tree");
+    materialize(&TreeSource::Directory { path: repo.path().to_owned() }, &tree, &plan(StripProfile::ThisRepository)).unwrap();
+    let patch = out.path().join("base.patch");
+    fs::write(&patch, "--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-pub fn missing() {}\n+pub fn b() {}\n").unwrap();
+    assert!(matches!(apply_patch(&tree, &patch), Err(AgentError::Command { .. })));
+    assert_eq!(fs::read_to_string(tree.join("src/lib.rs")).unwrap(), "pub fn a() {}\n");
   }
 
   #[test]

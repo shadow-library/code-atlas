@@ -1,0 +1,45 @@
+id = "t05-mcp-dependency-tools"
+title = "Expose the dependents/dependencies traversals as MCP tools"
+repo = "self"
+base_commit = "327f4dc99bfcab783d882d8fa39f5b7eb2bbb22f"
+prompt = """
+Agents connected through the MCP server cannot ask "what uses this?" or "what does this use?".
+
+The CLI already answers both with `code-atlas query dependents <target>` and `code-atlas query dependencies <target>`, which follow imports, \
+type usage, references, inheritance and so on. The MCP server only offers `atlas_callers` / `atlas_callees`, which follow calls only, so an agent \
+asking which modules depend on a class gets nothing useful.
+
+Please add two MCP tools, `atlas_dependents` and `atlas_dependencies`, that answer the same questions as those CLI commands. They should be \
+indistinguishable from the existing call-traversal tools in everything an agent relies on: the same argument names, defaults and validation \
+(`target` required, optional `depth` and `format`), the same text and JSON output, the same not-found / ambiguous handling, read-only annotations, \
+and an agent-facing description that, like the other relation tools, warns that [heuristic]/[inferred] relations must be verified. \
+Keep the server's existing tests passing.
+"""
+category = ["architecture-addition", "test-discovery"]
+timeout_minutes = 25
+max_turns = 80
+
+[validation]
+hidden_tests = ["hidden/crates/atlas-mcp/tests/dependency_tools.rs"]
+commands = ["cargo test --no-fail-fast -p atlas-mcp --test dependency_tools", "cargo test --no-fail-fast -p atlas-mcp --test protocol"]
+regression = ["cargo test --no-fail-fast -p atlas-mcp --lib", "cargo test --no-fail-fast -p atlas-cli"]
+
+[ground_truth]
+relevant_files = [
+  "crates/atlas-mcp/src/server.rs",
+  "crates/atlas-mcp/src/descriptions.rs",
+  "crates/atlas-mcp/src/arguments.rs",
+  "crates/atlas-mcp/src/render.rs",
+  "crates/atlas-mcp/tests/protocol.rs",
+  "crates/atlas-query/src/queries/traverse.rs",
+  "crates/atlas-cli/src/commands/query.rs",
+]
+must_change = ["crates/atlas-mcp/src/server.rs", "crates/atlas-mcp/tests/protocol.rs"]
+must_consider = [
+  "crates/atlas-mcp/src/descriptions.rs",
+  "crates/atlas-mcp/src/arguments.rs",
+  "crates/atlas-query/src/queries/traverse.rs",
+  "crates/atlas-cli/src/commands/query.rs",
+]
+reuse_targets = ["QueryEngine::dependents", "QueryEngine::dependencies", "render::targeted", "arguments::depth", "arguments::TraverseArgs"]
+forbidden_duplicates = []

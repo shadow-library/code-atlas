@@ -181,6 +181,20 @@ fn should_exit_2_with_a_hint_outside_every_project() {
 }
 
 #[test]
+fn should_print_the_build_commit_in_the_version() {
+  let sandbox = Sandbox::new();
+  let output = sandbox.run(&sandbox.work(), &["--version"]);
+  assert_ok(&output);
+  let version = stdout(&output);
+  let commit = version
+    .trim()
+    .strip_prefix(concat!("code-atlas ", env!("CARGO_PKG_VERSION"), " (commit "))
+    .and_then(|rest| rest.strip_suffix(')'))
+    .unwrap();
+  assert!(commit == "unknown" || (commit.len() == 40 && commit.chars().all(|c| c.is_ascii_hexdigit())), "{version}");
+}
+
+#[test]
 fn should_print_parseable_json_on_stdout_and_nothing_on_stderr() {
   let sandbox = Sandbox::new();
   let root = sandbox.create_acme();

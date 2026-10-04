@@ -1,0 +1,56 @@
+id = "t07-static-precompressed-quality"
+title = "serveStatic precompressed variants ignore Accept-Encoding quality values"
+repo = { git = "https://github.com/honojs/hono.git", commit = "f23b146afcec63606144cde50b5fbd360dd60238" }
+setup = ["npx --yes pnpm@12.6.0 install --frozen-lockfile --prefer-offline"]
+prompt = """
+`serveStatic({ precompressed: true })` only serves a precompressed variant when the client lists the coding as a bare token. \
+Real browsers and CDNs send quality values, and then we silently fall back to the uncompressed file:
+
+- `Accept-Encoding: gzip;q=1.0, br;q=0.5` with `app.js.gz` and `app.js.br` on disk serves the plain `app.js`.
+- `Accept-Encoding: br;q=0.2, gzip;q=0.8` should get gzip, the client's preferred coding, but gets no compression at all.
+
+Please make the precompressed lookup negotiate properly, the same way Hono already negotiates `Accept-*` headers elsewhere:
+
+- pick the available variant with the highest quality value;
+- a coding with `q=0` must never be served, and `*` covers every coding that is not listed explicitly;
+- when quality values tie, prefer br, then zstd, then gzip (today's order);
+- coding names are case-insensitive; the `Content-Encoding` we send stays lowercase;
+- if the preferred variant does not exist on disk, fall back to the next acceptable one, and serve the original file if none is acceptable.
+
+Plain lists such as `gzip, br` must keep working exactly as today, including the `Vary: Accept-Encoding` header. \
+Add or update tests for the new behaviour.
+
+Environment note: dependencies are already installed. The global `pnpm` shim on this machine cannot run the pinned pnpm 12.6.0, \
+so use `npx pnpm@12.6.0 ...` or the binaries in `./node_modules/.bin` (for example `./node_modules/.bin/vitest run --project main <files>`).
+"""
+category = ["reuse-trap"]
+timeout_minutes = 30
+max_turns = 80
+
+[validation]
+hidden_tests = ["hidden/src/middleware/serve-static/precompressed-negotiation.test.ts"]
+commands = ["./node_modules/.bin/vitest run --project main --coverage.enabled=false src/middleware/serve-static/precompressed-negotiation.test.ts"]
+regression = [
+  "./node_modules/.bin/vitest run --project main --coverage.enabled=false src/middleware/serve-static/index.test.ts src/middleware/serve-static/path.test.ts src/middleware/compress src/utils src/adapter src/helper/accepts src/middleware/language",
+  "./node_modules/.bin/tsc -p tsconfig.spec.json",
+]
+
+[ground_truth]
+relevant_files = [
+  "src/middleware/serve-static/index.ts",
+  "src/middleware/serve-static/index.test.ts",
+  "src/utils/accept.ts",
+  "src/utils/compress.ts",
+  "src/middleware/compress/index.ts",
+]
+must_change = ["src/middleware/serve-static/index.ts"]
+must_consider = [
+  "src/utils/accept.ts",
+  "src/middleware/compress/index.ts",
+  "src/middleware/serve-static/index.test.ts",
+  "src/adapter/bun/serve-static.ts",
+  "src/adapter/deno/serve-static.ts",
+  "src/adapter/cloudflare-workers/serve-static.ts",
+]
+reuse_targets = ["src/utils/accept::parseAccept"]
+forbidden_duplicates = ["src/utils/accept::parseAccept", "src/middleware/compress/index::selectEncoding"]

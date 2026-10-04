@@ -1,0 +1,79 @@
+id = "t02-typed-degraded-cause"
+title = "Typed cause for degraded freshness reports"
+repo = "self"
+base_commit = "327f4dc99bfcab783d882d8fa39f5b7eb2bbb22f"
+prompt = """
+`code-atlas watch` decides whether another process changed the project configuration by looking for the phrase \
+"project configuration changed" inside the free-text reason of a degraded freshness report. Rewording the engine's \
+message would silently stop watch from reloading, and nothing else can tell why the freshness barrier is degraded without \
+parsing English.
+
+Replace the free-text reason of a degraded freshness report with a typed cause. `FreshnessReport::Degraded` should carry \
+`cause: DegradedCause` instead of `reason: String`, with `DegradedCause` exported from `atlas_engine`:
+
+- `ProjectConfigChanged`: another engine adopted a different project configuration;
+- `UpdateFailed { error: String }`: the barrier could not bring the index up to date (the error's message);
+- `PartialRun { reason: String }`: the index run finished partial (the run's own reason, unchanged);
+- `FilesNotIndexed { count: usize }`: otherwise degraded because `count` files or repositories could not be indexed.
+
+`DegradedCause` implements `Display` as "project configuration changed; reopen the engine", \
+"index update failed: {error}", "{reason}" and "{count} file(s) or repositories could not be indexed" respectively. \
+Query responses (CLI and MCP, text and JSON) keep reporting a degraded state with a textual `reason`, which is now the \
+cause's `Display` text. That matches today's wording in every case except one: a successful run that still had failed files \
+used to say "some files or repositories could not be indexed" and now reports the count like the other files-not-indexed \
+path. `watch` must recognise a configuration change from the typed cause. Update everything that builds or reads the degraded \
+report, including the existing tests and the documentation.
+"""
+category = ["blast-radius"]
+timeout_minutes = 40
+max_turns = 120
+
+[validation]
+hidden_tests = [
+  "hidden/crates/atlas-engine/tests/degraded_cause.rs",
+  "hidden/crates/atlas-query/tests/degraded_freshness.rs",
+]
+commands = [
+  "cargo test --no-fail-fast -p atlas-engine --test degraded_cause",
+  "cargo test --no-fail-fast -p atlas-query --test degraded_freshness",
+  "cargo test --no-fail-fast -p atlas-cli --test cli should_reload_the_project_when_another_process_changes_it_while_watching",
+]
+regression = [
+  "cargo test --no-fail-fast -p atlas-engine --lib --test engine --test regressions",
+  "cargo test --no-fail-fast -p atlas-query --lib --test acme --test freshness --test snapshots --test unused",
+  "cargo test --no-fail-fast -p atlas-cli --bins --test cli",
+]
+
+[ground_truth]
+relevant_files = [
+  "crates/atlas-engine/src/report.rs",
+  "crates/atlas-engine/src/engine.rs",
+  "crates/atlas-engine/src/error.rs",
+  "crates/atlas-engine/src/lib.rs",
+  "crates/atlas-query/src/freshness.rs",
+  "crates/atlas-query/src/text/mod.rs",
+  "crates/atlas-cli/src/commands/watch.rs",
+  "crates/atlas-engine/tests/engine.rs",
+  "crates/atlas-engine/tests/regressions.rs",
+  "crates/atlas-cli/tests/cli.rs",
+  "CLAUDE.md",
+]
+must_change = [
+  "crates/atlas-engine/src/report.rs",
+  "crates/atlas-engine/src/engine.rs",
+  "crates/atlas-query/src/freshness.rs",
+  "crates/atlas-cli/src/commands/watch.rs",
+  "crates/atlas-engine/tests/engine.rs",
+  "crates/atlas-engine/tests/regressions.rs",
+]
+must_consider = [
+  "CLAUDE.md",
+  "crates/atlas-engine/src/error.rs",
+  "crates/atlas-query/src/text/mod.rs",
+  "crates/atlas-cli/src/commands/debug.rs",
+  "crates/atlas-cli/src/commands/enrich.rs",
+  "crates/atlas-cli/src/commands/scip.rs",
+  "crates/atlas-mcp/src/server.rs",
+]
+reuse_targets = []
+forbidden_duplicates = []

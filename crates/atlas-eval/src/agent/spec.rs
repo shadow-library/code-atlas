@@ -89,6 +89,10 @@ pub struct TaskSpec {
   #[serde(default)]
   pub atlas_repos: Vec<String>,
   #[serde(default)]
+  pub base_patch: Option<String>,
+  #[serde(default)]
+  pub setup: Vec<String>,
+  #[serde(default)]
   pub validation: ValidationSpec,
   #[serde(default)]
   pub ground_truth: GroundTruth,
@@ -104,6 +108,10 @@ pub struct LoadedTask {
 impl LoadedTask {
   pub fn hidden_file(&self, entry: &str) -> PathBuf {
     self.dir.join(entry)
+  }
+
+  pub fn base_patch_file(&self) -> Option<PathBuf> {
+    self.spec.base_patch.as_ref().map(|patch| self.dir.join(patch))
   }
 }
 
@@ -140,10 +148,22 @@ pub fn load_task(dir: &Path) -> AgentResult<LoadedTask> {
       });
     }
   }
+  let mut hasher = blake3::Hasher::new();
+  hasher.update(text.as_bytes());
+  if let Some(patch) = &spec.base_patch {
+    let patch_path = dir.join(patch);
+    if !patch_path.is_file() {
+      return Err(AgentError::InvalidSpec {
+        path,
+        reason: format!("base patch `{patch}` does not exist"),
+      });
+    }
+    hasher.update(&fs::read(&patch_path).map_err(|error| AgentError::io(&patch_path, error))?);
+  }
   Ok(LoadedTask {
     spec,
     dir: dir.to_owned(),
-    spec_hash: blake3::hash(text.as_bytes()).to_hex()[..16].to_owned(),
+    spec_hash: hasher.finalize().to_hex()[..16].to_owned(),
   })
 }
 
@@ -186,6 +206,12 @@ fn validate(spec: &TaskSpec) -> Result<(), String> {
     if !is_relative_inside(entry) {
       return Err(format!("hidden test `{entry}` must be a relative path without `..`"));
     }
+  }
+  if let Some(patch) = spec.base_patch.as_deref().filter(|patch| !is_relative_inside(patch) || patch.starts_with("hidden/")) {
+    return Err(format!("base patch `{patch}` must be a relative path inside the task directory, outside hidden/"));
+  }
+  if spec.setup.iter().any(|command| command.trim().is_empty()) {
+    return Err("setup commands must not be empty".to_owned());
   }
   let truth = &spec.ground_truth;
   let paths = truth.relevant_files.iter().chain(&truth.must_change).chain(&truth.must_consider).chain(&spec.atlas_repos);
@@ -287,6 +313,52 @@ reuse_targets = ["UsersService.findOne"]
   #[test]
   fn should_reject_unknown_fields() {
     assert!(parse(&format!("{SPEC}\nsurprise = 1\n")).is_err());
+  }
+
+  #[test]
+  fn should_parse_setup_commands_and_a_base_patch() {
+    let spec = parse(&SPEC.replace("max_turns = 30", "max_turns = 30\nbase_patch = \"base.patch\"\nsetup = [\"bun install --frozen-lockfile\"]")).unwrap();
+    assert_eq!(spec.base_patch.as_deref(), Some("base.patch"));
+    assert_eq!(spec.setup, vec!["bun install --frozen-lockfile"]);
+    assert_eq!(parse(SPEC).unwrap().base_patch, None);
+  }
+
+  #[test]
+  fn should_reject_escaping_or_hidden_base_patches_and_blank_setup_commands() {
+    for patch in ["../base.patch", "/tmp/base.patch", "hidden/base.patch"] {
+      assert!(
+        parse(&SPEC.replace("max_turns = 30", &format!("max_turns = 30\nbase_patch = \"{patch}\""))).is_err(),
+        "{patch}"
+      );
+    }
+    assert!(parse(&SPEC.replace("max_turns = 30", "max_turns = 30\nsetup = [\" \"]")).is_err());
+  }
+
+  fn task_dir(spec: &str, patch: Option<&str>) -> tempfile::TempDir {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("t00-smoke");
+    fs::create_dir_all(dir.join("hidden/acme-api")).unwrap();
+    fs::write(dir.join("hidden/acme-api/check.mjs"), "").unwrap();
+    fs::write(dir.join(TASK_FILE), spec).unwrap();
+    if let Some(patch) = patch {
+      fs::write(dir.join("base.patch"), patch).unwrap();
+    }
+    root
+  }
+
+  #[test]
+  fn should_require_the_base_patch_file_and_hash_its_content() {
+    let with_patch = SPEC.replace("max_turns = 30", "max_turns = 30\nbase_patch = \"base.patch\"");
+    let missing = task_dir(&with_patch, None);
+    assert!(load_task(&missing.path().join("t00-smoke")).is_err());
+    let first = task_dir(&with_patch, Some("a"));
+    let second = task_dir(&with_patch, Some("b"));
+    let first = load_task(&first.path().join("t00-smoke")).unwrap();
+    let second = load_task(&second.path().join("t00-smoke")).unwrap();
+    assert_ne!(first.spec_hash, second.spec_hash);
+    assert_eq!(first.base_patch_file(), Some(first.dir.join("base.patch")));
+    let plain = task_dir(SPEC, None);
+    assert_eq!(load_task(&plain.path().join("t00-smoke")).unwrap().spec_hash, blake3::hash(SPEC.as_bytes()).to_hex()[..16]);
   }
 
   #[test]

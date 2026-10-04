@@ -1,0 +1,44 @@
+id = "t01-cwd-relative-targets"
+title = "CLI query targets accept paths relative to the working directory"
+repo = "self"
+base_commit = "327f4dc99bfcab783d882d8fa39f5b7eb2bbb22f"
+prompt = """
+`code-atlas query similar --snippet` lets me pass a path relative to where I run the command: from inside \
+`acme-billing/src` I can write `--snippet money.rs:1-15` and it works. Every other query that takes a target only \
+understands paths relative to a repository root. From `acme-api/src/users`, `code-atlas query symbol users.service.ts:18` \
+answers "not found", and so do `query callers ./users.service.ts:18` and an absolute path to the same file.
+
+Please make file targets on the command line resolve against the current working directory (relative and absolute paths) \
+the same way the snippet option already does, for every `code-atlas query` subcommand that takes a target: `symbol`, \
+`callers`, `callees`, `dependents`, `dependencies`, `impact` (each of its targets), `tests-for`, `similar <target>`, \
+`explain` and `read`. Targets that are not a file under one of the project's repositories must keep working exactly as \
+today: repo-relative paths such as `src/users/users.service.ts:18` run from another repository, `repo:path[:line]`, \
+symbol names, entity keys and endpoints like `GET /users/{id}`. The MCP server is not affected; its targets stay \
+repo-relative.
+"""
+category = ["find-and-extend", "reuse"]
+timeout_minutes = 30
+max_turns = 80
+
+[validation]
+hidden_tests = ["hidden/crates/atlas-cli/tests/cwd_targets.rs"]
+commands = ["cargo test --no-fail-fast -p atlas-cli --test cwd_targets"]
+regression = ["cargo test --no-fail-fast -p atlas-cli --bins --test cli"]
+
+[ground_truth]
+relevant_files = [
+  "crates/atlas-cli/src/commands/query.rs",
+  "crates/atlas-cli/src/cli.rs",
+  "crates/atlas-cli/src/context.rs",
+  "crates/atlas-query/src/target.rs",
+  "crates/atlas-cli/tests/cli.rs",
+]
+must_change = ["crates/atlas-cli/src/commands/query.rs"]
+must_consider = [
+  "crates/atlas-query/src/target.rs",
+  "crates/atlas-cli/src/cli.rs",
+  "crates/atlas-cli/src/context.rs",
+  "crates/atlas-mcp/src/server.rs",
+]
+reuse_targets = ["query::repo_relative"]
+forbidden_duplicates = ["query::repo_relative"]

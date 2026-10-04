@@ -1,0 +1,242 @@
+diff --git a/crates/atlas-detect/src/detectors/axum.rs b/crates/atlas-detect/src/detectors/axum.rs
+index 3e7c213..bf53018 100644
+--- a/crates/atlas-detect/src/detectors/axum.rs
++++ b/crates/atlas-detect/src/detectors/axum.rs
+@@ -6,6 +6,7 @@ use serde_json::json;
+ use super::express::MOUNTS_EDGE;
+ use super::{detector, handler_node};
+ use crate::cert::Cert;
++use crate::imports;
+ use crate::lex::{Token, TokenKind, lex};
+ use crate::sink::{Sink, attrs};
+ use crate::strings::evaluate;
+@@ -63,18 +64,7 @@ struct Chain {
+ 
+ impl AxumEndpointDetector {
+   fn prefilter(&self, facts: &FileFacts) -> bool {
+-    if facts.file.language.family() != LanguageFamily::Rust {
+-      return false;
+-    }
+-    let uses_server_crate = facts.imports.iter().any(|import| match import {
+-      atlas_core::ImportFact::RustUse { paths, .. } => paths.iter().any(|path| path.segments.first().is_some_and(|first| SERVER_CRATES.contains(&first.as_str()))),
+-      _ => false,
+-    });
+-    uses_server_crate
+-      || facts
+-        .references
+-        .iter()
+-        .any(|reference| reference.path.first().is_some_and(|first| SERVER_CRATES.contains(&first.as_str())))
++    facts.file.language.family() == LanguageFamily::Rust && imports::mentions_rust_crate(facts, &SERVER_CRATES)
+   }
+ 
+   fn run(&self, view: &FileView<'_>, sink: &mut Sink) {
+diff --git a/crates/atlas-detect/src/detectors/clients.rs b/crates/atlas-detect/src/detectors/clients.rs
+index fed608c..4c32f34 100644
+--- a/crates/atlas-detect/src/detectors/clients.rs
++++ b/crates/atlas-detect/src/detectors/clients.rs
+@@ -1,13 +1,14 @@
+ use std::collections::BTreeSet;
+ 
+ use atlas_core::{
+-  ArgSummary, EdgeKind, EntityKey, EntityKind, FileFacts, HttpMethod, ImportFact, LanguageFamily, LocalSymbolId, NodeRef, ObjectEntry, RefKind, ReferenceFact, Severity, SymbolFact,
++  ArgSummary, EdgeKind, EntityKey, EntityKind, FileFacts, HttpMethod, LanguageFamily, LocalSymbolId, NodeRef, ObjectEntry, RefKind, ReferenceFact, Severity, SymbolFact,
+ };
+ use serde_json::json;
+ 
+ use super::headers::{HeaderValue, classify_header, hints_from_object, hints_from_tokens};
+ use super::{detector, same_statement, strip_ws};
+ use crate::cert::Cert;
++use crate::imports;
+ use crate::lex::{Token, TokenKind, lex};
+ use crate::sink::{Sink, attrs};
+ use crate::strings::{Piece, StringEval, evaluate};
+@@ -70,18 +71,9 @@ impl HttpClientDetector {
+         facts.references.iter().any(|reference| {
+           reference.path.last().is_some_and(|name| name == "fetch")
+             || (reference.kind == RefKind::Instantiation && reference.args.iter().any(|arg| matches!(arg, ArgSummary::Object(_))))
+-        }) || facts
+-          .imports
+-          .iter()
+-          .any(|import| matches!(import, ImportFact::TsImport { specifier, .. } if specifier == "axios" || specifier == "@nestjs/axios"))
+-      }
+-      LanguageFamily::Rust => {
+-        facts
+-          .imports
+-          .iter()
+-          .any(|import| matches!(import, ImportFact::RustUse { paths, .. } if paths.iter().any(|path| path.segments.first().is_some_and(|first| first == "reqwest"))))
+-          || facts.references.iter().any(|reference| reference.path.first().is_some_and(|first| first == "reqwest"))
++        }) || imports::esm_specifiers(facts).any(|specifier| specifier == "axios" || specifier == "@nestjs/axios")
+       }
++      LanguageFamily::Rust => imports::mentions_rust_crate(facts, &["reqwest"]),
+       _ => false,
+     }
+   }
+diff --git a/crates/atlas-detect/src/detectors/express.rs b/crates/atlas-detect/src/detectors/express.rs
+index ce4484a..0737c53 100644
+--- a/crates/atlas-detect/src/detectors/express.rs
++++ b/crates/atlas-detect/src/detectors/express.rs
+@@ -5,6 +5,7 @@ use serde_json::json;
+ 
+ use super::{detector, handler_node};
+ use crate::cert::Cert;
++use crate::imports;
+ use crate::lex::{TokenKind, lex};
+ use crate::sink::{Sink, attrs};
+ use crate::strings::evaluate;
+@@ -70,15 +71,7 @@ enum Handler {
+ 
+ impl ExpressEndpointDetector {
+   fn prefilter(&self, facts: &FileFacts) -> bool {
+-    facts.file.language.family() == LanguageFamily::Ts
+-      && facts.imports.iter().any(|import| match import {
+-        atlas_core::ImportFact::TsImport { specifier, .. } => SERVER_PACKAGES.contains(&specifier.as_str()),
+-        atlas_core::ImportFact::TsRequire {
+-          specifier: ArgSummary::Str(specifier),
+-          ..
+-        } => SERVER_PACKAGES.contains(&specifier.as_str()),
+-        _ => false,
+-      })
++    facts.file.language.family() == LanguageFamily::Ts && imports::ts_specifiers(facts).any(|specifier| SERVER_PACKAGES.contains(&specifier))
+   }
+ 
+   fn run(&self, view: &FileView<'_>, sink: &mut Sink) {
+diff --git a/crates/atlas-detect/src/detectors/nest.rs b/crates/atlas-detect/src/detectors/nest.rs
+index 259ab68..8c45b79 100644
+--- a/crates/atlas-detect/src/detectors/nest.rs
++++ b/crates/atlas-detect/src/detectors/nest.rs
+@@ -1,10 +1,11 @@
+ use atlas_core::{
+-  ArgSummary, AttributeFact, Attrs, EdgeKind, EntityKey, EntityKind, FileFacts, HttpMethod, ImportFact, LanguageFamily, NodeRef, RefKind, Severity, SymbolFact, normalize_route,
++  ArgSummary, AttributeFact, Attrs, EdgeKind, EntityKey, EntityKind, FileFacts, HttpMethod, LanguageFamily, NodeRef, RefKind, Severity, SymbolFact, normalize_route,
+ };
+ use serde_json::json;
+ 
+ use super::detector;
+ use crate::cert::Cert;
++use crate::imports;
+ use crate::lex::{TokenKind, lex};
+ use crate::sink::{Sink, attrs};
+ use crate::strings::{StringEval, evaluate};
+@@ -47,11 +48,7 @@ struct GuardUse<'f> {
+ 
+ impl NestEndpointDetector {
+   fn prefilter(&self, facts: &FileFacts) -> bool {
+-    facts.file.language.family() == LanguageFamily::Ts
+-      && facts
+-        .imports
+-        .iter()
+-        .any(|import| matches!(import, ImportFact::TsImport { specifier, .. } if specifier.starts_with("@nestjs/")))
++    facts.file.language.family() == LanguageFamily::Ts && imports::esm_specifiers(facts).any(|specifier| specifier.starts_with("@nestjs/"))
+   }
+ 
+   fn run(&self, view: &FileView<'_>, sink: &mut Sink) {
+diff --git a/crates/atlas-detect/src/imports.rs b/crates/atlas-detect/src/imports.rs
+new file mode 100644
+index 0000000..d40d158
+--- /dev/null
++++ b/crates/atlas-detect/src/imports.rs
+@@ -0,0 +1,50 @@
++use atlas_core::{ArgSummary, FileFacts, ImportFact};
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub(crate) enum TsImportSyntax {
++  Esm,
++  Require,
++}
++
++pub(crate) fn ts_imports(facts: &FileFacts) -> impl Iterator<Item = (&str, TsImportSyntax)> {
++  facts.imports.iter().filter_map(|import| match import {
++    ImportFact::TsImport { specifier, .. } => Some((specifier.as_str(), TsImportSyntax::Esm)),
++    ImportFact::TsRequire {
++      specifier: ArgSummary::Str(specifier),
++      ..
++    } => Some((specifier.as_str(), TsImportSyntax::Require)),
++    _ => None,
++  })
++}
++
++pub(crate) fn ts_specifiers(facts: &FileFacts) -> impl Iterator<Item = &str> {
++  ts_imports(facts).map(|(specifier, _)| specifier)
++}
++
++pub(crate) fn esm_specifiers(facts: &FileFacts) -> impl Iterator<Item = &str> {
++  ts_imports(facts).filter(|(_, syntax)| *syntax == TsImportSyntax::Esm).map(|(specifier, _)| specifier)
++}
++
++pub(crate) fn rust_use_roots(facts: &FileFacts) -> impl Iterator<Item = &str> {
++  facts
++    .imports
++    .iter()
++    .filter_map(|import| match import {
++      ImportFact::RustUse { paths, .. } => Some(paths),
++      _ => None,
++    })
++    .flatten()
++    .filter_map(|path| path.segments.first().map(String::as_str))
++}
++
++pub(crate) fn rust_extern_crates(facts: &FileFacts) -> impl Iterator<Item = &str> {
++  facts.imports.iter().filter_map(|import| match import {
++    ImportFact::RustExternCrate { name, .. } => Some(name.as_str()),
++    _ => None,
++  })
++}
++
++pub(crate) fn mentions_rust_crate(facts: &FileFacts, crates: &[&str]) -> bool {
++  let reference_roots = facts.references.iter().filter_map(|reference| reference.path.first().map(String::as_str));
++  rust_use_roots(facts).chain(reference_roots).any(|root| crates.contains(&root))
++}
+diff --git a/crates/atlas-detect/src/lib.rs b/crates/atlas-detect/src/lib.rs
+index 1dd22e2..420890b 100644
+--- a/crates/atlas-detect/src/lib.rs
++++ b/crates/atlas-detect/src/lib.rs
+@@ -1,5 +1,6 @@
+ mod cert;
+ mod detectors;
++mod imports;
+ mod lex;
+ mod registry;
+ mod sink;
+diff --git a/crates/atlas-detect/src/view.rs b/crates/atlas-detect/src/view.rs
+index 9b198f8..9911eaa 100644
+--- a/crates/atlas-detect/src/view.rs
++++ b/crates/atlas-detect/src/view.rs
+@@ -4,6 +4,7 @@ use atlas_core::{
+   ArgSummary, DetectInput, EntityKey, EntityKind, FileFacts, ImportBinding, ImportFact, LanguageFamily, LocalSymbolId, NodeRef, ParamFact, RepoName, Span, SymbolFact, UseBinding,
+ };
+ 
++use crate::imports;
+ use crate::lex::{Token, TokenKind, lex};
+ 
+ pub(crate) struct FileView<'a> {
+@@ -148,14 +149,7 @@ impl<'a> FileView<'a> {
+   }
+ 
+   pub fn ts_specifiers(&self) -> impl Iterator<Item = &'a str> {
+-    self.facts.imports.iter().filter_map(|import| match import {
+-      ImportFact::TsImport { specifier, .. } => Some(specifier.as_str()),
+-      ImportFact::TsRequire {
+-        specifier: ArgSummary::Str(specifier),
+-        ..
+-      } => Some(specifier.as_str()),
+-      _ => None,
+-    })
++    imports::ts_specifiers(self.facts)
+   }
+ 
+   pub fn rust_use(&self, local: &str) -> Option<&'a [String]> {
+@@ -173,11 +167,9 @@ impl<'a> FileView<'a> {
+   }
+ 
+   pub fn rust_uses_crate(&self, crate_name: &str) -> bool {
+-    self.facts.imports.iter().any(|import| match import {
+-      ImportFact::RustUse { paths, .. } => paths.iter().any(|path| path.segments.first().is_some_and(|first| first == crate_name)),
+-      ImportFact::RustExternCrate { name, .. } => name == crate_name,
+-      _ => false,
+-    })
++    imports::rust_use_roots(self.facts)
++      .chain(imports::rust_extern_crates(self.facts))
++      .any(|root| root == crate_name)
+   }
+ 
+   pub fn rust_path_is(&self, path: &[String], full: &[&str]) -> bool {

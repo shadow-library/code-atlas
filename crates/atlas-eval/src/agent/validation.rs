@@ -61,17 +61,18 @@ impl SuiteResult {
   }
 }
 
-pub fn run_suite(commands: &[String], tree: &Path, timeout: Duration) -> SuiteResult {
-  let commands = commands.iter().map(|command| run_command(command, tree, timeout)).collect();
+pub fn run_suite(commands: &[String], tree: &Path, env: &[(String, String)], timeout: Duration) -> SuiteResult {
+  let commands = commands.iter().map(|command| run_command(command, tree, env, timeout)).collect();
   SuiteResult { commands }
 }
 
-fn run_command(command: &str, tree: &Path, timeout: Duration) -> CommandResult {
+pub fn run_command(command: &str, tree: &Path, env: &[(String, String)], timeout: Duration) -> CommandResult {
   let mut shell = Command::new("sh");
   shell.arg("-c").arg(command).current_dir(tree);
   for (key, _) in std::env::vars().filter(|(key, _)| key.starts_with("CLAUDE")) {
     shell.env_remove(key);
   }
+  shell.envs(env.iter().map(|(key, value)| (key, value)));
   let output = run_captured(shell, None, timeout);
   let combined = format!("{}\n{}", output.stdout, output.stderr);
   tracing::info!(command, exit = ?output.exit, duration_ms = output.duration.as_millis() as u64, "validation command finished");
@@ -302,7 +303,7 @@ mod tests {
   fn should_run_commands_in_the_tree_and_capture_exit_codes() {
     let tree = tempfile::tempdir().unwrap();
     std::fs::write(tree.path().join("marker"), "x").unwrap();
-    let suite = run_suite(&["test -f marker".to_owned(), "exit 4".to_owned()], tree.path(), Duration::from_secs(10));
+    let suite = run_suite(&["test -f marker".to_owned(), "exit 4".to_owned()], tree.path(), &[], Duration::from_secs(10));
     assert_eq!(suite.commands[0].exit, ProcessExit::Exited { code: Some(0) });
     assert_eq!(suite.commands[1].exit, ProcessExit::Exited { code: Some(4) });
     assert_eq!(suite.passed_commands(), 1);

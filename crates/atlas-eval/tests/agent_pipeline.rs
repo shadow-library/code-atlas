@@ -19,6 +19,7 @@ done
 servers='[]'
 git rev-parse --show-toplevel >&2
 pwd -P >&2
+echo "CARGO_TARGET_DIR=$CARGO_TARGET_DIR" >&2
 if grep -q code-atlas "$mcp"; then servers='[{"name":"code-atlas","status":"connected"}]'; fi
 cat > acme-api/src/users/user.entity.ts <<'TS'
 export class User {
@@ -181,6 +182,8 @@ fn should_run_score_and_report_both_conditions_with_fake_binaries() {
   let manifest = agent::run_batch(&config, &tasks, planned).unwrap();
   assert_eq!(manifest.spent_usd, 0.02);
   assert_eq!(manifest.environment.code_atlas_version.as_deref(), Some("code-atlas 0.0.0-fake"));
+  let fake_atlas = fs::read(fixture.bin.join("code-atlas")).unwrap();
+  assert_eq!(manifest.environment.atlas_bin_blake3, Some(blake3::hash(&fake_atlas).to_hex().to_string()));
 
   for condition in Condition::ALL {
     let dir = fixture.batch.join(format!("t99-pipeline.{condition}.r0"));
@@ -264,4 +267,74 @@ fn should_reuse_scored_runs_when_resumed() {
   let resumed = agent::run_batch(&RunnerConfig { budget_usd: None, ..config }, &tasks, agent::plan_runs(&tasks, &Condition::ALL, 1, 3)).unwrap();
   assert_eq!(resumed.skipped_for_budget, Vec::<String>::new());
   assert_eq!(resumed.spent_usd, 0.02);
+}
+
+#[test]
+fn should_build_the_base_from_the_patched_tree_after_setup() {
+  let fixture = fixture();
+  let task = TASK
+    .replace(
+      "max_turns = 5",
+      "max_turns = 5\nbase_patch = \"base.patch\"\nsetup = [\"echo ready > setup.out\", \"mkdir -p node_modules/pkg && echo x > node_modules/pkg/index.js\"]",
+    )
+    .replace(
+      "commands = [\"sh acme-api/check.sh\"]",
+      "commands = [\"test -f setup.out && test -f node_modules/pkg/index.js\"]",
+    );
+  write(&fixture.tasks.join("t99-pipeline/task.toml"), &task);
+  write(
+    &fixture.tasks.join("t99-pipeline/base.patch"),
+    "--- a/acme-api/src/users/user.entity.ts\n+++ b/acme-api/src/users/user.entity.ts\n@@ -1,3 +1,4 @@\n export class User {\n   id!: string;\n+  planted!: string;\n }\n",
+  );
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let config = fixture.config(1, None);
+  agent::run_batch(&config, &tasks, agent::plan_runs(&tasks, &[Condition::Baseline], 1, 3)).unwrap();
+
+  let base: agent::BaseCheck = agent::read_json(&fixture.batch.join("_base/t99-pipeline/base.json")).unwrap();
+  assert!(base.validation.all_passed());
+  let diff = fs::read_to_string(fixture.batch.join("t99-pipeline.baseline.r0/diff.patch")).unwrap();
+  assert!(diff.contains("-  planted!: string;"), "{diff}");
+  assert!(!diff.contains("setup.out") && !diff.contains("node_modules"), "{diff}");
+}
+
+#[test]
+fn should_fail_the_batch_when_setup_fails_on_the_base_tree() {
+  let fixture = fixture();
+  let continued = fixture.trees.join("setup-continued");
+  let setup = format!("max_turns = 5\nsetup = [\"exit 3\", \"touch {}\"]", continued.display());
+  write(&fixture.tasks.join("t99-pipeline/task.toml"), &TASK.replace("max_turns = 5", &setup));
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let error = agent::run_batch(&fixture.config(1, None), &tasks, agent::plan_runs(&tasks, &[Condition::Baseline], 1, 3)).unwrap_err();
+  assert!(matches!(error, agent::AgentError::Command { ref command, .. } if command == "exit 3"), "{error}");
+  assert!(!continued.exists(), "setup must stop at the first failing command");
+}
+
+#[test]
+fn should_point_cargo_at_a_target_dir_beside_the_tree_for_setup_sessions_and_validation() {
+  let fixture = fixture();
+  let beside_tree = r#"[ \"$(basename \"$CARGO_TARGET_DIR\")\" = cargo-target ] && [ \"$(cd \"$(dirname \"$CARGO_TARGET_DIR\")\" && pwd -P)\" = \"$(cd .. && pwd -P)\" ]"#;
+  let task = TASK
+    .replace("max_turns = 5", &format!("max_turns = 5\nsetup = [\"{beside_tree}\"]"))
+    .replace("commands = [\"sh acme-api/check.sh\"]", &format!("commands = [\"{beside_tree}\"]"));
+  write(&fixture.tasks.join("t99-pipeline/task.toml"), &task);
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  agent::run_batch(&fixture.config(2, None), &tasks, agent::plan_runs(&tasks, &Condition::ALL, 1, 3)).unwrap();
+
+  let base: agent::BaseCheck = agent::read_json(&fixture.batch.join("_base/t99-pipeline/base.json")).unwrap();
+  assert!(base.validation.all_passed(), "{:?}", base.validation);
+  let mut session_dirs = Vec::new();
+  for condition in Condition::ALL {
+    let dir = fixture.batch.join(format!("t99-pipeline.{condition}.r0"));
+    let run: RunManifest = agent::read_json(&dir.join(RUN_FILE)).unwrap();
+    let tree = PathBuf::from(run.tree.unwrap());
+    let seen = fs::read_to_string(dir.join("claude.stderr.log")).unwrap();
+    let target = seen.lines().find_map(|line| line.strip_prefix("CARGO_TARGET_DIR=")).unwrap().to_owned();
+    assert_eq!(PathBuf::from(&target), tree.parent().unwrap().join("cargo-target"), "{condition}");
+    assert!(!PathBuf::from(&target).starts_with(&tree), "{condition}");
+    assert!(run.env_names.contains(&"CARGO_TARGET_DIR".to_owned()), "{condition}");
+    let score: Score = agent::read_json(&dir.join(SCORE_FILE)).unwrap();
+    assert!(score.hidden_tests.unwrap().passed, "{condition}");
+    session_dirs.push(target);
+  }
+  assert_ne!(session_dirs[0], session_dirs[1], "each run must build into its own target dir");
 }

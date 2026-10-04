@@ -1,0 +1,359 @@
+diff --git a/adapters/aws-lambda/src/handler.test.ts b/adapters/aws-lambda/src/handler.test.ts
+index 10e2575..0d6aea1 100644
+--- a/adapters/aws-lambda/src/handler.test.ts
++++ b/adapters/aws-lambda/src/handler.test.ts
+@@ -532,7 +532,7 @@ describe('handle', () => {
+     const result = await handler(event)
+ 
+     expect(result.headers!['set-cookie']).toBe(
+-      'session=abc123; Path=/; Expires=Tue, 09 Jun 2026 00:00:00 GMT'
++      'session=abc123; Path=/; Expires=Tue, 09 Jun 2026 00:00:00 GMT; SameSite=Lax'
+     )
+   })
+ 
+@@ -565,7 +565,10 @@ describe('handle', () => {
+ 
+     const result = await handler(event)
+ 
+-    expect(result.headers!['set-cookie']).toEqual(['session=abc123; Path=/', 'csrf=xyz789; Path=/'])
++    expect(result.headers!['set-cookie']).toEqual([
++      'session=abc123; Path=/; SameSite=Lax',
++      'csrf=xyz789; Path=/; SameSite=Lax',
++    ])
+   })
+ 
+   it('Should return 400 when request contains invalid header names (v1)', async () => {
+diff --git a/adapters/aws-lambda/test/index.test.ts b/adapters/aws-lambda/test/index.test.ts
+index ac9f421..876e603 100644
+--- a/adapters/aws-lambda/test/index.test.ts
++++ b/adapters/aws-lambda/test/index.test.ts
+@@ -146,14 +146,14 @@ describe('AWS Lambda Adapter for Hono', () => {
+     key: 'id',
+     value: crypto.randomUUID(),
+     get serialized() {
+-      return `${this.key}=${this.value}; Path=/`
++      return `${this.key}=${this.value}; Path=/; SameSite=Lax`
+     },
+   }
+   const testCookie2 = {
+     key: 'secret',
+     value: crypto.randomUUID(),
+     get serialized() {
+-      return `${this.key}=${this.value}; Path=/`
++      return `${this.key}=${this.value}; Path=/; SameSite=Lax`
+     },
+   }
+ 
+diff --git a/adapters/lambda-edge/src/handler.test.ts b/adapters/lambda-edge/src/handler.test.ts
+index 9728765..0bab0c4 100644
+--- a/adapters/lambda-edge/src/handler.test.ts
++++ b/adapters/lambda-edge/src/handler.test.ts
+@@ -187,11 +187,11 @@ describe('handle', () => {
+       'set-cookie': [
+         {
+           key: 'set-cookie',
+-          value: 'cookie1=value1; Path=/',
++          value: 'cookie1=value1; Path=/; SameSite=Lax',
+         },
+         {
+           key: 'set-cookie',
+-          value: 'cookie2=value2; Path=/',
++          value: 'cookie2=value2; Path=/; SameSite=Lax',
+         },
+       ],
+     })
+diff --git a/src/adapter/aws-lambda/handler.test.ts b/src/adapter/aws-lambda/handler.test.ts
+index aec357b..621f92c 100644
+--- a/src/adapter/aws-lambda/handler.test.ts
++++ b/src/adapter/aws-lambda/handler.test.ts
+@@ -532,7 +532,7 @@ describe('handle', () => {
+     const result = await handler(event)
+ 
+     expect(result.headers!['set-cookie']).toBe(
+-      'session=abc123; Path=/; Expires=Tue, 09 Jun 2026 00:00:00 GMT'
++      'session=abc123; Path=/; Expires=Tue, 09 Jun 2026 00:00:00 GMT; SameSite=Lax'
+     )
+   })
+ 
+@@ -565,7 +565,10 @@ describe('handle', () => {
+ 
+     const result = await handler(event)
+ 
+-    expect(result.headers!['set-cookie']).toEqual(['session=abc123; Path=/', 'csrf=xyz789; Path=/'])
++    expect(result.headers!['set-cookie']).toEqual([
++      'session=abc123; Path=/; SameSite=Lax',
++      'csrf=xyz789; Path=/; SameSite=Lax',
++    ])
+   })
+ 
+   it('Should return 400 when request contains invalid header names (v1)', async () => {
+diff --git a/src/adapter/lambda-edge/handler.test.ts b/src/adapter/lambda-edge/handler.test.ts
+index 41d96ec..eb214fb 100644
+--- a/src/adapter/lambda-edge/handler.test.ts
++++ b/src/adapter/lambda-edge/handler.test.ts
+@@ -187,11 +187,11 @@ describe('handle', () => {
+       'set-cookie': [
+         {
+           key: 'set-cookie',
+-          value: 'cookie1=value1; Path=/',
++          value: 'cookie1=value1; Path=/; SameSite=Lax',
+         },
+         {
+           key: 'set-cookie',
+-          value: 'cookie2=value2; Path=/',
++          value: 'cookie2=value2; Path=/; SameSite=Lax',
+         },
+       ],
+     })
+diff --git a/src/context.test.ts b/src/context.test.ts
+index d695dd3..59ae83f 100644
+--- a/src/context.test.ts
++++ b/src/context.test.ts
+@@ -450,7 +450,7 @@ describe('Context header', () => {
+     const res = c.json({ message: 'Hello' })
+     const cookies = res.headers.getSetCookie()
+     expect(cookies.includes('foo=bar; Path=/')).toBe(true)
+-    expect(cookies.includes('foo2=bar2; Path=/')).toBe(true)
++    expect(cookies.includes('foo2=bar2; Path=/; SameSite=Lax')).toBe(true)
+   })
+ 
+   it('Should set set-cookie header values if c.res is already defined', () => {
+@@ -577,8 +577,8 @@ describe('Pass a ResponseInit to respond methods', () => {
+     })
+     const res = c.body('', originalResponse)
+     const cookies = res.headers.getSetCookie()
+-    expect(cookies.includes('context=1; Path=/')).toBe(true)
+-    expect(cookies.includes('context=2; Path=/')).toBe(true)
++    expect(cookies.includes('context=1; Path=/; SameSite=Lax')).toBe(true)
++    expect(cookies.includes('context=2; Path=/; SameSite=Lax')).toBe(true)
+     expect(cookies.includes('response=1; Path=/')).toBe(true)
+   })
+ 
+diff --git a/src/helper/cookie/index.test.ts b/src/helper/cookie/index.test.ts
+index 8e02a4f..bff5844 100644
+--- a/src/helper/cookie/index.test.ts
++++ b/src/helper/cookie/index.test.ts
+@@ -167,7 +167,7 @@ describe('Cookie Middleware', () => {
+       const res = await app.request('http://localhost/set-cookie')
+       expect(res.status).toBe(200)
+       const header = res.headers.get('Set-Cookie')
+-      expect(header).toBe('delicious_cookie=macha; Path=/')
++      expect(header).toBe('delicious_cookie=macha; Path=/; SameSite=Lax')
+     })
+ 
+     app.get('/a/set-cookie-path', (c) => {
+@@ -179,7 +179,7 @@ describe('Cookie Middleware', () => {
+       const res = await app.request('http://localhost/a/set-cookie-path')
+       expect(res.status).toBe(200)
+       const header = res.headers.get('Set-Cookie')
+-      expect(header).toBe('delicious_cookie=macha; Path=/a')
++      expect(header).toBe('delicious_cookie=macha; Path=/a; SameSite=Lax')
+     })
+ 
+     app.get('/set-signed-cookie', async (c) => {
+@@ -193,7 +193,7 @@ describe('Cookie Middleware', () => {
+       expect(res.status).toBe(200)
+       const header = res.headers.get('Set-Cookie')
+       expect(header).toBe(
+-        'delicious_cookie=macha.diubJPY8O7hI1pLa42QSfkPiyDWQ0I4DnlACH%2FN2HaA%3D; Path=/'
++        'delicious_cookie=macha.diubJPY8O7hI1pLa42QSfkPiyDWQ0I4DnlACH%2FN2HaA%3D; Path=/; SameSite=Lax'
+       )
+     })
+ 
+@@ -208,7 +208,7 @@ describe('Cookie Middleware', () => {
+       expect(res.status).toBe(200)
+       const header = res.headers.get('Set-Cookie')
+       expect(header).toBe(
+-        'delicious_cookie=macha.diubJPY8O7hI1pLa42QSfkPiyDWQ0I4DnlACH%2FN2HaA%3D; Path=/a'
++        'delicious_cookie=macha.diubJPY8O7hI1pLa42QSfkPiyDWQ0I4DnlACH%2FN2HaA%3D; Path=/a; SameSite=Lax'
+       )
+     })
+ 
+@@ -242,7 +242,7 @@ describe('Cookie Middleware', () => {
+       const res = await app.request('http://localhost/set-secure-prefix-cookie')
+       expect(res.status).toBe(200)
+       const header = res.headers.get('Set-Cookie')
+-      expect(header).toBe('__Secure-delicious_cookie=macha; Path=/; Secure')
++      expect(header).toBe('__Secure-delicious_cookie=macha; Path=/; Secure; SameSite=Lax')
+     })
+ 
+     it('Get cookie with secure prefix', async () => {
+@@ -275,7 +275,7 @@ describe('Cookie Middleware', () => {
+       const res = await app.request('http://localhost/set-host-prefix-cookie')
+       expect(res.status).toBe(200)
+       const header = res.headers.get('Set-Cookie')
+-      expect(header).toBe('__Host-delicious_cookie=macha; Path=/; Secure')
++      expect(header).toBe('__Host-delicious_cookie=macha; Path=/; Secure; SameSite=Lax')
+     })
+ 
+     it('Get cookie with host prefix', async () => {
+@@ -306,7 +306,7 @@ describe('Cookie Middleware', () => {
+       expect(res.status).toBe(200)
+       const header = res.headers.get('Set-Cookie')
+       expect(header).toBe(
+-        '__Secure-delicious_cookie=macha.i225faTyCrJUY8TvpTuJHI20HBWbQ89B4GV7lT4E%2FB0%3D; Path=/; Secure'
++        '__Secure-delicious_cookie=macha.i225faTyCrJUY8TvpTuJHI20HBWbQ89B4GV7lT4E%2FB0%3D; Path=/; Secure; SameSite=Lax'
+       )
+     })
+ 
+@@ -325,7 +325,7 @@ describe('Cookie Middleware', () => {
+       expect(res.status).toBe(200)
+       const header = res.headers.get('Set-Cookie')
+       expect(header).toBe(
+-        '__Host-delicious_cookie=macha.i225faTyCrJUY8TvpTuJHI20HBWbQ89B4GV7lT4E%2FB0%3D; Path=/; Secure'
++        '__Host-delicious_cookie=macha.i225faTyCrJUY8TvpTuJHI20HBWbQ89B4GV7lT4E%2FB0%3D; Path=/; Secure; SameSite=Lax'
+       )
+     })
+ 
+@@ -384,7 +384,7 @@ describe('Cookie Middleware', () => {
+       const res = await app.request('http://localhost/set-cookie-multiple')
+       expect(res.status).toBe(200)
+       const header = res.headers.get('Set-Cookie')
+-      expect(header).toBe('delicious_cookie=macha; Path=/, delicious_cookie=choco; Path=/')
++      expect(header).toBe('delicious_cookie=macha; Path=/; SameSite=Lax, delicious_cookie=choco; Path=/; SameSite=Lax')
+     })
+   })
+ 
+@@ -400,7 +400,7 @@ describe('Cookie Middleware', () => {
+       const res2 = await app.request('http://localhost/delete-cookie')
+       expect(res2.status).toBe(200)
+       const header2 = res2.headers.get('Set-Cookie')
+-      expect(header2).toBe('delicious_cookie=; Max-Age=0; Path=/')
++      expect(header2).toBe('delicious_cookie=; Max-Age=0; Path=/; SameSite=Lax')
+     })
+ 
+     app.get('/delete-cookie-multiple', (c) => {
+@@ -414,7 +414,7 @@ describe('Cookie Middleware', () => {
+       expect(res2.status).toBe(200)
+       const header2 = res2.headers.get('Set-Cookie')
+       expect(header2).toBe(
+-        'delicious_cookie=; Max-Age=0; Path=/, delicious_cookie2=; Max-Age=0; Path=/'
++        'delicious_cookie=; Max-Age=0; Path=/; SameSite=Lax, delicious_cookie2=; Max-Age=0; Path=/; SameSite=Lax'
+       )
+     })
+ 
+@@ -431,7 +431,7 @@ describe('Cookie Middleware', () => {
+       const res2 = await app.request('http://localhost/delete-cookie-with-options')
+       expect(res2.status).toBe(200)
+       const header2 = res2.headers.get('Set-Cookie')
+-      expect(header2).toBe('delicious_cookie=; Max-Age=0; Domain=example.com; Path=/; Secure')
++      expect(header2).toBe('delicious_cookie=; Max-Age=0; Domain=example.com; Path=/; Secure; SameSite=Lax')
+     })
+ 
+     app.get('/delete-cookie-with-deleted-value', (c) => {
+@@ -466,7 +466,7 @@ describe('Cookie Middleware', () => {
+   describe('Generate cookie', () => {
+     it('should generate a cookie', () => {
+       const cookie = generateCookie('delicious_cookie', 'macha')
+-      expect(cookie).toBe('delicious_cookie=macha; Path=/')
++      expect(cookie).toBe('delicious_cookie=macha; Path=/; SameSite=Lax')
+     })
+ 
+     it('should generate a cookie with options', () => {
+@@ -476,7 +476,7 @@ describe('Cookie Middleware', () => {
+         httpOnly: true,
+         domain: 'example.com',
+       })
+-      expect(cookie).toBe('delicious_cookie=macha; Domain=example.com; Path=/; HttpOnly; Secure')
++      expect(cookie).toBe('delicious_cookie=macha; Domain=example.com; Path=/; HttpOnly; Secure; SameSite=Lax')
+     })
+ 
+     it('should generate a signed cookie', async () => {
+@@ -486,7 +486,7 @@ describe('Cookie Middleware', () => {
+         'secret chocolate chips'
+       )
+       expect(cookie).toBe(
+-        'delicious_cookie=macha.diubJPY8O7hI1pLa42QSfkPiyDWQ0I4DnlACH%2FN2HaA%3D; Path=/'
++        'delicious_cookie=macha.diubJPY8O7hI1pLa42QSfkPiyDWQ0I4DnlACH%2FN2HaA%3D; Path=/; SameSite=Lax'
+       )
+     })
+ 
+@@ -503,7 +503,7 @@ describe('Cookie Middleware', () => {
+         }
+       )
+       expect(cookie).toBe(
+-        'delicious_cookie=macha.diubJPY8O7hI1pLa42QSfkPiyDWQ0I4DnlACH%2FN2HaA%3D; Domain=example.com; Path=/; HttpOnly; Secure'
++        'delicious_cookie=macha.diubJPY8O7hI1pLa42QSfkPiyDWQ0I4DnlACH%2FN2HaA%3D; Domain=example.com; Path=/; HttpOnly; Secure; SameSite=Lax'
+       )
+     })
+   })
+diff --git a/src/helper/cookie/index.ts b/src/helper/cookie/index.ts
+index 4602a8d..5eca044 100644
+--- a/src/helper/cookie/index.ts
++++ b/src/helper/cookie/index.ts
+@@ -75,25 +75,31 @@ export const getSignedCookie: GetSignedCookie = async (
+   return obj as any
+ }
+ 
+-export const generateCookie = (name: string, value: string, opt?: CookieOptions): string => {
+-  // Cookie names prefixed with __Secure- can be used only if they are set with the secure attribute.
+-  // Cookie names prefixed with __Host- can be used only if they are set with the secure attribute, must have a path of / (meaning any path at the host)
+-  // and must not have a Domain attribute.
+-  // Read more at https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#cookie_prefixes'
+-  let cookie
++const DEFAULT_SAME_SITE = 'Lax'
++
++// Cookie names prefixed with __Secure- can be used only if they are set with the secure attribute.
++// Cookie names prefixed with __Host- can be used only if they are set with the secure attribute, must have a path of / (meaning any path at the host)
++// and must not have a Domain attribute.
++// Read more at https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#cookie_prefixes'
++const applyCookieDefaults = (
++  name: string,
++  opt?: CookieOptions
++): [name: string, options: CookieOptions] => {
+   if (opt?.prefix === 'secure') {
+-    cookie = serialize('__Secure-' + name, value, { path: '/', ...opt, secure: true })
+-  } else if (opt?.prefix === 'host') {
+-    cookie = serialize('__Host-' + name, value, {
+-      ...opt,
+-      path: '/',
+-      secure: true,
+-      domain: undefined,
+-    })
+-  } else {
+-    cookie = serialize(name, value, { path: '/', ...opt })
++    return ['__Secure-' + name, { path: '/', sameSite: DEFAULT_SAME_SITE, ...opt, secure: true }]
++  }
++  if (opt?.prefix === 'host') {
++    return [
++      '__Host-' + name,
++      { sameSite: DEFAULT_SAME_SITE, ...opt, path: '/', secure: true, domain: undefined },
++    ]
+   }
+-  return cookie
++  return [name, { path: '/', sameSite: DEFAULT_SAME_SITE, ...opt }]
++}
++
++export const generateCookie = (name: string, value: string, opt?: CookieOptions): string => {
++  const [cookieName, options] = applyCookieDefaults(name, opt)
++  return serialize(cookieName, value, options)
+ }
+ 
+ export const setCookie = (c: Context, name: string, value: string, opt?: CookieOptions): void => {
+@@ -107,24 +113,8 @@ export const generateSignedCookie = async (
+   secret: string | BufferSource,
+   opt?: CookieOptions
+ ): Promise<string> => {
+-  let cookie
+-  if (opt?.prefix === 'secure') {
+-    cookie = await serializeSigned('__Secure-' + name, value, secret, {
+-      path: '/',
+-      ...opt,
+-      secure: true,
+-    })
+-  } else if (opt?.prefix === 'host') {
+-    cookie = await serializeSigned('__Host-' + name, value, secret, {
+-      ...opt,
+-      path: '/',
+-      secure: true,
+-      domain: undefined,
+-    })
+-  } else {
+-    cookie = await serializeSigned(name, value, secret, { path: '/', ...opt })
+-  }
+-  return cookie
++  const [cookieName, options] = applyCookieDefaults(name, opt)
++  return serializeSigned(cookieName, value, secret, options)
+ }
+ 
+ export const setSignedCookie = async (

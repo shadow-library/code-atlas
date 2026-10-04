@@ -1,0 +1,92 @@
+diff --git a/crates/atlas-mcp/src/descriptions.rs b/crates/atlas-mcp/src/descriptions.rs
+index 7b8a111..f07911f 100644
+--- a/crates/atlas-mcp/src/descriptions.rs
++++ b/crates/atlas-mcp/src/descriptions.rs
+@@ -32,6 +32,14 @@ pub(crate) const CALLEES: &str = concat!(
+   "What this function or method calls, grouped by repo, up to depth hops (default 1). Misses dynamic or macro-generated calls; see the caveats. ",
+   certainty!()
+ );
++pub(crate) const DEPENDENTS: &str = concat!(
++  "What uses this symbol, file or package (imports, types, references, inheritance, calls, package and endpoint dependencies, config reads), grouped by repo, up to depth hops (default 1). Use atlas_impact for the full blast radius. ",
++  certainty!()
++);
++pub(crate) const DEPENDENCIES: &str = concat!(
++  "What this symbol, file or package uses (imports, types, references, inheritance, calls, package and endpoint dependencies, config reads), grouped by repo, up to depth hops (default 1). ",
++  certainty!()
++);
+ pub(crate) const IMPACT: &str = concat!(
+   "Blast radius of changing one or more targets: direct and transitive dependents grouped by repo, endpoints, cross-repo consumers, tests and config, with the path explaining each. Use before changing shared code. Depth defaults to 3. ",
+   "Unresolved references can hide dependents; the caveats say where. ",
+diff --git a/crates/atlas-mcp/src/server.rs b/crates/atlas-mcp/src/server.rs
+index 33dc2c3..d0501bf 100644
+--- a/crates/atlas-mcp/src/server.rs
++++ b/crates/atlas-mcp/src/server.rs
+@@ -224,6 +224,30 @@ impl AtlasServer {
+       .await
+   }
+ 
++  #[tool(name = "atlas_dependents", description = text::DEPENDENTS, annotations(read_only_hint = true))]
++  async fn dependents(&self, Parameters(args): Parameters<TraverseArgs>) -> CallToolResult {
++    self
++      .call("atlas_dependents", args.format, move |shared| {
++        arguments::non_empty("target", &args.target)?;
++        let mut request = TraverseRequest::new(args.target);
++        request.depth = arguments::depth(args.depth, request.depth)?;
++        render::targeted(query(shared), &query(shared).dependents(&request)?, args.format.unwrap_or_default())
++      })
++      .await
++  }
++
++  #[tool(name = "atlas_dependencies", description = text::DEPENDENCIES, annotations(read_only_hint = true))]
++  async fn dependencies(&self, Parameters(args): Parameters<TraverseArgs>) -> CallToolResult {
++    self
++      .call("atlas_dependencies", args.format, move |shared| {
++        arguments::non_empty("target", &args.target)?;
++        let mut request = TraverseRequest::new(args.target);
++        request.depth = arguments::depth(args.depth, request.depth)?;
++        render::targeted(query(shared), &query(shared).dependencies(&request)?, args.format.unwrap_or_default())
++      })
++      .await
++  }
++
+   #[tool(name = "atlas_impact", description = text::IMPACT, annotations(read_only_hint = true))]
+   async fn impact(&self, Parameters(args): Parameters<ImpactArgs>) -> CallToolResult {
+     self
+diff --git a/crates/atlas-mcp/tests/protocol.rs b/crates/atlas-mcp/tests/protocol.rs
+index 7694e4a..a976e9e 100644
+--- a/crates/atlas-mcp/tests/protocol.rs
++++ b/crates/atlas-mcp/tests/protocol.rs
+@@ -6,12 +6,14 @@ use atlas_project::{Registry, RepoSpec};
+ use common::{ACME_REPOS, start, start_limited, start_watching, start_with, text_of};
+ use serde_json::{Value, json};
+ 
+-const TOOLS: [&str; 16] = [
++const TOOLS: [&str; 18] = [
+   "atlas_api",
+   "atlas_callees",
+   "atlas_callers",
+   "atlas_changes",
+   "atlas_context",
++  "atlas_dependencies",
++  "atlas_dependents",
+   "atlas_explain",
+   "atlas_impact",
+   "atlas_overview",
+@@ -73,7 +75,16 @@ async fn should_list_every_tool_with_a_schema_and_an_agent_facing_description()
+   assert_eq!(required("atlas_impact"), ["targets"]);
+   assert_eq!(required("atlas_callers"), ["target"]);
+   assert!(required("atlas_overview").is_empty());
+-  for name in ["atlas_context", "atlas_callers", "atlas_callees", "atlas_impact", "atlas_tests_for", "atlas_api"] {
++  for name in [
++    "atlas_context",
++    "atlas_callers",
++    "atlas_callees",
++    "atlas_dependents",
++    "atlas_dependencies",
++    "atlas_impact",
++    "atlas_tests_for",
++    "atlas_api",
++  ] {
+     let description = tools.iter().find(|tool| tool.name == name).unwrap().description.clone().unwrap();
+     assert!(description.contains("[heuristic]/[inferred]"), "{name}: {description}");
+     assert!(description.contains("verify"), "{name}: {description}");

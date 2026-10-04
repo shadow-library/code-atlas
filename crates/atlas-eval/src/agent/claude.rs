@@ -38,6 +38,7 @@ pub struct SessionRequest {
   pub with_atlas_tools: bool,
   pub config_dir: PathBuf,
   pub project_instructions: Option<String>,
+  pub tree_env: Vec<(String, String)>,
 }
 
 pub const PROJECT_INSTRUCTION_FILES: [&str; 2] = ["CLAUDE.md", "AGENTS.md"];
@@ -130,10 +131,12 @@ pub fn session_invocation(config: &ClaudeConfig, request: &SessionRequest, host_
   }
   args.push("-p".to_owned());
   args.push(request.prompt.clone());
+  let mut env = session_env(config.config_isolation, &request.config_dir, host_env);
+  env.extend(request.tree_env.iter().cloned());
   Invocation {
     program: config.binary.clone(),
     args,
-    env: session_env(config.config_isolation, &request.config_dir, host_env),
+    env,
     cwd: request.tree.clone(),
   }
 }
@@ -204,6 +207,7 @@ mod tests {
       with_atlas_tools,
       config_dir: PathBuf::from("/runs/r1/claude-config"),
       project_instructions: None,
+      tree_env: Vec::new(),
     }
   }
 
@@ -263,6 +267,7 @@ mod tests {
     let with = |with_atlas_tools: bool, prompt: &str| SessionRequest {
       prompt: prompt.to_owned(),
       project_instructions: instructions.clone(),
+      tree_env: vec![("CARGO_TARGET_DIR".to_owned(), "/runs/r1/cargo-target".to_owned())],
       ..request(with_atlas_tools)
     };
     let baseline = session_invocation(&config(ConfigIsolation::User), &with(false, "Fix it."), &host());
@@ -279,6 +284,7 @@ mod tests {
     let position = baseline.args.iter().position(|arg| arg == "--append-system-prompt").unwrap();
     assert_eq!(baseline.args[position + 1], atlas.args[position + 1]);
     assert_eq!(baseline.env, atlas.env);
+    assert_eq!(baseline.env.last().unwrap(), &("CARGO_TARGET_DIR".to_owned(), "/runs/r1/cargo-target".to_owned()));
   }
 
   #[test]

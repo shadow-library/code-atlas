@@ -1,0 +1,52 @@
+diff --git a/adapters/aws-lambda/src/handler.ts b/adapters/aws-lambda/src/handler.ts
+index 253e702..f0c78e7 100644
+--- a/adapters/aws-lambda/src/handler.ts
++++ b/adapters/aws-lambda/src/handler.ts
+@@ -672,7 +672,7 @@ export const defaultIsContentTypeBinary = (contentType: string): boolean => {
+     return true
+   }
+ 
+-  return !/^text\/(?:plain|html|css|javascript|csv)|(?:\/|\+)(?:json|xml)\s*(?:;|$)/i.test(
++  return !/^text\/|^application\/(?:javascript|x-www-form-urlencoded)\s*(?:;|$)|(?:\/|\+)(?:json|xml)\s*(?:;|$)/i.test(
+     contentType
+   )
+ }
+diff --git a/adapters/lambda-edge/src/handler.ts b/adapters/lambda-edge/src/handler.ts
+index 3c8d833..03987d1 100644
+--- a/adapters/lambda-edge/src/handler.ts
++++ b/adapters/lambda-edge/src/handler.ts
+@@ -233,7 +233,7 @@ export const isContentTypeBinary = (contentType: string): boolean => {
+     return true
+   }
+ 
+-  return !/^text\/(?:plain|html|css|javascript|csv)|(?:\/|\+)(?:json|xml)\s*(?:;|$)/i.test(
++  return !/^text\/|^application\/(?:javascript|x-www-form-urlencoded)\s*(?:;|$)|(?:\/|\+)(?:json|xml)\s*(?:;|$)/i.test(
+     contentType
+   )
+ }
+diff --git a/src/adapter/aws-lambda/handler.ts b/src/adapter/aws-lambda/handler.ts
+index 205eca1..54b9acc 100644
+--- a/src/adapter/aws-lambda/handler.ts
++++ b/src/adapter/aws-lambda/handler.ts
+@@ -713,7 +713,7 @@ export const defaultIsContentTypeBinary = (contentType: string): boolean => {
+     return true
+   }
+ 
+-  return !/^text\/(?:plain|html|css|javascript|csv)|(?:\/|\+)(?:json|xml)\s*(?:;|$)/i.test(
++  return !/^text\/|^application\/(?:javascript|x-www-form-urlencoded)\s*(?:;|$)|(?:\/|\+)(?:json|xml)\s*(?:;|$)/i.test(
+     contentType
+   )
+ }
+diff --git a/src/adapter/lambda-edge/handler.ts b/src/adapter/lambda-edge/handler.ts
+index 4a905db..3bb0cfd 100644
+--- a/src/adapter/lambda-edge/handler.ts
++++ b/src/adapter/lambda-edge/handler.ts
+@@ -257,7 +257,7 @@ export const isContentTypeBinary = (contentType: string): boolean => {
+     return true
+   }
+ 
+-  return !/^text\/(?:plain|html|css|javascript|csv)|(?:\/|\+)(?:json|xml)\s*(?:;|$)/i.test(
++  return !/^text\/|^application\/(?:javascript|x-www-form-urlencoded)\s*(?:;|$)|(?:\/|\+)(?:json|xml)\s*(?:;|$)/i.test(
+     contentType
+   )
+ }

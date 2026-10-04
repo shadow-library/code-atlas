@@ -1,0 +1,120 @@
+diff --git a/src/middleware/basic-auth/index.ts b/src/middleware/basic-auth/index.ts
+index 5b2011e..b9c918a 100644
+--- a/src/middleware/basic-auth/index.ts
++++ b/src/middleware/basic-auth/index.ts
+@@ -8,6 +8,7 @@ import { HTTPException } from '../../http-exception'
+ import type { MiddlewareHandler } from '../../types'
+ import { auth } from '../../utils/basic-auth'
+ import { timingSafeEqual } from '../../utils/buffer'
++import { escapeQuotedString } from '../../utils/quoted-string'
+ 
+ type MessageFunction = (c: Context) => string | object | Promise<string | object>
+ 
+@@ -132,7 +133,7 @@ export const basicAuth = (
+     // Invalid user.
+     const status = 401
+     const headers = {
+-      'WWW-Authenticate': 'Basic realm="' + options.realm?.replace(/"/g, '\\"') + '"',
++      'WWW-Authenticate': `Basic realm="${escapeQuotedString(options.realm ?? '')}"`,
+     }
+     const responseMessage =
+       typeof options.invalidUserMessage === 'function'
+diff --git a/src/middleware/bearer-auth/index.ts b/src/middleware/bearer-auth/index.ts
+index bfe3b77..ef54c21 100644
+--- a/src/middleware/bearer-auth/index.ts
++++ b/src/middleware/bearer-auth/index.ts
+@@ -8,6 +8,7 @@ import { HTTPException } from '../../http-exception'
+ import type { Env, MiddlewareHandler } from '../../types'
+ import { timingSafeEqual } from '../../utils/buffer'
+ import type { ContentfulStatusCode } from '../../utils/http-status'
++import { escapeQuotedString } from '../../utils/quoted-string'
+ 
+ const TOKEN_STRINGS = '[A-Za-z0-9._~+/-]+=*'
+ const PREFIX = 'Bearer'
+@@ -114,7 +115,7 @@ export const bearerAuth = <E extends Env = Env>(
+     options.prefix = PREFIX
+   }
+ 
+-  const realm = options.realm?.replace(/"/g, '\\"')
++  const realm = escapeQuotedString(options.realm)
+   const prefix = options.prefix
+   const tokenRegexp = new RegExp(`^${TOKEN_STRINGS}$`)
+   const wwwAuthenticatePrefix = prefix === '' ? '' : `${prefix} `
+@@ -135,7 +136,7 @@ export const bearerAuth = <E extends Env = Env>(
+         typeof wwwAuthenticateHeaderValue === 'string'
+           ? wwwAuthenticateHeaderValue
+           : `${wwwAuthenticatePrefix}${Object.entries(wwwAuthenticateHeaderValue)
+-              .map(([key, value]) => `${key}="${value}"`)
++              .map(([key, value]) => `${key}="${escapeQuotedString(String(value))}"`)
+               .join(',')}`,
+     }
+     const responseMessage =
+diff --git a/src/middleware/jwk/jwk.ts b/src/middleware/jwk/jwk.ts
+index 7525da6..1946b4a 100644
+--- a/src/middleware/jwk/jwk.ts
++++ b/src/middleware/jwk/jwk.ts
+@@ -13,6 +13,7 @@ import '../../context'
+ import type { AsymmetricAlgorithm } from '../../utils/jwt/jwa'
+ import type { HonoJsonWebKey } from '../../utils/jwt/jws'
+ import type { VerifyOptions } from '../../utils/jwt/jwt'
++import { escapeQuotedString } from '../../utils/quoted-string'
+ 
+ /**
+  * JWK Auth Middleware for Hono.
+@@ -180,11 +181,8 @@ function unauthorizedResponse(opts: {
+   statusText?: string
+   realm?: string
+ }) {
+-  // `realm` and `error_description` end up inside a quoted-string, so any `"`
+-  // they contain has to be escaped or the header is cut short. Same handling as
+-  // the bearer-auth middleware.
+-  const realm = (opts.realm ?? opts.ctx.req.url).replace(/"/g, '\\"')
+-  const errDescription = opts.errDescription.replace(/"/g, '\\"')
++  const realm = escapeQuotedString(opts.realm ?? opts.ctx.req.url)
++  const errDescription = escapeQuotedString(opts.errDescription)
+ 
+   return new Response('Unauthorized', {
+     status: 401,
+diff --git a/src/middleware/jwt/jwt.ts b/src/middleware/jwt/jwt.ts
+index 9e16c10..5bf219e 100644
+--- a/src/middleware/jwt/jwt.ts
++++ b/src/middleware/jwt/jwt.ts
+@@ -13,6 +13,7 @@ import '../../context'
+ import type { SignatureAlgorithm } from '../../utils/jwt/jwa'
+ import type { SignatureKey } from '../../utils/jwt/jws'
+ import type { VerifyOptions } from '../../utils/jwt/jwt'
++import { escapeQuotedString } from '../../utils/quoted-string'
+ 
+ // eslint-disable-next-line @typescript-eslint/no-explicit-any
+ export type JwtVariables<T = any> = {
+@@ -169,11 +170,8 @@ function unauthorizedResponse(opts: {
+   statusText?: string
+   realm?: string
+ }) {
+-  // `realm` and `error_description` end up inside a quoted-string, so any `"`
+-  // they contain has to be escaped or the header is cut short. Same handling as
+-  // the bearer-auth middleware.
+-  const realm = (opts.realm ?? opts.ctx.req.url).replace(/"/g, '\\"')
+-  const errDescription = opts.errDescription.replace(/"/g, '\\"')
++  const realm = escapeQuotedString(opts.realm ?? opts.ctx.req.url)
++  const errDescription = escapeQuotedString(opts.errDescription)
+ 
+   return new Response('Unauthorized', {
+     status: 401,
+diff --git a/src/utils/quoted-string.ts b/src/utils/quoted-string.ts
+new file mode 100644
+index 0000000..0bb2a5d
+--- /dev/null
++++ b/src/utils/quoted-string.ts
+@@ -0,0 +1,11 @@
++/**
++ * @module
++ * HTTP quoted-string utility.
++ */
++
++/**
++ * Escape a value for use inside an HTTP quoted-string, such as an auth-param of a
++ * `WWW-Authenticate` challenge. Backslashes and double quotes are escaped with a
++ * backslash (RFC 9110, Section 5.6.4).
++ */
++export const escapeQuotedString = (value: string): string => value.replace(/[\\"]/g, '\\$&')

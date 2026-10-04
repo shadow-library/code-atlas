@@ -1,0 +1,13 @@
+diff --git a/crates/atlas-detect/src/detectors/express.rs b/crates/atlas-detect/src/detectors/express.rs
+index ce4484a..e050b84 100644
+--- a/crates/atlas-detect/src/detectors/express.rs
++++ b/crates/atlas-detect/src/detectors/express.rs
+@@ -367,7 +367,7 @@ fn emit_cross_file_mount(view: &FileView<'_>, sink: &mut Sink, reference: &Refer
+     attrs([
+       ("framework", json!(kind.framework)),
+       ("mount_prefix", json!(normalize_route(prefix))),
+-      ("mounted_on", json!(parent)),
++      ("mounted_on", json!(child)),
+       ("mounted_on_scope", json!(scope)),
+     ]),
+   );

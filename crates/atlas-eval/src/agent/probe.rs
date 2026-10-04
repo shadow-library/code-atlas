@@ -104,6 +104,7 @@ fn probe_in(out_dir: &Path, scratch: &Path, tree: &Path, claude: &ClaudeConfig, 
     with_atlas_tools: false,
     config_dir: scratch.join("claude-config"),
     project_instructions: None,
+    tree_env: Vec::new(),
   };
   let invocation = session_invocation(claude, &request, &host_env());
   let invocation_path = out_dir.join("invocation.json");

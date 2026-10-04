@@ -1,0 +1,58 @@
+id = "t10-auth-challenge-quoting"
+title = "WWW-Authenticate challenges do not escape backslashes in quoted-string parameters"
+repo = { git = "https://github.com/honojs/hono.git", commit = "f23b146afcec63606144cde50b5fbd360dd60238" }
+setup = ["npx --yes pnpm@12.6.0 install --frozen-lockfile --prefer-offline"]
+prompt = """
+We configured `bearerAuth({ token, realm: 'C:\\\\vault' })` and clients receive `WWW-Authenticate: Bearer realm="C:\\vault"`, \
+which they parse as `C:vault`. A realm that ends with a backslash even produces an unterminated quoted-string. \
+Double quotes in the realm are escaped, but backslashes are not.
+
+On top of that, when the challenge is configured as an object, e.g. \
+`invalidToken: { wwwAuthenticateHeader: { error: 'invalid_token', error_description: 'bad "token"' } }`, \
+the values are not escaped at all and the header is cut short.
+
+Please escape every quoted-string auth-param per RFC 9110 section 5.6.4 (each backslash and each double quote is preceded \
+by a backslash), consistently in every built-in middleware that emits a `WWW-Authenticate` challenge, not just bearer auth. \
+Challenges that the user supplies verbatim as a string (directly or returned from a function) must be sent untouched. \
+Existing behaviour for realms without backslashes must not change. Add tests.
+
+Environment note: dependencies are already installed. The global `pnpm` shim on this machine cannot run the pinned pnpm 12.6.0, \
+so use `npx pnpm@12.6.0 ...` or the binaries in `./node_modules/.bin` (for example `./node_modules/.bin/vitest run --project main <files>`).
+"""
+category = ["cross-cutting", "consistency"]
+timeout_minutes = 30
+max_turns = 80
+
+[validation]
+hidden_tests = ["hidden/src/middleware/www-authenticate-quoting.test.ts"]
+commands = ["./node_modules/.bin/vitest run --project main --coverage.enabled=false src/middleware/www-authenticate-quoting.test.ts"]
+regression = [
+  "./node_modules/.bin/vitest run --project main --coverage.enabled=false src/middleware/basic-auth src/middleware/bearer-auth src/middleware/jwt src/middleware/jwk src/utils src/helper/cookie",
+  "./node_modules/.bin/tsc -p tsconfig.spec.json",
+]
+
+[ground_truth]
+relevant_files = [
+  "src/middleware/basic-auth/index.ts",
+  "src/middleware/bearer-auth/index.ts",
+  "src/middleware/jwt/jwt.ts",
+  "src/middleware/jwk/jwk.ts",
+  "src/middleware/basic-auth/index.test.ts",
+  "src/middleware/bearer-auth/index.test.ts",
+  "src/middleware/jwt/index.test.ts",
+  "src/middleware/jwk/index.test.ts",
+]
+must_change = [
+  "src/middleware/basic-auth/index.ts",
+  "src/middleware/bearer-auth/index.ts",
+  "src/middleware/jwt/jwt.ts",
+  "src/middleware/jwk/jwk.ts",
+]
+must_consider = [
+  "src/middleware/basic-auth/index.test.ts",
+  "src/middleware/bearer-auth/index.test.ts",
+  "src/middleware/jwt/index.test.ts",
+  "src/middleware/jwk/index.test.ts",
+]
+reuse_targets = []
+forbidden_duplicates = []

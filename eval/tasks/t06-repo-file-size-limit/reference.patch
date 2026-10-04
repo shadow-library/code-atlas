@@ -1,0 +1,187 @@
+diff --git a/crates/atlas-engine/src/watch.rs b/crates/atlas-engine/src/watch.rs
+index d6612fd..0ec9afd 100644
+--- a/crates/atlas-engine/src/watch.rs
++++ b/crates/atlas-engine/src/watch.rs
+@@ -301,6 +301,7 @@ mod tests {
+       include: vec!["vendor-js/node_modules/**".to_owned(), "!target/**".to_owned()],
+       exclude: Vec::new(),
+       languages: None,
++      max_file_bytes: None,
+     };
+     let project = Project {
+       name: atlas_core::ProjectName::new("demo").unwrap(),
+diff --git a/crates/atlas-engine/tests/common/mod.rs b/crates/atlas-engine/tests/common/mod.rs
+index 691e68e..4576fae 100644
+--- a/crates/atlas-engine/tests/common/mod.rs
++++ b/crates/atlas-engine/tests/common/mod.rs
+@@ -34,6 +34,7 @@ pub fn repo_config(name: &str, path: &Path) -> RepoConfig {
+     include: Vec::new(),
+     exclude: Vec::new(),
+     languages: None,
++    max_file_bytes: None,
+   }
+ }
+ 
+diff --git a/crates/atlas-link/tests/common/mod.rs b/crates/atlas-link/tests/common/mod.rs
+index d16ebd0..8153534 100644
+--- a/crates/atlas-link/tests/common/mod.rs
++++ b/crates/atlas-link/tests/common/mod.rs
+@@ -61,6 +61,7 @@ pub fn index_tree(scratch: &Path, name: &str, source: &Path, repos: &[&str]) ->
+         include: Vec::new(),
+         exclude: Vec::new(),
+         languages: None,
++        max_file_bytes: None,
+       }
+     })
+     .collect();
+diff --git a/crates/atlas-project/src/discovery.rs b/crates/atlas-project/src/discovery.rs
+index 4d8e087..57a8ff6 100644
+--- a/crates/atlas-project/src/discovery.rs
++++ b/crates/atlas-project/src/discovery.rs
+@@ -74,7 +74,8 @@ struct Collected {
+   walk_errors: Vec<String>,
+ }
+ 
+-pub fn discover(repo: &RepoConfig, max_file_bytes: u64) -> Result<DiscoveryResult, ProjectError> {
++pub fn discover(repo: &RepoConfig, default_max_file_bytes: u64) -> Result<DiscoveryResult, ProjectError> {
++  let max_file_bytes = repo.max_file_bytes.unwrap_or(default_max_file_bytes);
+   fs::metadata(&repo.path).map_err(|source| ProjectError::io("read repository root", &repo.path, source))?;
+   let include = PathGlobs::new(&repo.include)?;
+   let overridden_defaults = DEFAULT_EXCLUDES
+@@ -245,6 +246,7 @@ mod tests {
+         include: Vec::new(),
+         exclude: Vec::new(),
+         languages: None,
++        max_file_bytes: None,
+       };
+       Self { _dir: dir, config }
+     }
+@@ -400,6 +402,19 @@ mod tests {
+     assert_eq!(result.skipped, [(RelPath::new("big.ts").unwrap(), SkipReason::TooLarge { size: 6, limit: 5 })]);
+   }
+ 
++  #[test]
++  fn should_prefer_the_repo_size_limit_over_the_default() {
++    let mut repo = Repo::new();
++    repo.write("small.ts", "12345");
++    repo.write("big.ts", "123456");
++    repo.config.max_file_bytes = Some(6);
++    assert_eq!(repo.paths(5), ["big.ts", "small.ts"]);
++    repo.config.max_file_bytes = Some(4);
++    let result = discover(&repo.config, 5).unwrap();
++    assert_eq!(result.files, []);
++    assert_eq!(result.skipped[0], (RelPath::new("big.ts").unwrap(), SkipReason::TooLarge { size: 6, limit: 4 }));
++  }
++
+   #[test]
+   fn should_not_follow_symlinks_and_should_report_symlinked_sources() {
+     let repo = Repo::new();
+diff --git a/crates/atlas-project/src/manifest/tests.rs b/crates/atlas-project/src/manifest/tests.rs
+index bb5ec5e..088fed6 100644
+--- a/crates/atlas-project/src/manifest/tests.rs
++++ b/crates/atlas-project/src/manifest/tests.rs
+@@ -46,6 +46,7 @@ fn graph_of(root: &Path) -> PackageGraph {
+     include: Vec::new(),
+     exclude: Vec::new(),
+     languages: None,
++    max_file_bytes: None,
+   };
+   let discovered = discover(&config, 1 << 20).unwrap();
+   PackageGraph::load(root, &discovered.files)
+diff --git a/crates/atlas-project/src/registry.rs b/crates/atlas-project/src/registry.rs
+index 3d3da72..0d6f3d4 100644
+--- a/crates/atlas-project/src/registry.rs
++++ b/crates/atlas-project/src/registry.rs
+@@ -25,6 +25,8 @@ pub struct RepoConfig {
+   pub exclude: Vec<String>,
+   #[serde(default, skip_serializing_if = "Option::is_none")]
+   pub languages: Option<Vec<Language>>,
++  #[serde(default, skip_serializing_if = "Option::is_none")]
++  pub max_file_bytes: Option<u64>,
+ }
+ 
+ #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+@@ -315,6 +317,7 @@ fn build_repo(project: &Project, spec: RepoSpec) -> Result<RepoConfig, ProjectEr
+     include: spec.include,
+     exclude: spec.exclude,
+     languages: spec.languages,
++    max_file_bytes: None,
+   })
+ }
+ 
+diff --git a/crates/atlas-query/tests/common/mod.rs b/crates/atlas-query/tests/common/mod.rs
+index c69fd0f..e6dea1b 100644
+--- a/crates/atlas-query/tests/common/mod.rs
++++ b/crates/atlas-query/tests/common/mod.rs
+@@ -69,6 +69,7 @@ pub fn fixture_with(group: &str, repos: &[&str], options: EngineOptions) -> Fixt
+         include: Vec::new(),
+         exclude: Vec::new(),
+         languages: None,
++        max_file_bytes: None,
+       }
+     })
+     .collect();
+@@ -99,6 +100,7 @@ pub fn single_repo(name: &str, files: &[(&str, &str)]) -> Fixture {
+       include: Vec::new(),
+       exclude: Vec::new(),
+       languages: None,
++      max_file_bytes: None,
+     }],
+   };
+   let engine = Engine::open(&project, &AtlasHome::rooted_at(scratch.path().join("home")), engine_options()).unwrap();
+diff --git a/crates/atlas-query/tests/perf.rs b/crates/atlas-query/tests/perf.rs
+index 6d0ec66..a480cac 100644
+--- a/crates/atlas-query/tests/perf.rs
++++ b/crates/atlas-query/tests/perf.rs
+@@ -45,6 +45,7 @@ fn should_meet_query_latency_targets_on_this_repository() {
+       include: vec!["crates/**".to_owned()],
+       exclude: Vec::new(),
+       languages: None,
++      max_file_bytes: None,
+     }],
+   };
+   let engine = Arc::new(Engine::open(&project, &AtlasHome::rooted_at(scratch.path()), common::engine_options()).unwrap());
+diff --git a/crates/atlas-resolve/tests/common/mod.rs b/crates/atlas-resolve/tests/common/mod.rs
+index 2373fb2..3496bee 100644
+--- a/crates/atlas-resolve/tests/common/mod.rs
++++ b/crates/atlas-resolve/tests/common/mod.rs
+@@ -79,6 +79,7 @@ pub fn load_repo(name: &str, root: &Path) -> RepoSource {
+     include: Vec::new(),
+     exclude: Vec::new(),
+     languages: None,
++    max_file_bytes: None,
+   };
+   let discovered = discover(&config, 2 * 1024 * 1024).unwrap();
+   let graph = PackageGraph::load(root, &discovered.files);
+@@ -225,6 +226,7 @@ fn discover_files(source: &RepoSource) -> Vec<atlas_project::DiscoveredFile> {
+     include: Vec::new(),
+     exclude: Vec::new(),
+     languages: None,
++    max_file_bytes: None,
+   };
+   discover(&config, 2 * 1024 * 1024).unwrap().files
+ }
+diff --git a/crates/atlas-resolve/tests/incremental.rs b/crates/atlas-resolve/tests/incremental.rs
+index f2dad7e..b8ce2cc 100644
+--- a/crates/atlas-resolve/tests/incremental.rs
++++ b/crates/atlas-resolve/tests/incremental.rs
+@@ -28,6 +28,7 @@ fn graph(name: &str, root: &Path) -> PackageGraph {
+     include: Vec::new(),
+     exclude: Vec::new(),
+     languages: None,
++    max_file_bytes: None,
+   };
+   PackageGraph::load(root, &discover(&config, 2 * 1024 * 1024).unwrap().files)
+ }
+diff --git a/crates/atlas-resolve/tests/workspace_quality.rs b/crates/atlas-resolve/tests/workspace_quality.rs
+index e3e667e..ac1ad4a 100644
+--- a/crates/atlas-resolve/tests/workspace_quality.rs
++++ b/crates/atlas-resolve/tests/workspace_quality.rs
+@@ -34,6 +34,7 @@ fn should_report_resolution_quality_on_this_workspace() {
+     include: Vec::new(),
+     exclude: vec!["/fixtures".to_owned(), "/docs".to_owned(), "/scratch-pad".to_owned()],
+     languages: None,
++    max_file_bytes: None,
+   };
+   let discovered = discover(&config, 2 * 1024 * 1024).unwrap();
+   let graph = PackageGraph::load(&root, &discovered.files);

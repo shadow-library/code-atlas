@@ -178,6 +178,8 @@ pub struct Environment {
   pub config_isolation: ConfigIsolation,
   pub code_atlas_commit: Option<String>,
   pub code_atlas_version: Option<String>,
+  #[serde(default)]
+  pub atlas_bin_blake3: Option<String>,
   pub atlas_bin: String,
   pub preamble_version: u32,
   pub repo_override: Option<String>,
