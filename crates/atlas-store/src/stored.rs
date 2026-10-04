@@ -6,6 +6,7 @@ use atlas_core::{
   UnresolvedRef, Visibility,
 };
 use rusqlite::{Connection, params};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::codec::{from_json, to_json};
@@ -191,8 +192,28 @@ pub(crate) fn encode_edge(edge: &Edge, scope: &OwnerScope<'_>) -> StoreResult<St
   })
 }
 
+// A binary from before schema v2 can reclaim the project (its watch or MCP reload re-adopts the fingerprint) and write core serde rows
+// into these tables. Compact and core serde rows share no required key, so a row parses as exactly one of them whatever the key order.
+fn legacy_row<T: DeserializeOwned>(what: &'static str, data: &str, compact: serde_json::Error) -> StoreResult<T> {
+  serde_json::from_str(data).map_err(|_| StoreError::corrupt(what, compact.to_string()))
+}
+
+fn check_legacy_id(what: &'static str, column: i64, stored: i64) -> StoreResult<()> {
+  match column == stored {
+    true => Ok(()),
+    false => Err(StoreError::corrupt(what, format!("row id {column} holds a fact for {stored}"))),
+  }
+}
+
 pub(crate) fn decode_edge(id: i64, data: &str, scope: &OwnerScope<'_>) -> StoreResult<Edge> {
-  let stored: StoredEdge<'_> = from_json("edge", data)?;
+  let stored: StoredEdge<'_> = match serde_json::from_str(data) {
+    Ok(stored) => stored,
+    Err(compact) => {
+      let edge: Edge = legacy_row("edge", data, compact)?;
+      check_legacy_id("edge", id, edge.id.as_i64())?;
+      return Ok(edge);
+    }
+  };
   Ok(Edge {
     id: EdgeId::from_i64(id),
     kind: stored.kind.into_owned(),
@@ -286,7 +307,14 @@ pub(crate) fn encode_entity(entity: &Entity, scope: &OwnerScope<'_>) -> StoreRes
 }
 
 pub(crate) fn decode_entity(id: i64, data: &str, scope: &OwnerScope<'_>) -> StoreResult<Entity> {
-  let stored: StoredEntity<'_> = from_json("entity", data)?;
+  let stored: StoredEntity<'_> = match serde_json::from_str(data) {
+    Ok(stored) => stored,
+    Err(compact) => {
+      let entity: Entity = legacy_row("entity", data, compact)?;
+      check_legacy_id("entity", id, entity.id.as_i64())?;
+      return Ok(entity);
+    }
+  };
   let key = stored.key.into_owned();
   let path = match stored.path {
     None => None,
@@ -350,7 +378,14 @@ pub(crate) fn encode_unresolved(reference: &UnresolvedRef, scope: &OwnerScope<'_
 }
 
 pub(crate) fn decode_unresolved(from: i64, data: &str, scope: &OwnerScope<'_>) -> StoreResult<UnresolvedRef> {
-  let stored: StoredUnresolved<'_> = from_json("unresolved reference", data)?;
+  let stored: StoredUnresolved<'_> = match serde_json::from_str(data) {
+    Ok(stored) => stored,
+    Err(compact) => {
+      let reference: UnresolvedRef = legacy_row("unresolved reference", data, compact)?;
+      check_legacy_id("unresolved reference", from, reference.from.as_i64())?;
+      return Ok(reference);
+    }
+  };
   Ok(UnresolvedRef {
     from: EntityId::from_i64(from),
     path: stored.path.into_owned(),

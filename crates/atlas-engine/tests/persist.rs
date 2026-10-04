@@ -272,6 +272,12 @@ fn should_restore_indexes_a_crashed_bulk_load_left_deferred_in_an_engine_that_wa
 }
 
 fn downgrade_to_schema_v1(engine: &atlas_engine::Engine) {
+  rewrite_rows_as_core_serde(engine);
+  let conn = rusqlite::Connection::open(engine.db_path()).unwrap();
+  conn.execute_batch("ALTER TABLE owners DROP COLUMN content_hash; PRAGMA user_version = 1;").unwrap();
+}
+
+fn rewrite_rows_as_core_serde(engine: &atlas_engine::Engine) {
   let conn = rusqlite::Connection::open(engine.db_path()).unwrap();
   let owners: Vec<(i64, String)> = conn
     .prepare("SELECT id, key FROM owners ORDER BY id")
@@ -311,7 +317,6 @@ fn downgrade_to_schema_v1(engine: &atlas_engine::Engine) {
         .unwrap();
     }
   }
-  conn.execute_batch("ALTER TABLE owners DROP COLUMN content_hash; PRAGMA user_version = 1;").unwrap();
 }
 
 #[test]
@@ -346,4 +351,60 @@ fn should_stop_an_engine_of_the_previous_schema_from_writing_after_a_migration_a
   fresh(&reference);
   import_lineage(&current, &reference);
   assert_eq!(digest(&current), digest(&reference), "{}", fact_diff(&current.db_path(), &reference.db_path()));
+}
+
+fn core_serde_rows(engine: &atlas_engine::Engine) -> i64 {
+  rusqlite::Connection::open(engine.db_path())
+    .unwrap()
+    .query_row(
+      "SELECT (SELECT COUNT(*) FROM entity_owners WHERE data LIKE '{\"id\":%') + (SELECT COUNT(*) FROM edge_owners WHERE data LIKE '{\"id\":%') \
+       + (SELECT COUNT(*) FROM unresolved_refs WHERE data LIKE '{\"from\":%')",
+      [],
+      |row| row.get(0),
+    )
+    .unwrap()
+}
+
+#[test]
+fn should_read_and_then_rewrite_rows_a_previous_schema_engine_writes_after_reclaiming_the_project() {
+  let scratch = tempfile::tempdir().unwrap();
+  let project = acme_copy(&scratch.path().join("tree"));
+  let home = scratch.path().join("home");
+  let previous = open(&project, &home);
+  fresh(&previous);
+  downgrade_to_schema_v1(&previous);
+  drop(atlas_store::Store::open(previous.db_path()).unwrap());
+  let money = scratch.path().join("tree/acme-sdk/src/money.ts");
+  fs::write(&money, fs::read_to_string(&money).unwrap() + "\nexport const migrated = 1;\n").unwrap();
+  assert!(matches!(fresh(&previous), atlas_engine::FreshnessReport::Degraded { .. }));
+  previous.reload_project(&project).unwrap();
+  assert!(fresh(&previous).is_fresh());
+  rewrite_rows_as_core_serde(&previous);
+  let reference = open(&project, &scratch.path().join("reference"));
+  fresh(&reference);
+  import_lineage(&previous, &reference);
+  let legacy_rows = core_serde_rows(&previous);
+  let answers = |engine: &atlas_engine::Engine| {
+    engine
+      .store()
+      .read(|tx| -> atlas_store::StoreResult<_> {
+        let to_cents = tx.entities_by_name("toCents", &Default::default())?;
+        let callers = to_cents.iter().map(|entity| tx.edges_to(entity.id, &Default::default())).collect::<Result<Vec<_>, _>>()?;
+        Ok((
+          to_cents,
+          callers,
+          tx.owned_facts(&money_owner())?,
+          tx.unresolved_in_repo(&RepoName::new("acme-sdk").unwrap())?,
+        ))
+      })
+      .unwrap()
+  };
+
+  let while_legacy = (digest(&previous), answers(&previous));
+  previous.index(atlas_engine::IndexMode::Full).unwrap();
+
+  assert!(legacy_rows > 100, "the previous engine's rows must be core serde, found {legacy_rows}");
+  assert_eq!(while_legacy, (digest(&reference), answers(&reference)));
+  assert_eq!(core_serde_rows(&previous), 0);
+  assert_eq!(digest(&previous), digest(&reference));
 }

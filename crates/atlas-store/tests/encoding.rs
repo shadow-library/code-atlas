@@ -589,3 +589,124 @@ fn should_supersede_the_adopted_project_fingerprint_when_upgrading_the_schema() 
   assert_eq!(String::from_utf8(bytes).unwrap(), "superseded by a store schema upgrade");
   assert_eq!(fingerprint_blob(&fresh), None);
 }
+
+fn rewrite_as_core_serde(path: &std::path::Path, owner: &Owner, owned: &OwnedFacts, every: usize) -> usize {
+  let conn = Connection::open(path).unwrap();
+  let owner_id: i64 = conn
+    .query_row("SELECT id FROM owners WHERE key = ?1", [serde_json::to_string(owner).unwrap()], |row| row.get(0))
+    .unwrap();
+  let mut rewritten = 0;
+  for entity in owned.entities.iter().step_by(every) {
+    rewritten += conn
+      .execute(
+        "UPDATE entity_owners SET data = ?3 WHERE owner_id = ?1 AND entity_id = ?2",
+        params![owner_id, entity.id.as_i64(), serde_json::to_string(entity).unwrap()],
+      )
+      .unwrap();
+  }
+  for edge in owned.edges.iter().step_by(every) {
+    rewritten += conn
+      .execute(
+        "UPDATE edge_owners SET data = ?3 WHERE owner_id = ?1 AND edge_id = ?2",
+        params![owner_id, edge.id.as_i64(), serde_json::to_string(edge).unwrap()],
+      )
+      .unwrap();
+  }
+  let ordered = by_id(owned.clone()).unresolved;
+  for (ordinal, reference) in ordered.iter().enumerate().step_by(every) {
+    rewritten += conn
+      .execute(
+        "UPDATE unresolved_refs SET data = ?3 WHERE owner_id = ?1 AND ordinal = ?2",
+        params![owner_id, ordinal as i64, serde_json::to_string(reference).unwrap()],
+      )
+      .unwrap();
+  }
+  rewritten
+}
+
+fn core_serde_rows(path: &std::path::Path) -> i64 {
+  Connection::open(path)
+    .unwrap()
+    .query_row(
+      "SELECT (SELECT COUNT(*) FROM entity_owners WHERE data LIKE '{\"id\":%') + (SELECT COUNT(*) FROM edge_owners WHERE data LIKE '{\"id\":%') \
+       + (SELECT COUNT(*) FROM unresolved_refs WHERE data LIKE '{\"from\":%')",
+      [],
+      |row| row.get(0),
+    )
+    .unwrap()
+}
+
+#[test]
+fn should_read_rows_an_older_binary_wrote_into_a_current_store_like_compact_rows() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("atlas.db");
+  let store = Store::open(&path).unwrap();
+  let owners = [owner_a(), owner_b(), owner_link()];
+  for (owner, owned) in &owners {
+    replace(&store, owner, owned);
+  }
+  let compact_answers = (
+    read(&store, |tx| tx.edge(owners[0].1.edges[1].id)),
+    read(&store, |tx| tx.entities_by_name("b", &Default::default())),
+    read(&store, |tx| tx.unresolved_with_name_prefix("")),
+  );
+  let mixed = rewrite_as_core_serde(&path, &owners[0].0, &owners[0].1, 2);
+  let whole = rewrite_as_core_serde(&path, &owners[2].0, &owners[2].1, 1);
+
+  let legacy_rows = core_serde_rows(&path);
+
+  assert_eq!(legacy_rows as usize, mixed + whole);
+  assert!(mixed > 0 && mixed < owners[0].1.entities.len() + owners[0].1.edges.len() + owners[0].1.unresolved.len());
+  assert_eq!(read(&store, |tx| tx.fact_set_digest()).to_string(), PINNED_DIGEST);
+  for (owner, owned) in &owners {
+    assert_eq!(read(&store, |tx| tx.owned_facts(owner)), by_id(owned.clone()), "{owner:?}");
+  }
+  assert_eq!(
+    (
+      read(&store, |tx| tx.edge(owners[0].1.edges[1].id)),
+      read(&store, |tx| tx.entities_by_name("b", &Default::default())),
+      read(&store, |tx| tx.unresolved_with_name_prefix("")),
+    ),
+    compact_answers
+  );
+}
+
+#[test]
+fn should_rewrite_rows_an_older_binary_wrote_on_the_next_replacement() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("atlas.db");
+  let store = Store::open(&path).unwrap();
+  let (owner, owned) = owner_a();
+  replace(&store, &owner, &owned);
+  rewrite_as_core_serde(&path, &owner, &owned, 1);
+
+  let delta = replace(&store, &owner, &owned);
+
+  assert_eq!(delta.entities.changed, owned.entities.len() as u64);
+  assert_eq!(delta.edges.changed, owned.edges.len() as u64);
+  assert_eq!(core_serde_rows(&path), 0);
+  assert_eq!(read(&store, |tx| tx.owned_facts(&owner)), by_id(owned));
+  assert_eq!(replace(&store, &owner, &owner_a().1), atlas_store::FactDelta::default());
+}
+
+#[test]
+fn should_reject_a_core_serde_row_stored_under_another_id() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("atlas.db");
+  let store = Store::open(&path).unwrap();
+  let (owner, owned) = owner_b();
+  replace(&store, &owner, &owned);
+  let mut misplaced = owned.edges[0].clone();
+  misplaced.id = owned.edges[1].id;
+  Connection::open(&path)
+    .unwrap()
+    .execute(
+      "UPDATE edge_owners SET data = ?2 WHERE edge_id = ?1",
+      params![owned.edges[0].id.as_i64(), serde_json::to_string(&misplaced).unwrap()],
+    )
+    .unwrap();
+
+  let read_back = store.read(|tx| tx.owned_facts(&owner));
+
+  assert!(matches!(read_back, Err(atlas_store::StoreError::Corrupt { what: "edge", .. })), "{read_back:?}");
+}
