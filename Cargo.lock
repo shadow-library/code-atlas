@@ -295,10 +295,13 @@ name = "atlas-resolve"
 version = "0.1.0"
 dependencies = [
  "atlas-core",
+ "atlas-lang-rust",
+ "atlas-lang-ts",
  "atlas-project",
  "insta",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "tracing",
 ]

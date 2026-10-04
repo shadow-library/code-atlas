@@ -17,4 +17,7 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+atlas-lang-rust.workspace = true
+atlas-lang-ts.workspace = true
 insta.workspace = true
+tempfile.workspace = true
