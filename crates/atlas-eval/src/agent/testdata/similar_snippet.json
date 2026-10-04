@@ -1,0 +1,87 @@
+{
+  "freshness": {
+    "state": "fresh",
+    "run": 1,
+    "files_updated": 0,
+    "duration_ms": 15,
+    "watcher_clean": false,
+    "scip": {
+      "state": "never_run"
+    },
+    "stale_inferred_facts": 0,
+    "files_failed_analysis": 0,
+    "notes": []
+  },
+  "answer": {
+    "outcome": "found",
+    "target": {
+      "entity": {
+        "key": "rust:acme-billing:acme-billing:money::to_cents#function",
+        "id": "c6c60f5f6ca699a8",
+        "short": "to_cents",
+        "kind": "function",
+        "location": {
+          "repo": "acme-billing",
+          "path": "src/money.rs",
+          "line": 1
+        }
+      },
+      "language": "rust",
+      "signals": [],
+      "verdict": "related by name only, behaviour unverified",
+      "consumers": {
+        "callers": 1,
+        "uncertain": 0,
+        "repos": [
+          "acme-billing"
+        ]
+      },
+      "tests": 3
+    },
+    "members": [
+      {
+        "entity": {
+          "key": "ts:acme-sdk:@acme/sdk:src/money::toCents#function",
+          "id": "d209f398d5da9e95",
+          "short": "toCents",
+          "kind": "function",
+          "location": {
+            "repo": "acme-sdk",
+            "path": "src/money.ts",
+            "line": 1
+          }
+        },
+        "language": "ts",
+        "signals": [
+          {
+            "signal": "lexical",
+            "score": 4.588,
+            "terms": [
+              "cent",
+              "amount"
+            ]
+          }
+        ],
+        "verdict": "related by name only, behaviour unverified",
+        "consumers": {
+          "callers": 1,
+          "uncertain": 1,
+          "repos": [
+            "acme-web"
+          ]
+        },
+        "tests": 3
+      }
+    ],
+    "shared_home": [],
+    "coupling_risks": [
+      "members span languages (rust, ts); they cannot share one implementation without a service boundary or code generation"
+    ],
+    "caveats": [
+      {
+        "caveat": "note",
+        "message": "similarity is evidence, not a decision: only an inferred equivalence verdict speaks to behaviour"
+      }
+    ]
+  }
+}

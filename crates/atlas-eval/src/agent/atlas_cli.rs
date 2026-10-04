@@ -119,9 +119,36 @@ impl AtlasCli {
 }
 
 pub fn similar_matches(document: &Value) -> Vec<SimilarMatch> {
+  if let Some(members) = document.pointer("/answer/members").and_then(Value::as_array) {
+    return members.iter().filter_map(cluster_member).collect();
+  }
   let mut matches = Vec::new();
   collect_matches(document, &mut matches);
   matches
+}
+
+fn cluster_member(member: &Value) -> Option<SimilarMatch> {
+  let entity = member.get("entity")?;
+  let symbol = entity.get("key")?.as_str()?.to_owned();
+  let signals: Vec<&Value> = member.get("signals").and_then(Value::as_array).map(|signals| signals.iter().collect()).unwrap_or_default();
+  let find = |kind: &str| signals.iter().find(|signal| signal.get("signal").and_then(Value::as_str) == Some(kind));
+  let score = find("structural")
+    .and_then(|signal| signal.get("jaccard"))
+    .or_else(|| find("lexical").and_then(|signal| signal.get("score")))
+    .and_then(Value::as_f64);
+  let verdict = match find("inferred") {
+    Some(signal) if signal.get("verdict").and_then(Value::as_str) == Some("equivalent") => Some("inferred equivalent".to_owned()),
+    Some(_) => Some("inferred similar, not equivalent".to_owned()),
+    None => member.get("verdict").and_then(Value::as_str).map(str::to_owned),
+  };
+  let location = entity.get("location").and_then(|location| {
+    let (repo, path) = (location.get("repo")?.as_str()?, location.get("path")?.as_str()?);
+    Some(match location.get("line").and_then(Value::as_u64) {
+      Some(line) => format!("{repo}:{path}:{line}"),
+      None => format!("{repo}:{path}"),
+    })
+  });
+  Some(SimilarMatch { symbol, score, verdict, location })
 }
 
 fn collect_matches(value: &Value, matches: &mut Vec<SimilarMatch>) {
@@ -180,6 +207,34 @@ mod tests {
     assert_eq!(matches[0].location.as_deref(), Some("billing:src/money.rs:3"));
     assert!(matches[1].inferred_equivalent());
     assert!(!matches[0].inferred_equivalent());
+  }
+
+  #[test]
+  fn should_parse_the_similar_answer_printed_by_the_cli() {
+    let document: Value = serde_json::from_str(include_str!("testdata/similar_snippet.json")).unwrap();
+    let matches = similar_matches(&document);
+    assert_eq!(
+      matches,
+      vec![SimilarMatch {
+        symbol: "ts:acme-sdk:@acme/sdk:src/money::toCents#function".to_owned(),
+        score: Some(4.588),
+        verdict: Some("related by name only, behaviour unverified".to_owned()),
+        location: Some("acme-sdk:src/money.ts:1".to_owned()),
+      }]
+    );
+    assert!(!matches[0].inferred_equivalent());
+  }
+
+  #[test]
+  fn should_read_an_inferred_verdict_from_the_signals_not_the_rationale() {
+    let document = json!({"answer": {"members": [
+      {"entity": {"key": "k1"}, "signals": [{"signal": "structural", "jaccard": 0.97}, {"signal": "inferred", "verdict": "equivalent", "rationale": "does not differ"}], "verdict": "inferred equivalent (0.90): does not differ"},
+      {"entity": {"key": "k2"}, "signals": [{"signal": "inferred", "verdict": "different", "rationale": "x"}], "verdict": "inferred similar, not equivalent (0.80): rounding"}
+    ]}});
+    let matches = similar_matches(&document);
+    assert_eq!(matches[0].score, Some(0.97));
+    assert!(matches[0].inferred_equivalent());
+    assert!(!matches[1].inferred_equivalent());
   }
 
   #[test]

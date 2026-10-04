@@ -17,15 +17,16 @@ atlas-core.workspace = true
 atlas-project.workspace = true
 atlas-engine.workspace = true
 atlas-query.workspace = true
-atlas-mcp.workspace = true
+atlas-scip.workspace = true
+atlas-semantic.workspace = true
+atlas-store.workspace = true
 clap.workspace = true
-tokio.workspace = true
+rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tempfile.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["signal"] }
+toml.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true
-insta.workspace = true

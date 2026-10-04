@@ -1,0 +1,258 @@
+use std::fs;
+use std::path::Path;
+
+use atlas_project::Project;
+use atlas_query::{
+  ApiRequest, ChangesRequest, ContextRequest, ExplainRequest, ImpactRequest, PatternsRequest, QueryEngine, ReadRequest, RenderText, Response, SearchRequest, SimilarRequest,
+  SymbolRequest, TargetFilter, Targeted, TestsForRequest, TraversalKind, TraverseRequest, UnusedRequest, render_json, render_text,
+};
+use serde::Serialize;
+
+use crate::cli::{
+  ApiArgs, ChangesArgs, ContextArgs, ExplainArgs, ImpactArgs, PatternsArgs, QueryCommand, ReadArgs, SearchArgs, SimilarArgs, StatusArgs, SymbolArgs, TargetFilterArgs,
+  TestsForArgs, TraverseArgs, UnusedArgs,
+};
+use crate::context::Context;
+use crate::error::{CliError, CliResult};
+use crate::output::{Outcome, emit};
+
+pub fn status(ctx: &Context, args: StatusArgs) -> CliResult<Outcome> {
+  let (query, _) = open(ctx)?;
+  finish(query.status()?, args.json)
+}
+
+pub fn run(ctx: &Context, command: QueryCommand) -> CliResult<Outcome> {
+  match command {
+    QueryCommand::Overview(args) => {
+      let (query, _) = open(ctx)?;
+      finish(query.overview()?, args.common.json)
+    }
+    QueryCommand::Search(args) => search(ctx, args),
+    QueryCommand::Symbol(args) => symbol(ctx, args),
+    QueryCommand::Callers(args) => traverse(ctx, TraversalKind::Callers, args),
+    QueryCommand::Callees(args) => traverse(ctx, TraversalKind::Callees, args),
+    QueryCommand::Dependents(args) => traverse(ctx, TraversalKind::Dependents, args),
+    QueryCommand::Dependencies(args) => traverse(ctx, TraversalKind::Dependencies, args),
+    QueryCommand::Impact(args) => impact(ctx, args),
+    QueryCommand::TestsFor(args) => tests_for(ctx, args),
+    QueryCommand::Api(args) => api(ctx, args),
+    QueryCommand::Similar(args) => similar(ctx, args),
+    QueryCommand::Unused(args) => unused(ctx, args),
+    QueryCommand::Patterns(args) => patterns(ctx, args),
+    QueryCommand::Context(args) => context(ctx, args),
+    QueryCommand::Explain(args) => explain(ctx, args),
+    QueryCommand::Read(args) => read(ctx, args),
+    QueryCommand::Changes(args) => changes(ctx, args),
+  }
+}
+
+fn open(ctx: &Context) -> CliResult<(QueryEngine, Project)> {
+  let project = ctx.resolve()?;
+  Ok((ctx.open_query(&project)?, project))
+}
+
+fn target_filter(args: &TargetFilterArgs) -> TargetFilter {
+  TargetFilter {
+    kinds: args.kinds.clone(),
+    repo: args.repo.clone(),
+  }
+}
+
+fn search(ctx: &Context, args: SearchArgs) -> CliResult<Outcome> {
+  let (query, _) = open(ctx)?;
+  let mut request = SearchRequest::new(args.text);
+  request.kinds = args.kinds;
+  request.repo = args.repo;
+  request.include_stale = args.include_stale;
+  if let Some(limit) = args.limit {
+    request.limit = limit;
+  }
+  finish(query.search(&request)?, args.common.json)
+}
+
+fn symbol(ctx: &Context, args: SymbolArgs) -> CliResult<Outcome> {
+  let (query, _) = open(ctx)?;
+  let mut request = SymbolRequest::new(args.target);
+  request.filter = target_filter(&args.filter);
+  request.body = args.body;
+  finish_targeted(query.symbol(&request)?, args.common.json)
+}
+
+fn traverse(ctx: &Context, kind: TraversalKind, args: TraverseArgs) -> CliResult<Outcome> {
+  let (query, _) = open(ctx)?;
+  let mut request = TraverseRequest::new(args.target);
+  request.filter = target_filter(&args.filter);
+  request.min_confidence = args.min_confidence;
+  if let Some(depth) = args.depth {
+    request.depth = depth;
+  }
+  if let Some(limit) = args.limit {
+    request.limit = limit;
+  }
+  finish_targeted(query.traverse(kind, &request)?, args.common.json)
+}
+
+fn impact(ctx: &Context, args: ImpactArgs) -> CliResult<Outcome> {
+  let (query, _) = open(ctx)?;
+  let mut request = ImpactRequest::new(args.targets);
+  request.filter = target_filter(&args.filter);
+  request.min_confidence = args.min_confidence;
+  if let Some(depth) = args.depth {
+    request.depth = depth;
+  }
+  if let Some(limit) = args.limit {
+    request.limit = limit;
+  }
+  finish_targeted(query.impact(&request)?, args.common.json)
+}
+
+fn tests_for(ctx: &Context, args: TestsForArgs) -> CliResult<Outcome> {
+  let (query, _) = open(ctx)?;
+  let mut request = TestsForRequest::new(args.target);
+  request.filter = target_filter(&args.filter);
+  request.min_confidence = args.min_confidence;
+  if let Some(limit) = args.limit {
+    request.limit = limit;
+  }
+  finish_targeted(query.tests_for(&request)?, args.common.json)
+}
+
+fn api(ctx: &Context, args: ApiArgs) -> CliResult<Outcome> {
+  let (query, _) = open(ctx)?;
+  let mut request = ApiRequest {
+    repo: args.repo,
+    endpoint: args.endpoint,
+    min_confidence: args.min_confidence,
+    ..ApiRequest::default()
+  };
+  if let Some(limit) = args.limit {
+    request.limit = limit;
+  }
+  finish(query.api(&request)?, args.common.json)
+}
+
+fn similar(ctx: &Context, args: SimilarArgs) -> CliResult<Outcome> {
+  let (query, project) = open(ctx)?;
+  let target = match (&args.snippet, &args.target) {
+    (Some(snippet), _) => snippet_target(snippet, &ctx.cwd, &project)?,
+    (None, Some(target)) => target.clone(),
+    (None, None) => return Err(CliError::InvalidSnippet(String::new())),
+  };
+  let mut request = SimilarRequest::new(target);
+  request.filter = target_filter(&args.filter);
+  request.include_stale = args.include_stale;
+  if let Some(limit) = args.limit {
+    request.limit = limit;
+  }
+  if let Some(threshold) = args.threshold {
+    request.threshold = threshold;
+  }
+  finish_targeted(query.similar(&request)?, args.common.json)
+}
+
+fn unused(ctx: &Context, args: UnusedArgs) -> CliResult<Outcome> {
+  let (query, _) = open(ctx)?;
+  let mut request = UnusedRequest {
+    kinds: args.kinds,
+    repo: args.repo,
+    ..UnusedRequest::default()
+  };
+  if let Some(limit) = args.limit {
+    request.limit = limit;
+  }
+  finish(query.unused(&request)?, args.common.json)
+}
+
+fn patterns(ctx: &Context, args: PatternsArgs) -> CliResult<Outcome> {
+  let (query, _) = open(ctx)?;
+  let mut request = PatternsRequest::new(args.topic);
+  request.excerpts = !args.no_excerpts;
+  if let Some(limit) = args.limit {
+    request.limit = limit;
+  }
+  finish(query.patterns(&request)?, args.common.json)
+}
+
+fn context(ctx: &Context, args: ContextArgs) -> CliResult<Outcome> {
+  let (query, _) = open(ctx)?;
+  let mut request = ContextRequest::new(args.task);
+  request.seeds = args.seeds;
+  request.explain = args.explain;
+  request.min_confidence = args.min_confidence;
+  if let Some(budget) = args.budget {
+    request.budget = budget;
+  }
+  finish(query.context(&request)?, args.common.json)
+}
+
+fn explain(ctx: &Context, args: ExplainArgs) -> CliResult<Outcome> {
+  let (query, _) = open(ctx)?;
+  let mut request = ExplainRequest::new(args.target);
+  request.filter = target_filter(&args.filter);
+  finish_targeted(query.explain(&request)?, args.common.json)
+}
+
+fn read(ctx: &Context, args: ReadArgs) -> CliResult<Outcome> {
+  let (query, _) = open(ctx)?;
+  let mut request = ReadRequest::new(args.target);
+  request.filter = target_filter(&args.filter);
+  request.body = !args.signature;
+  request.context = args.context;
+  finish_targeted(query.read_symbol(&request)?, args.common.json)
+}
+
+fn changes(ctx: &Context, args: ChangesArgs) -> CliResult<Outcome> {
+  let (query, _) = open(ctx)?;
+  let request = ChangesRequest {
+    since_run: args.since_run,
+    limit: args.limit.unwrap_or_default(),
+  };
+  finish(query.changes(&request)?, args.common.json)
+}
+
+pub fn render<T: RenderText + Serialize>(response: &Response<T>, json: bool) -> CliResult<String> {
+  match json {
+    true => Ok(render_json(response)?),
+    false => Ok(render_text(response)),
+  }
+}
+
+pub fn finish<T: RenderText + Serialize>(response: Response<T>, json: bool) -> CliResult<Outcome> {
+  emit(&render(&response, json)?)?;
+  Ok(Outcome::degraded_if(response.freshness.is_degraded()))
+}
+
+pub fn finish_targeted<T: RenderText + Serialize>(response: Response<Targeted<T>>, json: bool) -> CliResult<Outcome> {
+  emit(&render(&response, json)?)?;
+  if !matches!(response.answer, Targeted::Found(_)) {
+    return Ok(Outcome::Unresolved);
+  }
+  Ok(Outcome::degraded_if(response.freshness.is_degraded()))
+}
+
+fn snippet_target(raw: &str, cwd: &Path, project: &Project) -> CliResult<String> {
+  let invalid = || CliError::InvalidSnippet(raw.to_owned());
+  let (location, range) = raw.rsplit_once(':').ok_or_else(invalid)?;
+  let (start, end) = range.split_once('-').ok_or_else(invalid)?;
+  let (Ok(start), Ok(end)) = (start.parse::<u32>(), end.parse::<u32>()) else {
+    return Err(invalid());
+  };
+  if start == 0 || start > end || location.is_empty() {
+    return Err(invalid());
+  }
+  match repo_relative(location, cwd, project) {
+    Some((repo, path)) => Ok(format!("{repo}:{path}:{start}-{end}")),
+    None => Ok(raw.to_owned()),
+  }
+}
+
+fn repo_relative(location: &str, cwd: &Path, project: &Project) -> Option<(String, String)> {
+  let canonical = fs::canonicalize(cwd.join(location)).ok().filter(|path| path.is_file())?;
+  let (repo, relative) = project
+    .repos
+    .iter()
+    .filter_map(|repo| canonical.strip_prefix(&repo.path).ok().map(|relative| (repo, relative)))
+    .max_by_key(|(repo, _)| repo.path.components().count())?;
+  let relative = relative.components().map(|part| part.as_os_str().to_str()).collect::<Option<Vec<_>>>()?.join("/");
+  Some((repo.name.to_string(), relative))
+}

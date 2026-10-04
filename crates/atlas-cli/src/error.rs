@@ -1,0 +1,164 @@
+use std::io::{self, Write};
+use std::path::PathBuf;
+
+use atlas_core::CoreError;
+use atlas_engine::EngineError;
+use atlas_project::ProjectError;
+use atlas_query::QueryError;
+use thiserror::Error;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Exit {
+  Success,
+  Failure,
+  Usage,
+  Degraded,
+  NoMatch,
+}
+
+impl Exit {
+  pub fn code(self) -> u8 {
+    match self {
+      Self::Success => 0,
+      Self::Failure => 1,
+      Self::Usage => 2,
+      Self::Degraded => 3,
+      Self::NoMatch => 4,
+    }
+  }
+}
+
+#[derive(Debug, Error)]
+pub enum CliError {
+  #[error(transparent)]
+  Project(#[from] ProjectError),
+  #[error(transparent)]
+  Engine(#[from] EngineError),
+  #[error(transparent)]
+  Query(#[from] QueryError),
+  #[error(transparent)]
+  Core(#[from] CoreError),
+  #[error("{operation} {}: {source}", .path.display())]
+  Io {
+    operation: &'static str,
+    path: PathBuf,
+    #[source]
+    source: io::Error,
+  },
+  #[error("cannot encode output as JSON: {0}")]
+  Encode(#[from] serde_json::Error),
+  #[error("invalid log filter {filter:?}: {message}")]
+  InvalidLogFilter { filter: String, message: String },
+  #[error("invalid --repo value {0:?}")]
+  InvalidRepoSpec(String),
+  #[error("invalid --snippet value {0:?}; expected FILE:START-END")]
+  InvalidSnippet(String),
+  #[error("invalid target {0:?}; expected REPO:PATH")]
+  InvalidFileTarget(String),
+  #[error("invalid JSON in {}: {message}", .path.display())]
+  InvalidConfig { path: PathBuf, message: String },
+  #[error("{} has an unterminated or duplicated Code Atlas guidance block", .0.display())]
+  MalformedGuidance(PathBuf),
+  #[error("{} pins project {existing:?}, not {requested:?}", .path.display())]
+  MarkerConflict { path: PathBuf, existing: String, requested: String },
+  #[error("cannot derive a project name from {}", .0.display())]
+  ProjectNameUnderivable(PathBuf),
+  #[error("{what} needs confirmation, and stdin is not a terminal")]
+  ConfirmationRequired { what: String },
+  #[error("{0}")]
+  InvalidSetting(String),
+  #[error("the `claude` CLI is not available: {reason}")]
+  ClaudeUnavailable { reason: String, command: String },
+  #[error("aborted")]
+  Declined,
+  #[error("the MCP server is not available in this build")]
+  McpUnavailable,
+  #[error("cannot install the signal handler: {0}")]
+  Signal(#[source] io::Error),
+  #[error("run {0} does not exist")]
+  RunNotFound(i64),
+  #[error("{what} is not indexed")]
+  FileNotIndexed { what: String },
+  #[error("refusing to delete {}: it is outside the data directory", .0.display())]
+  UnsafePurge(PathBuf),
+}
+
+impl CliError {
+  pub fn io(operation: &'static str, path: impl Into<PathBuf>, source: io::Error) -> Self {
+    Self::Io {
+      operation,
+      path: path.into(),
+      source,
+    }
+  }
+
+  pub fn exit(&self) -> Exit {
+    match self {
+      Self::Project(error) => project_exit(error),
+      Self::Engine(EngineError::Project(error)) => project_exit(error),
+      Self::Query(QueryError::Invalid(_)) | Self::Core(_) => Exit::Usage,
+      Self::InvalidLogFilter { .. }
+      | Self::InvalidRepoSpec(_)
+      | Self::InvalidSnippet(_)
+      | Self::InvalidFileTarget(_)
+      | Self::InvalidConfig { .. }
+      | Self::MalformedGuidance(_)
+      | Self::MarkerConflict { .. }
+      | Self::ProjectNameUnderivable(_)
+      | Self::ConfirmationRequired { .. }
+      | Self::McpUnavailable
+      | Self::InvalidSetting(_)
+      | Self::ClaudeUnavailable { .. } => Exit::Usage,
+      Self::RunNotFound(_) | Self::FileNotIndexed { .. } => Exit::NoMatch,
+      _ => Exit::Failure,
+    }
+  }
+
+  fn hint(&self) -> Option<&'static str> {
+    match self {
+      Self::Project(ProjectError::ProjectNotFound(_)) => Some("list registered projects with `code-atlas project list`"),
+      Self::Project(ProjectError::Ambiguous { .. }) => Some("pass --project <name>, or run `code-atlas init --project <name>` in the repo to pin one"),
+      Self::Project(ProjectError::NotInProject { .. }) => Some("run `code-atlas init` in the repo, or `code-atlas project create <name> --repo <path>`, or pass --project <name>"),
+      Self::Project(ProjectError::RepoNotFound { .. }) => Some("list a project's repos with `code-atlas project show <name>`"),
+      Self::Engine(EngineError::IndexLockTimeout { .. }) => Some("another index run holds the lock; retry when it finishes"),
+      Self::Engine(EngineError::ProjectConfigChanged) => Some("another process changed the project; retry the command"),
+      Self::ConfirmationRequired { .. } => Some("pass --yes to proceed without a prompt"),
+      Self::ClaudeUnavailable { .. } => None,
+      Self::McpUnavailable => Some("rebuild code-atlas with the atlas-mcp crate wired in"),
+      Self::RunNotFound(_) => Some("list recent runs with `code-atlas status`"),
+      Self::FileNotIndexed { .. } => Some("check the repo name with `code-atlas project show` and the path relative to the repo root"),
+      Self::MalformedGuidance(_) => Some("fix or delete the code-atlas:begin / code-atlas:end markers, then rerun"),
+      Self::InvalidConfig { .. } => Some("fix the file by hand; Code Atlas will not overwrite it"),
+      _ => None,
+    }
+  }
+
+  pub fn report(&self) {
+    let mut stderr = io::stderr().lock();
+    let _ = match self {
+      Self::Project(ProjectError::Ambiguous { cwd, candidates }) => {
+        let mut text = format!("error: {} is inside several projects:\n", cwd.display());
+        for candidate in candidates {
+          text.push_str(&format!("  {candidate}\n"));
+        }
+        write!(stderr, "{text}")
+      }
+      other => writeln!(stderr, "error: {other}"),
+    };
+    if let Self::ClaudeUnavailable { command, .. } = self {
+      let _ = writeln!(stderr, "hint: install Claude Code, or register the server yourself with:\n  {command}");
+    }
+    if let Some(hint) = self.hint() {
+      let _ = writeln!(stderr, "hint: {hint}");
+    }
+  }
+}
+
+fn project_exit(error: &ProjectError) -> Exit {
+  match error {
+    ProjectError::Io { .. } | ProjectError::HomeNotFound | ProjectError::RegistrySerialize(_) => Exit::Failure,
+    _ => Exit::Usage,
+  }
+}
+
+pub type CliResult<T> = Result<T, CliError>;
