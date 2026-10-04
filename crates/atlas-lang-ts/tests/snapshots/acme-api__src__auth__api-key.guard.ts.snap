@@ -432,19 +432,6 @@ references:
       end_line: 11
       end_col: 97
   - from: 3
-    kind: value_ref
-    path:
-      - Boolean
-    receiver: ~
-    args: []
-    span:
-      start_byte: 556
-      end_byte: 563
-      start_line: 11
-      start_col: 89
-      end_line: 11
-      end_col: 96
-  - from: 3
     kind: method_call
     path:
       - "(this.configService.get<string>('API_KEYS') ?? '')"

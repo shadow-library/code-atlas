@@ -252,6 +252,19 @@ references:
       end_line: 12
       end_col: 2
   - from: ~
+    kind: value_ref
+    path:
+      - API_PREFIX
+    receiver: ~
+    args: []
+    span:
+      start_byte: 162
+      end_byte: 172
+      start_line: 10
+      start_col: 11
+      end_line: 10
+      end_col: 21
+  - from: ~
     kind: method_call
     path:
       - res

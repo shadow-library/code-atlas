@@ -818,6 +818,21 @@ references:
       end_line: 7
       end_col: 40
   - from: 3
+    kind: value_ref
+    path:
+      - this
+      - baseUrl
+    receiver:
+      type: this
+    args: []
+    span:
+      start_byte: 258
+      end_byte: 270
+      start_line: 8
+      start_col: 4
+      end_line: 8
+      end_col: 16
+  - from: 3
     kind: method_call
     path:
       - options
@@ -839,6 +854,21 @@ references:
       start_col: 19
       end_line: 8
       end_col: 54
+  - from: 3
+    kind: value_ref
+    path:
+      - this
+      - auth
+    receiver:
+      type: this
+    args: []
+    span:
+      start_byte: 314
+      end_byte: 323
+      start_line: 9
+      start_col: 4
+      end_line: 9
+      end_col: 13
   - from: 4
     kind: type_ref
     path:
@@ -865,6 +895,51 @@ references:
       start_col: 19
       end_line: 13
       end_col: 25
+  - from: 4
+    kind: value_ref
+    path:
+      - this
+      - auth
+    receiver:
+      type: this
+    args: []
+    span:
+      start_byte: 483
+      end_byte: 497
+      start_line: 14
+      start_col: 8
+      end_line: 14
+      end_col: 22
+  - from: 4
+    kind: value_ref
+    path:
+      - this
+      - auth
+    receiver:
+      type: this
+    args: []
+    span:
+      start_byte: 549
+      end_byte: 564
+      start_line: 14
+      start_col: 74
+      end_line: 14
+      end_col: 89
+  - from: 4
+    kind: value_ref
+    path:
+      - this
+      - auth
+    receiver:
+      type: this
+    args: []
+    span:
+      start_byte: 600
+      end_byte: 613
+      start_line: 15
+      start_col: 32
+      end_line: 15
+      end_col: 45
   - from: 5
     kind: type_ref
     path:
@@ -931,6 +1006,21 @@ references:
       start_col: 27
       end_line: 20
       end_col: 92
+  - from: 5
+    kind: value_ref
+    path:
+      - this
+      - baseUrl
+    receiver:
+      type: this
+    args: []
+    span:
+      start_byte: 721
+      end_byte: 733
+      start_line: 20
+      start_col: 36
+      end_line: 20
+      end_col: 48
   - from: 5
     kind: method_call
     path:
@@ -1102,6 +1192,21 @@ references:
       end_line: 25
       end_col: 138
   - from: 6
+    kind: value_ref
+    path:
+      - this
+      - baseUrl
+    receiver:
+      type: this
+    args: []
+    span:
+      start_byte: 960
+      end_byte: 972
+      start_line: 25
+      start_col: 36
+      end_line: 25
+      end_col: 48
+  - from: 6
     kind: method_call
     path:
       - this
@@ -1260,6 +1365,21 @@ references:
       end_line: 30
       end_col: 132
   - from: 7
+    kind: value_ref
+    path:
+      - this
+      - baseUrl
+    receiver:
+      type: this
+    args: []
+    span:
+      start_byte: 1207
+      end_byte: 1219
+      start_line: 30
+      start_col: 36
+      end_line: 30
+      end_col: 48
+  - from: 7
     kind: method_call
     path:
       - this
@@ -1390,6 +1510,21 @@ references:
       start_col: 27
       end_line: 35
       end_col: 93
+  - from: 8
+    kind: value_ref
+    path:
+      - this
+      - baseUrl
+    receiver:
+      type: this
+    args: []
+    span:
+      start_byte: 1433
+      end_byte: 1445
+      start_line: 35
+      start_col: 36
+      end_line: 35
+      end_col: 48
   - from: 8
     kind: method_call
     path:

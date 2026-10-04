@@ -564,23 +564,6 @@ references:
       start_col: 12
       end_line: 13
       end_col: 66
-  - from: 0
-    kind: value_ref
-    path:
-      - process
-      - env
-      - JWT_SECRET
-    receiver:
-      type: identifier
-      value: process
-    args: []
-    span:
-      start_byte: 460
-      end_byte: 482
-      start_line: 13
-      start_col: 41
-      end_line: 13
-      end_col: 63
 module_decls: []
 diagnostics: []
 analyzer:

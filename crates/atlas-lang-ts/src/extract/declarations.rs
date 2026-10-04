@@ -184,10 +184,13 @@ impl<'s, 't> Extractor<'s, 't> {
         },
         decorators,
       ),
-      "identifier" => self.facts.exports.push(ExportFact::Default {
-        target: DefaultExportTarget::Identifier(text(value, self.source).to_owned()),
-        span: span_of(node),
-      }),
+      "identifier" => {
+        self.facts.exports.push(ExportFact::Default {
+          target: DefaultExportTarget::Identifier(text(value, self.source).to_owned()),
+          span: span_of(node),
+        });
+        self.value_ref_identifier(value);
+      }
       _ if is_function_value(value) => self.default_function(node, value),
       _ => {
         self.facts.exports.push(ExportFact::Default {

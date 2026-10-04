@@ -198,6 +198,7 @@ app.get('/x', guard, handler, this.onRequest);
     [
       "Feature -> Guard",
       "View -> handler",
+      "View -> rest",
       "View -> handler",
       "<module> -> guard",
       "<module> -> handler",
@@ -527,4 +528,239 @@ fn should_rebind_this_in_value_references_inside_functions() {
     .map(|reference| reference.receiver.clone())
     .collect();
   assert_eq!(hints, [Some(ReceiverHint::This), Some(ReceiverHint::Expr("this".to_owned()))]);
+}
+
+fn value_paths(source: &str) -> Vec<String> {
+  value_paths_in("src/billing.ts", source)
+}
+
+fn value_paths_in(path: &str, source: &str) -> Vec<String> {
+  let facts = analyze(path, source);
+  facts
+    .references
+    .iter()
+    .filter(|reference| reference.kind == RefKind::ValueRef)
+    .map(|reference| format!("{} -> {}", owner_name(&facts, reference.from), reference.path.join(".")))
+    .collect()
+}
+
+#[test]
+fn should_emit_a_value_ref_for_a_constant_inside_a_call_argument_expression() {
+  let source = "const TAX_RATE = 0.0825;\nexport function applyTax(amount: number) { return round(amount * TAX_RATE); }\n";
+  assert_eq!(value_paths(source), ["applyTax -> TAX_RATE"]);
+}
+
+#[test]
+fn should_emit_a_value_ref_for_a_constant_in_a_template_literal() {
+  let source = "const PREFIX = 'v1';\nexport function url(id: string) { return `/${PREFIX}/items/${id}`; }\n";
+  assert_eq!(value_paths(source), ["url -> PREFIX"]);
+}
+
+#[test]
+fn should_emit_a_value_ref_for_a_constant_in_a_return_statement() {
+  let source = "const LIMIT = 10;\nexport function limit() { return LIMIT; }\n";
+  assert_eq!(value_paths(source), ["limit -> LIMIT"]);
+}
+
+#[test]
+fn should_emit_a_value_ref_for_a_constant_inside_an_object_literal_value() {
+  let source = "const TIMEOUT = 5;\nconst RETRIES = 3;\nexport function options() { return { timeout: TIMEOUT, [RETRIES]: 1, RETRIES }; }\n";
+  assert_eq!(value_paths(source), ["options -> TIMEOUT", "options -> RETRIES", "options -> RETRIES"]);
+}
+
+#[test]
+fn should_emit_value_refs_for_array_elements_spread_typeof_and_conditions() {
+  let source = "const A = 1;\nconst B = [1];\nexport function run() { const xs = [A, ...B]; return typeof A === 'number' ? xs : A; }\n";
+  assert_eq!(value_paths(source), ["run -> A", "run -> B", "run -> A", "run -> A"]);
+}
+
+#[test]
+fn should_not_emit_a_value_ref_for_a_shadowed_constant() {
+  let source = "const TAX_RATE = 0.0825;\nexport function a(TAX_RATE: number) { return TAX_RATE * 2; }\nexport function b() { const TAX_RATE = 1; return `${TAX_RATE}`; }\n";
+  assert_eq!(value_paths(source), Vec::<String>::new());
+}
+
+#[test]
+fn should_emit_a_member_chain_value_ref_for_an_enum_member_read() {
+  let source = "enum Status { Active, Idle }\nexport function isActive(s: Status) { return s === Status.Active; }\n";
+  let facts = analyze("src/status.ts", source);
+  let status: Vec<_> = facts.references.iter().filter(|reference| reference.kind == RefKind::ValueRef).collect();
+  assert_eq!(status.len(), 1);
+  assert_eq!(status[0].path, strings(&["Status", "Active"]));
+  assert_eq!(status[0].receiver, Some(ReceiverHint::Identifier("Status".into())));
+}
+
+#[test]
+fn should_emit_a_value_ref_for_an_imported_constant_used_in_a_condition() {
+  let source = "import { MAX_RETRIES } from './config';\nexport function retry(n: number) { if (n < MAX_RETRIES) return true; return false; }\n";
+  assert_eq!(value_paths(source), ["retry -> MAX_RETRIES"]);
+}
+
+#[test]
+fn should_not_emit_value_refs_for_declarations_keys_callees_globals_or_member_names() {
+  let source = r#"
+import { helper, Widget } from './deps';
+const CONFIG = { name: 'x' };
+export function run(input: Input) {
+  helper(input);
+  new Widget();
+  CONFIG.name.trim();
+  const label = { name: 1 }.name;
+  console.log(Math.max(1, 2), undefined, process.env.PORT, label);
+  return input.name;
+}
+"#;
+  assert_eq!(value_paths(source), Vec::<String>::new());
+}
+
+#[test]
+fn should_emit_a_value_ref_for_computed_member_indexes() {
+  let source = "const TABLE = {};\nconst KEY = 'k';\nexport function pick() { return TABLE[KEY]; }\n";
+  assert_eq!(value_paths(source), ["pick -> TABLE.[KEY]", "pick -> KEY"]);
+}
+
+#[test]
+fn should_keep_at_most_four_distinct_spans_per_repeated_value_ref() {
+  let source = "const K = 1;\nexport function use() { return [K, K, K, K, K, K]; }\n";
+  let facts = analyze("src/repeat.ts", source);
+  let columns: Vec<u32> = facts
+    .references
+    .iter()
+    .filter(|reference| reference.kind == RefKind::ValueRef)
+    .map(|reference| reference.span.start_col)
+    .collect();
+  assert_eq!(columns, [32, 35, 38, 41]);
+}
+
+#[test]
+fn should_emit_value_refs_for_default_and_equals_exports_but_not_export_lists() {
+  assert_eq!(value_paths("const K3 = 1;\nexport default K3;\n"), ["<module> -> K3"]);
+  assert_eq!(value_paths("const K3 = 1;\nexport = K3;\n"), ["<module> -> K3"]);
+  assert_eq!(value_paths("const K = 1;\nexport { K };\nexport { K as L };\n"), Vec::<String>::new());
+}
+
+#[test]
+fn should_emit_value_refs_for_computed_class_member_keys() {
+  let source = "const K = 1;\nconst K3 = 2;\nconst D = 'd';\nconst G = 'g';\nconst S = 's';\nexport class C { [K3] = 1; [D]() {}; static [K]: number = 2; get [G]() { return 1; } static [S]() {} }\n";
+  assert_eq!(value_paths(source), ["C -> K3", "C -> D", "C -> K", "C -> G", "C -> S"]);
+}
+
+#[test]
+fn should_emit_value_refs_in_decorators_defaults_initializers_switches_loops_and_jsx() {
+  let source = r#"
+import { Guard, Dflt, Init, Disc, Case, Iter, Keys, Attr, Rest, Kid, Inner } from './deps';
+@Dec(Guard)
+export class K {
+  prop = Init;
+  m(a = Dflt) {
+    switch (Disc) { case Case: break; }
+    for (const q of Iter) {}
+    for (const q in Keys) {}
+  }
+}
+export const view = <div a={Attr} {...Rest}>{Kid}<span>{Inner}</span></div>;
+"#;
+  assert_eq!(
+    value_paths_in("src/view.tsx", source),
+    [
+      "K -> Guard",
+      "K.prop -> Init",
+      "K.m -> Dflt",
+      "K.m -> Disc",
+      "K.m -> Case",
+      "K.m -> Iter",
+      "K.m -> Keys",
+      "view -> Attr",
+      "view -> Rest",
+      "view -> Kid",
+      "view -> Inner"
+    ]
+  );
+}
+
+#[test]
+fn should_not_emit_value_refs_for_locals_bindings_labels_keys_and_type_only_positions() {
+  let source = r#"
+declare const Ambient: number;
+enum En { One, Two = 2 }
+export class Holder { plain = 1; static other = 2; }
+export function run(param: number, { destructured }: Options, [first]: number[]) {
+  const local = 1;
+  const { a, b: { c } } = param as any;
+  label: for (;;) { break label; }
+  try {} catch (error) { error; }
+  const key = { plain: local, nested: { other: param } };
+  const url = import.meta.url;
+  const typed = (param satisfies number) as unknown as string;
+  return [local, destructured, first, a, c, key, url, typed];
+}
+export const view = <div className="x" data-id="y" />;
+"#;
+  assert_eq!(value_paths_in("src/view.tsx", source), Vec::<String>::new());
+}
+
+#[test]
+fn should_not_emit_value_refs_for_test_framework_callees() {
+  let source = "import { describe, it, expect } from 'vitest';\ndescribe('suite', () => { it('works', () => { expect(1).toBe(1); }); });\n";
+  assert_eq!(value_paths(source), Vec::<String>::new());
+}
+
+#[test]
+fn should_emit_this_member_value_reads_with_this_receivers_truncated_to_the_first_member() {
+  let source = "export class S {\n  repo = 1;\n  run() {\n    const a = this.repo;\n    const b = this.repo.deep.deeper;\n    this.repo.go();\n    this.written = 1;\n    this[dynamic];\n    return function () { return this.other; };\n  }\n}\n";
+  let facts = analyze("src/this.ts", source);
+  let values: Vec<(String, Option<ReceiverHint>)> = facts
+    .references
+    .iter()
+    .filter(|reference| reference.kind == RefKind::ValueRef)
+    .map(|reference| {
+      (
+        format!("{} -> {}", owner_name(&facts, reference.from), reference.path.join(".")),
+        reference.receiver.clone(),
+      )
+    })
+    .collect();
+  assert_eq!(
+    values,
+    [
+      ("S.run -> this.repo".to_owned(), Some(ReceiverHint::This)),
+      ("S.run -> this.repo".to_owned(), Some(ReceiverHint::This)),
+      ("S.run -> this.written".to_owned(), Some(ReceiverHint::This)),
+      ("S.run -> dynamic".to_owned(), None),
+      ("S.run -> this.other".to_owned(), Some(ReceiverHint::Expr("this".into()))),
+    ]
+  );
+}
+
+#[test]
+fn should_let_module_declarations_and_imports_shadow_ignored_globals() {
+  assert_eq!(value_paths("import { Error } from './e';\nexport function f() { return Error.x; }\n"), ["f -> Error.x"]);
+  assert_eq!(value_paths("const Math = { pi: 3 };\nexport function f() { return Math.pi; }\n"), ["f -> Math.pi"]);
+  assert_eq!(value_paths("export function f() { return Math.PI + Error.name; }\n"), Vec::<String>::new());
+}
+
+#[test]
+fn should_emit_value_refs_for_plain_assignment_member_targets() {
+  let source = "const Foo = { n: 0, a: { b: 0 } };\nexport class S {\n  x = 1;\n  set() { Foo.n = 1; Foo.a.b = 3; this.x = 2; }\n}\n";
+  let facts = analyze("src/write.ts", source);
+  let values: Vec<(Vec<String>, Option<ReceiverHint>)> = facts
+    .references
+    .iter()
+    .filter(|reference| reference.kind == RefKind::ValueRef)
+    .map(|reference| (reference.path.clone(), reference.receiver.clone()))
+    .collect();
+  assert_eq!(
+    values,
+    [
+      (strings(&["Foo", "n"]), Some(ReceiverHint::Identifier("Foo".into()))),
+      (strings(&["Foo", "a", "b"]), Some(ReceiverHint::Identifier("Foo".into()))),
+      (strings(&["this", "x"]), Some(ReceiverHint::This)),
+    ]
+  );
+}
+
+#[test]
+fn should_emit_value_refs_for_writes_to_module_level_bindings_but_not_locals() {
+  let source = "let counter = 0;\nexport function bump() { counter = 1; counter += 1; }\nexport function shadow(counter: number) { counter = 2; let other = 0; other = 1; }\n";
+  assert_eq!(value_paths(source), ["bump -> counter", "bump -> counter"]);
 }

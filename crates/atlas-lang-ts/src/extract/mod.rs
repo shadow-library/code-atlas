@@ -3,14 +3,15 @@ mod declarations;
 mod references;
 mod test_symbols;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use atlas_core::{
-  ArgSummary, AttributeFact, EntityKind, ExportFact, FileFacts, FileRef, ImportBinding, ImportFact, LocalSymbolId, Producer, RefKind, RefOrigin, ReferenceFact, Span, SymbolFact,
-  Visibility,
+  ArgSummary, AttributeFact, EntityKind, ExportFact, FileFacts, FileRef, ImportBinding, ImportFact, LocalSymbolId, Producer, ReceiverHint, RefKind, RefOrigin, ReferenceFact, Span,
+  SymbolFact, Visibility,
 };
 use tree_sitter::Node;
 
+use self::references::{IGNORED_GLOBALS, MAX_VALUE_SPANS};
 use crate::args::summarize_arguments;
 use crate::modules::{import_statement, require_call};
 use crate::scope::{Namespace, ScopeKind, Scopes};
@@ -90,13 +91,21 @@ enum Step<'t> {
 struct ModuleInfo {
   namespaces: Vec<String>,
   foreign_imports: Vec<String>,
+  shadowed_globals: Vec<String>,
   framework: Option<&'static str>,
 }
 
 impl ModuleInfo {
   fn scan(root: Node<'_>, source: &str) -> Self {
     let mut info = Self::default();
-    for statement in children(root) {
+    let statements = children(root);
+    let mut declared = Scopes::default();
+    declared.push(ScopeKind::Block);
+    declared.declare_statements(&statements, source);
+    info
+      .shadowed_globals
+      .extend(IGNORED_GLOBALS.iter().filter(|name| declared.is_local_value(name)).map(|name| (*name).to_owned()));
+    for statement in statements {
       match statement.kind() {
         "import_statement" => info.record_import(import_statement(statement, source)),
         "lexical_declaration" | "variable_declaration" => {
@@ -118,6 +127,9 @@ impl ModuleInfo {
   fn record_import(&mut self, fact: Option<ImportFact>) {
     match fact {
       Some(ImportFact::TsImport { specifier, bindings, .. }) => {
+        self
+          .shadowed_globals
+          .extend(bindings.iter().map(ImportBinding::local).filter(|local| IGNORED_GLOBALS.contains(local)).map(str::to_owned));
         let framework = framework_of_import(&specifier);
         if framework.is_some() && self.framework.is_none_or(|known| known == UNKNOWN_FRAMEWORK) {
           self.framework = framework;
@@ -130,11 +142,18 @@ impl ModuleInfo {
           }
         }
       }
-      Some(ImportFact::TsRequire { bindings, .. }) => self.namespaces.extend(bindings.iter().map(|binding| binding.local().to_owned())),
+      Some(ImportFact::TsRequire { bindings, .. }) => {
+        self
+          .shadowed_globals
+          .extend(bindings.iter().map(ImportBinding::local).filter(|local| IGNORED_GLOBALS.contains(local)).map(str::to_owned));
+        self.namespaces.extend(bindings.iter().map(|binding| binding.local().to_owned()));
+      }
       _ => {}
     }
   }
 }
+
+type ValueKey = (Option<LocalSymbolId>, Vec<String>, Option<ReceiverHint>);
 
 pub(crate) struct Extractor<'s, 't> {
   source: &'s str,
@@ -149,6 +168,8 @@ pub(crate) struct Extractor<'s, 't> {
   module: ModuleInfo,
   tests_enabled: bool,
   test_symbols: Vec<LocalSymbolId>,
+  callees: HashSet<usize>,
+  seen_values: HashMap<ValueKey, Vec<u32>>,
 }
 
 impl<'s, 't> Extractor<'s, 't> {
@@ -168,6 +189,8 @@ impl<'s, 't> Extractor<'s, 't> {
       module,
       tests_enabled,
       test_symbols: Vec::new(),
+      callees: HashSet::new(),
+      seen_values: HashMap::new(),
     };
     while let Some(step) = extractor.stack.pop() {
       match step {
@@ -219,6 +242,8 @@ impl<'s, 't> Extractor<'s, 't> {
       "decorator" => self.decorator(node),
       "jsx_opening_element" | "jsx_self_closing_element" => self.jsx_element(node),
       "jsx_expression" => self.jsx_expression(node),
+      "identifier" | "shorthand_property_identifier" => self.value_read(node),
+      "member_expression" | "subscript_expression" => self.member_read(node),
       "type_identifier" => self.type_identifier(node),
       "nested_type_identifier" => self.nested_type(node),
       "type_parameter" => self.push_all(children(node).into_iter().filter(|child| Some(*child) != node.child_by_field_name("name"))),
@@ -314,8 +339,11 @@ impl<'s, 't> Extractor<'s, 't> {
     })
   }
 
-  fn reference(&mut self, kind: RefKind, path: Vec<String>, receiver: Option<atlas_core::ReceiverHint>, args: Vec<ArgSummary>, span: Span) {
+  fn reference(&mut self, kind: RefKind, path: Vec<String>, receiver: Option<ReceiverHint>, args: Vec<ArgSummary>, span: Span) {
     if self.in_error || path.is_empty() || path.iter().any(String::is_empty) {
+      return;
+    }
+    if kind == RefKind::ValueRef && !self.admit_value(&path, receiver.as_ref(), span.start_byte) {
       return;
     }
     self.facts.references.push(ReferenceFact {
@@ -327,6 +355,15 @@ impl<'s, 't> Extractor<'s, 't> {
       span,
       origin: RefOrigin::Syntax,
     });
+  }
+
+  fn admit_value(&mut self, path: &[String], receiver: Option<&ReceiverHint>, start: u32) -> bool {
+    let spans = self.seen_values.entry((self.owner, path.to_vec(), receiver.cloned())).or_default();
+    if spans.len() >= MAX_VALUE_SPANS || spans.contains(&start) {
+      return false;
+    }
+    spans.push(start);
+    true
   }
 
   fn block(&mut self, statements: Vec<Node<'t>>) {

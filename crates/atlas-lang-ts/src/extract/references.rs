@@ -4,7 +4,9 @@ use tree_sitter::Node;
 use super::{Extractor, ThisBinding};
 use crate::args::{summarize, summarize_arguments};
 use crate::modules::{module_specifier, require_fact};
-use crate::syntax::{ChainHead, children, compact_text, field_children, first_child, member_chain, span_between, span_of, string_value, text, type_path, unwrap_expression};
+use crate::syntax::{
+  Chain, ChainHead, children, compact_text, field_children, first_child, has_token, member_chain, span_between, span_of, string_value, text, type_path, unwrap_expression,
+};
 use crate::testing::recognize;
 
 impl<'s, 't> Extractor<'s, 't> {
@@ -47,6 +49,7 @@ impl<'s, 't> Extractor<'s, 't> {
       return self.test_symbol(node, test);
     }
     let args = summarize_arguments(arguments, self.source);
+    self.mark_callee(callee);
     self.call_reference(callee, args, span);
     if let Some(arguments) = arguments {
       self.value_refs(arguments);
@@ -55,6 +58,17 @@ impl<'s, 't> Extractor<'s, 't> {
     nodes.extend(node.child_by_field_name("type_arguments"));
     nodes.extend(arguments);
     self.push_all(nodes);
+  }
+
+  fn mark_callee(&mut self, callee: Node<'t>) {
+    let mut current = callee;
+    self.callees.insert(current.id());
+    while matches!(current.kind(), "parenthesized_expression" | "non_null_expression")
+      && let Some(inner) = first_child(current)
+    {
+      self.callees.insert(inner.id());
+      current = inner;
+    }
   }
 
   fn call_reference(&mut self, callee: Node<'t>, args: Vec<ArgSummary>, span: Span) {
@@ -121,6 +135,7 @@ impl<'s, 't> Extractor<'s, 't> {
     let constructor = node.child_by_field_name("constructor");
     let arguments = node.child_by_field_name("arguments");
     if let Some(constructor) = constructor {
+      self.mark_callee(constructor);
       let chain = member_chain(constructor, self.source);
       if let ChainHead::Identifier(head) = chain.head
         && !self.scopes.is_local_value(text(head, self.source))
@@ -231,23 +246,157 @@ impl<'s, 't> Extractor<'s, 't> {
     }
   }
 
-  fn value_ref_identifier(&mut self, node: Node<'t>) {
+  pub(super) fn value_ref_identifier(&mut self, node: Node<'t>) {
     let name = text(node, self.source);
-    if name != "undefined" && !self.scopes.is_local_value(name) {
-      self.reference(RefKind::ValueRef, vec![name.to_owned()], None, Vec::new(), span_of(node));
+    if self.is_ignored_value(name) {
+      return;
     }
+    self.reference(RefKind::ValueRef, vec![name.to_owned()], None, Vec::new(), span_of(node));
   }
 
   fn value_ref_chain(&mut self, node: Node<'t>) {
     let chain = member_chain(node, self.source);
     let receiver = match chain.head {
-      ChainHead::Identifier(head) if !self.scopes.is_local_value(text(head, self.source)) => Some(ReceiverHint::Identifier(text(head, self.source).to_owned())),
+      ChainHead::Identifier(head) if !self.is_ignored_value(text(head, self.source)) => Some(ReceiverHint::Identifier(text(head, self.source).to_owned())),
       ChainHead::This => Some(self.this_receiver()),
       _ => return,
     };
     if let Some(path) = chain.static_path(self.source) {
       self.reference(RefKind::ValueRef, path, receiver, Vec::new(), span_of(node));
     }
+  }
+
+  fn is_ignored_value(&self, name: &str) -> bool {
+    (IGNORED_GLOBALS.contains(&name) && !self.module.shadowed_globals.iter().any(|shadowed| shadowed == name)) || self.scopes.is_local_value(name)
+  }
+
+  pub(super) fn value_read(&mut self, node: Node<'t>) {
+    let name = text(node, self.source);
+    if self.callees.remove(&node.id()) || self.is_ignored_value(name) || self.is_saturated(&[name.to_owned()], None) {
+      return;
+    }
+    let Some(parent) = node.parent() else { return };
+    if is_binding_position(node, parent) {
+      return;
+    }
+    self.value_ref_identifier(node);
+  }
+
+  fn chain_read(&mut self, node: Node<'t>, chain: &Chain<'t>) {
+    match chain.head {
+      ChainHead::Identifier(head) if !self.is_ignored_value(text(head, self.source)) => {
+        let Some(path) = chain.static_path(self.source) else { return };
+        let receiver = Some(ReceiverHint::Identifier(text(head, self.source).to_owned()));
+        if !self.is_saturated(&path, receiver.as_ref()) {
+          self.reference(RefKind::ValueRef, path, receiver, Vec::new(), span_of(node));
+        }
+      }
+      ChainHead::This => {
+        let Some(member) = chain.segments.first().filter(|member| !member.starts_with('[')) else {
+          return;
+        };
+        let path = vec!["this".to_owned(), member.clone()];
+        let receiver = Some(self.this_receiver());
+        if !self.is_saturated(&path, receiver.as_ref()) {
+          self.reference(RefKind::ValueRef, path, receiver, Vec::new(), span_of(node));
+        }
+      }
+      _ => {}
+    }
+  }
+
+  fn is_saturated(&self, path: &[String], receiver: Option<&ReceiverHint>) -> bool {
+    self
+      .seen_values
+      .get(&(self.owner, path.to_vec(), receiver.cloned()))
+      .is_some_and(|spans| spans.len() >= MAX_VALUE_SPANS)
+  }
+
+  pub(super) fn member_read(&mut self, node: Node<'t>) {
+    let chain = member_chain(node, self.source);
+    if chain.segments.is_empty() {
+      return self.push_all(children(node));
+    }
+    let (indexes, root) = chain_operands(node);
+    let callee = self.callees.remove(&node.id());
+    if !callee {
+      self.chain_read(node, &chain);
+    }
+    let mut nodes = indexes;
+    if matches!(chain.head, ChainHead::Expr(_)) {
+      nodes.push(root);
+    }
+    self.push_all(nodes);
+  }
+}
+
+pub(super) const MAX_VALUE_SPANS: usize = 4;
+
+pub(super) const IGNORED_GLOBALS: [&str; 20] = [
+  "undefined",
+  "NaN",
+  "Infinity",
+  "globalThis",
+  "arguments",
+  "console",
+  "JSON",
+  "Math",
+  "Object",
+  "Array",
+  "Promise",
+  "Date",
+  "Number",
+  "String",
+  "Boolean",
+  "Error",
+  "process",
+  "module",
+  "exports",
+  "require",
+];
+
+fn chain_operands(node: Node<'_>) -> (Vec<Node<'_>>, Node<'_>) {
+  let mut indexes = Vec::new();
+  let mut current = node;
+  loop {
+    let next = match current.kind() {
+      "member_expression" => current.child_by_field_name("object"),
+      "subscript_expression" => {
+        indexes.extend(current.child_by_field_name("index"));
+        current.child_by_field_name("object")
+      }
+      "non_null_expression" | "parenthesized_expression" => first_child(current).filter(|inner| inner.kind() != "sequence_expression"),
+      _ => None,
+    };
+    let Some(next) = next else { break };
+    current = next;
+  }
+  indexes.reverse();
+  (indexes, current)
+}
+
+fn is_binding_position(node: Node<'_>, parent: Node<'_>) -> bool {
+  let is = |field: &str| parent.child_by_field_name(field) == Some(node);
+  match parent.kind() {
+    "arrow_function" | "catch_clause" => is("parameter"),
+    "assignment_pattern" | "object_assignment_pattern" | "for_in_statement" => is("left"),
+    "required_parameter" | "optional_parameter" => !is("value"),
+    "export_statement" => !is("value") && !has_token(parent, "="),
+    "array_pattern"
+    | "object_pattern"
+    | "rest_pattern"
+    | "pair_pattern"
+    | "import_alias"
+    | "import_clause"
+    | "import_specifier"
+    | "import_require_clause"
+    | "namespace_import"
+    | "namespace_export"
+    | "export_specifier"
+    | "extends_clause"
+    | "nested_identifier"
+    | "nested_type_identifier" => true,
+    _ => is("name") || is("alias"),
   }
 }
 

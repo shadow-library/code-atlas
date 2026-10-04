@@ -491,23 +491,6 @@ references:
       end_line: 13
       end_col: 115
   - from: 3
-    kind: value_ref
-    path:
-      - process
-      - env
-      - JWT_SECRET
-    receiver:
-      type: identifier
-      value: process
-    args: []
-    span:
-      start_byte: 663
-      end_byte: 685
-      start_line: 13
-      start_col: 90
-      end_line: 13
-      end_col: 112
-  - from: 3
     kind: method_call
     path:
       - header

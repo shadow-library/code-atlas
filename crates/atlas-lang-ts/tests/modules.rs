@@ -253,7 +253,7 @@ fn should_record_commonjs_exports_and_exported_function_assignments() {
   assert_eq!(symbol_names(&facts), ["helper#function", "handler#function"]);
   assert_eq!(facts.symbols[0].visibility, Visibility::Exported);
   assert_eq!(facts.symbols[1].visibility, Visibility::Exported);
-  assert_eq!(common::refs(&facts), ["handler -Call-> process"]);
+  assert_eq!(common::refs(&facts), ["<module> -ValueRef-> helper", "handler -Call-> process", "<module> -ValueRef-> key"]);
   let export_equals = analyze("src/legacy.ts", "class Api {}\nexport = Api;\n");
   assert!(matches!(
     export_equals.exports.as_slice(),

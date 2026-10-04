@@ -223,6 +223,9 @@ impl<'s, 't> Extractor<'s, 't> {
   }
 
   pub(super) fn member(&mut self, node: Node<'t>, parent: LocalSymbolId, decorators: Vec<Node<'t>>) {
+    if let Some(key) = node.child_by_field_name("name").filter(|name| name.kind() == "computed_property_name") {
+      self.stack.push(Step::Visit(key));
+    }
     match node.kind() {
       "method_definition" | "method_signature" | "abstract_method_signature" => self.method_symbol(node, parent, decorators),
       "public_field_definition" | "field_definition" | "property_signature" => self.field_symbol(node, parent, decorators),

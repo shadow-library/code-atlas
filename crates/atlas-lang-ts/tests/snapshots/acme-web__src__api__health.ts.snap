@@ -121,6 +121,19 @@ references:
       start_col: 25
       end_line: 4
       end_col: 51
+  - from: 0
+    kind: value_ref
+    path:
+      - API_URL
+    receiver: ~
+    args: []
+    span:
+      start_byte: 128
+      end_byte: 135
+      start_line: 4
+      start_col: 34
+      end_line: 4
+      end_col: 41
 module_decls: []
 diagnostics: []
 analyzer:

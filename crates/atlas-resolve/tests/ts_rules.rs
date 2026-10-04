@@ -318,3 +318,35 @@ export function useGeneric<Model>() { Model.thing; }
   project.assert_no_edge(EdgeKind::References, app(&["src", "main"], &["useOwn"], EntityKind::Function), model);
   project.assert_no_edge(EdgeKind::References, app(&["src", "main"], &["useGeneric"], EntityKind::Function), model);
 }
+
+#[test]
+fn should_reference_class_fields_read_through_this_including_inherited_ones() {
+  let synthetic = single(
+    "app",
+    &[
+      ("package.json", PACKAGE),
+      (
+        "src/main.ts",
+        r#"import { UsersService } from './users';
+export class Base {
+  protected shared = 1;
+}
+export class Service extends Base {
+  constructor(private readonly usersService: UsersService) { super(); }
+  run() {
+    const a = this.usersService;
+    const b = this.shared;
+    return [a, b, this.usersService.count];
+  }
+}
+"#,
+      ),
+      ("src/users.ts", "export class UsersService { count = 0; }\n"),
+    ],
+  );
+  let project = &synthetic.project;
+  let run = app(&["src", "main"], &["Service", "run"], EntityKind::Method);
+  let users = project.assert_edge(EdgeKind::References, run, app(&["src", "main"], &["Service", "usersService"], EntityKind::Field), RESOLVED);
+  assert_eq!(users.evidence.len(), 2);
+  project.assert_edge(EdgeKind::References, run, app(&["src", "main"], &["Base", "shared"], EntityKind::Field), RESOLVED);
+}
