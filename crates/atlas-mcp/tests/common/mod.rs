@@ -71,7 +71,21 @@ pub async fn start_with(repos: &[&str], hook: Option<impl Fn(&str) + Send + Sync
   launch(repos, false, hook, None).await
 }
 
+pub async fn start_configured(repos: &[&str], hook: impl Fn(&str) + Send + Sync + 'static, configure: impl FnOnce(&mut ServeOptions)) -> Harness {
+  launch_configured(repos, false, Some(hook), None, configure).await
+}
+
 async fn launch(repos: &[&str], watch: bool, hook: Option<impl Fn(&str) + Send + Sync + 'static>, limits: Option<(usize, usize)>) -> Harness {
+  launch_configured(repos, watch, hook, limits, |_| {}).await
+}
+
+async fn launch_configured(
+  repos: &[&str],
+  watch: bool,
+  hook: Option<impl Fn(&str) + Send + Sync + 'static>,
+  limits: Option<(usize, usize)>,
+  configure: impl FnOnce(&mut ServeOptions),
+) -> Harness {
   let scratch = tempfile::tempdir().unwrap();
   let home = AtlasHome::rooted_at(scratch.path().join("home"));
   register(scratch.path(), &home, "acme", "acme", repos);
@@ -80,6 +94,7 @@ async fn launch(repos: &[&str], watch: bool, hook: Option<impl Fn(&str) + Send +
   if let Some((bytes, lines)) = limits {
     options = options.with_output_limits(bytes, lines);
   }
+  configure(&mut options);
   let server = match hook {
     Some(hook) => AtlasServer::open_with_query_hook(&options, hook).unwrap(),
     None => AtlasServer::open(&options).unwrap(),

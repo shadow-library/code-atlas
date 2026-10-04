@@ -44,6 +44,8 @@ enum Command {
     corpora_dir: Option<PathBuf>,
     #[arg(long = "only")]
     only: Vec<String>,
+    #[arg(long = "scenario")]
+    scenarios: Vec<String>,
     #[arg(long)]
     profile: bool,
     #[arg(long)]
@@ -85,6 +87,7 @@ fn dispatch(command: Command) -> BenchResult<()> {
       work_dir,
       corpora_dir,
       only,
+      scenarios,
       profile,
       fail_on_regression,
     } => {
@@ -93,6 +96,7 @@ fn dispatch(command: Command) -> BenchResult<()> {
         profile_dir,
         suite,
         only,
+        scenarios,
         work_dir,
         corpora_dir,
         previous: compare,

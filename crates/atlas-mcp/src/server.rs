@@ -2,6 +2,7 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Instant;
 
+use atlas_engine::Engine;
 use atlas_query::{
   ApiRequest, ChangesRequest, ContextRequest, ExplainRequest, ImpactRequest, PatternsRequest, QueryEngine, ReadRequest, SearchRequest, SimilarRequest, SymbolRequest, Targeted,
   TestsForRequest, TraverseRequest, UnusedRequest,
@@ -63,6 +64,11 @@ impl AtlasServer {
 
   pub fn project_name(&self) -> &str {
     self.shared.session.project_name()
+  }
+
+  #[doc(hidden)]
+  pub fn engine(&self) -> &Arc<Engine> {
+    self.shared.session.engine()
   }
 
   pub fn telemetry(&self) -> TelemetrySnapshot {

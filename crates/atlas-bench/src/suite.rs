@@ -309,7 +309,11 @@ fn aggregate(runs: Vec<ScenarioRecord>) -> ScenarioRecord {
 fn run_corpus(plan: &Plan, prepared: &Prepared, work: &Path, settings: &Settings) -> Vec<ScenarioRecord> {
   let home = work.join(&plan.name).join("home");
   let first_mode = if plan.depth == Depth::Multi { WorkerMode::Multi } else { WorkerMode::Cold };
-  let repeats = if first_mode == WorkerMode::Cold { settings.repeats } else { 1 };
+  let repeats = if first_mode == WorkerMode::Cold && settings.includes("cold_index") {
+    settings.repeats
+  } else {
+    1
+  };
   let mut runs = Vec::new();
   for _ in 0..repeats {
     let _ = fs::remove_dir_all(&home);
@@ -379,6 +383,7 @@ pub struct RunOptions {
   pub profile_dir: Option<PathBuf>,
   pub suite: Suite,
   pub only: Vec<String>,
+  pub scenarios: Vec<String>,
   pub work_dir: Option<PathBuf>,
   pub corpora_dir: Option<PathBuf>,
   pub previous: Option<PathBuf>,
@@ -396,7 +401,10 @@ pub fn run(options: &RunOptions) -> BenchResult<PerfReport> {
   };
   let corpora_dir = corpus::corpora_dir(options.corpora_dir.as_deref())?;
   fs::create_dir_all(&corpora_dir).map_err(|source| BenchError::io("create", &corpora_dir, source))?;
-  let settings = Settings::for_suite();
+  let settings = Settings {
+    scenarios: options.scenarios.clone(),
+    ..Settings::for_suite()
+  };
   let (mut corpora, mut records) = (Vec::new(), Vec::new());
   let mut profile = ProfileInfo {
     tool: None,

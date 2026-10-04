@@ -3,6 +3,7 @@ mod artifact;
 mod engine;
 mod enrich;
 mod error;
+mod flight;
 mod lineage;
 mod lock;
 mod manifests;

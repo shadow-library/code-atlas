@@ -130,49 +130,71 @@ fn run_timed(kind: QueryKind, query: &Arc<QueryEngine>, target: &Target) -> Time
   }
 }
 
-pub fn latency(corpus: &str, query: &Arc<QueryEngine>, targets: &[Target], samples: usize) -> BenchResult<ScenarioRecord> {
-  let mut record = ScenarioRecord::ok(corpus, "query_latency");
-  for kind in QueryKind::ALL {
-    let chosen = &targets[..targets.len().min(kind.sample_limit(samples))];
-    if !kind.is_heavy() {
-      kind.run(query, &chosen[0]).ok();
-    }
-    let (mut timings, mut found, mut errors, mut timed_out) = (Vec::new(), 0u64, 0u64, false);
-    for target in chosen {
-      match run_timed(kind, query, target) {
-        Timed::TimedOut => {
-          timed_out = true;
-          break;
-        }
-        Timed::Done(elapsed, outcome) => {
-          timings.push(elapsed);
-          match outcome {
-            Ok(true) => found += 1,
-            Ok(false) => {}
-            Err(_) => errors += 1,
-          }
-        }
-      }
-      if timings.iter().sum::<f64>() > KIND_BUDGET_MS {
+struct Measured {
+  timings: Vec<f64>,
+  found: u64,
+  errors: u64,
+  timed_out: bool,
+}
+
+fn measure(kind: QueryKind, query: &Arc<QueryEngine>, chosen: &[Target]) -> Measured {
+  if !kind.is_heavy() {
+    kind.run(query, &chosen[0]).ok();
+  }
+  let mut measured = Measured {
+    timings: Vec::new(),
+    found: 0,
+    errors: 0,
+    timed_out: false,
+  };
+  for target in chosen {
+    match run_timed(kind, query, target) {
+      Timed::TimedOut => {
+        measured.timed_out = true;
         break;
       }
+      Timed::Done(elapsed, outcome) => {
+        measured.timings.push(elapsed);
+        match outcome {
+          Ok(true) => measured.found += 1,
+          Ok(false) => {}
+          Err(_) => measured.errors += 1,
+        }
+      }
     }
+    if measured.timings.iter().sum::<f64>() > KIND_BUDGET_MS {
+      break;
+    }
+  }
+  measured
+}
+
+fn record_measured(mut record: ScenarioRecord, prefix: &str, measured: &Measured) -> ScenarioRecord {
+  record = record
+    .info(&format!("{prefix}_samples"), measured.timings.len())
+    .info(&format!("{prefix}_found"), measured.found)
+    .info(&format!("{prefix}_errors"), measured.errors);
+  if measured.timed_out {
+    record = record.info(&format!("{prefix}_timed_out_after_s"), HEAVY_TIMEOUT.as_secs());
+  }
+  if measured.timings.is_empty() {
+    return record;
+  }
+  let summary = Summary::of(&measured.timings);
+  record = record.metric(&format!("{prefix}_p50_ms"), summary.p50).metric(&format!("{prefix}_max_ms"), summary.max);
+  if summary.count >= MIN_PERCENTILE_SAMPLES {
+    record = record.metric(&format!("{prefix}_p95_ms"), summary.p95);
+  }
+  record
+}
+
+pub fn latency(corpus: &str, barriered: &Arc<QueryEngine>, unbarriered: &Arc<QueryEngine>, targets: &[Target], samples: usize) -> BenchResult<ScenarioRecord> {
+  let mut record = ScenarioRecord::ok(corpus, "query_latency").info("nobarrier", "the same queries with the freshness barrier skipped");
+  for kind in QueryKind::ALL {
+    let chosen = &targets[..targets.len().min(kind.sample_limit(samples))];
     let name = kind.name();
-    record = record
-      .info(&format!("{name}_samples"), timings.len())
-      .info(&format!("{name}_found"), found)
-      .info(&format!("{name}_errors"), errors);
-    if timed_out {
-      record = record.info(&format!("{name}_timed_out_after_s"), HEAVY_TIMEOUT.as_secs());
-    }
-    if timings.is_empty() {
-      continue;
-    }
-    let summary = Summary::of(&timings);
-    record = record.metric(&format!("{name}_p50_ms"), summary.p50).metric(&format!("{name}_max_ms"), summary.max);
-    if summary.count >= MIN_PERCENTILE_SAMPLES {
-      record = record.metric(&format!("{name}_p95_ms"), summary.p95);
-    }
+    record = record_measured(record, name, &measure(kind, barriered, chosen));
+    record = record_measured(record, &format!("{name}_nobarrier"), &measure(kind, unbarriered, chosen));
   }
   Ok(record)
 }

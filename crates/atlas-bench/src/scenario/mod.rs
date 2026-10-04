@@ -6,6 +6,7 @@ mod queries;
 mod session;
 mod workload;
 
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
@@ -50,9 +51,15 @@ pub struct Settings {
   pub concurrency_levels: Vec<usize>,
   pub edit_counts: Vec<usize>,
   pub edit_interval_ms: u64,
+  #[serde(default)]
+  pub scenarios: Vec<String>,
 }
 
 impl Settings {
+  pub fn includes(&self, scenario: &str) -> bool {
+    self.scenarios.is_empty() || self.scenarios.iter().any(|selected| selected == scenario)
+  }
+
   pub fn for_suite() -> Self {
     Self {
       barrier_iterations: 50,
@@ -62,6 +69,7 @@ impl Settings {
       concurrency_levels: vec![1, 4, 8, 16],
       edit_counts: vec![1, 10, 100, 1000],
       edit_interval_ms: 100,
+      scenarios: Vec::new(),
     }
   }
 }
@@ -96,9 +104,17 @@ pub fn open_engine(project: &Project, home: &Path) -> BenchResult<(Engine, f64)>
   Ok((engine, millis(started.elapsed())))
 }
 
-pub fn open_shared(project: &Project, home: &Path) -> BenchResult<(Arc<Engine>, f64)> {
-  let (engine, open_ms) = open_engine(project, home)?;
-  Ok((Arc::new(engine), open_ms))
+pub fn server_readers() -> usize {
+  let default = EngineOptions::default().store.readers;
+  std::thread::available_parallelism().map_or(default, NonZeroUsize::get).max(default)
+}
+
+pub fn open_server(project: &Project, home: &Path) -> BenchResult<(Arc<Engine>, f64)> {
+  let mut options = EngineOptions::default();
+  options.store.readers = server_readers();
+  let started = Instant::now();
+  let engine = Engine::open(project, &AtlasHome::rooted_at(home), options)?;
+  Ok((Arc::new(engine), millis(started.elapsed())))
 }
 
 pub fn db_bytes(engine: &Engine) -> u64 {

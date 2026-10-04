@@ -1,0 +1,4 @@
+[env]
+# libsqlite3-sys builds with SQLITE_ENABLE_MEMORY_MANAGEMENT, which puts every connection's page cache behind one process-wide mutex
+# and caps concurrent readers; MEMSTATUS adds another global mutex to every SQLite allocation.
+LIBSQLITE3_FLAGS = "-USQLITE_ENABLE_MEMORY_MANAGEMENT -DSQLITE_DEFAULT_MEMSTATUS=0"

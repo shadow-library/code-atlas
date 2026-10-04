@@ -1,3 +1,4 @@
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use atlas_engine::EngineOptions;
@@ -17,6 +18,13 @@ pub struct ServeOptions {
 pub const DEFAULT_MAX_OUTPUT_BYTES: usize = 100_000;
 pub const DEFAULT_MAX_BODY_LINES: usize = 400;
 
+fn server_engine_options() -> EngineOptions {
+  let mut options = EngineOptions::default();
+  let cores = std::thread::available_parallelism().map_or(options.store.readers, NonZeroUsize::get);
+  options.store.readers = options.store.readers.max(cores);
+  options
+}
+
 impl ServeOptions {
   pub fn new(home: AtlasHome, cwd: impl Into<PathBuf>) -> Self {
     Self {
@@ -24,7 +32,7 @@ impl ServeOptions {
       project: None,
       cwd: cwd.into(),
       watch: false,
-      engine: EngineOptions::default(),
+      engine: server_engine_options(),
       max_output_bytes: DEFAULT_MAX_OUTPUT_BYTES,
       max_body_lines: DEFAULT_MAX_BODY_LINES,
     }

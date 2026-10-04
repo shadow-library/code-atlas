@@ -17,7 +17,14 @@ const EXCERPT_LINES: usize = 8;
 
 pub struct QueryEngine {
   engine: Arc<Engine>,
+  barrier: Barrier,
   problems: Mutex<Option<CachedProblems>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Barrier {
+  Enforced,
+  Skipped,
 }
 
 struct CachedProblems {
@@ -29,6 +36,16 @@ impl QueryEngine {
   pub fn new(engine: Arc<Engine>) -> Self {
     Self {
       engine,
+      barrier: Barrier::Enforced,
+      problems: Mutex::new(None),
+    }
+  }
+
+  #[doc(hidden)]
+  pub fn without_barrier(engine: Arc<Engine>) -> Self {
+    Self {
+      engine,
+      barrier: Barrier::Skipped,
       problems: Mutex::new(None),
     }
   }
@@ -38,7 +55,10 @@ impl QueryEngine {
   }
 
   pub(crate) fn barrier(&self) -> QueryResult<Freshness> {
-    let report = self.engine.ensure_fresh()?;
+    let report = match self.barrier {
+      Barrier::Enforced => self.engine.ensure_fresh()?,
+      Barrier::Skipped => self.engine.skip_barrier(),
+    };
     Ok(Freshness::from_report(&report))
   }
 

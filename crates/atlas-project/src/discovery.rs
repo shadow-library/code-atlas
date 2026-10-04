@@ -1,11 +1,10 @@
 use std::collections::HashSet;
 use std::fs::{self, Metadata};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
 use std::time::UNIX_EPOCH;
 
 use atlas_core::{Language, RelPath};
-use ignore::{DirEntry, WalkBuilder, WalkState};
+use ignore::{DirEntry, WalkBuilder};
 
 use crate::error::ProjectError;
 use crate::globs::PathGlobs;
@@ -67,13 +66,6 @@ impl WalkFilter {
   }
 }
 
-#[derive(Default)]
-struct Collected {
-  files: Vec<DiscoveredFile>,
-  skipped: Vec<(RelPath, SkipReason)>,
-  walk_errors: Vec<String>,
-}
-
 pub fn discover(repo: &RepoConfig, max_file_bytes: u64) -> Result<DiscoveryResult, ProjectError> {
   fs::metadata(&repo.path).map_err(|source| ProjectError::io("read repository root", &repo.path, source))?;
   let include = PathGlobs::new(&repo.include)?;
@@ -87,56 +79,41 @@ pub fn discover(repo: &RepoConfig, max_file_bytes: u64) -> Result<DiscoveryResul
         .any(|pattern| pattern.split('/').any(|segment| segment == *name))
     })
     .collect();
-  let filter = Arc::new(WalkFilter {
+  let filter = WalkFilter {
     root: repo.path.clone(),
     overridden_defaults,
     exclude: PathGlobs::new(&repo.exclude)?,
-  });
-
-  let walker = {
-    let filter = Arc::clone(&filter);
-    WalkBuilder::new(&repo.path)
-      .hidden(true)
-      .ignore(true)
-      .git_ignore(true)
-      .git_global(true)
-      .git_exclude(true)
-      .parents(false)
-      .require_git(false)
-      .follow_links(false)
-      .filter_entry(move |entry| filter.admits(entry))
-      .build_parallel()
   };
+  // ignore's parallel walker spawns threads per walk and parks idle workers in 1 ms sleeps; it measured slower than this walk up to thousands of files.
+  let walker = WalkBuilder::new(&repo.path)
+    .hidden(true)
+    .ignore(true)
+    .git_ignore(true)
+    .git_global(true)
+    .git_exclude(true)
+    .parents(false)
+    .require_git(false)
+    .follow_links(false)
+    .filter_entry(move |entry| filter.admits(entry))
+    .build();
 
-  let collected = Mutex::new(Collected::default());
-  walker.run(|| {
-    let collected = &collected;
-    let include = &include;
-    Box::new(move |result| {
-      let outcome = match result {
-        Ok(entry) => classify(&entry, repo, include, max_file_bytes),
-        Err(error) => Outcome::WalkError(error.to_string()),
-      };
-      let Ok(mut sink) = collected.lock() else { return WalkState::Quit };
-      match outcome {
-        Outcome::Ignored => {}
-        Outcome::File(file) => sink.files.push(file),
-        Outcome::Skipped(path, reason) => sink.skipped.push((path, reason)),
-        Outcome::WalkError(message) => sink.walk_errors.push(message),
-      }
-      WalkState::Continue
-    })
-  });
-
-  let mut collected = collected.into_inner().unwrap_or_default();
-  collected.files.sort_by(|a, b| a.path.cmp(&b.path));
-  collected.skipped.sort();
-  collected.walk_errors.sort();
-  Ok(DiscoveryResult {
-    files: collected.files,
-    skipped: collected.skipped,
-    walk_errors: collected.walk_errors,
-  })
+  let mut result = DiscoveryResult::default();
+  for entry in walker {
+    let outcome = match entry {
+      Ok(entry) => classify(&entry, repo, &include, max_file_bytes),
+      Err(error) => Outcome::WalkError(error.to_string()),
+    };
+    match outcome {
+      Outcome::Ignored => {}
+      Outcome::File(file) => result.files.push(file),
+      Outcome::Skipped(path, reason) => result.skipped.push((path, reason)),
+      Outcome::WalkError(message) => result.walk_errors.push(message),
+    }
+  }
+  result.files.sort_by(|a, b| a.path.cmp(&b.path));
+  result.skipped.sort();
+  result.walk_errors.sort();
+  Ok(result)
 }
 
 enum Outcome {

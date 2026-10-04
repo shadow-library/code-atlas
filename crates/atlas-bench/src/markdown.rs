@@ -254,17 +254,17 @@ fn incremental(report: &PerfReport) -> String {
   )
 }
 
-fn queries(report: &PerfReport) -> String {
-  let rows: Vec<Vec<String>> = corpus_names(report)
+fn query_rows(report: &PerfReport, suffix: &str) -> Vec<Vec<String>> {
+  corpus_names(report)
     .into_iter()
     .filter_map(|name| {
       let record = find(report, name, "query_latency").filter(|record| record.is_ok())?;
       let barrier = metric(find(report, name, "no_change_barrier"), "barrier_p50_ms");
       let mut row = vec![name.to_owned(), cell(barrier, |value| format!("{value:.1}"))];
       for kind in QUERY_KINDS {
-        let p50 = metric(Some(record), &format!("{kind}_p50_ms"));
-        let p95 = metric(Some(record), &format!("{kind}_p95_ms"));
-        let max = metric(Some(record), &format!("{kind}_max_ms"));
+        let p50 = metric(Some(record), &format!("{kind}{suffix}_p50_ms"));
+        let p95 = metric(Some(record), &format!("{kind}{suffix}_p95_ms"));
+        let max = metric(Some(record), &format!("{kind}{suffix}_max_ms"));
         row.push(match (p50, p95, max) {
           (Some(p50), Some(p95), _) => format!("{p50:.1} / {p95:.1}"),
           (Some(p50), None, Some(max)) => format!("{p50:.1} / max {max:.1}"),
@@ -273,12 +273,16 @@ fn queries(report: &PerfReport) -> String {
       }
       Some(row)
     })
-    .collect();
+    .collect()
+}
+
+fn queries(report: &PerfReport) -> String {
   let mut headers = vec!["corpus", "barrier p50"];
   headers.extend(QUERY_KINDS);
   format!(
-    "## Query latency (p50 / p95, ms)\n\nEach call includes the freshness barrier, shown in the second column as the no-change barrier p50; the engine API does not expose a way to time a query without it, so subtract that column for an estimate of the query alone. `impact` uses depth 3, `context` a 6000 token budget. 30 deterministic targets (hubs plus a stride sample). With fewer than 20 samples there is no p95: the cell shows the max instead (`api` and `unused` take 3 samples, are abandoned after 60 s, and a kind stops sampling once it has spent 30 s). `unused` is left out of the concurrency mix.\n\n{}",
-    table(&headers, &rows)
+    "## Query latency (p50 / p95, ms)\n\n`impact` uses depth 3, `context` a 6000 token budget. 30 deterministic targets (hubs plus a stride sample). With fewer than 20 samples there is no p95: the cell shows the max instead (`api` and `unused` take 3 samples, are abandoned after 60 s, and a kind stops sampling once it has spent 30 s). `unused` is left out of the concurrency mix.\n\n### Including the freshness barrier\n\nEach call runs the barrier first; the second column is the no-change barrier p50.\n\n{}### Query alone (barrier skipped)\n\nThe same calls through `QueryEngine::without_barrier`, which answers from the current generation without scanning.\n\n{}",
+    table(&headers, &query_rows(report, "")),
+    table(&headers, &query_rows(report, "_nobarrier"))
   )
 }
 

@@ -7,9 +7,11 @@ use atlas_project::{AtlasHome, Project};
 use atlas_scip::ScipFacts;
 use atlas_similarity::SimilarityIndex;
 use atlas_store::{RunOutcome, RunReport, RunStatus, Store, StoreOptions};
+use rayon::prelude::*;
 
 use crate::analyze::Toolchain;
 use crate::error::{EngineError, EngineResult};
+use crate::flight::SingleFlight;
 use crate::lock::{Contention, IndexLock};
 use crate::options::{EngineOptions, IndexMode};
 use crate::passes::is_reserved_pass_name;
@@ -18,13 +20,15 @@ use crate::run::{RunEnv, execute, key_label};
 use crate::scan::{RepoScan, ScanOutcome, scan_repo};
 use crate::similarity::{SIMILARITY_BLOB, SIMILARITY_BLOB_VERSION, encode_persisted};
 use crate::state::{
-  DIRTY_BLOB, EngineMeta, EngineState, RepoHealth, ScipMeta, all_skipped, load_state, project_fingerprint, read_project_fingerprint, write_project_fingerprint, write_skipped,
+  DIRTY_BLOB, EngineMeta, EngineState, RepoHealth, SCIP_BLOB, SCIP_BLOB_VERSION, ScipMeta, all_skipped, load_state, project_fingerprint, read_project_fingerprint,
+  write_project_fingerprint, write_skipped,
 };
 use crate::watch::WatchSignals;
 
 const INTERRUPTED_RUN_SCAN: usize = 100;
 const INDEX_TRIGGERS: [&str; 2] = ["barrier", "index"];
 pub(crate) const PROJECT_CHANGED: &str = "project configuration changed; reopen the engine";
+const BARRIER_SKIPPED: &str = "the freshness barrier was skipped (benchmark only); the answer may be stale";
 
 pub(crate) struct Inner {
   pub state: EngineState,
@@ -56,6 +60,8 @@ pub struct Engine {
   pub(crate) options: EngineOptions,
   pub(crate) toolchain: Toolchain,
   pub(crate) inner: Mutex<Inner>,
+  barriers: SingleFlight<FreshnessReport>,
+  scip_meta: Mutex<Option<DecodedScipMeta>>,
   pub(crate) similarity: RwLock<Arc<SimilarityIndex>>,
   pub(crate) watch: Arc<WatchSignals>,
 }
@@ -68,7 +74,12 @@ struct PersistedView {
   generation: Option<RunId>,
   in_progress: bool,
   project: Option<String>,
-  scip: ScipMeta,
+  scip: Option<Vec<u8>>,
+}
+
+struct DecodedScipMeta {
+  bytes: Option<Vec<u8>>,
+  meta: ScipMeta,
 }
 
 enum Plan {
@@ -108,6 +119,8 @@ impl Engine {
         lock,
         health: StateHealth::Synced,
       }),
+      barriers: SingleFlight::default(),
+      scip_meta: Mutex::new(None),
       similarity: RwLock::new(Arc::new(loaded.similarity)),
       watch: Arc::new(WatchSignals::default()),
       options,
@@ -178,24 +191,48 @@ impl Engine {
   }
 
   pub fn ensure_fresh(&self) -> EngineResult<FreshnessReport> {
+    let arrived = Instant::now();
+    let mut report = self.barriers.board(|| self.fly_barrier());
+    match &mut report {
+      FreshnessReport::Fresh(header) | FreshnessReport::Degraded { header, .. } => header.duration = arrived.elapsed(),
+    }
+    Ok(report)
+  }
+
+  #[doc(hidden)]
+  pub fn barrier_scans(&self) -> u64 {
+    self.barriers.launched()
+  }
+
+  #[doc(hidden)]
+  pub fn skip_barrier(&self) -> FreshnessReport {
+    let inner = lock_inner(&self.inner);
+    FreshnessReport::Degraded {
+      header: self.header(&inner.state, None, 0, Duration::ZERO, ScanKind::StatScan),
+      failed_files: Vec::new(),
+      reason: BARRIER_SKIPPED.to_owned(),
+    }
+  }
+
+  fn fly_barrier(&self) -> FreshnessReport {
     let started = Instant::now();
     let mut inner = lock_inner(&self.inner);
     let outcome = catch_panic(|| self.barrier(&mut inner, started));
     match outcome {
-      Ok(report) => Ok(report),
-      Err(EngineError::ProjectConfigChanged) => Ok(FreshnessReport::Degraded {
+      Ok(report) => report,
+      Err(EngineError::ProjectConfigChanged) => FreshnessReport::Degraded {
         header: self.header(&inner.state, None, 0, started.elapsed(), ScanKind::StatScan),
         failed_files: Vec::new(),
         reason: PROJECT_CHANGED.to_owned(),
-      }),
+      },
       Err(error) => {
         tracing::error!(error = %error, "freshness barrier could not bring the index up to date");
         inner.health = StateHealth::NeedsReload { reason: error.to_string() };
-        Ok(FreshnessReport::Degraded {
+        FreshnessReport::Degraded {
           header: self.header(&inner.state, None, 0, started.elapsed(), ScanKind::StatScan),
           failed_files: Vec::new(),
           reason: format!("index update failed: {error}"),
-        })
+        }
       }
     }
   }
@@ -331,7 +368,7 @@ impl Engine {
   pub(crate) fn sync(&self, inner: &mut Inner) -> EngineResult<bool> {
     let view = self.persisted_view()?;
     let Inner { state, health, lock } = inner;
-    state.scip = view.scip.clone();
+    self.adopt_scip_meta(state, view.scip)?;
     if view.in_progress && !state.pending.force_full_resolve {
       let recovered = lock.try_hold(|| self.reload(state, health, Recovery::Crashed))?;
       return match recovered {
@@ -347,7 +384,7 @@ impl Engine {
 
   fn sync_holding_lock(&self, state: &mut EngineState, health: &mut StateHealth) -> EngineResult<bool> {
     let view = self.persisted_view()?;
-    state.scip = view.scip.clone();
+    self.adopt_scip_meta(state, view.scip)?;
     let recovery = match view.in_progress && !state.pending.force_full_resolve {
       true => Recovery::Crashed,
       false => Recovery::None,
@@ -365,7 +402,7 @@ impl Engine {
         generation: EngineMeta::read(tx)?.and_then(|meta| meta.generation).map(RunId),
         in_progress: tx.blob(DIRTY_BLOB)?.is_some(),
         project: read_project_fingerprint(tx)?,
-        scip: ScipMeta::read(tx)?,
+        scip: tx.blob(SCIP_BLOB)?.filter(|blob| blob.version == SCIP_BLOB_VERSION).map(|blob| blob.bytes),
       })
     })?;
     if view.project.as_ref().is_some_and(|persisted| *persisted != self.fingerprint()) {
@@ -373,6 +410,25 @@ impl Engine {
       return Err(EngineError::ProjectConfigChanged);
     }
     Ok(view)
+  }
+
+  fn adopt_scip_meta(&self, state: &mut EngineState, bytes: Option<Vec<u8>>) -> EngineResult<()> {
+    let mut decoded = self.scip_meta.lock().unwrap_or_else(PoisonError::into_inner);
+    let cached = match decoded.take().filter(|cached| cached.bytes == bytes) {
+      Some(cached) => cached,
+      None => DecodedScipMeta {
+        meta: match &bytes {
+          Some(bytes) => serde_json::from_slice(bytes).map_err(|error| EngineError::codec("scip meta", error))?,
+          None => ScipMeta::default(),
+        },
+        bytes,
+      },
+    };
+    if state.scip != cached.meta {
+      state.scip = cached.meta.clone();
+    }
+    *decoded = Some(cached);
+    Ok(())
   }
 
   fn reload(&self, state: &mut EngineState, health: &mut StateHealth, recovery: Recovery) -> EngineResult<()> {
@@ -393,7 +449,8 @@ impl Engine {
 
   fn scan_all(&self, state: &EngineState) -> Vec<RepoScan> {
     let max_file_bytes = self.project().settings.max_file_bytes;
-    state.repos.values().map(|repo| scan_repo(repo, max_file_bytes)).collect()
+    let repos: Vec<_> = state.repos.values().collect();
+    repos.into_par_iter().map(|repo| scan_repo(repo, max_file_bytes)).collect()
   }
 
   fn plan(&self, state: &EngineState) -> Plan {

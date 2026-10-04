@@ -54,6 +54,9 @@ impl Session {
   }
 
   pub(crate) fn sync_registry(&self) -> Result<(), ToolError> {
+    if self.registry_matches()? {
+      return Ok(());
+    }
     let mut refresh = self.refresh.lock().unwrap_or_else(PoisonError::into_inner);
     let registry = self.load_registry()?;
     let latest = registry.project(&self.project).map_err(|_| ToolError::ProjectGone(self.project.clone()))?;
@@ -67,6 +70,13 @@ impl Session {
       refresh.watcher = start_watcher(self.engine());
     }
     Ok(())
+  }
+
+  // Concurrent calls compare without the refresh lock; a reload re-reads the registry under the lock so a call holding an older copy never reverts it.
+  fn registry_matches(&self) -> Result<bool, ToolError> {
+    let registry = self.load_registry()?;
+    let latest = registry.project(&self.project).map_err(|_| ToolError::ProjectGone(self.project.clone()))?;
+    Ok(*self.engine().project() == *latest)
   }
 
   fn load_registry(&self) -> Result<Registry, ToolError> {

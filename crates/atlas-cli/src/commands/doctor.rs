@@ -58,6 +58,7 @@ pub fn run(ctx: &Context) -> CliResult<Outcome> {
       }
     }
   }
+  checks.push(sqlite_build());
   checks.push(rust_analyzer());
   checks.push(tool("npx", "npx", &["--version"], "needed for TypeScript SCIP indexing"));
   checks.push(tool("claude", "claude", &["--version"], "needed to connect Claude Code and for LLM enrichment through it"));
@@ -140,6 +141,29 @@ fn lock_state(project: &str, db: &Path) -> Check {
   }
 }
 
+fn sqlite_build() -> Check {
+  let options = Connection::open_in_memory().and_then(|connection| {
+    let mut statement = connection.prepare("PRAGMA compile_options")?;
+    let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+    rows.collect::<Result<Vec<_>, _>>()
+  });
+  match options {
+    Err(error) => Check::new(Level::Warn, "sqlite build", format!("cannot read compile options: {error}")),
+    Ok(options) => sqlite_build_check(&options),
+  }
+}
+
+fn sqlite_build_check(options: &[String]) -> Check {
+  match options.iter().any(|option| option == "ENABLE_MEMORY_MANAGEMENT") {
+    true => Check::new(
+      Level::Warn,
+      "sqlite build",
+      "compiled with ENABLE_MEMORY_MANAGEMENT: one process-wide page-cache mutex serialises concurrent MCP queries; build from a checkout (cargo install --path) or set LIBSQLITE3_FLAGS",
+    ),
+    false => Check::new(Level::Ok, "sqlite build", "per-connection page caches; concurrent queries scale"),
+  }
+}
+
 fn rust_analyzer() -> Check {
   match RustAnalyzerScip::new().availability() {
     Availability::Available => Check::new(Level::Ok, "rust-analyzer", "available for Rust SCIP indexing"),
@@ -156,5 +180,23 @@ fn tool(name: &str, program: &str, args: &[&str], purpose: &str) -> Check {
     }
     Ok(output) => Check::new(Level::Warn, name, format!("`{program} {}` exited with {}; {purpose}", args.join(" "), output.status)),
     Err(_) => Check::new(Level::Warn, name, format!("not found on PATH; {purpose}")),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn should_warn_when_sqlite_shares_one_page_cache_across_connections() {
+    let shared = sqlite_build_check(&["THREADSAFE=1".to_owned(), "ENABLE_MEMORY_MANAGEMENT".to_owned()]);
+    let separate = sqlite_build_check(&["THREADSAFE=1".to_owned(), "DEFAULT_MEMSTATUS=0".to_owned()]);
+    assert_eq!(shared.level, Level::Warn);
+    assert_eq!(separate.level, Level::Ok);
+  }
+
+  #[test]
+  fn should_report_the_workspace_build_without_the_shared_page_cache() {
+    assert_eq!(sqlite_build().level, Level::Ok, "{}", sqlite_build().detail);
   }
 }
