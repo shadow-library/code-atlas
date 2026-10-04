@@ -295,9 +295,12 @@ mod tests {
   }
 
   #[test]
-  fn should_see_express_optional_markers_as_required_after_key_normalisation() {
-    assert_eq!(normalize_route("/users/:id?"), "/users/{id}");
-    assert_eq!(matched("/users", "/users/:id?"), None);
+  fn should_match_express_optional_markers_through_normalised_keys() {
+    assert_eq!(normalize_route("/users/:id?"), "/users/{id?}");
+    let without = matched("/users", "/users/:id?").unwrap();
+    assert_eq!((without.statics, without.skipped_optional), (1, 1));
+    assert_eq!(matched("/users/{}", "/users/:id?").unwrap().params, 1);
+    assert_eq!(matched("/blog", "/blog/[[...slug]]").unwrap().skipped_optional, 1);
   }
 
   #[test]

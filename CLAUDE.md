@@ -102,7 +102,7 @@ The plan lives in `docs/plan/implementation-plan.md`.
 
 ### `ProjectPass` (for `atlas-link` and later passes)
 
-- `trait ProjectPass { fn name(&self) -> &'static str; fn run(&self, tx: &ReadTx<'_>, context: &PassContext<'_>) -> Result<PassOutput, PassError>; }`, with `PassOutput { entities, edges }`. Register passes through `EngineOptions::passes`; every engine that opens a database must register the same passes.
-- Passes run on every index run, after all file and manifest owners are committed: `structure` first, then the registered passes in order. Each output replaces the owner `Project { pass: name }` wholesale.
+- `trait ProjectPass { fn name(&self) -> &'static str; fn run(&self, tx: &ReadTx<'_>, context: &PassContext<'_>) -> Result<PassOutput, PassError>; }`, with `PassOutput { entities, edges }`. `structure` and `link` are built in; extra passes go through `EngineOptions::passes`; every engine that opens a database must register the same passes.
+- Passes run on every index run, after all file and manifest owners are committed: `structure` and `link` first, then the registered passes in order. Each output replaces the owner `Project { pass: name }` wholesale.
 - A pass must be a deterministic function of file-owned facts, `PassContext` (project, package graphs, manifest hashes) and earlier passes. It must not read its own previous output or the `lineage` and `scip:*` owners.
-- An error or panic in a pass removes its facts and makes the run partial. The names `repos`, `structure`, `lineage` and the prefix `scip:` are reserved, and `Engine::open` rejects them and duplicate names.
+- An error or panic in a pass removes its facts and makes the run partial. The names `repos`, `structure`, `link`, `lineage` and the prefix `scip:` are reserved, and `Engine::open` rejects them and duplicate names.

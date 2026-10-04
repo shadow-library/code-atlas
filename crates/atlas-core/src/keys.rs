@@ -247,12 +247,95 @@ pub fn ts_module_path(file: &RelPath, package_dir: Option<&RelPath>) -> Option<V
 }
 
 pub fn normalize_route(raw: &str) -> String {
-  let path = raw.split(['?', '#']).next().unwrap_or_default();
-  let segments: Vec<String> = path.split('/').filter(|segment| !segment.is_empty()).map(normalize_route_segment).collect();
+  let path = raw.split('#').next().unwrap_or_default();
+  let mut segments: Vec<String> = Vec::new();
+  for segment in path.split('/').filter(|segment| !segment.is_empty()) {
+    match classify_route_segment(segment) {
+      RouteSegmentForm::Plain(text) => segments.push(normalize_route_segment(text)),
+      RouteSegmentForm::Optional(name) => segments.push(format!("{{{name}?}}")),
+      RouteSegmentForm::BeforeQuery(text) => {
+        if !text.is_empty() {
+          segments.push(normalize_route_segment(text));
+        }
+        break;
+      }
+    }
+  }
   format!("/{}", segments.join("/"))
 }
 
+enum RouteSegmentForm<'a> {
+  Plain(&'a str),
+  Optional(&'a str),
+  BeforeQuery(&'a str),
+}
+
+fn classify_route_segment(segment: &str) -> RouteSegmentForm<'_> {
+  if let Some(end) = colon_param_end(segment)
+    && segment[end..].starts_with('?')
+  {
+    return match &segment[end..] {
+      "?" => RouteSegmentForm::Optional(colon_param_name(&segment[..end])),
+      _ => RouteSegmentForm::BeforeQuery(&segment[..end]),
+    };
+  }
+  match query_start(segment) {
+    Some(index) => RouteSegmentForm::BeforeQuery(&segment[..index]),
+    None => RouteSegmentForm::Plain(segment),
+  }
+}
+
+fn colon_param_name(param: &str) -> &str {
+  let name = &param[1..];
+  name.split('(').next().unwrap_or(name)
+}
+
+fn colon_param_end(segment: &str) -> Option<usize> {
+  let rest = segment.strip_prefix(':')?;
+  let name_len = rest.find(|c: char| !(c.is_alphanumeric() || c == '_')).unwrap_or(rest.len());
+  if name_len == 0 {
+    return None;
+  }
+  let end = 1 + name_len;
+  if !segment[end..].starts_with('(') {
+    return Some(end);
+  }
+  let mut depth = 0usize;
+  let mut escaped = false;
+  for (offset, c) in segment[end..].char_indices() {
+    match (escaped, c) {
+      (true, _) => escaped = false,
+      (false, '\\') => escaped = true,
+      (false, '(') => depth += 1,
+      (false, ')') => {
+        depth -= 1;
+        if depth == 0 {
+          return Some(end + offset + 1);
+        }
+      }
+      _ => {}
+    }
+  }
+  None
+}
+
+fn query_start(segment: &str) -> Option<usize> {
+  let mut depth = 0usize;
+  for (index, c) in segment.char_indices() {
+    match c {
+      '{' => depth += 1,
+      '}' => depth = depth.saturating_sub(1),
+      '?' if depth == 0 => return Some(index),
+      _ => {}
+    }
+  }
+  None
+}
+
 fn normalize_route_segment(segment: &str) -> String {
+  if let Some(name) = segment.strip_prefix("[[").and_then(|rest| rest.strip_suffix("]]")) {
+    return format!("{{{}?}}", name.trim_start_matches("..."));
+  }
   let parameter = segment
     .strip_prefix(':')
     .or_else(|| segment.strip_prefix('{').and_then(|s| s.strip_suffix('}')))
@@ -857,6 +940,14 @@ mod tests {
         "endpoint:acme-api:ANY /a b:c",
       ),
       (
+        EntityKey::Endpoint {
+          repo: repo("acme-api"),
+          method: HttpMethod::Get,
+          route: "/users/{id?}".into(),
+        },
+        "endpoint:acme-api:GET /users/{id?}",
+      ),
+      (
         EntityKey::ClientCall {
           repo: repo("acme-web"),
           method: HttpMethod::Unknown,
@@ -1017,6 +1108,20 @@ mod tests {
       ("//a///b/", "/a/b"),
       ("/users/:id(\\d+)", "/users/{id}"),
       ("/search?q=x#top", "/search"),
+      ("/users?x=1", "/users"),
+      ("/users/:id?", "/users/{id?}"),
+      ("/users/:id?/posts", "/users/{id?}/posts"),
+      ("/users/:id(\\d+)?", "/users/{id?}"),
+      ("/users/:id?x=1", "/users/{id}"),
+      ("/users/:id?x=1&next=/a/b", "/users/{id}"),
+      ("/users/{id?}", "/users/{id?}"),
+      ("/users/{id?}?x=1", "/users/{id?}"),
+      ("/blog/[[...slug]]", "/blog/{slug?}"),
+      ("/blog/[[slug]]", "/blog/{slug?}"),
+      ("/blog/[[...slug]]?x=1", "/blog/{slug?}"),
+      ("/blog/[[...slug]]?", "/blog/{slug?}"),
+      ("/blog/[...slug]?x=1", "/blog/{slug}"),
+      ("/?x=1", "/"),
       ("/", "/"),
       ("", "/"),
       ("/files/*", "/files/*"),

@@ -430,3 +430,160 @@ fn should_keep_edges_to_a_collected_target_until_their_owner_re_resolves() {
   let reached_b = traversal.nodes.iter().find(|node| node.id == id("b")).map(|node| node.path.clone());
   assert_eq!(reached_b, Some(vec![dangling.id]));
 }
+
+fn with_attrs(mut entity: atlas_core::Entity, attrs: &[(&str, serde_json::Value)]) -> atlas_core::Entity {
+  entity.attrs.extend(attrs.iter().map(|(name, value)| ((*name).to_owned(), value.clone())));
+  entity
+}
+
+#[test]
+fn should_union_entity_attrs_across_assertions_without_changing_certainty() {
+  let store = Store::open_in_memory().unwrap();
+  let file = file_owner("src/a.rs");
+  let pass = Owner::Project { pass: "link".into() };
+  let mut declared = with_attrs(entity("shared"), &[("language", serde_json::json!("rust"))]);
+  declared.certainty = Certainty::CompilerVerified;
+  replace(&store, &file, &facts(vec![declared.clone()], vec![]));
+  replace(&store, &pass, &facts(vec![with_attrs(entity("shared"), &[("consumers", serde_json::json!(2))])], vec![]));
+
+  let merged = read(&store, |tx| tx.entity(id("shared"))).unwrap();
+
+  assert_eq!(merged.certainty, Certainty::CompilerVerified);
+  assert_eq!(merged.attrs.get("language"), Some(&serde_json::json!("rust")));
+  assert_eq!(merged.attrs.get("consumers"), Some(&serde_json::json!(2)));
+  assert_eq!(read(&store, |tx| tx.entity_assertions(id("shared"))).len(), 2);
+  assert_eq!(read(&store, |tx| tx.entity_assertions(id("shared")))[0].fact, declared);
+}
+
+#[test]
+fn should_resolve_entity_attr_conflicts_by_winner_then_owner_order() {
+  let store = Store::open_in_memory().unwrap();
+  let first = file_owner("src/a.rs");
+  let second = file_owner("src/b.rs");
+  let pass = Owner::Project { pass: "link".into() };
+  let mut strongest = with_attrs(entity("shared"), &[("count", serde_json::json!("pass"))]);
+  strongest.certainty = Certainty::CompilerVerified;
+  replace(
+    &store,
+    &second,
+    &facts(
+      vec![with_attrs(
+        entity("shared"),
+        &[("count", serde_json::json!("second")), ("only_second", serde_json::json!(true))],
+      )],
+      vec![],
+    ),
+  );
+  replace(
+    &store,
+    &first,
+    &facts(
+      vec![with_attrs(entity("shared"), &[("count", serde_json::json!("first")), ("tag", serde_json::json!("first"))])],
+      vec![],
+    ),
+  );
+  replace(
+    &store,
+    &second,
+    &facts(
+      vec![with_attrs(
+        entity("shared"),
+        &[
+          ("count", serde_json::json!("second")),
+          ("tag", serde_json::json!("second")),
+          ("only_second", serde_json::json!(true)),
+        ],
+      )],
+      vec![],
+    ),
+  );
+
+  let before = read(&store, |tx| tx.entity(id("shared"))).unwrap();
+  assert_eq!(before.attrs.get("count"), Some(&serde_json::json!("first")));
+  assert_eq!(before.attrs.get("tag"), Some(&serde_json::json!("first")));
+  assert_eq!(before.attrs.get("only_second"), Some(&serde_json::json!(true)));
+
+  replace(&store, &pass, &facts(vec![strongest], vec![]));
+  let after = read(&store, |tx| tx.entity(id("shared"))).unwrap();
+  assert_eq!(after.attrs.get("count"), Some(&serde_json::json!("pass")));
+  assert_eq!(after.attrs.get("tag"), Some(&serde_json::json!("first")));
+  assert_eq!(after.attrs.get("only_second"), Some(&serde_json::json!(true)));
+}
+
+#[test]
+fn should_union_edge_attrs_across_assertions_deterministically() {
+  let forward = Store::open_in_memory().unwrap();
+  let backward = Store::open_in_memory().unwrap();
+  let file = file_owner("src/a.rs");
+  let pass = Owner::Project { pass: "link".into() };
+  let mut from_file = edge(EdgeKind::Calls, "a", "b", Certainty::CompilerVerified, "src/a.rs");
+  from_file.attrs.insert("via".into(), serde_json::json!("file"));
+  from_file.attrs.insert("file_only".into(), serde_json::json!(1));
+  let mut from_pass = edge(EdgeKind::Calls, "a", "b", Certainty::Syntactic, "src/z.rs");
+  from_pass.attrs.insert("via".into(), serde_json::json!("pass"));
+  from_pass.attrs.insert("pass_only".into(), serde_json::json!(2));
+
+  replace(&forward, &file, &facts(vec![entity("a")], vec![from_file.clone()]));
+  replace(&forward, &pass, &facts(vec![], vec![from_pass.clone()]));
+  replace(&backward, &pass, &facts(vec![], vec![from_pass.clone()]));
+  replace(&backward, &file, &facts(vec![entity("a")], vec![from_file.clone()]));
+
+  let merged = read(&forward, |tx| tx.edge(from_file.id)).unwrap();
+  assert_eq!(merged.certainty, Certainty::CompilerVerified);
+  assert_eq!(merged.attrs.get("via"), Some(&serde_json::json!("file")));
+  assert_eq!(merged.attrs.get("file_only"), Some(&serde_json::json!(1)));
+  assert_eq!(merged.attrs.get("pass_only"), Some(&serde_json::json!(2)));
+  assert_eq!(read(&backward, |tx| tx.edge(from_file.id)), Some(merged));
+  assert_eq!(read(&forward, |tx| tx.fact_set_digest()), read(&backward, |tx| tx.fact_set_digest()));
+}
+
+#[test]
+fn should_report_the_owner_and_certainty_that_supplied_each_attr() {
+  let store = Store::open_in_memory().unwrap();
+  let file = file_owner("src/a.rs");
+  let pass = Owner::Project { pass: "link".into() };
+  let mut weak = with_attrs(entity("shared"), &[("used", serde_json::json!(true)), ("language", serde_json::json!("pass"))]);
+  weak.certainty = heuristic(0.6);
+  replace(
+    &store,
+    &file,
+    &facts(vec![with_attrs(entity("shared"), &[("language", serde_json::json!("rust"))])], vec![]),
+  );
+  replace(&store, &pass, &facts(vec![weak], vec![]));
+
+  let merged = read(&store, |tx| tx.entity_with_sources(id("shared"))).unwrap();
+
+  assert_eq!(merged.entity.certainty, Certainty::Syntactic);
+  assert_eq!(
+    merged.attr_sources["language"],
+    atlas_store::AttrSource {
+      owner: file,
+      certainty: Certainty::Syntactic
+    }
+  );
+  assert_eq!(
+    merged.attr_sources["used"],
+    atlas_store::AttrSource {
+      owner: pass,
+      certainty: heuristic(0.6)
+    }
+  );
+  assert_eq!(merged.attr_sources.len(), 2);
+}
+
+#[test]
+fn should_produce_the_same_digest_for_entity_attr_unions_in_any_write_order() {
+  let file = file_owner("src/a.rs");
+  let pass = Owner::Project { pass: "link".into() };
+  let from_file = with_attrs(entity("shared"), &[("count", serde_json::json!("file")), ("a", serde_json::json!(1))]);
+  let from_pass = with_attrs(entity("shared"), &[("count", serde_json::json!("pass")), ("b", serde_json::json!(2))]);
+  let forward = Store::open_in_memory().unwrap();
+  let backward = Store::open_in_memory().unwrap();
+  replace(&forward, &file, &facts(vec![from_file.clone()], vec![]));
+  replace(&forward, &pass, &facts(vec![from_pass.clone()], vec![]));
+  replace(&backward, &pass, &facts(vec![from_pass], vec![]));
+  replace(&backward, &file, &facts(vec![from_file], vec![]));
+
+  assert_eq!(read(&forward, |tx| tx.fact_set_digest()), read(&backward, |tx| tx.fact_set_digest()));
+  assert_eq!(read(&forward, |tx| tx.entity(id("shared"))), read(&backward, |tx| tx.entity(id("shared"))));
+}

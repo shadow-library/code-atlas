@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use atlas_core::{Certainty, Edge, EdgeId, Entity, EntityId, EntityKey, EntityKind, Evidence, Owner, RelPath, RepoName, RunId, UnresolvedRef};
+use atlas_core::{Attrs, Certainty, Edge, EdgeId, Entity, EntityId, EntityKey, EntityKind, Evidence, Owner, RelPath, RepoName, RunId, UnresolvedRef};
 use rusqlite::{Connection, OptionalExtension, ToSql, params};
 use serde::{Deserialize, Serialize};
 
@@ -326,7 +326,7 @@ fn insert_entity_projection(conn: &Connection, id: i64, entity: &Entity) -> Stor
 
 fn refresh_entity(conn: &Connection, id: i64) -> StoreResult<Presence> {
   let assertions = entity_assertions(conn, id)?;
-  let Some(winner) = winning_entity(&assertions)? else {
+  let Some(winner) = winning_entity(&assertions)?.map(|assertion| &assertion.fact) else {
     conn.prepare_cached("DELETE FROM entities WHERE id = ?1")?.execute([id])?;
     return Ok(Presence::Gone);
   };
@@ -343,7 +343,7 @@ fn strongest<T>(assertions: &[Assertion<T>], certainty: impl Fn(&T) -> &Certaint
     .max_by(|left, right| certainty(&left.fact).cmp_strength(certainty(&right.fact)).then_with(|| right.owner.cmp(&left.owner)))
 }
 
-pub(crate) fn winning_entity(assertions: &[Assertion<Entity>]) -> StoreResult<Option<&Entity>> {
+fn winning_entity(assertions: &[Assertion<Entity>]) -> StoreResult<Option<&Assertion<Entity>>> {
   let Some(first) = assertions.first() else { return Ok(None) };
   if let Some(other) = assertions.iter().find(|assertion| assertion.fact.key != first.fact.key) {
     return Err(StoreError::IdCollision {
@@ -353,7 +353,63 @@ pub(crate) fn winning_entity(assertions: &[Assertion<Entity>]) -> StoreResult<Op
       incoming: other.fact.key.to_string(),
     });
   }
-  Ok(strongest(assertions, |entity: &Entity| &entity.certainty).map(|assertion| &assertion.fact))
+  Ok(strongest(assertions, |entity: &Entity| &entity.certainty))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttrSource {
+  pub owner: Owner,
+  pub certainty: Certainty,
+}
+
+pub type AttrSources = BTreeMap<String, AttrSource>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MergedEntity {
+  pub entity: Entity,
+  pub attr_sources: AttrSources,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MergedEdge {
+  pub edge: Edge,
+  pub attr_sources: AttrSources,
+}
+
+fn union_attrs<'a, T>(
+  winner: &'a Assertion<T>,
+  assertions: &'a [Assertion<T>],
+  attrs: impl Fn(&'a T) -> &'a Attrs,
+  certainty: impl Fn(&'a T) -> &'a Certainty,
+) -> (Attrs, AttrSources) {
+  let mut ordered: Vec<&Assertion<T>> = assertions.iter().filter(|assertion| !std::ptr::eq(*assertion, winner)).collect();
+  ordered.sort_by(|left, right| left.owner.cmp(&right.owner));
+  let mut merged = Attrs::new();
+  let mut sources = AttrSources::new();
+  for assertion in std::iter::once(winner).chain(ordered) {
+    for (name, value) in attrs(&assertion.fact) {
+      if merged.contains_key(name) {
+        continue;
+      }
+      merged.insert(name.clone(), value.clone());
+      sources.insert(
+        name.clone(),
+        AttrSource {
+          owner: assertion.owner.clone(),
+          certainty: certainty(&assertion.fact).clone(),
+        },
+      );
+    }
+  }
+  (merged, sources)
+}
+
+pub(crate) fn merge_entity(assertions: &[Assertion<Entity>]) -> StoreResult<Option<MergedEntity>> {
+  let Some(winner) = winning_entity(assertions)? else { return Ok(None) };
+  let (attrs, attr_sources) = union_attrs(winner, assertions, |entity| &entity.attrs, |entity| &entity.certainty);
+  let mut entity = winner.fact.clone();
+  entity.attrs = attrs;
+  Ok(Some(MergedEntity { entity, attr_sources }))
 }
 
 fn replace_edges(conn: &Connection, owner_id: i64, run: Option<i64>, incoming: &[PreparedEdge<'_>], delta: &mut FactDelta) -> StoreResult<()> {
@@ -411,7 +467,7 @@ fn insert_edge_projection(conn: &Connection, id: i64, edge: &Edge) -> StoreResul
 
 fn refresh_edge(conn: &Connection, id: i64) -> StoreResult<Presence> {
   let assertions = edge_assertions(conn, id)?;
-  let Some(merged) = merge_edge(&assertions)? else {
+  let Some(merged) = merge_edge(&assertions)?.map(|merged| merged.edge) else {
     conn.prepare_cached("DELETE FROM edges WHERE id = ?1")?.execute([id])?;
     return Ok(Presence::Gone);
   };
@@ -438,7 +494,7 @@ fn evidence_order(left: &Evidence, right: &Evidence) -> Ordering {
   ))
 }
 
-pub(crate) fn merge_edge(assertions: &[Assertion<Edge>]) -> StoreResult<Option<Edge>> {
+pub(crate) fn merge_edge(assertions: &[Assertion<Edge>]) -> StoreResult<Option<MergedEdge>> {
   let Some(first) = assertions.first() else { return Ok(None) };
   if let Some(other) = assertions
     .iter()
@@ -454,11 +510,13 @@ pub(crate) fn merge_edge(assertions: &[Assertion<Edge>]) -> StoreResult<Option<E
   let Some(winner) = strongest(assertions, |edge: &Edge| &edge.certainty) else {
     return Ok(None);
   };
+  let (attrs, attr_sources) = union_attrs(winner, assertions, |edge| &edge.attrs, |edge| &edge.certainty);
   let mut merged = winner.fact.clone();
+  merged.attrs = attrs;
   merged.evidence = assertions.iter().flat_map(|assertion| assertion.fact.evidence.iter().cloned()).collect();
   merged.evidence.sort_by(evidence_order);
   merged.evidence.dedup();
-  Ok(Some(merged))
+  Ok(Some(MergedEdge { edge: merged, attr_sources }))
 }
 
 fn replace_unresolved(conn: &Connection, owner_id: i64, run: Option<i64>, incoming: &[PreparedUnresolved], delta: &mut FactDelta) -> StoreResult<()> {
@@ -543,7 +601,11 @@ fn sorted_by_owner<T>(mut assertions: Vec<Assertion<T>>) -> Vec<Assertion<T>> {
 impl ReadTx<'_> {
   pub fn entity(&self, id: EntityId) -> StoreResult<Option<Entity>> {
     let assertions = entity_assertions(self.conn(), id.as_i64())?;
-    Ok(winning_entity(&assertions)?.cloned())
+    Ok(merge_entity(&assertions)?.map(|merged| merged.entity))
+  }
+
+  pub fn entity_with_sources(&self, id: EntityId) -> StoreResult<Option<MergedEntity>> {
+    merge_entity(&entity_assertions(self.conn(), id.as_i64())?)
   }
 
   pub fn entity_by_key(&self, key: &EntityKey) -> StoreResult<Option<Entity>> {
@@ -608,6 +670,10 @@ impl ReadTx<'_> {
   }
 
   pub fn edge(&self, id: EdgeId) -> StoreResult<Option<Edge>> {
+    Ok(merge_edge(&edge_assertions(self.conn(), id.as_i64())?)?.map(|merged| merged.edge))
+  }
+
+  pub fn edge_with_sources(&self, id: EdgeId) -> StoreResult<Option<MergedEdge>> {
     merge_edge(&edge_assertions(self.conn(), id.as_i64())?)
   }
 

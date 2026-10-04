@@ -2,29 +2,12 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use atlas_core::{EdgeKind, Entity, EntityId, EntityKey, EntityKind, HttpMethod, Owner, ProjectName, RelPath, RepoName, normalize_route};
-use atlas_engine::{Engine, EngineOptions, PassContext, PassError, PassOutput, ProjectPass};
+use atlas_engine::{Engine, EngineOptions};
 use atlas_project::{AtlasHome, Project, ProjectSettings, RepoConfig};
 use atlas_store::{EdgeFilter, EntityFilter, OwnedFacts, ReadTx};
 use toml::Value;
-
-pub struct LinkPass;
-
-impl ProjectPass for LinkPass {
-  fn name(&self) -> &'static str {
-    atlas_link::PASS_NAME
-  }
-
-  fn run(&self, tx: &ReadTx<'_>, context: &PassContext<'_>) -> Result<PassOutput, PassError> {
-    let output = atlas_link::link(tx, context.project).map_err(|error| PassError::Failed(error.to_string()))?;
-    Ok(PassOutput {
-      entities: output.entities,
-      edges: output.edges,
-    })
-  }
-}
 
 pub fn fixtures_root() -> PathBuf {
   Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures")
@@ -86,11 +69,7 @@ pub fn index_tree(scratch: &Path, name: &str, source: &Path, repos: &[&str]) -> 
     settings: ProjectSettings::default(),
     repos,
   };
-  let options = EngineOptions {
-    passes: vec![Arc::new(LinkPass)],
-    ..EngineOptions::default()
-  };
-  let engine = Engine::open(&project, &AtlasHome::rooted_at(scratch.join("home")), options).unwrap();
+  let engine = Engine::open(&project, &AtlasHome::rooted_at(scratch.join("home")), EngineOptions::default()).unwrap();
   let report = engine.ensure_fresh().unwrap();
   assert!(report.is_fresh(), "{report:?}");
   Indexed {

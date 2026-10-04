@@ -123,7 +123,7 @@ fn check_auth(tx: &ReadTx<'_>, expected: &Value, failures: &mut Vec<String>) {
         repo: api_repo.clone(),
         scheme: scheme.clone(),
       };
-      let Some(summary) = pass_assertion(tx, EntityId::of(&key)) else {
+      let Some(summary) = tx.entity(EntityId::of(&key)).unwrap().filter(|merged| merged.attrs.contains_key("consumers")) else {
         failures.push(format!("auth {key}: no link summary"));
         continue;
       };
@@ -327,6 +327,33 @@ fn should_label_permission_guards_as_authorization_only() {
   assert_eq!(endpoint.attrs["auth_requirement"], json!({ "all_of": ["bearer", "authorization_only:PermissionsGuard"] }));
   assert_eq!(endpoint.attrs["authorization_guards"], json!(["PermissionsGuard"]));
   assert_eq!(endpoint.attrs["unclassified_guards"], json!([]));
+}
+
+#[test]
+fn should_expose_pass_attrs_through_the_merged_entity_view() {
+  let scratch = tempfile::tempdir().unwrap();
+  let indexed = acme(scratch.path());
+  indexed
+    .engine
+    .store()
+    .read(|tx| -> Result<(), atlas_store::StoreError> {
+      let key = EntityKey::Endpoint {
+        repo: RepoName::new("acme-api").unwrap(),
+        method: atlas_core::HttpMethod::Get,
+        route: "/users/{id}".to_owned(),
+      };
+      let merged = tx.entity_by_key(&key).unwrap().unwrap();
+      assert_eq!(merged.attrs["auth_requirement"], json!({ "all_of": ["bearer", "authorization_only:PermissionsGuard"] }));
+      let detector = tx
+        .entity_assertions(merged.id)
+        .unwrap()
+        .into_iter()
+        .find(|assertion| !assertion.fact.attrs.contains_key("auth_requirement"))
+        .unwrap();
+      assert_eq!(detector.fact.certainty, merged.certainty);
+      Ok(())
+    })
+    .unwrap();
 }
 
 #[test]

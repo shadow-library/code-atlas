@@ -132,7 +132,7 @@ fn should_reproduce_the_acme_domain_entity_ground_truth() {
   assert_eq!(
     summary,
     [
-      ("api_endpoint", 10, 8, 2, 0),
+      ("api_endpoint", 10, 10, 0, 0),
       ("auth_scheme", 3, 3, 0, 0),
       ("db_model", 2, 2, 0, 0),
       ("env_var", 5, 5, 0, 2),
@@ -141,8 +141,5 @@ fn should_reproduce_the_acme_domain_entity_ground_truth() {
     ]
   );
   assert_eq!(rows["env_var"].extra, ["env:acme-api:PORT", "env:acme-web:VITE_API_URL"]);
-  assert_eq!(
-    rows["api_endpoint"].missed,
-    ["endpoint:acme-billing:POST /invoices", "endpoint:acme-billing:GET /invoices/{id}"]
-  );
+  assert!(rows["api_endpoint"].missed.is_empty());
 }

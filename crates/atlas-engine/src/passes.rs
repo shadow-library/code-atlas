@@ -16,7 +16,7 @@ pub const PASS_LINEAGE: &str = "lineage";
 const RESERVED_PREFIX: &str = "scip:";
 
 pub(crate) fn is_reserved_pass_name(name: &str) -> bool {
-  matches!(name, PASS_REPOS | PASS_STRUCTURE | PASS_LINEAGE) || name.starts_with(RESERVED_PREFIX)
+  matches!(name, PASS_REPOS | PASS_STRUCTURE | PASS_LINEAGE | atlas_link::PASS_NAME) || name.starts_with(RESERVED_PREFIX)
 }
 
 #[derive(Debug, Error)]
@@ -142,6 +142,22 @@ impl ProjectPass for StructurePass {
       }
     }
     Ok(output)
+  }
+}
+
+pub(crate) struct LinkPass;
+
+impl ProjectPass for LinkPass {
+  fn name(&self) -> &'static str {
+    atlas_link::PASS_NAME
+  }
+
+  fn run(&self, tx: &ReadTx<'_>, context: &PassContext<'_>) -> Result<PassOutput, PassError> {
+    let output = atlas_link::link(tx, context.project).map_err(|error| PassError::Failed(error.to_string()))?;
+    Ok(PassOutput {
+      entities: output.entities,
+      edges: output.edges,
+    })
   }
 }
 

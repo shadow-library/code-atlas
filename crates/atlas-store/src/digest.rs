@@ -4,7 +4,7 @@ use serde::de::DeserializeOwned;
 
 use crate::codec::{canonical_json, from_json};
 use crate::error::StoreResult;
-use crate::facts::{Assertion, merge_edge, parse_owner, winning_entity};
+use crate::facts::{Assertion, merge_edge, merge_entity, parse_owner};
 use crate::tx::ReadTx;
 
 const DIGEST_CONTEXT: &str = "code-atlas 2026-10-04 fact-set digest v1";
@@ -40,8 +40,8 @@ impl ReadTx<'_> {
       "SELECT eo.entity_id, o.key, eo.data FROM entity_owners eo JOIN owners o ON o.id = eo.owner_id ORDER BY eo.entity_id, o.key",
       "entity",
       |owners, assertions| {
-        let Some(winner) = winning_entity(assertions)? else { return Ok(()) };
-        digest.record("entity", &canonical_json(winner)?, owners);
+        let Some(merged) = merge_entity(assertions)? else { return Ok(()) };
+        digest.record("entity", &canonical_json(&merged.entity)?, owners);
         Ok(())
       },
     )?;
@@ -51,7 +51,7 @@ impl ReadTx<'_> {
       "edge",
       |owners, assertions| {
         let Some(merged) = merge_edge(assertions)? else { return Ok(()) };
-        digest.record("edge", &canonical_json(&merged)?, owners);
+        digest.record("edge", &canonical_json(&merged.edge)?, owners);
         Ok(())
       },
     )?;

@@ -74,7 +74,7 @@ impl Engine {
         missing,
       )
     };
-    let passes: Vec<String> = [PASS_REPOS, PASS_STRUCTURE, PASS_LINEAGE]
+    let passes: Vec<String> = [PASS_REPOS, PASS_STRUCTURE, atlas_link::PASS_NAME, PASS_LINEAGE]
       .into_iter()
       .map(str::to_owned)
       .chain(self.options.passes.iter().map(|pass| pass.name().to_owned()))

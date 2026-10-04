@@ -19,7 +19,7 @@ use crate::manifests::manifest_owner_facts;
 use crate::options::{EngineOptions, IndexMode};
 use crate::owner::{FinalOwner, OwnerDraft, build_owner};
 use crate::packages::{clone_graph, default_context, graph_fingerprint, package_context, same_graph};
-use crate::passes::{PASS_LINEAGE, PASS_REPOS, PassContext, PassError, PassOutput, ProjectPass, StructurePass, repos_pass};
+use crate::passes::{LinkPass, PASS_LINEAGE, PASS_REPOS, PassContext, PassError, PassOutput, ProjectPass, StructurePass, repos_pass};
 use crate::report::{FailedFile, RunOutcomeKind, RunSummary};
 use crate::scan::{RepoScan, ScanOutcome, ScannedRepo, is_code_file, is_manifest};
 use crate::similarity::{replace_symbols, symbol_docs};
@@ -1085,8 +1085,8 @@ impl<'a, 'e> Pipeline<'a, 'e> {
       graphs: &graphs,
       manifest_hashes: &manifest_hashes,
     };
-    let structure: Arc<dyn ProjectPass> = Arc::new(StructurePass);
-    let passes: Vec<Arc<dyn ProjectPass>> = std::iter::once(structure).chain(self.env.options.passes.iter().cloned()).collect();
+    let builtin: [Arc<dyn ProjectPass>; 2] = [Arc::new(StructurePass), Arc::new(LinkPass)];
+    let passes: Vec<Arc<dyn ProjectPass>> = builtin.into_iter().chain(self.env.options.passes.iter().cloned()).collect();
     for pass in passes {
       let name = pass.name();
       let span = tracing::info_span!("project_pass", pass = name);
