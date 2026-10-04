@@ -78,7 +78,7 @@ repo = "acme-billing"
 method = "POST"
 route = "/invoices"
 handler = { repo = "acme-billing", path = "src/handlers.rs", symbol = "create_invoice" }
-certainty = ["resolved"]
+certainty = ["syntactic", "resolved"]
 note = "route literal is in src/lib.rs `.route(\"/invoices\", post(create_invoice))`; handler identifier resolved through the `use crate::handlers::{create_invoice, get_invoice}` import"
 
 [[entity]]
@@ -87,7 +87,7 @@ repo = "acme-billing"
 method = "GET"
 route = "/invoices/:id"
 handler = { repo = "acme-billing", path = "src/handlers.rs", symbol = "get_invoice" }
-certainty = ["resolved"]
+certainty = ["syntactic", "resolved"]
 note = "axum 0.8 `{id}` path syntax normalised to :id"
 
 [[entity]]
@@ -544,8 +544,8 @@ min_confidence = 0.8
 kind = "depends_on_package"
 from = { kind = "package", repo = "acme-web", name = "acme-web" }
 to = { kind = "package", repo = "acme-sdk", name = "@acme/sdk" }
-certainty = ["resolved"]
-note = "\"@acme/sdk\": \"file:../acme-sdk\" resolves by path to the acme-sdk repo of the same project"
+certainty = ["syntactic", "resolved"]
+note = "\"@acme/sdk\": \"file:../acme-sdk\" resolves by path to the acme-sdk repo of the same project; manifest dependency edges are syntactic (atlas-resolve, with an in_project attr), atlas-link adds cross_repo and a resolved repo-to-repo edge"
 
 [[edge]]
 kind = "re_exports"
@@ -562,7 +562,7 @@ certainty = ["syntactic", "resolved"]
 note = "export * from \"./client\""
 
 [[edge]]
-kind = "supports_auth"
+kind = "implements_auth"
 from = { repo = "acme-api", path = "src/auth/jwt-auth.guard.ts", symbol = "JwtAuthGuard" }
 to = { kind = "auth_scheme", repo = "acme-api", scheme = "bearer" }
 certainty = ["heuristic"]
@@ -570,7 +570,7 @@ min_confidence = 0.7
 note = "reads headers[\"authorization\"] and checks the \"Bearer \" prefix"
 
 [[edge]]
-kind = "supports_auth"
+kind = "implements_auth"
 from = { repo = "acme-api", path = "src/auth/api-key.guard.ts", symbol = "ApiKeyGuard" }
 to = { kind = "auth_scheme", repo = "acme-api", scheme = "api_key" }
 certainty = ["heuristic"]
@@ -578,12 +578,84 @@ min_confidence = 0.7
 note = "reads headers[\"x-api-key\"]"
 
 [[edge]]
-kind = "supports_auth"
+kind = "implements_auth"
 from = { repo = "acme-api", path = "src/auth/session.guard.ts", symbol = "SessionGuard" }
 to = { kind = "auth_scheme", repo = "acme-api", scheme = "session_cookie" }
 certainty = ["heuristic"]
 min_confidence = 0.7
 note = "reads cookies[\"acme_session\"]"
+
+[[edge]]
+kind = "supports_auth"
+from = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/users/:id" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "bearer" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "class-level @UseGuards(JwtAuthGuard, PermissionsGuard); PermissionsGuard is authorization, not an authentication scheme"
+
+[[edge]]
+kind = "supports_auth"
+from = { kind = "api_endpoint", repo = "acme-api", method = "POST", route = "/users" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "bearer" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "endpoint accepts the scheme through its guards (requires_guard -> implements_auth); mirrors [[endpoint_auth]]"
+
+[[edge]]
+kind = "supports_auth"
+from = { kind = "api_endpoint", repo = "acme-api", method = "PATCH", route = "/users/:id" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "bearer" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "endpoint accepts the scheme through its guards (requires_guard -> implements_auth); mirrors [[endpoint_auth]]"
+
+[[edge]]
+kind = "supports_auth"
+from = { kind = "api_endpoint", repo = "acme-api", method = "DELETE", route = "/users/:id" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "bearer" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "endpoint accepts the scheme through its guards (requires_guard -> implements_auth); mirrors [[endpoint_auth]]"
+
+[[edge]]
+kind = "supports_auth"
+from = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/orders/:id" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "bearer" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "composite JwtOrApiKeyGuard delegates to JwtAuthGuard (any_of)"
+
+[[edge]]
+kind = "supports_auth"
+from = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/orders/:id" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "api_key" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "composite JwtOrApiKeyGuard delegates to ApiKeyGuard (any_of)"
+
+[[edge]]
+kind = "supports_auth"
+from = { kind = "api_endpoint", repo = "acme-api", method = "POST", route = "/orders" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "bearer" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "endpoint accepts the scheme through its guards (requires_guard -> implements_auth); mirrors [[endpoint_auth]]"
+
+[[edge]]
+kind = "supports_auth"
+from = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/admin/stats" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "session_cookie" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "endpoint accepts the scheme through its guards (requires_guard -> implements_auth); mirrors [[endpoint_auth]]"
+
+[[edge]]
+kind = "supports_auth"
+from = { kind = "api_endpoint", repo = "acme-api", method = "GET", route = "/v1/reports/export" }
+to = { kind = "auth_scheme", repo = "acme-api", scheme = "api_key" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "endpoint accepts the scheme through its guards (requires_guard -> implements_auth); mirrors [[endpoint_auth]]"
 
 [[edge]]
 kind = "uses_auth"

@@ -11,10 +11,13 @@ workspace = true
 [dependencies]
 atlas-core.workspace = true
 atlas-project.workspace = true
+atlas-store.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-insta.workspace = true
+atlas-engine.workspace = true
+tempfile.workspace = true
+toml.workspace = true
