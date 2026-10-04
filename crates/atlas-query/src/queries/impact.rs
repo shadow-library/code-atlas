@@ -243,8 +243,9 @@ fn impact(graph: &Graph<'_, '_>, targets: &[Entity], request: &ImpactRequest) ->
     }
   }
   let mut hidden = walk.hidden_below_floor;
+  let mut covering = graph.admitted_into(impacted_files.keys().copied(), EdgeKind::CoversFile, &mut hidden)?;
   for (file, (via, _)) in &impacted_files {
-    for edge in graph.admitted(*file, Direction::Reverse, &[EdgeKind::CoversFile], &mut hidden)? {
+    for edge in covering.remove(file).unwrap_or_default() {
       let Some(test) = graph.entity(edge.from)? else { continue };
       if !seen_tests.insert(test.id) {
         continue;

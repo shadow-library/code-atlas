@@ -3,7 +3,7 @@ source: crates/atlas-query/tests/snapshots.rs
 expression: output
 ---
 fresh run=1 (+0 files, <t>)
-context for "add a DELETE /orders/:id endpoint with api-key auth" (~2319 of 6000 tokens)
+context for "add a DELETE /orders/:id endpoint with api-key auth" (~2300 of 6000 tokens)
 MUST READ (12)
   UsersController.remove method acme-api:src/users/users.controller.ts:31  why: exposes endpoint DELETE /users/{id} [syntactic]
     31|   @Delete(':id')
@@ -26,7 +26,7 @@ MUST READ (12)
     17|     throw new UnauthorizedException('No credentials supplied');
     18|   }
     19| }
-  ApiKeyGuard class acme-api:src/auth/api-key.guard.ts:4  why: search hit on api key auth
+  ApiKeyGuard class acme-api:src/auth/api-key.guard.ts:4  why: guard required by GET /v1/reports/export [resolved]
      4| @Injectable()
      5| export class ApiKeyGuard implements CanActivate {
      6|   constructor(private readonly configService: ConfigService) {}
@@ -115,14 +115,12 @@ MUST READ (12)
       private readonly ordersService: OrdersService
       findOne(id: string)
       create(input: CreateOrderInput)
-SKIM (17)
+SKIM (16)
   GET /orders/{id} api_endpoint acme-api:src/orders/orders.controller.ts:13  why: same route as /orders/{id} (another method)
   DELETE /users/{id} api_endpoint acme-api:src/users/users.controller.ts:31  why: pattern exemplar: DELETE on a route shaped like /orders/{id}
   api_key auth_scheme acme-api:src/auth/api-key.guard.ts:5  why: auth scheme api_key named in the task
   POST /orders api_endpoint acme-api:src/orders/orders.controller.ts:19  why: same resource as /orders/{id}
   GET /v1/reports/export api_endpoint acme-api:src/reports/reports.controller.ts:10  why: requires guard ApiKeyGuard [resolved]
-  AcmeApiClient::get_order method acme-billing:src/acme_client.rs:30  why: search hit on orders id api key
-    sig pub async fn get_order(&self, order_id: &str) -> Result<AcmeOrder, ApiError>
   OrdersService.findOne method acme-api:src/orders/orders.service.ts:23  why: called by OrdersController.findOne [resolved]
     sig async findOne(id: string)
   OrdersService.create method acme-api:src/orders/orders.service.ts:29  why: called by OrdersController.create [resolved]
@@ -157,7 +155,8 @@ SKIM (17)
 PATTERN (2)
   AuthModule class acme-api:src/auth/auth.module.ts:11  why: registry: references JwtOrApiKeyGuard and 4 siblings [resolved]
   SessionGuard class acme-api:src/auth/session.guard.ts:5  why: sibling of ApiKeyGuard registered in AuthModule
-IMPACT (5)
+IMPACT (6)
+  AcmeApiClient::get_order method acme-billing:src/acme_client.rs:30 UNCERTAIN  why: possibly calls endpoint GET /orders/{id} [heuristic 0.77]
   AcmeClient.getOrder method acme-sdk:src/client.ts:34 UNCERTAIN  why: possibly calls endpoint GET /orders/{id} [heuristic 0.77]
   AcmeClient.headers method acme-sdk:src/client.ts:12 UNCERTAIN  why: possibly uses auth api_key [heuristic 0.70]
   AcmeClient.createOrder method acme-sdk:src/client.ts:29 UNCERTAIN  why: possibly calls endpoint POST /orders [heuristic 0.72]

@@ -1,22 +1,30 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
-use atlas_core::{Certainty, Edge, EdgeId, EdgeKind, Entity, EntityId, EntityKind, Owner, RelPath, RepoName};
-use atlas_store::{AttrSources, EdgeFilter, EntityFilter, ReadTx};
+use atlas_core::{Certainty, CertaintyClass, Edge, EdgeId, EdgeKind, Entity, EntityId, EntityKind, Owner, RelPath, RepoName};
+use atlas_store::{AttrSources, EdgeFilter, EdgeLink, EntityFilter, ReadTx};
 
-use crate::dynamic::load_dynamic_sites;
+use crate::dynamic::{COMPUTED_PREFIX, all_dynamic_sites, load_dynamic_sites};
 use crate::error::QueryResult;
 use crate::model::{AttrView, CertaintyTag, EntityRef, Hop, UnresolvedSite};
-use crate::policy::{Direction, Policy, phrase};
+use crate::policy::{Direction, Policy, is_authoritative_class, phrase};
 
-type FileKey = (RepoName, RelPath);
+pub(crate) type FileKey = (RepoName, RelPath);
+pub(crate) type FileSites = HashMap<FileKey, Rc<Vec<UnresolvedSite>>>;
 
 pub(crate) struct Graph<'a, 'c> {
   tx: &'a ReadTx<'c>,
   cache: RefCell<HashMap<EntityId, Option<Entity>>>,
-  dynamic: RefCell<HashMap<FileKey, Rc<Vec<UnresolvedSite>>>>,
+  edges: RefCell<HashMap<EdgeId, Option<Edge>>>,
+  dynamic: RefCell<DynamicCache>,
   pub policy: Policy,
+}
+
+enum DynamicCache {
+  Unknown,
+  PerFile(FileSites),
+  Complete(FileSites),
 }
 
 impl<'a, 'c> Graph<'a, 'c> {
@@ -24,7 +32,8 @@ impl<'a, 'c> Graph<'a, 'c> {
     Self {
       tx,
       cache: RefCell::new(HashMap::new()),
-      dynamic: RefCell::new(HashMap::new()),
+      edges: RefCell::new(HashMap::new()),
+      dynamic: RefCell::new(DynamicCache::Unknown),
       policy,
     }
   }
@@ -42,14 +51,48 @@ impl<'a, 'c> Graph<'a, 'c> {
     Ok(entity)
   }
 
+  pub fn edge(&self, id: EdgeId) -> QueryResult<Option<Edge>> {
+    if let Some(cached) = self.edges.borrow().get(&id) {
+      return Ok(cached.clone());
+    }
+    let edge = self.tx.edge(id)?;
+    self.edges.borrow_mut().insert(id, edge.clone());
+    Ok(edge)
+  }
+
   pub fn dynamic_sites(&self, repo: &RepoName, path: &RelPath) -> QueryResult<Rc<Vec<UnresolvedSite>>> {
     let key = (repo.clone(), path.clone());
-    if let Some(cached) = self.dynamic.borrow().get(&key) {
-      return Ok(Rc::clone(cached));
+    if !self.may_have_dynamic_sites()? {
+      return Ok(Rc::new(Vec::new()));
+    }
+    match &*self.dynamic.borrow() {
+      DynamicCache::Complete(files) => return Ok(files.get(&key).map_or_else(|| Rc::new(Vec::new()), Rc::clone)),
+      DynamicCache::PerFile(files) if files.contains_key(&key) => return Ok(Rc::clone(&files[&key])),
+      _ => {}
     }
     let sites = load_dynamic_sites(self, repo, path)?;
-    self.dynamic.borrow_mut().insert(key, Rc::clone(&sites));
+    if let DynamicCache::PerFile(files) = &mut *self.dynamic.borrow_mut() {
+      files.insert(key, Rc::clone(&sites));
+    }
     Ok(sites)
+  }
+
+  pub fn may_have_dynamic_sites(&self) -> QueryResult<bool> {
+    let unknown = matches!(&*self.dynamic.borrow(), DynamicCache::Unknown);
+    if unknown {
+      let cache = match self.tx.has_unresolved_with_name_prefix(COMPUTED_PREFIX)? {
+        true => DynamicCache::PerFile(HashMap::new()),
+        false => DynamicCache::Complete(HashMap::new()),
+      };
+      *self.dynamic.borrow_mut() = cache;
+    }
+    Ok(!matches!(&*self.dynamic.borrow(), DynamicCache::Complete(files) if files.is_empty()))
+  }
+
+  pub fn preload_dynamic_sites(&self) -> QueryResult<()> {
+    let files = all_dynamic_sites(self)?;
+    *self.dynamic.borrow_mut() = DynamicCache::Complete(files);
+    Ok(())
   }
 
   pub fn entity_attrs(&self, id: EntityId, names: &[&str]) -> QueryResult<Vec<AttrView>> {
@@ -74,6 +117,14 @@ impl<'a, 'c> Graph<'a, 'c> {
     Ok(self.tx.edges_from(id, &kinds_filter(kinds))?)
   }
 
+  pub fn links_in(&self, id: EntityId, kinds: &[EdgeKind]) -> QueryResult<Vec<EdgeLink>> {
+    Ok(self.tx.edge_links_to(id, &kinds_filter(kinds))?)
+  }
+
+  pub fn links_out(&self, id: EntityId, kinds: &[EdgeKind]) -> QueryResult<Vec<EdgeLink>> {
+    Ok(self.tx.edge_links_from(id, &kinds_filter(kinds))?)
+  }
+
   pub fn edges(&self, id: EntityId, direction: Direction, kinds: &[EdgeKind]) -> QueryResult<Vec<Edge>> {
     match direction {
       Direction::Forward => self.edges_out(id, kinds),
@@ -82,9 +133,56 @@ impl<'a, 'c> Graph<'a, 'c> {
   }
 
   pub fn admitted(&self, id: EntityId, direction: Direction, kinds: &[EdgeKind], hidden: &mut usize) -> QueryResult<Vec<Edge>> {
-    let edges = self.edges(id, direction, kinds)?;
-    let before = edges.len();
-    let admitted: Vec<Edge> = edges.into_iter().filter(|edge| self.policy.admits(&edge.certainty)).collect();
+    let mut admitted = Vec::new();
+    for link in self.admitted_links(id, direction, kinds, hidden)? {
+      admitted.extend(self.edge(link.id)?);
+    }
+    Ok(admitted)
+  }
+
+  pub fn admitted_into(&self, targets: impl IntoIterator<Item = EntityId>, kind: EdgeKind, hidden: &mut usize) -> QueryResult<HashMap<EntityId, Vec<Edge>>> {
+    let targets: Vec<EntityId> = targets.into_iter().collect();
+    let mut per_target = 0;
+    for target in &targets {
+      per_target += self.tx.edge_count_to(*target)?;
+    }
+    let mut links: HashMap<EntityId, Vec<EdgeLink>> = HashMap::new();
+    match self.tx.edge_count_of_kind(&kind)? < per_target {
+      true => {
+        let wanted: HashSet<EntityId> = targets.iter().copied().collect();
+        for link in self.tx.edge_links_of_kind(&kind, &EdgeFilter::default())? {
+          if wanted.contains(&link.to) {
+            links.entry(link.to).or_default().push(link);
+          }
+        }
+      }
+      false => {
+        for target in &targets {
+          links.insert(*target, self.links_in(*target, std::slice::from_ref(&kind))?);
+        }
+      }
+    }
+    let mut admitted = HashMap::new();
+    for target in targets {
+      let mut edges = Vec::new();
+      for link in links.remove(&target).unwrap_or_default() {
+        match self.policy.admits_link(&link) {
+          true => edges.extend(self.edge(link.id)?),
+          false => *hidden += 1,
+        }
+      }
+      admitted.insert(target, edges);
+    }
+    Ok(admitted)
+  }
+
+  fn admitted_links(&self, id: EntityId, direction: Direction, kinds: &[EdgeKind], hidden: &mut usize) -> QueryResult<Vec<EdgeLink>> {
+    let links = match direction {
+      Direction::Forward => self.links_out(id, kinds)?,
+      Direction::Reverse => self.links_in(id, kinds)?,
+    };
+    let before = links.len();
+    let admitted: Vec<EdgeLink> = links.into_iter().filter(|link| self.policy.admits_link(link)).collect();
     *hidden += before - admitted.len();
     Ok(admitted)
   }
@@ -99,7 +197,7 @@ impl<'a, 'c> Graph<'a, 'c> {
   }
 
   pub fn parent(&self, id: EntityId) -> QueryResult<Option<Entity>> {
-    for edge in self.edges_in(id, &[EdgeKind::Contains])? {
+    for edge in self.links_in(id, &[EdgeKind::Contains])? {
       let Some(parent) = self.entity(edge.from)? else { continue };
       if parent.kind.is_code_symbol() {
         return Ok(Some(parent));
@@ -110,7 +208,7 @@ impl<'a, 'c> Graph<'a, 'c> {
 
   pub fn children(&self, id: EntityId) -> QueryResult<Vec<Entity>> {
     let mut children = Vec::new();
-    for edge in self.edges_out(id, &[EdgeKind::Contains])? {
+    for edge in self.links_out(id, &[EdgeKind::Contains])? {
       if let Some(child) = self.entity(edge.to)? {
         children.push(child);
       }
@@ -172,7 +270,7 @@ impl<'a, 'c> Graph<'a, 'c> {
         continue;
       }
       let (strength, authoritative) = states.get(&node).map_or((1.0, true), |state| (state.strength, state.authoritative));
-      let mut steps: Vec<(Edge, Direction, EntityId)> = Vec::new();
+      let mut steps: Vec<(EdgeLink, Direction, EntityId)> = Vec::new();
       let directions = match at_limit {
         true => [(Direction::Forward, &free_forward), (Direction::Reverse, &free_reverse)],
         false => [(Direction::Forward, &forward), (Direction::Reverse, &reverse)],
@@ -181,22 +279,23 @@ impl<'a, 'c> Graph<'a, 'c> {
         if kinds.is_empty() {
           continue;
         }
-        for edge in self.admitted(node, direction, kinds, &mut hidden)? {
+        for link in self.admitted_links(node, direction, kinds, &mut hidden)? {
           let neighbour = match direction {
-            Direction::Forward => edge.to,
-            Direction::Reverse => edge.from,
+            Direction::Forward => link.to,
+            Direction::Reverse => link.from,
           };
-          steps.push((edge, direction, neighbour));
+          steps.push((link, direction, neighbour));
         }
       }
-      steps.sort_by_key(|(edge, _, neighbour)| (edge.id, *neighbour));
-      for (edge, direction, neighbour) in steps {
-        let step = spec.step(&edge.kind, direction);
+      steps.sort_by_key(|(link, _, neighbour)| (link.id, *neighbour));
+      for (link, direction, neighbour) in steps {
+        let step = spec.step(&link.kind, direction);
         let next = depth + step.map_or(1, |step| step.cost);
-        let candidate = strength * step.map_or(1.0, |step| step.weight) * certainty_value(&edge.certainty);
-        let candidate_authoritative = authoritative && edge.certainty.is_authoritative();
+        let candidate = strength * step.map_or(1.0, |step| step.weight) * link_value(&link);
+        let candidate_authoritative = authoritative && is_authoritative_class(link.certainty_class);
         if let Some(state) = states.get_mut(&neighbour) {
           if state.depth > next && state.parent.is_some() {
+            let Some(edge) = self.edge(link.id)? else { continue };
             state.depth = next;
             state.strength = candidate;
             state.authoritative = candidate_authoritative;
@@ -207,6 +306,7 @@ impl<'a, 'c> Graph<'a, 'c> {
           if state.depth == next {
             state.in_degree += 1;
             if (candidate_authoritative, candidate) > (state.authoritative, state.strength) {
+              let Some(edge) = self.edge(link.id)? else { continue };
               state.strength = candidate;
               state.authoritative = candidate_authoritative;
               state.parent = Some((node, edge));
@@ -218,6 +318,7 @@ impl<'a, 'c> Graph<'a, 'c> {
           truncated = true;
           continue;
         }
+        let Some(edge) = self.edge(link.id)? else { continue };
         states.insert(
           neighbour,
           NodeState {
@@ -290,6 +391,14 @@ pub(crate) fn certainty_value(certainty: &Certainty) -> f64 {
   match certainty {
     Certainty::Heuristic { confidence, .. } => f64::from(f32::from(*confidence)),
     Certainty::Inferred { confidence, .. } => 0.9 * f64::from(f32::from(*confidence)),
+    _ => 1.0,
+  }
+}
+
+fn link_value(link: &EdgeLink) -> f64 {
+  match (link.certainty_class, link.confidence) {
+    (CertaintyClass::Heuristic, Some(confidence)) => f64::from(confidence),
+    (CertaintyClass::Inferred, Some(confidence)) => 0.9 * f64::from(confidence),
     _ => 1.0,
   }
 }

@@ -414,6 +414,35 @@ fn should_build_a_context_pack_for_adding_an_authenticated_delete_endpoint() {
 }
 
 #[test]
+fn should_keep_the_impact_placement_of_a_heuristic_consumer_that_is_also_a_search_hit() {
+  let fixture = common::acme();
+  let mut request = ContextRequest::new("add a DELETE /orders/:id endpoint with api-key auth");
+  request.explain = true;
+
+  let answer = fixture.query.context(&request).unwrap().answer;
+
+  let seeds = &answer.explain.as_ref().unwrap().seeds;
+  assert!(
+    seeds.iter().any(|seed| seed.contains("AcmeApiClient::get_order") && seed.contains("search hit")),
+    "{seeds:#?}"
+  );
+  let get_order = answer
+    .impact
+    .iter()
+    .find(|item| item.entity.short == "AcmeApiClient::get_order")
+    .unwrap_or_else(|| panic!("get_order lost its IMPACT placement: {:#?}", answer.impact));
+  assert!(get_order.uncertain);
+  assert_eq!(get_order.why, "possibly calls endpoint GET /orders/{id} [heuristic 0.77]");
+  let elsewhere: Vec<&str> = [&answer.must_read, &answer.skim, &answer.uncertain]
+    .into_iter()
+    .flatten()
+    .map(|item| item.entity.short.as_str())
+    .filter(|short| *short == "AcmeApiClient::get_order")
+    .collect();
+  assert_eq!(elsewhere, Vec::<&str>::new());
+}
+
+#[test]
 fn should_list_every_candidate_for_an_ambiguous_name_and_never_pick_one() {
   let fixture = common::acme();
 

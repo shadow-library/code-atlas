@@ -1,6 +1,6 @@
-use atlas_core::{Certainty, EdgeKind};
+use atlas_core::{Certainty, CertaintyClass, EdgeKind};
 use atlas_semantic::{included_in_default_results, is_low_confidence};
-use atlas_store::StoredInferredFact;
+use atlas_store::{EdgeLink, StoredInferredFact};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -20,6 +20,13 @@ impl Policy {
   pub fn admits(&self, certainty: &Certainty) -> bool {
     match certainty.confidence() {
       Some(confidence) if !certainty.is_authoritative() => f32::from(confidence) >= self.min_confidence,
+      _ => true,
+    }
+  }
+
+  pub(crate) fn admits_link(&self, link: &EdgeLink) -> bool {
+    match link.confidence {
+      Some(confidence) if !is_authoritative_class(link.certainty_class) => confidence >= self.min_confidence,
       _ => true,
     }
   }
@@ -50,6 +57,13 @@ pub(crate) enum InferredAdmission {
 pub(crate) enum Direction {
   Forward,
   Reverse,
+}
+
+pub(crate) fn is_authoritative_class(class: CertaintyClass) -> bool {
+  matches!(
+    class,
+    CertaintyClass::CompilerVerified | CertaintyClass::Syntactic | CertaintyClass::Resolved | CertaintyClass::Declared
+  )
 }
 
 pub(crate) fn phrase(kind: &EdgeKind, direction: Direction, certainty: &Certainty) -> String {

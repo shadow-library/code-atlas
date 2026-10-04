@@ -1,4 +1,5 @@
 use atlas_core::{ATTR_ATTRIBUTES, ATTR_TEST, AttributeFact, EdgeKind, Entity, EntityId, EntityKey, EntityKind, LanguageFamily, PackageEcosystem, RelPath};
+use atlas_store::EdgeEnd;
 
 use crate::QueryEngine;
 use crate::error::QueryResult;
@@ -77,14 +78,12 @@ pub(crate) fn first_line(text: Option<&str>) -> Option<String> {
 }
 
 pub(crate) fn link_caveat(graph: &Graph<'_, '_>, kind: EdgeKind, detail: &str) -> QueryResult<Option<Caveat>> {
-  for endpoint in graph.entities_of_kind(&link_anchor(&kind))? {
-    let present = match kind {
-      EdgeKind::UsesAuth | EdgeKind::CallsEndpoint => !graph.edges_in(endpoint.id, std::slice::from_ref(&kind))?.is_empty(),
-      _ => !graph.edges_out(endpoint.id, std::slice::from_ref(&kind))?.is_empty(),
-    };
-    if present {
-      return Ok(None);
-    }
+  let end = match kind {
+    EdgeKind::UsesAuth | EdgeKind::CallsEndpoint => EdgeEnd::Target,
+    _ => EdgeEnd::Source,
+  };
+  if graph.tx().edge_kind_meets_entity_kind(&kind, end, &link_anchor(&kind))? {
+    return Ok(None);
   }
   Ok(Some(Caveat::MissingFacts { detail: detail.to_owned() }))
 }

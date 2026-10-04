@@ -234,9 +234,22 @@ enum Role {
   Test,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Basis {
+  SearchHit,
+  Relation,
+}
+
+enum Placement {
+  Merged,
+  KeepExisting,
+  TakeIncoming,
+}
+
 #[derive(Clone)]
 struct Node {
   entity: Entity,
+  basis: Basis,
   role: Role,
   weight: f64,
   uncertain: bool,
@@ -324,12 +337,21 @@ struct Planned {
 
 impl Pack {
   fn seed(&mut self, entity: Entity, weight: f64, why: String, named: bool) {
+    self.seed_as(entity, weight, why, named, Basis::Relation);
+  }
+
+  fn seed_search_hit(&mut self, entity: Entity, weight: f64, why: String) {
+    self.seed_as(entity, weight, why, false, Basis::SearchHit);
+  }
+
+  fn seed_as(&mut self, entity: Entity, weight: f64, why: String, named: bool, basis: Basis) {
     self.seed_log.push(format!("{} ({why}, weight {weight:.2})", entity.key));
     let entry = self.personalisation.entry(entity.id).or_insert(0.0);
     *entry = entry.max(weight);
     let role = role_of(&entity, Role::Code);
     self.insert(Node {
       entity,
+      basis,
       role,
       weight,
       uncertain: false,
@@ -346,15 +368,29 @@ impl Pack {
   fn insert(&mut self, incoming: Node) {
     match self.nodes.get_mut(&incoming.entity.id) {
       Some(node) => {
-        let firmer = node.uncertain && !incoming.uncertain;
-        let stronger = node.uncertain == incoming.uncertain && incoming.weight > node.weight;
-        node.weight = node.weight.max(incoming.weight);
-        if firmer || stronger {
-          node.why = incoming.why;
-          node.via = incoming.via;
+        match placement(node, &incoming) {
+          Placement::Merged => {
+            let firmer = node.uncertain && !incoming.uncertain;
+            let stronger = node.uncertain == incoming.uncertain && incoming.weight > node.weight;
+            if firmer || stronger {
+              node.why = incoming.why;
+              node.via = incoming.via;
+            }
+            node.uncertain &= incoming.uncertain;
+            node.role = node.role.min(incoming.role);
+          }
+          Placement::KeepExisting => {}
+          Placement::TakeIncoming => {
+            node.why = incoming.why;
+            node.via = incoming.via;
+            node.uncertain = incoming.uncertain;
+            node.role = incoming.role;
+          }
         }
-        node.uncertain &= incoming.uncertain;
-        node.role = node.role.min(incoming.role);
+        if incoming.basis == Basis::Relation {
+          node.basis = Basis::Relation;
+        }
+        node.weight = node.weight.max(incoming.weight);
         node.round = node.round.min(incoming.round);
         node.named |= incoming.named;
         node.seed |= incoming.seed;
@@ -380,6 +416,7 @@ impl Pack {
     let role = role_of(&to, role);
     self.insert(Node {
       entity: to,
+      basis: Basis::Relation,
       role,
       weight,
       uncertain,
@@ -400,6 +437,7 @@ impl Pack {
     let role = role_of(&to, role);
     self.insert(Node {
       entity: to,
+      basis: Basis::Relation,
       role,
       weight: from.weight * weight,
       uncertain: from.uncertain || uncertain,
@@ -411,6 +449,15 @@ impl Pack {
       reuse: (role == Role::Reuse).then(|| why.clone()),
       why,
     });
+  }
+}
+
+fn placement(existing: &Node, incoming: &Node) -> Placement {
+  let impact_or_uncertain = |node: &Node| node.role == Role::Impact || node.uncertain;
+  match (existing.basis, incoming.basis) {
+    (Basis::SearchHit, Basis::Relation) if impact_or_uncertain(incoming) => Placement::TakeIncoming,
+    (Basis::Relation, Basis::SearchHit) if impact_or_uncertain(existing) => Placement::KeepExisting,
+    _ => Placement::Merged,
   }
 }
 
@@ -922,7 +969,7 @@ fn search_seeds(graph: &Graph<'_, '_>, index: &SimilarityIndex, task: &str, pack
     let anchor_factor = if off_anchor { OFF_ANCHOR_FACTOR } else { 1.0 };
     let weight = SEARCH_WEIGHT * hit.score / top * anchor_factor * pack.scope.factor(&entity, SCOPE_BOOST, SCOPE_SEED_PENALTY);
     if !is_test(&entity) {
-      pack.seed(entity, weight, format!("search hit on {terms}"), false);
+      pack.seed_search_hit(entity, weight, format!("search hit on {terms}"));
       continue;
     }
     let novel: Vec<String> = hit.direct_terms.iter().filter(|term| !code_terms.contains(*term)).cloned().collect();
@@ -943,7 +990,7 @@ fn search_seeds(graph: &Graph<'_, '_>, index: &SimilarityIndex, task: &str, pack
         continue;
       }
       let why = format!("exercised by test {test_name} matching {terms}");
-      pack.seed(subject, weight * TEST_SUBJECT_FACTOR, why, false);
+      pack.seed_search_hit(subject, weight * TEST_SUBJECT_FACTOR, why);
     }
     pack.hidden += hidden;
   }
@@ -1047,6 +1094,7 @@ fn route_seeds(graph: &Graph<'_, '_>, task: &str, pack: &mut Pack) -> QueryResul
         let method = call.name.split(' ').next().unwrap_or("");
         pack.insert(Node {
           entity: caller,
+          basis: Basis::Relation,
           role: Role::Impact,
           weight: 0.5,
           uncertain: true,
@@ -1401,4 +1449,81 @@ fn rank(pack: &mut Pack) -> Vec<Ranked> {
     .collect();
   ranked.sort_by(|left, right| right.score.total_cmp(&left.score).then_with(|| left.node.entity.key.cmp(&right.node.entity.key)));
   ranked
+}
+
+#[cfg(test)]
+mod tests {
+  use atlas_core::Certainty;
+
+  use super::*;
+
+  fn node(basis: Basis, role: Role, uncertain: bool, why: &str, weight: f64) -> Node {
+    let key: EntityKey = "ts:acme-sdk:acme-sdk:src/client::AcmeClient::getOrder#method".parse().unwrap();
+    Node {
+      entity: Entity::new(key, Certainty::Syntactic),
+      basis,
+      role,
+      weight,
+      uncertain,
+      why: why.to_owned(),
+      via: None,
+      round: 1,
+      named: false,
+      seed: basis == Basis::SearchHit,
+      near_named: false,
+      reuse: None,
+    }
+  }
+
+  fn placed(first: Node, second: Node) -> (Role, bool, String, f64) {
+    let mut pack = Pack::default();
+    pack.insert(first);
+    pack.insert(second);
+    let node = pack.nodes.into_values().next().unwrap();
+    (node.role, node.uncertain, node.why, node.weight)
+  }
+
+  #[test]
+  fn should_keep_an_impact_placement_when_a_stronger_search_hit_arrives_later() {
+    let impact = node(Basis::Relation, Role::Impact, true, "possibly calls endpoint GET /orders/{id} [heuristic 0.77]", 0.3);
+    let search = node(Basis::SearchHit, Role::Code, false, "search hit on orders", 0.5);
+
+    assert_eq!(
+      placed(impact, search),
+      (Role::Impact, true, "possibly calls endpoint GET /orders/{id} [heuristic 0.77]".to_owned(), 0.5)
+    );
+  }
+
+  #[test]
+  fn should_move_an_earlier_search_hit_into_the_impact_placement() {
+    let search = node(Basis::SearchHit, Role::Code, false, "search hit on orders", 0.5);
+    let impact = node(Basis::Relation, Role::Impact, true, "possibly calls endpoint GET /orders/{id} [heuristic 0.77]", 0.3);
+
+    assert_eq!(
+      placed(search, impact),
+      (Role::Impact, true, "possibly calls endpoint GET /orders/{id} [heuristic 0.77]".to_owned(), 0.5)
+    );
+  }
+
+  #[test]
+  fn should_move_an_earlier_search_hit_into_the_uncertain_placement() {
+    let search = node(Basis::SearchHit, Role::Code, false, "search hit on orders", 0.5);
+    let heuristic = node(Basis::Relation, Role::Code, true, "possibly calls getOrder [heuristic 0.6]", 0.2);
+
+    assert_eq!(placed(search, heuristic), (Role::Code, true, "possibly calls getOrder [heuristic 0.6]".to_owned(), 0.5));
+  }
+
+  #[test]
+  fn should_let_a_firm_relation_replace_an_uncertain_one_regardless_of_search_hits() {
+    let mut pack = Pack::default();
+    pack.insert(node(Basis::SearchHit, Role::Code, false, "search hit on orders", 0.5));
+    pack.insert(node(Basis::Relation, Role::Code, true, "possibly calls getOrder [heuristic 0.6]", 0.2));
+    pack.insert(node(Basis::Relation, Role::Code, false, "called by OrdersController.findOne [resolved]", 0.1));
+    let node = pack.nodes.into_values().next().unwrap();
+
+    assert_eq!(
+      (node.role, node.uncertain, node.why.as_str()),
+      (Role::Code, false, "called by OrdersController.findOne [resolved]")
+    );
+  }
 }

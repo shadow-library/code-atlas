@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use atlas_core::{ATTR_IMPL_OF, ATTR_IMPLEMENTS, EdgeKind, Entity, EntityId, EntityKind, ImplInfo, LanguageFamily, Owner, RelPath, RepoName, UnresolvedReason, Visibility};
 use atlas_store::{FreshnessPolicy, InferredQuery};
@@ -8,10 +8,11 @@ use crate::QueryEngine;
 use crate::dynamic::dynamic_member_calls;
 use crate::engine::unresolved_risk;
 use crate::error::QueryResult;
-use crate::graph::Graph;
+use crate::graph::{FileKey, Graph};
 use crate::model::{Caveat, EntityRef, Listing, Response};
 use crate::policy::Policy;
 use crate::queries::common::{DEFAULT_LIMIT, attr_str, attribute_names, is_router_relative, is_test, language, link_caveat, package_key, superseded_fragments};
+use crate::queries::textual::{TextCheck, TextIndex, TextScopes};
 
 const SYMBOL_KINDS: [EntityKind; 10] = [
   EntityKind::Function,
@@ -99,11 +100,17 @@ impl QueryEngine {
   pub fn unused(&self, request: &UnusedRequest) -> QueryResult<Response<UnusedAnswer>> {
     let freshness = self.barrier()?;
     let private = self.private_packages()?;
-    let (mut candidates, checks, excluded_entrypoints, mut caveats) = self.read(Policy::with_floor(0.0), |graph| unused(graph, request, &private))?;
-    let mut texts = TextCache::default();
+    let Scanned {
+      mut candidates,
+      checks,
+      scopes,
+      excluded: excluded_entrypoints,
+      mut caveats,
+    } = self.read(Policy::with_floor(0.0), |graph| unused(graph, request, &private))?;
+    let index = TextIndex::build(self, &checks, &scopes);
     for check in &checks {
       let Some(candidate) = candidates.get_mut(check.index) else { continue };
-      if let Some(reason) = self.verify_textually(check, &mut texts) {
+      if let Some(reason) = index.verify(check) {
         candidate.class = UnusedClass::PossiblyUnused;
         candidate.evidence.push(reason);
       }
@@ -150,200 +157,6 @@ impl QueryEngine {
     }
     Ok(private)
   }
-
-  fn verify_textually(&self, check: &TextCheck, texts: &mut TextCache) -> Option<String> {
-    let mut unreadable = Vec::new();
-    let mut hits: Vec<String> = Vec::new();
-    let mut macro_hits: Vec<String> = Vec::new();
-    for (repo, path) in &check.scope {
-      let in_macro_file = check.macro_files.contains(&(repo.clone(), path.clone()));
-      let Some(text) = texts.get(self, repo, path) else {
-        unreadable.push(format!("{repo}:{path}"));
-        continue;
-      };
-      let own_file = *repo == check.repo && *path == check.path;
-      for (index, line) in text.lines().enumerate() {
-        let number = index as u32 + 1;
-        if own_file && (check.span.0..=check.span.1).contains(&number) {
-          continue;
-        }
-        let location = format!("{repo}:{path}:{number}");
-        if in_macro_file && call_occurrences(line, &check.name) > 0 {
-          macro_hits.push(location.clone());
-        }
-        let found = match (&check.owner, COMMON_NAMES.contains(&check.name.as_str())) {
-          (_, false) => word_occurrences(line, &check.name),
-          (Some(owner), true) => qualified_occurrences(line, owner, &check.name, own_file),
-          (None, true) => 0,
-        };
-        if found > 0 {
-          hits.push(location);
-        }
-      }
-    }
-    if let Some(location) = macro_hits.first() {
-      return Some(format!(
-        "called by name inside a macro_rules!/include! file ({location}); macro-expanded callers are not indexed"
-      ));
-    }
-    if let Some(location) = hits.first() {
-      let form = match COMMON_NAMES.contains(&check.name.as_str()) {
-        true => "its qualified name",
-        false => "its name",
-      };
-      return Some(format!(
-        "{form} occurs {}x in its package (first at {location}) although no reference was recorded",
-        hits.len()
-      ));
-    }
-    if !unreadable.is_empty() {
-      return Some(format!(
-        "{} files in scope could not be read for a textual check (first: {})",
-        unreadable.len(),
-        unreadable[0]
-      ));
-    }
-    None
-  }
-}
-
-#[derive(Default)]
-struct TextCache {
-  texts: HashMap<(RepoName, RelPath), Option<String>>,
-}
-
-impl TextCache {
-  fn get(&mut self, query: &QueryEngine, repo: &RepoName, path: &RelPath) -> Option<&str> {
-    self
-      .texts
-      .entry((repo.clone(), path.clone()))
-      .or_insert_with(|| query.engine().read_source(repo, path).ok().map(|(text, _)| text))
-      .as_deref()
-  }
-}
-
-struct TextCheck {
-  index: usize,
-  name: String,
-  owner: Option<String>,
-  repo: RepoName,
-  path: RelPath,
-  span: (u32, u32),
-  scope: Vec<(RepoName, RelPath)>,
-  macro_files: BTreeSet<(RepoName, RelPath)>,
-}
-
-const COMMON_NAMES: [&str; 64] = [
-  "new",
-  "get",
-  "set",
-  "run",
-  "default",
-  "from",
-  "into",
-  "len",
-  "is_empty",
-  "clone",
-  "fmt",
-  "build",
-  "parse",
-  "name",
-  "id",
-  "with",
-  "add",
-  "insert",
-  "remove",
-  "update",
-  "find",
-  "apply",
-  "init",
-  "start",
-  "stop",
-  "next",
-  "load",
-  "save",
-  "read",
-  "write",
-  "open",
-  "close",
-  "handle",
-  "process",
-  "call",
-  "execute",
-  "create",
-  "delete",
-  "list",
-  "map",
-  "value",
-  "key",
-  "data",
-  "to_string",
-  "as_str",
-  "eq",
-  "hash",
-  "drop",
-  "deref",
-  "index",
-  "iter",
-  "push",
-  "pop",
-  "contains",
-  "reset",
-  "clear",
-  "validate",
-  "check",
-  "render",
-  "emit",
-  "send",
-  "toString",
-  "then",
-  "on",
-];
-
-fn is_word(c: char) -> bool {
-  c.is_alphanumeric() || c == '_' || c == '$'
-}
-
-fn bounded(line: &str, word: &str) -> Vec<usize> {
-  if word.is_empty() {
-    return Vec::new();
-  }
-  line
-    .match_indices(word)
-    .filter(|(start, _)| {
-      let before = line[..*start].chars().next_back();
-      let after = line[start + word.len()..].chars().next();
-      !before.is_some_and(is_word) && !after.is_some_and(is_word)
-    })
-    .map(|(start, _)| start)
-    .collect()
-}
-
-fn word_occurrences(line: &str, word: &str) -> usize {
-  bounded(line, word).len()
-}
-
-fn call_occurrences(line: &str, word: &str) -> usize {
-  bounded(line, word)
-    .into_iter()
-    .filter(|start| {
-      let before = line[..*start].trim_end();
-      let after = line[start + word.len()..].trim_start();
-      let definition = before.ends_with("fn") || before.ends_with("function");
-      after.starts_with('(') && !definition
-    })
-    .count()
-}
-
-fn qualified_occurrences(line: &str, owner: &str, name: &str, own_file: bool) -> usize {
-  let mut receivers = vec![format!("{owner}::"), format!("{owner}.")];
-  if own_file {
-    receivers.extend(["Self::".to_owned(), "self.".to_owned(), "this.".to_owned()]);
-  }
-  bounded(line, name)
-    .into_iter()
-    .filter(|start| receivers.iter().any(|receiver| line[..*start].ends_with(receiver.as_str())))
-    .count()
 }
 
 #[derive(Default)]
@@ -352,9 +165,9 @@ struct Scan<'p> {
   checks: Vec<TextCheck>,
   excluded: BTreeMap<String, usize>,
   packages: HashMap<EntityId, PackageRole>,
-  package_files: HashMap<EntityId, Vec<(RepoName, RelPath)>>,
+  package_files: HashMap<EntityId, Vec<FileKey>>,
   repo_files: HashMap<RepoName, Vec<RelPath>>,
-  macro_files: Option<BTreeSet<(RepoName, RelPath)>>,
+  macro_files: Option<BTreeSet<FileKey>>,
   dynamic: HashMap<RepoName, DynamicSites>,
   private: Option<&'p BTreeSet<EntityId>>,
 }
@@ -381,13 +194,20 @@ fn in_repo(request: &UnusedRequest, entity: &Entity) -> bool {
     .is_none_or(|repo| entity.repo.as_ref().is_some_and(|candidate| candidate.as_str() == repo))
 }
 
-type Scanned = (Vec<UnusedCandidate>, Vec<TextCheck>, BTreeMap<String, usize>, Vec<Caveat>);
+struct Scanned {
+  candidates: Vec<UnusedCandidate>,
+  checks: Vec<TextCheck>,
+  scopes: TextScopes,
+  excluded: BTreeMap<String, usize>,
+  caveats: Vec<Caveat>,
+}
 
 fn unused(graph: &Graph<'_, '_>, request: &UnusedRequest, private: &BTreeSet<EntityId>) -> QueryResult<Scanned> {
   let mut scan = Scan {
     private: Some(private),
     ..Scan::default()
   };
+  graph.preload_dynamic_sites()?;
   for kind in SYMBOL_KINDS.iter().filter(|kind| wanted(request, kind)) {
     for entity in graph.entities_of_kind(kind)? {
       if in_repo(request, &entity) {
@@ -436,11 +256,20 @@ fn unused(graph: &Graph<'_, '_>, request: &UnusedRequest, private: &BTreeSet<Ent
       detail: "env var definitions (.env, compose, helm) are not indexed; unused env vars cannot be detected".to_owned(),
     });
   }
-  Ok((scan.candidates, scan.checks, scan.excluded, caveats))
+  Ok(Scanned {
+    candidates: scan.candidates,
+    checks: scan.checks,
+    scopes: TextScopes {
+      packages: scan.package_files,
+      macro_files: scan.macro_files.unwrap_or_default(),
+    },
+    excluded: scan.excluded,
+    caveats,
+  })
 }
 
 fn has_usage(graph: &Graph<'_, '_>, id: EntityId, outside: Option<EntityId>) -> QueryResult<bool> {
-  for edge in graph.edges_in(id, &[])? {
+  for edge in graph.links_in(id, &[])? {
     if NON_USAGE.contains(&edge.kind) || Some(edge.from) == outside || edge.from == id {
       continue;
     }
@@ -562,10 +391,8 @@ fn text_check(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> Qu
   let (Some(repo), Some(path)) = (entity.repo.clone(), entity.path.clone()) else {
     return Ok(None);
   };
-  let mut scope: BTreeSet<(RepoName, RelPath)> = package_scope(graph, scan, entity)?.into_iter().collect();
-  scope.insert((repo.clone(), path.clone()));
-  let macro_files = macro_files(graph, scan)?.clone();
-  scope.extend(macro_files.iter().cloned());
+  let package = package_scope(graph, scan, entity)?;
+  macro_files(graph, scan)?;
   let owner = match entity.kind {
     EntityKind::Method => graph.parent(entity.id)?.map(|parent| parent.name),
     _ => None,
@@ -574,11 +401,9 @@ fn text_check(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> Qu
     index: scan.candidates.len(),
     name: entity.name.clone(),
     owner,
-    repo,
-    path,
+    file: (repo, path),
     span: entity.span.map_or((0, 0), |span| (span.start_line, span.end_line)),
-    scope: scope.into_iter().collect(),
-    macro_files,
+    package,
   }))
 }
 
@@ -596,11 +421,11 @@ fn repo_files<'s>(graph: &Graph<'_, '_>, scan: &'s mut Scan<'_>, repo: &RepoName
   Ok(&scan.repo_files[repo])
 }
 
-fn package_scope(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> QueryResult<Vec<(RepoName, RelPath)>> {
-  let Some(key) = package_key(entity) else { return Ok(Vec::new()) };
+fn package_scope(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> QueryResult<Option<EntityId>> {
+  let Some(key) = package_key(entity) else { return Ok(None) };
   let id = EntityId::of(&key);
-  if let Some(files) = scan.package_files.get(&id) {
-    return Ok(files.clone());
+  if scan.package_files.contains_key(&id) {
+    return Ok(Some(id));
   }
   let mut files = Vec::new();
   if let Some(package) = graph.entity(id)?
@@ -608,47 +433,47 @@ fn package_scope(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) ->
     && let Ok(repo) = RepoName::new(repo)
   {
     let directory = manifest.rsplit_once('/').map(|(directory, _)| format!("{directory}/"));
-    for path in repo_files(graph, scan, &repo)?.clone() {
+    for path in repo_files(graph, scan, &repo)? {
       if directory.as_deref().is_none_or(|directory| path.as_str().starts_with(directory)) {
-        files.push((repo.clone(), path));
+        files.push((repo.clone(), path.clone()));
       }
     }
   }
-  scan.package_files.insert(id, files.clone());
-  Ok(files)
+  scan.package_files.insert(id, files);
+  Ok(Some(id))
 }
 
-fn macro_files<'s>(graph: &Graph<'_, '_>, scan: &'s mut Scan<'_>) -> QueryResult<&'s BTreeSet<(RepoName, RelPath)>> {
-  if scan.macro_files.is_none() {
-    let mut files = BTreeSet::new();
-    for entity in graph.entities_of_kind(&EntityKind::Macro)? {
-      if let (Some(repo), Some(path)) = (entity.repo, entity.path) {
-        files.insert((repo, path));
-      }
-    }
-    for found in graph.tx().unresolved_by_names(&["include"])? {
-      files.insert((found.reference.repo, found.reference.file));
-    }
-    scan.macro_files = Some(files);
+fn macro_files(graph: &Graph<'_, '_>, scan: &mut Scan<'_>) -> QueryResult<()> {
+  if scan.macro_files.is_some() {
+    return Ok(());
   }
-  Ok(scan.macro_files.get_or_insert_with(BTreeSet::new))
+  let mut files = BTreeSet::new();
+  for entity in graph.entities_of_kind(&EntityKind::Macro)? {
+    if let (Some(repo), Some(path)) = (entity.repo, entity.path) {
+      files.insert((repo, path));
+    }
+  }
+  for found in graph.tx().unresolved_by_names(&["include"])? {
+    files.insert((found.reference.repo, found.reference.file));
+  }
+  scan.macro_files = Some(files);
+  Ok(())
 }
 
 fn dynamic_sites(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, repo: &RepoName) -> QueryResult<DynamicSites> {
   if let Some(sites) = scan.dynamic.get(repo) {
     return Ok(sites.clone());
   }
+  let indexed: HashSet<RelPath> = repo_files(graph, scan, repo)?.iter().cloned().collect();
   let mut sites = DynamicSites::default();
-  for path in repo_files(graph, scan, repo)?.clone() {
-    let facts = graph.tx().owned_facts(&Owner::File {
-      repo: repo.clone(),
-      path: path.clone(),
-    })?;
-    for reference in facts.unresolved.iter().filter(|reference| reference.reason == UnresolvedReason::Dynamic) {
-      let head = reference.path.first().map(String::as_str);
-      if matches!(head, Some("import" | "require")) {
-        sites.imports.push(format!("{repo}:{path}:{}", reference.span.start_line));
-      }
+  for found in graph.tx().unresolved_in_repo(repo)? {
+    let Owner::File { path, .. } = &found.owner else { continue };
+    let reference = &found.reference;
+    if reference.reason != UnresolvedReason::Dynamic || !indexed.contains(path) {
+      continue;
+    }
+    if matches!(reference.path.first().map(String::as_str), Some("import" | "require")) {
+      sites.imports.push(format!("{repo}:{path}:{}", reference.span.start_line));
     }
   }
   scan.dynamic.insert(repo.clone(), sites.clone());

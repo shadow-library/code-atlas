@@ -84,7 +84,7 @@ impl QueryEngine {
         Ok(target) => target,
         Err(outcome) => return Ok(outcome),
       };
-      let (tests, mut caveats) = tests_of(graph, &target, TEST_DEPTH)?;
+      let (tests, mut caveats) = tests_of(graph, &target, TEST_DEPTH, TestScope::All)?;
       if tests.is_empty() {
         caveats.extend(unresolved_risk(graph, target.id, risk_name(&target))?);
       }
@@ -99,8 +99,14 @@ impl QueryEngine {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TestScope {
+  Direct,
+  All,
+}
+
 pub(crate) fn direct_tests(graph: &Graph<'_, '_>, target: &Entity) -> QueryResult<Vec<TestItem>> {
-  let (tests, _) = tests_of(graph, target, 1)?;
+  let (tests, _) = tests_of(graph, target, 1, TestScope::Direct)?;
   Ok(
     tests
       .into_iter()
@@ -109,7 +115,7 @@ pub(crate) fn direct_tests(graph: &Graph<'_, '_>, target: &Entity) -> QueryResul
   )
 }
 
-pub(crate) fn tests_of(graph: &Graph<'_, '_>, target: &Entity, depth: u32) -> QueryResult<(Vec<TestItem>, Vec<Caveat>)> {
+pub(crate) fn tests_of(graph: &Graph<'_, '_>, target: &Entity, depth: u32, scope: TestScope) -> QueryResult<(Vec<TestItem>, Vec<Caveat>)> {
   let mut seeds = vec![target.id];
   seeds.extend(graph.children(target.id)?.into_iter().filter(|child| !is_test(child)).map(|child| child.id));
   let steps: Vec<Step> = [EdgeKind::Calls, EdgeKind::Instantiates, EdgeKind::References, EdgeKind::TypeOf, EdgeKind::Tests]
@@ -151,25 +157,8 @@ pub(crate) fn tests_of(graph: &Graph<'_, '_>, target: &Entity, depth: u32) -> Qu
     };
     keep_best(&mut found, entity.id, item);
   }
-  for seed in &seeds {
-    for edge in graph.edges_in(*seed, &[EdgeKind::Imports])? {
-      let Some(importer) = graph.entity(edge.from)? else { continue };
-      let (Some(repo), EntityKey::File { path, .. }) = (&importer.repo, &importer.key) else {
-        continue;
-      };
-      for test in top_level_tests(graph, repo, path)? {
-        let item = TestItem {
-          run: run_hint(&test),
-          test: EntityRef::of(&test),
-          reach: TestReach::ImportedByTestFile,
-          depth: 1,
-          relation: graph.relation(&edge, importer.id)?,
-          path: Vec::new(),
-          uncertain: !edge.certainty.is_authoritative(),
-        };
-        keep_best(&mut found, test.id, item);
-      }
-    }
+  if scope == TestScope::All {
+    add_importing_tests(graph, &seeds, &mut found)?;
   }
   if let Some(file) = file_entity(target) {
     for edge in graph.edges_in(EntityId::of(&file), &[EdgeKind::CoversFile])? {
@@ -185,7 +174,11 @@ pub(crate) fn tests_of(graph: &Graph<'_, '_>, target: &Entity, depth: u32) -> Qu
       };
       keep_best(&mut found, test.id, item);
     }
-    for test in colocated(graph, target)? {
+    let neighbours = match scope {
+      TestScope::All => colocated(graph, target)?,
+      TestScope::Direct => Vec::new(),
+    };
+    for test in neighbours {
       let item = TestItem {
         run: run_hint(&test),
         test: EntityRef::of(&test),
@@ -223,6 +216,30 @@ pub(crate) fn tests_of(graph: &Graph<'_, '_>, target: &Entity, depth: u32) -> Qu
     });
   }
   Ok((tests, caveats))
+}
+
+fn add_importing_tests(graph: &Graph<'_, '_>, seeds: &[EntityId], found: &mut BTreeMap<EntityId, TestItem>) -> QueryResult<()> {
+  for seed in seeds {
+    for edge in graph.edges_in(*seed, &[EdgeKind::Imports])? {
+      let Some(importer) = graph.entity(edge.from)? else { continue };
+      let (Some(repo), EntityKey::File { path, .. }) = (&importer.repo, &importer.key) else {
+        continue;
+      };
+      for test in top_level_tests(graph, repo, path)? {
+        let item = TestItem {
+          run: run_hint(&test),
+          test: EntityRef::of(&test),
+          reach: TestReach::ImportedByTestFile,
+          depth: 1,
+          relation: graph.relation(&edge, importer.id)?,
+          path: Vec::new(),
+          uncertain: !edge.certainty.is_authoritative(),
+        };
+        keep_best(found, test.id, item);
+      }
+    }
+  }
+  Ok(())
 }
 
 fn keep_best(found: &mut BTreeMap<EntityId, TestItem>, id: EntityId, item: TestItem) {

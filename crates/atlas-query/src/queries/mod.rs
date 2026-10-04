@@ -10,6 +10,7 @@ mod similar;
 mod status;
 mod symbol;
 mod tests_for;
+mod textual;
 mod traverse;
 mod unused;
 
