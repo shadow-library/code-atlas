@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use atlas_core::{EntityKind, RepoName};
+use atlas_core::{EntityId, EntityKind, RepoName};
 use atlas_semantic::RELATION_CAPABILITY_SUMMARY;
 use atlas_similarity::{Field, SearchHit, SearchOptions, SimilarityIndex};
 use atlas_store::{FreshnessPolicy, InferredQuery};
@@ -19,6 +19,7 @@ const COVERAGE_WEIGHT: f64 = 1.0;
 const STRUCTURAL_THRESHOLD: f64 = 0.6;
 const STRUCTURAL_SEEDS: usize = 3;
 const STRUCTURAL_PER_SEED: usize = 5;
+const STRUCTURAL_CANDIDATE_FACTOR: usize = 4;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchRequest {
@@ -57,6 +58,7 @@ pub struct StructuralHit {
   pub entity: EntityRef,
   pub similar_to: String,
   pub jaccard: f64,
+  pub small_body: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -253,8 +255,20 @@ fn search(graph: &Graph<'_, '_>, index: &SimilarityIndex, request: &SearchReques
   }
   let mut structurally_similar = Vec::new();
   let shown: BTreeSet<String> = exact_name.iter().chain(&strong).chain(&related).map(|hit| hit.entity.id.clone()).collect();
+  let named: BTreeSet<EntityId> = hits
+    .iter()
+    .filter(|hit| hit.matched_fields.iter().any(|field| field.field == Field::Name))
+    .map(|hit| hit.entity)
+    .collect();
   for (seed, name) in &seeds {
-    for found in index.near_duplicates(*seed, STRUCTURAL_THRESHOLD, STRUCTURAL_PER_SEED) {
+    let mut kept = 0;
+    for found in index.near_duplicates(*seed, STRUCTURAL_THRESHOLD, STRUCTURAL_PER_SEED * STRUCTURAL_CANDIDATE_FACTOR) {
+      if kept == STRUCTURAL_PER_SEED {
+        break;
+      }
+      if found.small && !named.contains(&found.entity) {
+        continue;
+      }
       let Some(entity) = graph.entity(found.entity)? else { continue };
       if shown.contains(&entity.id.to_string()) {
         continue;
@@ -263,7 +277,9 @@ fn search(graph: &Graph<'_, '_>, index: &SimilarityIndex, request: &SearchReques
         entity: EntityRef::of(&entity),
         similar_to: name.clone(),
         jaccard: rounded(found.exact_jaccard),
+        small_body: found.small,
       });
+      kept += 1;
     }
   }
   let (inferred_capabilities, hidden) = capability_matches(graph, &request.text)?;

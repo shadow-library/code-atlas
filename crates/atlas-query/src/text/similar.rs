@@ -7,6 +7,7 @@ fn signals(member: &ClusterMember) -> String {
     .iter()
     .map(|signal| match signal {
       SimilaritySignal::Structural { jaccard } => format!("structural {jaccard:.2}"),
+      SimilaritySignal::SmallStructural { jaccard } => format!("structural {jaccard:.2} (small body, corroborated by name)"),
       SimilaritySignal::Lexical { score, terms } => format!("lexical {score:.2} ({})", terms.join(" ")),
       SimilaritySignal::Inferred { certainty, .. } => format!("inferred {}", certainty.tag),
       SimilaritySignal::SignatureShape { shape } => format!("same signature {shape}"),
@@ -40,6 +41,12 @@ impl RenderText for SimilarAnswer {
       out.line(2, format!("evidence: {}", signals(member)));
       out.line(2, format!("verdict: {}", member.verdict));
       out.line(2, usage(member));
+    }
+    if !self.shape_only.is_empty() {
+      out.line(0, format!("shape-only, low weight ({})", self.shape_only.len()));
+      for hit in &self.shape_only {
+        out.line(1, format!("{} [structural {:.2}] {}", entity_line(&hit.entity), hit.jaccard, hit.note));
+      }
     }
     if !self.shared_home.is_empty() {
       out.line(0, "likely shared home");

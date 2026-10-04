@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use atlas_core::{ATTR_PARAMS, EdgeKind, Entity, EntityId, EntityKey, EntityKind, LanguageFamily, ParamFact, RelPath};
 use atlas_semantic::{RELATION_EQUIVALENT_TO, RELATION_SIMILAR_TO};
-use atlas_similarity::SimilarityIndex;
+use atlas_similarity::{SMALL_BODY_TOKENS, SMALL_PAIR_MIN_JACCARD, SimilarityIndex};
 use atlas_store::{EntityFilter, FreshnessPolicy, InferredQuery};
 use serde::Serialize;
 
@@ -19,6 +19,9 @@ use crate::target::TargetFilter;
 const DEFAULT_THRESHOLD: f64 = 0.5;
 const IDENTICAL_JACCARD: f64 = 0.95;
 const LEXICAL_FRACTION: f64 = 0.35;
+const STRUCTURAL_CANDIDATE_FACTOR: usize = 4;
+const SHAPE_ONLY_LIMIT: usize = 5;
+const SHAPE_ONLY_NOTE: &str = "shape-only (small body, likely boilerplate)";
 const SHARED_SEGMENTS: [&str; 6] = ["shared", "common", "util", "utils", "lib", "core"];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,6 +49,9 @@ impl SimilarRequest {
 #[serde(tag = "signal", rename_all = "snake_case")]
 pub enum SimilaritySignal {
   Structural {
+    jaccard: f64,
+  },
+  SmallStructural {
     jaccard: f64,
   },
   Lexical {
@@ -88,9 +94,17 @@ pub struct SharedHome {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ShapeOnlyMatch {
+  pub entity: EntityRef,
+  pub jaccard: f64,
+  pub note: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SimilarAnswer {
   pub target: ClusterMember,
   pub members: Vec<ClusterMember>,
+  pub shape_only: Vec<ShapeOnlyMatch>,
   pub shared_home: Vec<SharedHome>,
   pub coupling_risks: Vec<String>,
   pub caveats: Vec<Caveat>,
@@ -163,6 +177,7 @@ fn structural_reason(status: &atlas_similarity::StructuralStatus) -> String {
     atlas_similarity::StructuralStatus::Unknown => "the target is not in the structural index".to_owned(),
     atlas_similarity::StructuralStatus::NoBody => "the target has no body".to_owned(),
     atlas_similarity::StructuralStatus::TooSmall { tokens } => format!("too small for structural comparison ({tokens} tokens)"),
+    atlas_similarity::StructuralStatus::LowEntropy { tokens } => format!("too repetitive for structural comparison ({tokens} tokens, few distinct tokens)"),
     atlas_similarity::StructuralStatus::Indexed { tokens } => format!("indexed ({tokens} tokens)"),
   }
 }
@@ -170,12 +185,28 @@ fn structural_reason(status: &atlas_similarity::StructuralStatus) -> String {
 fn similar(graph: &Graph<'_, '_>, index: &SimilarityIndex, target: &Entity, request: &SimilarRequest) -> QueryResult<SimilarAnswer> {
   let mut signals: BTreeMap<EntityId, Vec<SimilaritySignal>> = BTreeMap::new();
   let mut caveats = Vec::new();
-  for found in index.near_duplicates(target.id, request.threshold, request.limit) {
+  let mut small_found: BTreeMap<EntityId, f64> = BTreeMap::new();
+  for found in index.near_duplicates(target.id, request.threshold, request.limit * STRUCTURAL_CANDIDATE_FACTOR) {
+    if found.small {
+      small_found.insert(found.entity, rounded(found.exact_jaccard));
+      continue;
+    }
     signals.entry(found.entity).or_default().push(SimilaritySignal::Structural {
       jaccard: rounded(found.exact_jaccard),
     });
   }
   let structural = index.structural_status(target.id);
+  if let atlas_similarity::StructuralStatus::Indexed { tokens } = structural
+    && tokens < SMALL_BODY_TOKENS
+    && request.threshold < SMALL_PAIR_MIN_JACCARD
+  {
+    caveats.push(Caveat::Note {
+      message: format!(
+        "the target is a small body ({tokens} tokens): small-body structural matches are held to a minimum score of {SMALL_PAIR_MIN_JACCARD:.2}, overriding the requested threshold {:.2}",
+        request.threshold
+      ),
+    });
+  }
   if !matches!(structural, atlas_similarity::StructuralStatus::Indexed { .. }) {
     caveats.push(Caveat::Note {
       message: format!(
@@ -200,12 +231,33 @@ fn similar(graph: &Graph<'_, '_>, index: &SimilarityIndex, target: &Entity, requ
   }
   let target_shape = signature_shape(target);
   for (id, found) in signals.iter_mut() {
-    let Some(entity) = graph.entity(*id)? else { continue };
-    if let Some(shape) = target_shape.as_ref().filter(|shape| signature_shape(&entity).as_ref() == Some(*shape)) {
-      found.push(SimilaritySignal::SignatureShape { shape: shape.clone() });
-    }
+    add_signature_shape(graph, target_shape.as_ref(), *id, found)?;
   }
   let (hidden_stale, hidden_low) = inferred_signals(graph, target, &mut signals)?;
+  let mut shape_only = Vec::new();
+  for (id, jaccard) in small_found {
+    let corroborated = signals.get(&id).is_some_and(|found| {
+      found
+        .iter()
+        .any(|signal| matches!(signal, SimilaritySignal::Lexical { .. } | SimilaritySignal::Inferred { .. }))
+    });
+    if !corroborated {
+      let Some(entity) = graph.entity(id)? else { continue };
+      if comparable(target, &entity) {
+        shape_only.push(ShapeOnlyMatch {
+          entity: EntityRef::of(&entity),
+          jaccard,
+          note: SHAPE_ONLY_NOTE.to_owned(),
+        });
+      }
+      continue;
+    }
+    let found = signals.entry(id).or_default();
+    found.push(SimilaritySignal::SmallStructural { jaccard });
+    add_signature_shape(graph, target_shape.as_ref(), id, found)?;
+  }
+  shape_only.sort_by(|left, right| right.jaccard.total_cmp(&left.jaccard).then_with(|| left.entity.id.cmp(&right.entity.id)));
+  shape_only.truncate(SHAPE_ONLY_LIMIT);
   if hidden_stale + hidden_low > 0 {
     caveats.push(Caveat::InferredHidden {
       stale: hidden_stale,
@@ -241,16 +293,30 @@ fn similar(graph: &Graph<'_, '_>, index: &SimilarityIndex, target: &Entity, requ
   Ok(SimilarAnswer {
     target: target_member,
     members: views,
+    shape_only,
     shared_home,
     coupling_risks,
     caveats,
   })
 }
 
+fn add_signature_shape(graph: &Graph<'_, '_>, target_shape: Option<&String>, id: EntityId, found: &mut Vec<SimilaritySignal>) -> QueryResult<()> {
+  if found.iter().any(|signal| matches!(signal, SimilaritySignal::SignatureShape { .. })) {
+    return Ok(());
+  }
+  let Some(entity) = graph.entity(id)? else { return Ok(()) };
+  if let Some(shape) = target_shape.filter(|shape| signature_shape(&entity).as_ref() == Some(*shape)) {
+    found.push(SimilaritySignal::SignatureShape { shape: shape.clone() });
+  }
+  Ok(())
+}
+
 fn consolidation_candidate(target: &Entity, entity: &Entity, signals: &[SimilaritySignal]) -> bool {
   let strong = signals.iter().any(|signal| {
-    matches!(signal, SimilaritySignal::Structural { .. } | SimilaritySignal::SignatureShape { .. })
-      || matches!(signal, SimilaritySignal::Inferred { certainty, .. } if certainty.freshness.is_none())
+    matches!(
+      signal,
+      SimilaritySignal::Structural { .. } | SimilaritySignal::SmallStructural { .. } | SimilaritySignal::SignatureShape { .. }
+    ) || matches!(signal, SimilaritySignal::Inferred { certainty, .. } if certainty.freshness.is_none())
   });
   strong || language(entity) != language(target)
 }
@@ -284,6 +350,7 @@ fn strength(signals: &[SimilaritySignal]) -> f64 {
     .map(|signal| match signal {
       SimilaritySignal::Inferred { certainty, verdict, .. } => 3.0 + f64::from(certainty.confidence.unwrap_or(0.0)) - if verdict == "equivalent" { 0.0 } else { 0.5 },
       SimilaritySignal::Structural { jaccard } => 2.0 + jaccard,
+      SimilaritySignal::SmallStructural { jaccard } => 1.0 + jaccard,
       SimilaritySignal::Lexical { score, .. } => score.min(10.0) / 10.0,
       SimilaritySignal::SignatureShape { .. } => 1.0,
     })
@@ -353,6 +420,9 @@ fn verdict(signals: &[SimilaritySignal]) -> String {
     _ => None,
   });
   let same_signature = signals.iter().any(|signal| matches!(signal, SimilaritySignal::SignatureShape { .. }));
+  if jaccard.is_none() && signals.iter().any(|signal| matches!(signal, SimilaritySignal::SmallStructural { .. })) {
+    return "small bodies with a related name and similar token structure, behaviour unverified".to_owned();
+  }
   match (jaccard, same_signature) {
     (Some(jaccard), _) if jaccard >= IDENTICAL_JACCARD => "structurally identical, behaviour unverified".to_owned(),
     (Some(_), _) => "same shape, behaviour unverified".to_owned(),

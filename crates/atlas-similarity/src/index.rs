@@ -7,7 +7,9 @@ use crate::config::SimilarityConfig;
 use crate::doc::SimilarityDoc;
 use crate::error::SimilarityError;
 use crate::lexical::{ExpansionMatch, FieldMatch, LexicalQuery, LexicalStore};
-use crate::structural::{ClusterReport, StructuralCluster, StructuralDoc, StructuralMatch, StructuralState, StructuralStatus, StructuralStore, UnionFind, size_ratio};
+use crate::structural::{
+  ClusterReport, StructuralCluster, StructuralDoc, StructuralMatch, StructuralPair, StructuralState, StructuralStatus, StructuralStore, UnionFind, size_ratio,
+};
 
 const DEFAULT_SEARCH_LIMIT: usize = 10;
 
@@ -158,6 +160,7 @@ impl SimilarityIndex {
     match self.structural.state(slot) {
       StructuralState::Absent => StructuralStatus::NoBody,
       StructuralState::TooSmall(tokens) => StructuralStatus::TooSmall { tokens: *tokens },
+      StructuralState::LowEntropy(tokens) => StructuralStatus::LowEntropy { tokens: *tokens },
       StructuralState::Indexed(doc) => StructuralStatus::Indexed { tokens: doc.tokens },
     }
   }
@@ -196,6 +199,8 @@ impl SimilarityIndex {
           query_tokens: query.tokens,
           match_tokens: verified.tokens,
           size_ratio: size_ratio(query.tokens, verified.tokens),
+          shingle_size: query.shingle_size,
+          small: query.is_small(),
         })
       })
       .collect();
@@ -218,17 +223,17 @@ impl SimilarityIndex {
     for pair in &pairs {
       groups.union(pair.left, pair.right);
     }
-    let mut accumulated: HashMap<u32, (Vec<u32>, usize, f64)> = HashMap::new();
+    let mut accumulated: HashMap<u32, (Vec<u32>, usize, f64, bool)> = HashMap::new();
     for pair in &pairs {
       let root = groups.find(pair.left);
-      let entry = accumulated.entry(root).or_insert_with(|| (Vec::new(), 0, f64::INFINITY));
+      let entry = accumulated.entry(root).or_insert_with(|| (Vec::new(), 0, f64::INFINITY, pair.small));
       entry.0.extend([pair.left, pair.right]);
       entry.1 += 1;
       entry.2 = entry.2.min(pair.exact);
     }
     let mut clusters: Vec<StructuralCluster> = accumulated
       .into_values()
-      .map(|(mut slots, verified_pairs, min_pair_jaccard)| {
+      .map(|(mut slots, verified_pairs, min_pair_jaccard, small)| {
         slots.sort_unstable();
         slots.dedup();
         let mut members: Vec<EntityId> = slots.into_iter().filter_map(|slot| self.metas[slot as usize].as_ref().map(|meta| meta.entity)).collect();
@@ -237,6 +242,7 @@ impl SimilarityIndex {
           members,
           verified_pairs,
           min_pair_jaccard,
+          small,
         }
       })
       .collect();
@@ -246,6 +252,27 @@ impl SimilarityIndex {
       oversized_buckets: verified.oversized_buckets,
       sampled: verified.oversized_buckets > 0,
     }
+  }
+
+  pub fn structural_pairs(&self, threshold: f64) -> Vec<StructuralPair> {
+    if threshold.is_nan() {
+      return Vec::new();
+    }
+    self
+      .structural
+      .pairs(threshold)
+      .pairs
+      .into_iter()
+      .filter_map(|pair| {
+        let (left, right) = (self.metas[pair.left as usize].as_ref()?, self.metas[pair.right as usize].as_ref()?);
+        Some(StructuralPair {
+          left: left.entity,
+          right: right.entity,
+          jaccard: pair.exact,
+          small: pair.small,
+        })
+      })
+      .collect()
   }
 
   pub fn search(&self, query: &str, options: &SearchOptions) -> Vec<SearchHit> {

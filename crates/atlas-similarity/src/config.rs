@@ -13,7 +13,7 @@ impl Default for SimilarityConfig {
     Self {
       bands: 32,
       rows: 4,
-      min_tokens: 40,
+      min_tokens: 24,
     }
   }
 }

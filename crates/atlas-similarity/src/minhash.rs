@@ -3,6 +3,8 @@ use std::sync::LazyLock;
 use crate::hashing::{fnv_offset, fnv1a_extend, splitmix64};
 
 pub const SHINGLE_SIZE: usize = 5;
+pub const SMALL_SHINGLE_SIZE: usize = 3;
+pub const SMALL_BODY_TOKENS: usize = 40;
 pub const LANES: usize = 128;
 
 const LANE_SEED_BASE: u64 = 0x5eed_c0de_a71a_5001;
@@ -17,9 +19,13 @@ static LANE_SEEDS: LazyLock<[u64; LANES]> = LazyLock::new(|| {
   seeds
 });
 
-pub(crate) fn shingles(tokens: &[u32]) -> Vec<u64> {
+pub(crate) fn shingle_size(tokens: usize) -> usize {
+  if tokens < SMALL_BODY_TOKENS { SMALL_SHINGLE_SIZE } else { SHINGLE_SIZE }
+}
+
+pub(crate) fn shingles(tokens: &[u32], size: usize) -> Vec<u64> {
   let mut hashes: Vec<u64> = tokens
-    .windows(SHINGLE_SIZE)
+    .windows(size)
     .map(|window| {
       let hash = window.iter().fold(fnv_offset(), |hash, token| fnv1a_extend(hash, &token.to_le_bytes()));
       splitmix64(hash)
@@ -88,26 +94,33 @@ mod tests {
 
   #[test]
   fn should_produce_identical_signatures_across_calls() {
-    let shingles = shingles(&tokens(120, 7));
+    let shingles = shingles(&tokens(120, 7), SHINGLE_SIZE);
     assert_eq!(signature(&shingles), signature(&shingles));
   }
 
   #[test]
   fn should_pin_the_signature_of_a_fixed_input() {
-    let sig = signature(&shingles(&[16, 17, 18, 19, 20, 21, 22, 23]));
+    let sig = signature(&shingles(&[16, 17, 18, 19, 20, 21, 22, 23], SHINGLE_SIZE));
     assert_eq!(sig[0], 446_570_567);
     assert_eq!(sig[LANES - 1], 410_961_464);
   }
 
   #[test]
   fn should_return_no_shingles_below_the_shingle_size() {
-    assert!(shingles(&[1, 2, 3, 4]).is_empty());
-    assert_eq!(shingles(&[1, 2, 3, 4, 5]).len(), 1);
+    assert!(shingles(&[1, 2, 3, 4], SHINGLE_SIZE).is_empty());
+    assert_eq!(shingles(&[1, 2, 3, 4, 5], SHINGLE_SIZE).len(), 1);
+  }
+
+  #[test]
+  fn should_use_small_shingles_below_the_small_body_limit() {
+    assert_eq!(shingle_size(SMALL_BODY_TOKENS - 1), SMALL_SHINGLE_SIZE);
+    assert_eq!(shingle_size(SMALL_BODY_TOKENS), SHINGLE_SIZE);
+    assert_eq!(shingles(&[1, 2, 3, 4], SMALL_SHINGLE_SIZE).len(), 2);
   }
 
   #[test]
   fn should_deduplicate_repeated_shingles() {
-    assert_eq!(shingles(&[9; 12]).len(), 1);
+    assert_eq!(shingles(&[9; 12], SHINGLE_SIZE).len(), 1);
   }
 
   #[test]
@@ -124,7 +137,7 @@ mod tests {
     for i in (0..b.len()).step_by(20) {
       b[i] = 5_000 + i as u32;
     }
-    let (sa, sb) = (shingles(&a), shingles(&b));
+    let (sa, sb) = (shingles(&a, SHINGLE_SIZE), shingles(&b, SHINGLE_SIZE));
     let exact = exact_jaccard(&sa, &sb);
     let estimate = estimated_jaccard(&signature(&sa), &signature(&sb));
     assert!((exact - estimate).abs() < 0.12, "exact {exact} estimate {estimate}");

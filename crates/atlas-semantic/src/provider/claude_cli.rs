@@ -157,8 +157,9 @@ mod tests {
 
   fn script(dir: &Path, body: &str) -> PathBuf {
     let path = dir.join("claude");
-    fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+    fs::write(&path, format!("#!/bin/sh\n[ -n \"$ATLAS_TEST_SCRIPT_WARMUP\" ] && exit 0\n{body}\n")).unwrap();
     fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(Command::new(&path).env("ATLAS_TEST_SCRIPT_WARMUP", "1").status().unwrap().success());
     path
   }
 
@@ -254,8 +255,16 @@ mod tests {
     let pid_file = dir.path().join("pid");
     let body = format!("sleep 30 &\necho $! > '{}'\nwait", pid_file.display());
     let provider = ClaudeCliProvider::new("haiku").with_binary(script(dir.path(), &body));
-    assert_eq!(provider.complete(&request(Duration::from_secs(3))).unwrap_err(), LlmError::Timeout(Duration::from_secs(3)));
-    let pid = fs::read_to_string(&pid_file).unwrap().trim().to_owned();
+    assert_eq!(provider.complete(&request(Duration::from_secs(5))).unwrap_err(), LlmError::Timeout(Duration::from_secs(5)));
+    let pid_deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let pid = loop {
+      let recorded = fs::read_to_string(&pid_file).unwrap_or_default().trim().to_owned();
+      if !recorded.is_empty() || std::time::Instant::now() >= pid_deadline {
+        break recorded;
+      }
+      std::thread::sleep(Duration::from_millis(20));
+    };
+    assert!(!pid.is_empty(), "the child never recorded its pid");
     let alive = || Command::new("kill").args(["-0", &pid]).stderr(std::process::Stdio::null()).status().unwrap().success();
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     while alive() && std::time::Instant::now() < deadline {

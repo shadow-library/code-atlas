@@ -610,6 +610,33 @@ fn should_skip_enrichment_without_affecting_freshness_when_the_llm_is_unavailabl
   assert_eq!(run.report.counts["tasks_skipped_budget"], 0);
 }
 
+#[test]
+fn should_only_enrich_small_body_pairs_that_a_name_corroborates() {
+  let scratch = tempfile::tempdir().unwrap();
+  let repo = scratch.path().join("small");
+  std::fs::create_dir_all(repo.join("src")).unwrap();
+  std::fs::write(repo.join("package.json"), r#"{ "name": "small", "version": "1.0.0" }"#).unwrap();
+  let body = "(items: number[]): number {\n  let total = 0;\n  for (const item of items) { if (item > 0) total += item * 2; }\n  return total;\n}\n";
+  let source: String = ["sumItems", "sumValues", "quxAlpha", "plaidBeta"]
+    .iter()
+    .map(|name| format!("export function {name}{body}\n"))
+    .collect();
+  std::fs::write(repo.join("src/a.ts"), source).unwrap();
+  let project = common::project("small", vec![common::repo_config("small", &repo)]);
+  let providers = atlas_semantic::TaskProviders::from_config(&atlas_semantic::ProviderConfig::None { reason: "offline".to_owned() });
+  let options = EngineOptions {
+    llm_providers: Some(Arc::new(providers)),
+    ..EngineOptions::default()
+  };
+  let engine = open_with(&project, &scratch.path().join("home"), options);
+  fresh(&engine);
+  assert_eq!(engine.similarity().structural_pairs(0.6).len(), 6);
+
+  let report = engine.enrich(atlas_semantic::SemanticBudget::default()).unwrap();
+
+  assert_eq!(report.candidates, 1, "{report:?}");
+}
+
 struct PanickingPass;
 
 impl atlas_engine::ProjectPass for PanickingPass {

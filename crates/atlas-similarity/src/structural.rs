@@ -5,10 +5,13 @@ use serde::Serialize;
 
 use crate::config::SimilarityConfig;
 use crate::hashing::IdentityBuild;
-use crate::minhash::{self, LANES, SHINGLE_SIZE, Signature};
+use crate::minhash::{self, LANES, SMALL_SHINGLE_SIZE, Signature};
 
 const MAX_CLUSTER_BUCKET: usize = 512;
 const OVERSIZED_BUCKET_SAMPLE: usize = 16;
+const MIN_SMALL_DISTINCT_TOKENS: usize = 5;
+const MIN_SMALL_DISTINCT_SHINGLES: usize = 6;
+pub const SMALL_PAIR_MIN_JACCARD: f64 = 0.85;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct StructuralMatch {
@@ -22,6 +25,8 @@ pub struct StructuralMatch {
   pub query_tokens: usize,
   pub match_tokens: usize,
   pub size_ratio: f64,
+  pub shingle_size: usize,
+  pub small: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -29,6 +34,15 @@ pub struct StructuralCluster {
   pub members: Vec<EntityId>,
   pub verified_pairs: usize,
   pub min_pair_jaccard: f64,
+  pub small: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct StructuralPair {
+  pub left: EntityId,
+  pub right: EntityId,
+  pub jaccard: f64,
+  pub small: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -44,23 +58,54 @@ pub enum StructuralStatus {
   Unknown,
   NoBody,
   TooSmall { tokens: usize },
+  LowEntropy { tokens: usize },
   Indexed { tokens: usize },
 }
 
 pub(crate) struct StructuralDoc {
   pub tokens: usize,
+  pub shingle_size: usize,
   pub shingles: Vec<u64>,
   pub signature: Signature,
 }
 
 impl StructuralDoc {
-  pub fn from_shingles(tokens: usize, shingles: Vec<u64>) -> Self {
+  pub fn from_shingles(tokens: usize, shingle_size: usize, shingles: Vec<u64>) -> Self {
     let signature = minhash::signature(&shingles);
-    Self { tokens, shingles, signature }
+    Self {
+      tokens,
+      shingle_size,
+      shingles,
+      signature,
+    }
   }
 
-  fn from_tokens(tokens: &[u32]) -> Self {
-    Self::from_shingles(tokens.len(), minhash::shingles(tokens))
+  fn from_tokens(tokens: &[u32]) -> Option<Self> {
+    let shingle_size = minhash::shingle_size(tokens.len());
+    let shingles = minhash::shingles(tokens, shingle_size);
+    let doc = Self::from_shingles(tokens.len(), shingle_size, shingles);
+    (!doc.is_small() || doc.is_substantial(tokens)).then_some(doc)
+  }
+
+  pub fn is_small(&self) -> bool {
+    self.shingle_size == SMALL_SHINGLE_SIZE
+  }
+
+  fn is_substantial(&self, tokens: &[u32]) -> bool {
+    let mut distinct = tokens.to_vec();
+    distinct.sort_unstable();
+    distinct.dedup();
+    distinct.len() >= MIN_SMALL_DISTINCT_TOKENS && self.shingles.len() >= MIN_SMALL_DISTINCT_SHINGLES
+  }
+
+  fn exact_against(&self, other: &Self, threshold: f64) -> Option<f64> {
+    // Bodies of 39 and 40 tokens use different shingle sizes, so their shingle sets are not comparable and such pairs are skipped.
+    if self.shingle_size != other.shingle_size {
+      return None;
+    }
+    let threshold = if self.is_small() { threshold.max(SMALL_PAIR_MIN_JACCARD) } else { threshold };
+    let exact = minhash::exact_jaccard(&self.shingles, &other.shingles);
+    (exact >= threshold).then_some(exact)
   }
 }
 
@@ -69,6 +114,7 @@ pub(crate) enum StructuralState {
   #[default]
   Absent,
   TooSmall(usize),
+  LowEntropy(usize),
   Indexed(StructuralDoc),
 }
 
@@ -121,6 +167,7 @@ pub(crate) struct VerifiedPair {
   pub left: u32,
   pub right: u32,
   pub exact: f64,
+  pub small: bool,
 }
 
 pub(crate) struct StructuralStore {
@@ -139,7 +186,7 @@ impl StructuralStore {
   }
 
   pub fn effective_min_tokens(&self) -> usize {
-    self.config.min_tokens.max(SHINGLE_SIZE)
+    self.config.min_tokens.max(SMALL_SHINGLE_SIZE)
   }
 
   pub fn classify(&self, body: Option<&BodyFingerprintInput>) -> StructuralState {
@@ -148,7 +195,7 @@ impl StructuralStore {
     if tokens.len() < self.effective_min_tokens() {
       return StructuralState::TooSmall(tokens.len());
     }
-    StructuralState::Indexed(StructuralDoc::from_tokens(tokens))
+    StructuralDoc::from_tokens(tokens).map_or(StructuralState::LowEntropy(tokens.len()), StructuralState::Indexed)
   }
 
   pub fn query_doc(&self, tokens: &[u32]) -> Option<StructuralDoc> {
@@ -156,7 +203,7 @@ impl StructuralStore {
     if tokens.len() < self.effective_min_tokens() {
       return None;
     }
-    Some(StructuralDoc::from_tokens(tokens))
+    StructuralDoc::from_tokens(tokens)
   }
 
   pub fn state(&self, slot: u32) -> &StructuralState {
@@ -218,10 +265,7 @@ impl StructuralStore {
         continue;
       }
       let StructuralState::Indexed(doc) = self.state(slot) else { continue };
-      let exact = minhash::exact_jaccard(&query.shingles, &doc.shingles);
-      if exact < threshold {
-        continue;
-      }
+      let Some(exact) = query.exact_against(doc, threshold) else { continue };
       found.push(Verified {
         slot,
         estimated: minhash::estimated_jaccard(&query.signature, &doc.signature),
@@ -278,8 +322,12 @@ impl StructuralStore {
         let (StructuralState::Indexed(a), StructuralState::Indexed(b)) = (self.state(left), self.state(right)) else {
           return None;
         };
-        let exact = minhash::exact_jaccard(&a.shingles, &b.shingles);
-        (exact >= threshold).then_some(VerifiedPair { left, right, exact })
+        a.exact_against(b, threshold).map(|exact| VerifiedPair {
+          left,
+          right,
+          exact,
+          small: a.is_small(),
+        })
       })
       .collect();
     VerifiedPairs { pairs, oversized_buckets }

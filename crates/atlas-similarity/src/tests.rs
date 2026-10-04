@@ -135,7 +135,7 @@ fn render(node: &Node, depth: usize, out: &mut String) {
 }
 "#;
 
-const TINY: &str = "fn id(x: u32) -> u32 { x }";
+const TINY: &str = "fn f() { x }";
 
 fn code_index() -> SimilarityIndex {
   let mut index = SimilarityIndex::default();
@@ -484,7 +484,7 @@ fn should_reject_an_unsupported_version() {
   bytes[8..12].copy_from_slice(&99u32.to_le_bytes());
   assert!(matches!(
     SimilarityIndex::from_bytes(&bytes),
-    Err(SimilarityError::UnsupportedVersion { found: 99, expected: 1 })
+    Err(SimilarityError::UnsupportedVersion { found: 99, expected: 3 })
   ));
 }
 
@@ -552,7 +552,7 @@ fn should_clamp_min_tokens_to_the_shingle_size() {
     min_tokens: 0,
   })
   .unwrap();
-  index.upsert(doc(1, "tiny", Some("fn f()"))).unwrap();
+  index.upsert(doc(1, "tiny", Some("fn f"))).unwrap();
   assert!(matches!(index.structural_status(entity(1)), StructuralStatus::TooSmall { .. }));
 }
 
@@ -583,4 +583,198 @@ fn should_reject_term_frequencies_in_zero_length_fields() {
   let checksum = crate::hashing::fnv1a(&bytes[..payload_len]);
   bytes[payload_len..].copy_from_slice(&checksum.to_le_bytes());
   assert!(matches!(SimilarityIndex::from_bytes(&bytes), Err(SimilarityError::Corrupt { .. })));
+}
+
+fn synthetic(len: usize) -> Vec<u32> {
+  (0..len as u32).map(|i| 16 + (i.wrapping_mul(2_654_435_761) >> 7) % 97).collect()
+}
+
+fn token_doc(id: u64, tokens: Vec<u32>) -> SimilarityDoc {
+  SimilarityDoc {
+    body: Some(BodyFingerprintInput {
+      token_count: tokens.len() as u32,
+      line_count: 1,
+      normalized_tokens: tokens,
+    }),
+    ..doc(id, "synthetic", None)
+  }
+}
+
+fn small_index(docs: Vec<Vec<u32>>) -> SimilarityIndex {
+  let mut index = SimilarityIndex::default();
+  for (position, tokens) in docs.into_iter().enumerate() {
+    index.upsert(token_doc(position as u64 + 1, tokens)).unwrap();
+  }
+  index
+}
+
+#[test]
+fn should_index_bodies_from_the_default_minimum_up_to_the_small_body_limit() {
+  let index = small_index(vec![synthetic(23), synthetic(24), synthetic(39), synthetic(40)]);
+  assert_eq!(index.structural_status(entity(1)), StructuralStatus::TooSmall { tokens: 23 });
+  assert_eq!(index.structural_status(entity(2)), StructuralStatus::Indexed { tokens: 24 });
+  assert_eq!(index.structural_status(entity(3)), StructuralStatus::Indexed { tokens: 39 });
+  assert_eq!(index.structural_status(entity(4)), StructuralStatus::Indexed { tokens: 40 });
+}
+
+#[test]
+fn should_find_identical_small_bodies_and_score_them_one() {
+  let index = small_index(vec![synthetic(30), synthetic(30), synthetic(39)]);
+  let found = index.near_duplicates(entity(1), 0.0, 10);
+  assert_eq!(ids(&found), vec![2]);
+  assert_eq!(found[0].exact_jaccard, 1.0);
+  assert_eq!((found[0].query_tokens, found[0].match_tokens), (30, 30));
+}
+
+#[test]
+fn should_apply_a_higher_floor_to_small_pairs_than_the_caller_threshold() {
+  let base = synthetic(30);
+  let mut late = base.clone();
+  late[29] = 900;
+  let mut middle = base.clone();
+  middle[15] = 900;
+  let index = small_index(vec![base, late, middle]);
+  let found = index.near_duplicates(entity(1), 0.1, 10);
+  assert_eq!(ids(&found), vec![2]);
+  assert!(found[0].exact_jaccard >= 0.85 && found[0].exact_jaccard < 1.0, "{}", found[0].exact_jaccard);
+  assert!(index.near_duplicates(entity(1), 0.1, 10).iter().all(|found| found.entity != entity(3)));
+  assert!(index.clusters(0.1).clusters.iter().all(|cluster| !cluster.members.contains(&entity(3))));
+}
+
+#[test]
+fn should_keep_the_caller_threshold_when_it_exceeds_the_small_floor() {
+  let base = synthetic(30);
+  let mut late = base.clone();
+  late[29] = 900;
+  let index = small_index(vec![base, late]);
+  assert!(index.near_duplicates(entity(1), 0.99, 10).is_empty());
+  assert_eq!(index.near_duplicates(entity(1), 0.9, 10).len(), 1);
+}
+
+#[test]
+fn should_never_compare_small_bodies_with_large_ones() {
+  let large = synthetic(60);
+  let small = large[..30].to_vec();
+  let index = small_index(vec![small.clone(), large.clone()]);
+  assert!(index.near_duplicates(entity(1), 0.0, 10).is_empty());
+  assert!(index.near_duplicates(entity(2), 0.0, 10).is_empty());
+  assert!(index.near_duplicates_of_tokens(&large, 0.0, 10).iter().all(|found| found.entity != entity(1)));
+  assert!(index.clusters(0.0).clusters.is_empty());
+}
+
+#[test]
+fn should_still_use_five_token_shingles_for_large_bodies() {
+  let base = synthetic(60);
+  let mut changed = base.clone();
+  changed[59] = 900;
+  let index = small_index(vec![base, changed]);
+  let found = index.near_duplicates(entity(1), 0.5, 10);
+  assert_eq!(ids(&found), vec![2]);
+  assert!((found[0].exact_jaccard - 55.0 / 57.0).abs() < 1e-9, "{}", found[0].exact_jaccard);
+}
+
+#[test]
+fn should_reject_low_entropy_small_bodies() {
+  let repetitive: Vec<u32> = (0..30).map(|i| 16 + i % 2).collect();
+  let few_shapes: Vec<u32> = (0..30).map(|i| 16 + (i / 10) % 4).collect();
+  let index = small_index(vec![repetitive.clone(), few_shapes, synthetic(30)]);
+  assert_eq!(index.structural_status(entity(1)), StructuralStatus::LowEntropy { tokens: 30 });
+  assert_eq!(index.structural_status(entity(2)), StructuralStatus::LowEntropy { tokens: 30 });
+  assert_eq!(index.structural_status(entity(3)), StructuralStatus::Indexed { tokens: 30 });
+  assert!(index.near_duplicates_of_tokens(&repetitive, 0.0, 10).is_empty());
+  let restored = SimilarityIndex::from_bytes(&index.to_bytes()).unwrap();
+  assert_eq!(restored.structural_status(entity(1)), StructuralStatus::LowEntropy { tokens: 30 });
+}
+
+#[test]
+fn should_flag_small_matches_and_clusters_and_expose_verified_pairs() {
+  let index = small_index(vec![synthetic(30), synthetic(30), synthetic(80), synthetic(80)]);
+  let small = index.near_duplicates(entity(1), 0.0, 10);
+  assert_eq!((small[0].small, small[0].shingle_size), (true, 3));
+  let large = index.near_duplicates(entity(3), 0.0, 10);
+  assert_eq!((large[0].small, large[0].shingle_size), (false, 5));
+  let flags: Vec<bool> = index.clusters(0.0).clusters.iter().map(|cluster| cluster.small).collect();
+  assert_eq!(flags.len(), 2);
+  assert!(flags.contains(&true) && flags.contains(&false));
+  let pairs = index.structural_pairs(0.0);
+  assert_eq!(pairs.len(), 2);
+  assert!(
+    pairs
+      .iter()
+      .any(|pair| pair.small && pair.left == entity(1) && pair.right == entity(2) && pair.jaccard == 1.0)
+  );
+  assert!(pairs.iter().any(|pair| !pair.small && pair.left == entity(3) && pair.right == entity(4)));
+}
+
+#[test]
+fn should_only_report_pairs_that_were_verified_in_a_transitive_chain() {
+  let base = synthetic(30);
+  let mut middle = base.clone();
+  middle[29] = 900;
+  let mut far = middle.clone();
+  far[0] = 901;
+  far[1] = 902;
+  let index = small_index(vec![base, middle, far]);
+  let pairs = index.structural_pairs(0.0);
+  assert!(pairs.iter().all(|pair| pair.jaccard >= 0.85));
+  assert_eq!(index.clusters(0.0).clusters[0].members.len(), 3);
+  assert!(!pairs.iter().any(|pair| pair.left == entity(1) && pair.right == entity(3)));
+}
+
+#[test]
+fn should_persist_the_shingle_size_and_restore_small_and_large_docs_identically() {
+  let index = small_index(vec![synthetic(30), synthetic(30), synthetic(80), synthetic(80)]);
+  let bytes = index.to_bytes();
+  let restored = SimilarityIndex::from_bytes(&bytes).unwrap();
+  assert_eq!(restored.to_bytes(), bytes);
+  assert_eq!(restored.near_duplicates(entity(1), 0.0, 10), index.near_duplicates(entity(1), 0.0, 10));
+  assert_eq!(restored.near_duplicates(entity(3), 0.0, 10), index.near_duplicates(entity(3), 0.0, 10));
+  assert_eq!(ids(&restored.near_duplicates(entity(1), 0.0, 10)), vec![2]);
+}
+
+#[test]
+fn should_reject_a_version_one_blob_so_the_index_is_rebuilt() {
+  let mut bytes = small_index(vec![synthetic(30)]).to_bytes();
+  bytes[8..12].copy_from_slice(&1u32.to_le_bytes());
+  assert!(matches!(
+    SimilarityIndex::from_bytes(&bytes),
+    Err(SimilarityError::UnsupportedVersion { found: 1, expected: 3 })
+  ));
+}
+
+#[test]
+fn should_reject_a_shingle_size_that_does_not_match_the_body_size() {
+  let mut bytes = small_index(vec![synthetic(30)]).to_bytes();
+  let mut marker = 30u64.to_le_bytes().to_vec();
+  marker.extend(3u64.to_le_bytes());
+  let at = bytes.windows(marker.len()).position(|window| window == marker).unwrap() + 8;
+  bytes[at..at + 8].copy_from_slice(&5u64.to_le_bytes());
+  let payload_len = bytes.len() - 8;
+  let checksum = crate::hashing::fnv1a(&bytes[..payload_len]);
+  bytes[payload_len..].copy_from_slice(&checksum.to_le_bytes());
+  assert!(matches!(SimilarityIndex::from_bytes(&bytes), Err(SimilarityError::Corrupt { .. })));
+}
+
+#[test]
+fn should_drop_generic_words_from_name_words() {
+  assert_eq!(crate::name_words("formatMoney").into_iter().collect::<Vec<_>>(), vec!["format", "money"]);
+  assert_eq!(crate::name_words("to_cents_v2").into_iter().collect::<Vec<_>>(), vec!["cents"]);
+  assert!(crate::name_words("getItemValue").is_empty());
+}
+
+#[test]
+fn should_not_relate_names_that_only_share_a_generic_word() {
+  assert!(!crate::names_related("getUser", "getOrder"));
+  assert!(!crate::names_related("new_foo", "new_bar"));
+  assert!(!crate::names_related("isAdmin", "isArchived"));
+  assert!(!crate::names_related("get_by_id", "set_by_id"));
+  assert!(!crate::names_related("get_by_id", "get_by_name"));
+  assert!(!crate::names_related("get_with_id", "new_with_id"));
+}
+
+#[test]
+fn should_relate_names_that_share_a_meaningful_word_or_two_words() {
+  assert!(crate::names_related("getUserName", "loadUserName"));
+  assert!(crate::names_related("formatMoney", "formatCents"));
+  assert!(crate::names_related("getItem", "get_item"));
 }

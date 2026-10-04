@@ -6,6 +6,7 @@ use atlas_semantic::{
   RevalidationReport, SemanticBudget, SemanticConfig, SemanticEngine, SemanticReport, SemanticRunStatus, SemanticTask, SimilarityPair, SkipReason, SourceRef, SymbolSnippet,
   TaskOutcome, TaskProviders, providers_from_settings,
 };
+use atlas_similarity::{StructuralPair, names_related};
 use atlas_store::{FreshnessPolicy, InferredQuery, RunOutcome, RunReport, StoredInferredFact};
 
 use crate::engine::Engine;
@@ -125,19 +126,22 @@ impl Engine {
   }
 
   fn similarity_candidates(&self, limit: usize) -> Vec<(EntityId, EntityId)> {
-    let index = self.similarity();
-    let mut pairs = Vec::new();
-    for cluster in index.clusters(STRUCTURAL_THRESHOLD).clusters {
-      for (position, left) in cluster.members.iter().enumerate() {
-        for right in &cluster.members[position + 1..] {
-          if pairs.len() >= limit {
-            return pairs;
-          }
-          pairs.push((*left, *right));
-        }
-      }
-    }
-    pairs
+    let mut pairs = self.similarity().structural_pairs(STRUCTURAL_THRESHOLD);
+    pairs.sort_by(|a, b| {
+      a.small
+        .cmp(&b.small)
+        .then(b.jaccard.total_cmp(&a.jaccard))
+        .then(a.left.cmp(&b.left))
+        .then(a.right.cmp(&b.right))
+    });
+    let names: BTreeMap<EntityId, String> = pairs
+      .iter()
+      .filter(|pair| pair.small)
+      .flat_map(|pair| [pair.left, pair.right])
+      .filter_map(|id| Some((id, self.store.read(|tx| tx.entity(id)).ok()??.name)))
+      .collect();
+    let corroborated = |pair: &StructuralPair| !pair.small || names.get(&pair.left).zip(names.get(&pair.right)).is_some_and(|(left, right)| names_related(left, right));
+    pairs.into_iter().filter(corroborated).take(limit).map(|pair| (pair.left, pair.right)).collect()
   }
 
   fn snippet(&self, entity: EntityId) -> Option<SymbolSnippet> {

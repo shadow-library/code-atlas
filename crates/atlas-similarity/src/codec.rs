@@ -7,14 +7,16 @@ use crate::error::SimilarityError;
 use crate::hashing::fnv1a;
 use crate::index::{DocMeta, SimilarityIndex};
 use crate::lexical::{FIELD_COUNT, LexicalDoc};
+use crate::minhash;
 use crate::structural::{StructuralDoc, StructuralState};
 
 const MAGIC: &[u8; 8] = b"ATLSIMIX";
-const FORMAT_VERSION: u32 = 1;
+const FORMAT_VERSION: u32 = 3;
 const CHECKSUM_LEN: usize = 8;
 const TAG_ABSENT: u8 = 0;
 const TAG_TOO_SMALL: u8 = 1;
 const TAG_INDEXED: u8 = 2;
+const TAG_LOW_ENTROPY: u8 = 3;
 
 fn corrupt(reason: impl Into<String>) -> SimilarityError {
   SimilarityError::Corrupt { reason: reason.into() }
@@ -148,9 +150,14 @@ impl SimilarityIndex {
           out.u8(TAG_TOO_SMALL);
           out.len(*tokens);
         }
+        StructuralState::LowEntropy(tokens) => {
+          out.u8(TAG_LOW_ENTROPY);
+          out.len(*tokens);
+        }
         StructuralState::Indexed(doc) => {
           out.u8(TAG_INDEXED);
           out.len(doc.tokens);
+          out.len(doc.shingle_size);
           out.len(doc.shingles.len());
           for &shingle in &doc.shingles {
             out.u64(shingle);
@@ -239,8 +246,13 @@ impl SimilarityIndex {
       let state = match reader.u8()? {
         TAG_ABSENT => StructuralState::Absent,
         TAG_TOO_SMALL => StructuralState::TooSmall(reader.len()?),
+        TAG_LOW_ENTROPY => StructuralState::LowEntropy(reader.len()?),
         TAG_INDEXED => {
           let tokens = reader.len()?;
+          let shingle_size = reader.len()?;
+          if shingle_size != minhash::shingle_size(tokens) {
+            return Err(corrupt("shingle size does not match the body size"));
+          }
           let shingle_count = reader.count(8)?;
           let mut shingles = Vec::with_capacity(shingle_count);
           for _ in 0..shingle_count {
@@ -250,7 +262,7 @@ impl SimilarityIndex {
             }
             shingles.push(shingle);
           }
-          StructuralState::Indexed(StructuralDoc::from_shingles(tokens, shingles))
+          StructuralState::Indexed(StructuralDoc::from_shingles(tokens, shingle_size, shingles))
         }
         other => return Err(corrupt(format!("unknown structural tag {other}"))),
       };

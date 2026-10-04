@@ -31,10 +31,11 @@ impl RenderText for SearchAnswer {
     if !self.structurally_similar.is_empty() {
       out.line(0, format!("structurally similar ({})", self.structurally_similar.len()));
       for hit in &self.structurally_similar {
+        let shape = if hit.small_body { "similar small body to" } else { "same shape as" };
         out.line(
           1,
           format!(
-            "{} same shape as {} [structural {:.2}], behaviour unverified",
+            "{} {shape} {} [structural {:.2}], behaviour unverified",
             entity_line(&hit.entity),
             hit.similar_to,
             hit.jaccard

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use atlas_core::{BodyFingerprintInput, Certainty, Confidence, ContentHash, Edge, EdgeKind, EntityId, EntityKind, Evidence, Producer, RelPath, RepoName, RunId, Span, SymbolKey};
-use atlas_similarity::{SimilarityConfig, SimilarityDoc, SimilarityIndex};
+use atlas_similarity::{SimilarityConfig, SimilarityDoc, SimilarityIndex, names_related};
 use serde_json::json;
 
 use crate::artifact::FileKey;
@@ -15,9 +15,9 @@ const MIN_IDENTICAL_TOKENS: u32 = 12;
 const MIN_IDENTICAL_TOKENS_ACROSS_FILES: u32 = 30;
 const SMALL_BODY_TOKENS: u32 = 30;
 const SMALL_BODY_CONFIDENCE: f64 = 0.6;
-const MIN_NAME_TOKEN_LEN: usize = 3;
 pub(crate) const MIN_MIGRATION_CONFIDENCE: f32 = 0.85;
 const MAX_CANDIDATES: usize = 8;
+const FUZZY_MIN_TOKENS: usize = 40;
 pub(crate) const MAX_LINEAGE_EDGES: usize = 10_000;
 
 #[derive(Debug, Clone)]
@@ -63,7 +63,11 @@ pub(crate) fn match_renames(disappeared: &[LineageSide], appeared: &[LineageSide
   let moved = |old: &LineageSide, new: &LineageSide| moved_files.contains(&(old.file.clone(), new.file.clone()));
   let mut scored: Vec<Scored> = Vec::new();
   let appeared_hashes: Vec<Option<[u8; 32]>> = appeared.iter().map(|side| side.body.as_ref().map(body_hash)).collect();
-  let mut fuzzy = SimilarityIndex::new(SimilarityConfig::default()).ok();
+  let mut fuzzy = SimilarityIndex::new(SimilarityConfig {
+    min_tokens: FUZZY_MIN_TOKENS,
+    ..SimilarityConfig::default()
+  })
+  .ok();
   if let Some(index) = fuzzy.as_mut() {
     for side in appeared.iter().filter(|side| side.body.is_some()) {
       let doc = SimilarityDoc {
@@ -104,7 +108,7 @@ pub(crate) fn match_renames(disappeared: &[LineageSide], appeared: &[LineageSide
       let tokens = old.body.as_ref().map_or(0, |body| body.token_count);
       let eligible = tokens >= MIN_IDENTICAL_TOKENS && (same_place || tokens >= MIN_IDENTICAL_TOKENS_ACROSS_FILES);
       if identical && eligible {
-        let score = match tokens >= SMALL_BODY_TOKENS || names_overlap(old.key.name(), new.key.name()) {
+        let score = match tokens >= SMALL_BODY_TOKENS || names_related(old.key.name(), new.key.name()) {
           true => 1.0,
           false => SMALL_BODY_CONFIDENCE,
         };
@@ -132,31 +136,6 @@ pub(crate) fn match_renames(disappeared: &[LineageSide], appeared: &[LineageSide
     }
   }
   unique_best_pairs(&scored, disappeared, appeared)
-}
-
-fn name_tokens(name: &str) -> BTreeSet<String> {
-  let mut tokens = BTreeSet::new();
-  let mut current = String::new();
-  let mut previous_lower = false;
-  for character in name.chars() {
-    let boundary = !character.is_ascii_alphanumeric() || (character.is_ascii_uppercase() && previous_lower);
-    if boundary && !current.is_empty() {
-      tokens.insert(std::mem::take(&mut current));
-    }
-    if character.is_ascii_alphanumeric() {
-      current.push(character.to_ascii_lowercase());
-    }
-    previous_lower = character.is_ascii_lowercase() || character.is_ascii_digit();
-  }
-  if !current.is_empty() {
-    tokens.insert(current);
-  }
-  tokens.retain(|token| token.len() >= MIN_NAME_TOKEN_LEN);
-  tokens
-}
-
-fn names_overlap(left: &str, right: &str) -> bool {
-  !name_tokens(left).is_disjoint(&name_tokens(right))
 }
 
 fn unique_best(scored: &[&Scored]) -> Option<usize> {
@@ -229,13 +208,78 @@ pub(crate) fn retained_lineage(previous: Vec<Edge>, fresh: Vec<Edge>, exists: im
 
 #[cfg(test)]
 mod tests {
-  use super::{name_tokens, names_overlap};
+  use atlas_core::{ContentHash, EntityId, LanguageFamily, RelPath, RepoName, Span, SymbolKey};
+
+  use super::*;
+
+  fn side(id: u64, name: &str, tokens: Vec<u32>) -> LineageSide {
+    let repo = RepoName::new("repo").unwrap();
+    let key = SymbolKey::new(
+      LanguageFamily::Ts,
+      repo.clone(),
+      "pkg",
+      vec!["m".to_owned()],
+      vec![name.to_owned()],
+      EntityKind::Function,
+      0,
+    )
+    .unwrap();
+    LineageSide {
+      id: EntityId::from_raw(id),
+      key,
+      kind: EntityKind::Function,
+      file: (repo, RelPath::new("src/a.ts").unwrap()),
+      body: Some(BodyFingerprintInput {
+        token_count: tokens.len() as u32,
+        line_count: 1,
+        normalized_tokens: tokens,
+      }),
+      span: Span::from_zero_based_rows(0, 1, 0, 0, 0, 1),
+      content_hash: ContentHash::of(name.as_bytes()),
+    }
+  }
+
+  fn body_of(len: u32) -> Vec<u32> {
+    (0..len).map(|i| 16 + (i.wrapping_mul(2_654_435_761) >> 7) % 97).collect()
+  }
+
+  fn with_last_token_changed(mut tokens: Vec<u32>) -> Vec<u32> {
+    *tokens.last_mut().unwrap() = 900;
+    tokens
+  }
 
   #[test]
-  fn should_split_identifiers_into_meaningful_name_tokens() {
-    assert_eq!(name_tokens("formatMoney").into_iter().collect::<Vec<_>>(), vec!["format", "money"]);
-    assert_eq!(name_tokens("to_cents_v2").into_iter().collect::<Vec<_>>(), vec!["cents"]);
-    assert!(names_overlap("formatMoney", "formatCents"));
-    assert!(!names_overlap("isAdmin", "isArchived"));
+  fn should_not_fuzzy_match_small_bodies_as_renames() {
+    let old = side(1, "alpha", body_of(30));
+    let new = side(2, "omega", with_last_token_changed(body_of(30)));
+    assert!(match_renames(&[old], &[new], &BTreeSet::new()).is_empty());
+  }
+
+  #[test]
+  fn should_still_fuzzy_match_large_bodies_as_renames() {
+    let old = side(1, "alpha", body_of(60));
+    let new = side(2, "omega", with_last_token_changed(body_of(60)));
+    let pairs = match_renames(&[old], &[new], &BTreeSet::new());
+    assert_eq!(pairs.len(), 1);
+    assert_eq!(pairs[0].rule, RULE_SIMILAR_BODY);
+  }
+
+  #[test]
+  fn should_match_identical_small_bodies_only_through_the_hash_rule() {
+    let old = side(1, "alpha", body_of(30));
+    let new = side(2, "omega", body_of(30));
+    let pairs = match_renames(&[old], &[new], &BTreeSet::new());
+    assert_eq!(pairs.len(), 1);
+    assert_eq!(pairs[0].rule, RULE_IDENTICAL_BODY);
+  }
+
+  #[test]
+  fn should_trust_an_identical_small_body_fully_only_when_the_names_share_a_meaningful_word() {
+    let related = match_renames(&[side(1, "getUserName", body_of(20))], &[side(2, "loadUserName", body_of(20))], &BTreeSet::new());
+    assert_eq!(related[0].confidence, 1.0);
+    let generic = match_renames(&[side(1, "getUser", body_of(20))], &[side(2, "getOrder", body_of(20))], &BTreeSet::new());
+    assert_eq!(generic[0].confidence, SMALL_BODY_CONFIDENCE as f32);
+    let accessors = match_renames(&[side(1, "get_by_id", body_of(20))], &[side(2, "set_by_id", body_of(20))], &BTreeSet::new());
+    assert_eq!(accessors[0].confidence, SMALL_BODY_CONFIDENCE as f32);
   }
 }

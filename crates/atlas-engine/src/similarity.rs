@@ -10,7 +10,7 @@ use crate::error::EngineResult;
 use crate::owner::SymbolEntry;
 
 pub(crate) const SIMILARITY_BLOB: &str = "similarity";
-pub(crate) const SIMILARITY_BLOB_VERSION: u32 = 2;
+pub(crate) const SIMILARITY_BLOB_VERSION: u32 = 4;
 const GENERATION_BYTES: usize = 8;
 
 pub(crate) fn symbol_docs(artifact: &FileArtifact, symbols: &[SymbolEntry]) -> Vec<SimilarityDoc> {
@@ -88,4 +88,41 @@ pub(crate) fn writable(shared: &mut Arc<SimilarityIndex>) -> EngineResult<&mut S
     *shared = Arc::new(SimilarityIndex::from_bytes(&shared.to_bytes())?);
   }
   Arc::get_mut(shared).ok_or_else(|| crate::error::EngineError::codec("similarity index", "snapshot is shared after copying"))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn blob(index: &SimilarityIndex, codec_version: Option<u32>) -> DerivedBlob {
+    let mut bytes = encode_persisted(index, RunId(7));
+    if let Some(version) = codec_version {
+      bytes[GENERATION_BYTES + 8..GENERATION_BYTES + 12].copy_from_slice(&version.to_le_bytes());
+    }
+    DerivedBlob {
+      name: SIMILARITY_BLOB.to_owned(),
+      version: SIMILARITY_BLOB_VERSION,
+      bytes,
+      updated_run: Some(RunId(7)),
+    }
+  }
+
+  #[test]
+  fn should_reuse_a_persisted_index_written_by_the_current_codec() {
+    let index = SimilarityIndex::default();
+    assert!(decode_persisted(Some(blob(&index, None)), index.config(), Some(7)).is_some());
+  }
+
+  #[test]
+  fn should_rebuild_when_the_persisted_codec_version_is_older() {
+    let index = SimilarityIndex::default();
+    assert!(decode_persisted(Some(blob(&index, Some(1))), index.config(), Some(7)).is_none());
+  }
+
+  #[test]
+  fn should_rebuild_when_the_persisted_config_differs() {
+    let index = SimilarityIndex::default();
+    let other = SimilarityConfig { min_tokens: 40, ..index.config() };
+    assert!(decode_persisted(Some(blob(&index, None)), other, Some(7)).is_none());
+  }
 }

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use atlas_core::{Edge, EdgeKind, Entity, EntityId, EntityKey, EntityKind, HttpMethod, normalize_route};
-use atlas_similarity::SimilarityIndex;
+use atlas_similarity::{SimilarityIndex, names_related};
 use serde::Serialize;
 
 use crate::QueryEngine;
@@ -41,6 +41,8 @@ const LOW_RELEVANCE: f64 = 0.04;
 const MAX_CODE_ITEMS: usize = 40;
 const MENTION_TOKENS: usize = 25;
 const SIMILAR_THRESHOLD: f64 = 0.6;
+const SIMILAR_PER_NODE: usize = 3;
+const SIMILAR_CANDIDATES: usize = 12;
 const AMBIGUOUS_SEED_LIMIT: usize = 4;
 const TEST_CANDIDATES: usize = 12;
 const TESTS_SHOWN: usize = 8;
@@ -1182,10 +1184,26 @@ fn expand_node(graph: &Graph<'_, '_>, index: &SimilarityIndex, pack: &mut Pack, 
     pack.expand_to(graph, &node, read, &edge, 0.3, Role::Code)?;
   }
   if matches!(node.entity.kind, EntityKind::Function | EntityKind::Method) && node.round == 0 {
-    for found in index.near_duplicates(id, SIMILAR_THRESHOLD, 3) {
+    let mut kept = 0;
+    for found in index.near_duplicates(id, SIMILAR_THRESHOLD, SIMILAR_CANDIDATES) {
+      if kept == SIMILAR_PER_NODE {
+        break;
+      }
       let Some(entity) = graph.entity(found.entity)? else { continue };
-      let why = format!("same shape as {name} [structural {:.2}], behaviour unverified", found.exact_jaccard);
+      let why = if found.small {
+        let corroborated = names_related(&node.entity.name, &entity.name) || pack.nodes.get(&found.entity).is_some_and(|other| other.seed);
+        if !corroborated {
+          continue;
+        }
+        format!(
+          "similar small body to {name} [structural {:.2}, small body, name-corroborated], behaviour unverified",
+          found.exact_jaccard
+        )
+      } else {
+        format!("same shape as {name} [structural {:.2}], behaviour unverified", found.exact_jaccard)
+      };
       pack.mention(&node, entity, 0.3, Role::Reuse, why, false);
+      kept += 1;
     }
   }
   Ok(())

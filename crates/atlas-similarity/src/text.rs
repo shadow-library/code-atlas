@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::sync::LazyLock;
 
 const STOPWORDS: &[&str] = &[
@@ -115,6 +115,24 @@ fn is_stopword(word: &str) -> bool {
   let mut chars = word.chars();
   let single_letter = matches!((chars.next(), chars.next()), (Some(c), None) if c.is_alphabetic());
   single_letter || STOPWORD_SET.contains(word)
+}
+
+const GENERIC_NAME_WORDS: &[&str] = &[
+  "get", "set", "new", "has", "is", "as", "to", "from", "with", "into", "default", "build", "create", "init", "parse", "handle", "on", "make", "load", "read", "write", "update",
+  "delete", "remove", "add", "find", "fetch", "try", "do", "run", "process", "impl", "helper", "util", "data", "value", "item",
+];
+
+const MIN_NAME_WORD_LEN: usize = 3;
+
+pub fn name_words(name: &str) -> BTreeSet<String> {
+  split_words(name)
+    .into_iter()
+    .filter(|word| word.len() >= MIN_NAME_WORD_LEN && !GENERIC_NAME_WORDS.contains(&word.as_str()))
+    .collect()
+}
+
+pub fn names_related(left: &str, right: &str) -> bool {
+  !name_words(left).is_disjoint(&name_words(right)) || split_words(left) == split_words(right)
 }
 
 pub(crate) fn analyze(input: &str) -> Vec<String> {
