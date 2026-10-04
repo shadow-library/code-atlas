@@ -726,6 +726,9 @@ impl Resolver<'_> {
         Some(receiver) => receiver,
         None => return Outcome::Unresolved(Miss::Unsupported("this outside a class")),
       },
+      Some(ReceiverHint::Expr(expression)) if head == "this" && expression == "this" && self.ts_this(from).is_some() => {
+        return Outcome::Unresolved(Miss::Unsupported("rebound this"));
+      }
       Some(ReceiverHint::Expr(expression)) if head == "super" && expression == "super" => match self.ts_this(from) {
         Some(receiver) => {
           via_super = true;

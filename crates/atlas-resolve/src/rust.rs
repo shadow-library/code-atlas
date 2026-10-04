@@ -258,6 +258,10 @@ fn has_declared_type(receiver: Option<&ReceiverHint>) -> bool {
   matches!(receiver, Some(ReceiverHint::SelfValue | ReceiverHint::TypeHint(_) | ReceiverHint::Declared { .. }))
 }
 
+fn is_nested_item_self(receiver: Option<&ReceiverHint>, path: &[String]) -> bool {
+  matches!(receiver, Some(ReceiverHint::Expr(head)) if head == "self") && path.first().is_some_and(|head| head == "self")
+}
+
 fn is_dynamic_segment(segment: &str) -> bool {
   segment.starts_with('[') || segment.starts_with('(')
 }
@@ -373,6 +377,9 @@ impl Resolver<'_> {
     }
     if path.iter().any(|segment| is_dynamic_segment(segment)) {
       return Outcome::Unresolved(Miss::Dynamic);
+    }
+    if is_nested_item_self(reference.receiver.as_ref(), path) {
+      return Outcome::Unresolved(Miss::Unsupported("self in nested item"));
     }
     let mut guard = Guard::default();
     match reference.kind {

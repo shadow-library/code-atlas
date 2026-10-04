@@ -804,3 +804,56 @@ fn should_not_guess_fields_by_name_when_a_declared_receiver_type_does_not_resolv
     &heuristic(0.5, "field-name-only"),
   );
 }
+
+fn evidence_lines(edge: &atlas_core::Edge) -> Vec<u32> {
+  edge.evidence.iter().map(|evidence| evidence.span.start_line).collect()
+}
+
+#[test]
+fn should_leave_self_receivers_of_items_nested_in_a_body_unresolved_instead_of_guessing_by_name() {
+  let synthetic = rust_project(
+    "pub struct Outer { pub value: u32 }\npub struct Other { pub count: u32 }\nimpl Outer {\n  pub fn helper(&self) {}\n  pub fn run(&self) -> u32 {\n    self.helper();\n    struct Inner { count: u32 }\n    impl Inner {\n      fn helper(&self) {}\n      fn go(&self) -> u32 { self.helper(); self.count }\n    }\n    self.value\n  }\n  pub fn only_inner(&self) {\n    trait Local { fn helper(&self) {} fn go(&self) { self.helper(); } }\n  }\n}\n",
+  );
+  let project = &synthetic.project;
+  let run = demo(&[], &["Outer", "run"], EntityKind::Method);
+  let only_inner = demo(&[], &["Outer", "only_inner"], EntityKind::Method);
+  let outer_helper = demo(&[], &["Outer", "helper"], EntityKind::Method);
+  let nested_self = UnresolvedReason::Unsupported {
+    detail: "self in nested item".to_owned(),
+  };
+  let outer_call = project.assert_edge(EdgeKind::Calls, run, outer_helper, RESOLVED);
+  assert_eq!(evidence_lines(outer_call), vec![6]);
+  project.assert_no_edge(EdgeKind::Calls, only_inner, outer_helper);
+  project.assert_edge(EdgeKind::References, run, demo(&[], &["Outer", "value"], EntityKind::Field), RESOLVED);
+  project.assert_no_edge(EdgeKind::References, run, demo(&[], &["Other", "count"], EntityKind::Field));
+  assert_eq!(project.unresolved_named(run, "helper").len(), 1);
+  project.assert_unresolved(run, "helper", &nested_self);
+  project.assert_unresolved(run, "count", &nested_self);
+  project.assert_unresolved(only_inner, "helper", &nested_self);
+}
+
+#[test]
+fn should_leave_rebound_this_inside_a_class_unresolved_and_keep_name_only_outside_classes() {
+  let synthetic = ts_project(&[(
+    "src/s.ts",
+    "export class Other { ping() {} }\nexport class Outer {\n  helper() {}\n  run() {\n    this.helper();\n    const arrow = () => this.helper();\n    class Inner { helper() {} go() { this.helper(); this.ping(); } }\n    const callback = function () { this.helper(); };\n    return [arrow, Inner, callback];\n  }\n}\nexport function free() { this.helper(); }\nexport const store = { a() { this.ping(); }, b() {} };\n",
+  )]);
+  let project = &synthetic.project;
+  let run = app(&["src", "s"], &["Outer", "run"], EntityKind::Method);
+  let free = app(&["src", "s"], &["free"], EntityKind::Function);
+  let store = app(&["src", "s"], &["store"], EntityKind::Constant);
+  let outer_helper = app(&["src", "s"], &["Outer", "helper"], EntityKind::Method);
+  let other_ping = app(&["src", "s"], &["Other", "ping"], EntityKind::Method);
+  let rebound = UnresolvedReason::Unsupported {
+    detail: "rebound this".to_owned(),
+  };
+  let outer_call = project.assert_edge(EdgeKind::Calls, run, outer_helper, RESOLVED);
+  assert_eq!(evidence_lines(outer_call), vec![5, 6]);
+  project.assert_no_edge(EdgeKind::Calls, run, other_ping);
+  assert_eq!(project.unresolved_named(run, "helper").len(), 2);
+  project.assert_unresolved(run, "helper", &rebound);
+  project.assert_unresolved(run, "ping", &rebound);
+  let name_only = heuristic(0.5, "method-name-only");
+  project.assert_certainty(EdgeKind::Calls, free, outer_helper, &name_only);
+  project.assert_certainty(EdgeKind::Calls, store, other_ping, &name_only);
+}

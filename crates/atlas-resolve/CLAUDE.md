@@ -50,7 +50,7 @@ Project-wide Rust and TypeScript name, module and import resolution. It turns pe
 - This crate never emits `compiler_verified`.
 - A fn-scoped `use` or glob that binds a name differently from the enclosing module is `Ambiguous` with both candidates, because the analyzer reports block-scoped uses as fn-scoped.
 - Generic parameters of the enclosing fn, impl, trait or struct (Rust), and type parameters of the enclosing class, method or function (TS), never resolve to same-named types. A generic with bounds becomes the bound traits; without bounds it is unknown.
-- TS lookups are namespace-aware end to end (value vs type, through exports and re-exports). Instance receivers see only non-static members. `ClassName.m()`, `this` in static methods and `this` in static blocks (where `from` is the class symbol) see only static members. `Expr("this")` (object-literal methods, function expressions) is an unknown receiver. An overloaded function resolves to its implementation signature.
+- TS lookups are namespace-aware end to end (value vs type, through exports and re-exports). Instance receivers see only non-static members. `ClassName.m()`, `this` in static methods and `this` in static blocks (where `from` is the class symbol) see only static members. `Expr("this")` (local classes, object-literal methods, non-arrow functions) is `Unsupported("rebound this")`, with no candidates, when `from` lies inside a class, because the rebound receiver's members have no symbols and a name match could pick the class's same-named member. Outside a class it is an unknown receiver with name-only candidates. An overloaded function resolves to its implementation signature.
 - Heuristic certainty is carried through every hop: re-exports, extends chains, field types, globs and dist→src.
 - Methods a deref wrapper provides itself (`clone`, `as_ref`, `strong_count`, …) are `External(std)` before the inner type is consulted.
 - Bare `macro_rules!` names follow textual order within a file. Path-based macro lookup sees only `#[macro_export]` macros, except while resolving a `use`.
@@ -58,6 +58,7 @@ Project-wide Rust and TypeScript name, module and import resolution. It turns pe
 - An `Ambiguous` result whose candidates are all the same entity (for example cfg alternatives behind one `#[path]` module) is resolved. Name-only candidate lists are never collapsed.
 - Glob and `export *` webs are searched breadth-first with a visited set, and completed top-level lookups are memoised per resolver run.
 - A path with a `(expr)` head or an `[expr]` segment is `Dynamic` and gets no candidates. That includes method calls on an expression receiver.
+- Rust `Expr("self")` receivers (fn, impl or trait items nested in a body) are `Unsupported("self in nested item")`, with no candidates: the nested item's members have no symbols, so a name match could pick the outer type's same-named member.
 - Name-only candidates apply only when a named receiver's type is unknown. Candidates are limited to the caller's package and its in-project dependencies, excluding other crates' `#[cfg(test)]` code and impls of external traits. A ubiquitous std or JavaScript builtin method name (`iter`, `push`, `map`, `then`, and so on) becomes `Ambiguous` instead of a heuristic edge.
 
 ## Unresolved reasons and edge kinds
@@ -81,8 +82,9 @@ Project-wide Rust and TypeScript name, module and import resolution. It turns pe
 ## Known limits
 
 - Fn-local items are invisible to the analyzer. A local type is detected only through a local `impl` (definite) or item keywords in the body (possible); a local type in a body truncated beyond `MAX_BODY_TOKENS` is not detected.
-- `self`/`Self` inside an impl nested in a method body are unknown (`Expr("self")`, `(Self)` heads), so those calls and field accesses are at most name-only heuristics.
-- `this` inside object-literal methods and `function` expressions is treated as the class until atlas-lang-ts emits `Expr("this")` there.
+- `self`/`Self` inside an item nested in a body stay unresolved (`Unsupported("self in nested item")`, `Dynamic` for `(Self)` paths), even when the nested impl is for a module-level type.
+- Member accesses on a rebound `this` inside a class stay unresolved, including functions invoked with the enclosing instance as `this` (`forEach(fn, this)`, `fn.call(this)`).
+- Explicit `this: T` parameter annotations are ignored (vue `get(this: VueElement)`, pinia `$reset(this: …)`), so such receivers are rebound `this`.
 
 - Rust `let x = T::new()` receivers stay unknown, because the analyzer emits `Expr` for untyped lets.
 - Bindings in fn items nested in a body keep the old hints, so their generic and wrapper receivers stay capped at `param-type-recovery`.
