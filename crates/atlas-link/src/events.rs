@@ -1,15 +1,18 @@
 use std::collections::BTreeSet;
 
-use atlas_core::{EdgeKind, EntityKind, RepoName};
+use atlas_core::{Certainty, EdgeKind, EntityKind, RepoName};
 use serde_json::{Value, json};
 
 use crate::error::LinkResult;
 use crate::facts::Facts;
-use crate::output::{Output, annotated};
+use crate::output::{Output, absence, annotated, derived, weaker};
+
+const RULE_NO_COUNTERPART: &str = "no-detected-counterpart";
 
 struct Side {
   count: usize,
   repos: BTreeSet<RepoName>,
+  certainties: Vec<Certainty>,
 }
 
 fn side(facts: &Facts<'_, '_>, event: atlas_core::EntityId, kind: &EdgeKind) -> LinkResult<Side> {
@@ -20,7 +23,11 @@ fn side(facts: &Facts<'_, '_>, event: atlas_core::EntityId, kind: &EdgeKind) -> 
       repos.insert(repo);
     }
   }
-  Ok(Side { count: edges.len(), repos })
+  Ok(Side {
+    count: edges.len(),
+    repos,
+    certainties: edges.into_iter().map(|edge| edge.certainty).collect(),
+  })
 }
 
 fn repo_names(repos: &BTreeSet<RepoName>) -> Value {
@@ -45,7 +52,11 @@ pub(crate) fn annotate_events(facts: &Facts<'_, '_>, output: &mut Output) -> Lin
       (0, _) => attrs.push(("orphan", json!("no_producer"))),
       _ => {}
     }
-    output.entity(annotated(&event, attrs));
+    let mut certainty = derived(&event.certainty, producers.certainties.iter().chain(&consumers.certainties));
+    if producers.count == 0 || consumers.count == 0 {
+      certainty = weaker(&certainty, &absence(RULE_NO_COUNTERPART)?);
+    }
+    output.entity(annotated(&event, certainty, attrs));
   }
   Ok(())
 }

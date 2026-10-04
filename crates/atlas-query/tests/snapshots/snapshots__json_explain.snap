@@ -43,11 +43,11 @@ expression: output
         "value": "any_of",
         "owner": "link",
         "certainty": {
-          "class": "resolved",
-          "confidence": null,
+          "class": "heuristic",
+          "confidence": 0.7,
           "freshness": null,
-          "authoritative": true,
-          "tag": "[resolved]"
+          "authoritative": false,
+          "tag": "[heuristic 0.70]"
         }
       },
       {
@@ -60,11 +60,11 @@ expression: output
         },
         "owner": "link",
         "certainty": {
-          "class": "resolved",
-          "confidence": null,
+          "class": "heuristic",
+          "confidence": 0.7,
           "freshness": null,
-          "authoritative": true,
-          "tag": "[resolved]"
+          "authoritative": false,
+          "tag": "[heuristic 0.70]"
         }
       },
       {
@@ -72,11 +72,11 @@ expression: output
         "value": [],
         "owner": "link",
         "certainty": {
-          "class": "resolved",
-          "confidence": null,
+          "class": "heuristic",
+          "confidence": 0.7,
           "freshness": null,
-          "authoritative": true,
-          "tag": "[resolved]"
+          "authoritative": false,
+          "tag": "[heuristic 0.70]"
         }
       },
       {
@@ -146,11 +146,11 @@ expression: output
         "value": [],
         "owner": "link",
         "certainty": {
-          "class": "resolved",
-          "confidence": null,
+          "class": "heuristic",
+          "confidence": 0.7,
           "freshness": null,
-          "authoritative": true,
-          "tag": "[resolved]"
+          "authoritative": false,
+          "tag": "[heuristic 0.70]"
         }
       }
     ],
@@ -188,11 +188,11 @@ expression: output
       {
         "owner": "project pass link",
         "certainty": {
-          "class": "resolved",
-          "confidence": null,
+          "class": "heuristic",
+          "confidence": 0.7,
           "freshness": null,
-          "authoritative": true,
-          "tag": "[resolved]"
+          "authoritative": false,
+          "tag": "[heuristic 0.70]"
         },
         "derived_in": "re-derived by pass link on every run",
         "evidence": [

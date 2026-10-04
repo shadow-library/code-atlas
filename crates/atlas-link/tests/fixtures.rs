@@ -3,7 +3,7 @@ mod common;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
-use atlas_core::{EdgeId, EdgeKind, EntityId, EntityKey, EntityKind, RepoName};
+use atlas_core::{Certainty, CertaintyClass, EdgeId, EdgeKind, EntityId, EntityKey, EntityKind, Owner, RepoName};
 use atlas_engine::IndexMode;
 use atlas_store::ReadTx;
 use common::{Indexed, Selected, acme, classes, computed_routes, edges_of, entries, globex, id, min_confidence, pass_assertion, pass_facts, select, symbol};
@@ -400,7 +400,7 @@ fn should_link_cross_repo_packages_and_annotate_events() {
     .find(|edge| edge.kind == EdgeKind::DependsOnPackage && edge.attrs.get("cross_repo") == Some(&json!(true)))
     .unwrap();
   assert_eq!(package_edge.attrs["target_repo"], json!("acme-sdk"));
-  assert_eq!(package_edge.certainty, atlas_core::Certainty::Syntactic);
+  assert_eq!(package_edge.certainty, atlas_core::Certainty::Resolved);
   let event = facts.entities.iter().find(|entity| entity.kind == EntityKind::Event).unwrap();
   assert_eq!(event.name, "order.created");
   assert_eq!(
@@ -506,4 +506,125 @@ fn should_produce_identical_facts_on_every_run() {
   assert_eq!(serde_json::to_string(&once.entities).unwrap(), serde_json::to_string(&twice.entities).unwrap());
   indexed.engine.index(IndexMode::Full).unwrap();
   assert_eq!(pass_facts(&indexed.engine), first);
+}
+
+fn link_owner() -> Owner {
+  Owner::Project {
+    pass: atlas_link::PASS_NAME.to_owned(),
+  }
+}
+
+fn link_derived(confidence_at_most: f64, certainty: &Certainty) {
+  assert_eq!(certainty.class(), CertaintyClass::Heuristic, "{certainty:?}");
+  assert!(matches!(certainty, Certainty::Heuristic { rule, .. } if rule == "link-derived"), "{certainty:?}");
+  assert!(
+    certainty.confidence().is_some_and(|confidence| f64::from(confidence.value()) <= confidence_at_most),
+    "{certainty:?}"
+  );
+}
+
+#[test]
+fn should_source_auth_requirement_as_heuristic_while_the_endpoint_stays_syntactic() {
+  let scratch = tempfile::tempdir().unwrap();
+  let indexed = acme(scratch.path());
+  indexed
+    .engine
+    .store()
+    .read(|tx| -> Result<(), atlas_store::StoreError> {
+      let key = EntityKey::Endpoint {
+        repo: RepoName::new("acme-api").unwrap(),
+        method: atlas_core::HttpMethod::Get,
+        route: "/users/{id}".to_owned(),
+      };
+      let merged = tx.entity_with_sources(EntityId::of(&key))?.unwrap();
+      assert_eq!(merged.entity.certainty, Certainty::Syntactic);
+      for attr in ["auth_requirement", "auth_combinator", "unclassified_guards", "authorization_guards"] {
+        let source = &merged.attr_sources[attr];
+        assert_eq!(source.owner, link_owner(), "{attr}");
+        link_derived(0.99, &source.certainty);
+      }
+      let detector_attr = merged.entity.attrs.keys().find(|name| !merged.attr_sources[name.as_str()].owner.eq(&link_owner())).unwrap();
+      assert_eq!(merged.attr_sources[detector_attr.as_str()].certainty, Certainty::Syntactic);
+      let pass_certainty = pass_assertion(tx, merged.entity.id).unwrap().certainty;
+      assert_eq!(pass_certainty, merged.attr_sources["auth_requirement"].certainty);
+      Ok(())
+    })
+    .unwrap();
+}
+
+#[test]
+fn should_source_auth_scheme_usage_as_heuristic() {
+  let scratch = tempfile::tempdir().unwrap();
+  let indexed = acme(scratch.path());
+  indexed
+    .engine
+    .store()
+    .read(|tx| -> Result<(), atlas_store::StoreError> {
+      let key = EntityKey::AuthScheme {
+        repo: RepoName::new("acme-api").unwrap(),
+        scheme: "bearer".to_owned(),
+      };
+      let merged = tx.entity_with_sources(EntityId::of(&key))?.unwrap();
+      assert_eq!(merged.entity.attrs["used"], json!(true));
+      for attr in ["consumers", "used", "evidence_count", "supported_by_endpoints"] {
+        assert_eq!(merged.attr_sources[attr].owner, link_owner(), "{attr}");
+        link_derived(0.99, &merged.attr_sources[attr].certainty);
+      }
+      assert!(merged.entity.certainty.cmp_strength(&merged.attr_sources["used"].certainty) == std::cmp::Ordering::Greater);
+      Ok(())
+    })
+    .unwrap();
+}
+
+#[test]
+fn should_source_unused_auth_scheme_as_heuristic_absence() {
+  let scratch = tempfile::tempdir().unwrap();
+  let indexed = acme(scratch.path());
+  indexed
+    .engine
+    .store()
+    .read(|tx| -> Result<(), atlas_store::StoreError> {
+      let key = EntityKey::AuthScheme {
+        repo: RepoName::new("acme-api").unwrap(),
+        scheme: "session_cookie".to_owned(),
+      };
+      let merged = tx.entity_with_sources(EntityId::of(&key))?.unwrap();
+      assert_eq!(merged.entity.attrs["used"], json!(false));
+      let expected = Certainty::heuristic(atlas_core::Confidence::new(0.5).unwrap(), "no-detected-client");
+      assert_eq!(merged.attr_sources["used"].owner, link_owner());
+      assert_eq!(merged.attr_sources["used"].certainty, expected);
+      let detector = tx
+        .entity_assertions(merged.entity.id)?
+        .into_iter()
+        .find(|assertion| assertion.owner != link_owner())
+        .unwrap();
+      assert_eq!(merged.entity.certainty, detector.fact.certainty);
+      Ok(())
+    })
+    .unwrap();
+}
+
+#[test]
+fn should_source_cross_repo_package_attrs_as_resolved() {
+  let scratch = tempfile::tempdir().unwrap();
+  let indexed = acme(scratch.path());
+  let facts = pass_facts(&indexed.engine);
+  let package_edge = facts
+    .edges
+    .iter()
+    .find(|edge| edge.kind == EdgeKind::DependsOnPackage && edge.attrs.get("cross_repo") == Some(&json!(true)))
+    .unwrap();
+  indexed
+    .engine
+    .store()
+    .read(|tx| -> Result<(), atlas_store::StoreError> {
+      let merged = tx.edge_with_sources(package_edge.id)?.unwrap();
+      for attr in ["cross_repo", "target_repo"] {
+        assert_eq!(merged.attr_sources[attr].owner, link_owner(), "{attr}");
+        assert_eq!(merged.attr_sources[attr].certainty, Certainty::Resolved, "{attr}");
+      }
+      assert_eq!(merged.edge.certainty, Certainty::Syntactic);
+      Ok(())
+    })
+    .unwrap();
 }

@@ -7,7 +7,7 @@ use crate::base::{BaseSource, RepoNames};
 use crate::compose::{Route, Routes, entity_evidence};
 use crate::error::LinkResult;
 use crate::facts::Facts;
-use crate::output::{Output, annotated, attr_str, confidence_of, heuristic, relabel, rounded};
+use crate::output::{Output, absence, annotated, attr_str, confidence_of, heuristic, relabel, rounded, weaker};
 use crate::route::{BaseKind, ClientPath, RouteMatch, match_route, parse_client_target};
 
 const RULE: &str = "http-route-match";
@@ -70,6 +70,8 @@ struct Placement<'r> {
   confidence: f32,
 }
 
+const RULE_NO_ROUTE: &str = "no-matching-route";
+
 pub(crate) fn link_clients(facts: &Facts<'_, '_>, routes: &Routes, output: &mut Output) -> LinkResult<ClientLinks> {
   let names = RepoNames::load(facts, routes.all.iter().map(|route| route.repo.clone()))?;
   let mut links = ClientLinks {
@@ -86,7 +88,11 @@ pub(crate) fn link_clients(facts: &Facts<'_, '_>, routes: &Routes, output: &mut 
       Ok(candidates) => candidates,
       Err(reason) => {
         links.unmatched_count += 1;
-        output.entity(annotated(&client, [("unmatched", json!(true)), ("unmatched_reason", json!(reason.label()))]));
+        output.entity(annotated(
+          &client,
+          weaker(&client.certainty, &absence(RULE_NO_ROUTE)?),
+          [("unmatched", json!(true)), ("unmatched_reason", json!(reason.label()))],
+        ));
         links.sites.extend(sites);
         continue;
       }

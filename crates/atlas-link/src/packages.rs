@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 
 use crate::error::LinkResult;
 use crate::facts::Facts;
-use crate::output::{Output, attr_str, relabel};
+use crate::output::{Output, attr_str, relabel, weaker};
 
 const ATTR_REPO: &str = "repo";
 const ATTR_IN_PROJECT: &str = "in_project";
@@ -44,6 +44,7 @@ fn cross_repo_package_edge(dependency: &Edge, target_repo: &RepoName) -> Edge {
   let mut edge = dependency.clone();
   edge.attrs.insert("cross_repo".to_owned(), json!(true));
   edge.attrs.insert("target_repo".to_owned(), json!(target_repo.as_str()));
+  edge.certainty = weaker(&dependency.certainty, &Certainty::Resolved);
   edge.evidence = dependency.evidence.iter().map(|evidence| relabel(evidence, None)).collect();
   edge
 }

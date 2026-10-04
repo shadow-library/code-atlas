@@ -18,6 +18,18 @@ The store unions attrs across assertions (see `crates/atlas-store/CLAUDE.md`), s
 - `ClientCall`: `unmatched`, `unmatched_reason`
 - manifest `depends_on_package` edges: `cross_repo`, `target_repo`
 
+The store keeps one assertion per owner and key, so each annotation entity has one certainty for all its attrs. That certainty is the weakest, by `cmp_strength`, of every input behind any of its attrs (heuristic becomes `Heuristic { rule: "link-derived", confidence: min }`), never stronger than the entity itself:
+
+- Endpoint: `requires_guard`, `implements_auth`, `delegates_to` and, for authorization-only guards, `requires_permission`. An `Unknown` guard adds the absence input `no-detected-auth-scheme` (0.5); an `AuthorizationOnly` guard adds `guard-name-classification` (0.5), since it is a name match. A composed endpoint keeps the weaker of its route-chain certainty and this one, so its own certainty can drop (one assertion per owner and key).
+- Annotations assert only the attrs the pass derives; detector attrs are not copied, so they keep detector provenance.
+- AuthScheme: `uses_auth` and `supports_auth` edges. A scheme with no `uses_auth` edge is also capped at `Heuristic { rule: "no-detected-client", confidence: 0.5 }`, because `used: false` is absence of evidence.
+- Event: `publishes` and `subscribes` edges. An event with no producer or no consumer (`orphan`, zero counts) is also capped at `Heuristic { rule: "no-detected-counterpart", confidence: 0.5 }`.
+- `depends_on_package` `cross_repo`/`target_repo`: `Resolved` at most, from manifests.
+- ClientCall `unmatched`: capped at `Heuristic { rule: "no-matching-route", confidence: 0.5 }`.
+- Absence caps use a fixed 0.5 confidence; only the heuristic class matters, and no negative attr may render under a syntactic tag.
+
+The merged entity keeps the strongest certainty across owners, so only the per-attr source certainty from `entity_with_sources` drops.
+
 Tests assert the `[[auth]]` summary through `entity()` and the rest through the pass's own facts.
 
 ## Base-URL evidence

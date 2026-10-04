@@ -1,6 +1,6 @@
 mod common;
 
-use atlas_core::{EdgeKind, EntityKind};
+use atlas_core::{Certainty, CertaintyClass, EdgeKind, EntityId, EntityKey, EntityKind, HttpMethod, Owner, RepoName};
 use common::{Indexed, index_tree, pass_facts, write_tree};
 use serde_json::json;
 
@@ -185,7 +185,7 @@ fn should_compose_nest_global_prefixes_and_axum_nesting() {
       (
         "endpoint:shop-api:GET /api/users/{id}".to_owned(),
         "endpoint:shop-api:GET /users/{id}".to_owned(),
-        "[heuristic 0.85]".to_owned()
+        "[heuristic 0.50]".to_owned()
       ),
     ]
   );
@@ -237,4 +237,84 @@ fn should_match_any_method_routes_at_reduced_confidence() {
   assert_eq!(ping.len(), 1, "{ping:?}");
   assert_eq!(ping[0].0, "endpoint:billing-api:ANY /ping");
   assert!(ping[0].1 < 0.75, "{ping:?}");
+}
+
+const GATE_API: &[(&str, &str)] = &[
+  (
+    "gate-api/package.json",
+    r#"{ "name": "gate-api", "version": "1.0.0", "scripts": { "start": "node dist/main.js" }, "dependencies": { "@nestjs/common": "^10.0.0", "@nestjs/core": "^10.0.0" } }"#,
+  ),
+  ("gate-api/src/main.ts", "import { NestFactory } from '@nestjs/core';\n\nNestFactory.create(AppModule);\n"),
+  (
+    "gate-api/src/guards.ts",
+    r#"import { CanActivate, Injectable, SetMetadata } from '@nestjs/common';
+
+export const RequirePermission = (permission: string) => SetMetadata('permission', permission);
+
+@Injectable()
+export class TenantGuard implements CanActivate {
+  canActivate(): boolean {
+    return true;
+  }
+}
+
+@Injectable()
+export class PermissionsGuard implements CanActivate {
+  canActivate(): boolean {
+    return true;
+  }
+}
+"#,
+  ),
+  (
+    "gate-api/src/a.controller.ts",
+    r#"import { Controller, Get, UseGuards } from '@nestjs/common';
+
+import { PermissionsGuard, RequirePermission, TenantGuard } from './guards';
+
+@Controller('a')
+export class AController {
+  @UseGuards(TenantGuard)
+  @Get('x')
+  tenant() {
+    return 1;
+  }
+
+  @UseGuards(PermissionsGuard)
+  @RequirePermission('a:read')
+  @Get('y')
+  permitted() {
+    return 2;
+  }
+}
+"#,
+  ),
+];
+
+#[test]
+fn should_source_guard_classification_attrs_as_heuristic_while_the_endpoint_stays_syntactic() {
+  let scratch = tempfile::tempdir().unwrap();
+  let source = scratch.path().join("source");
+  write_tree(&source, GATE_API);
+  let indexed = index_tree(scratch.path(), "gate", &source, &["gate-api"]);
+  let attrs = ["auth_requirement", "auth_combinator", "unclassified_guards", "authorization_guards"];
+  for (route, requirement) in [
+    ("/a/x", json!({ "all_of": ["unknown_guard:TenantGuard"] })),
+    ("/a/y", json!({ "all_of": ["authorization_only:PermissionsGuard"] })),
+  ] {
+    let key = EntityKey::Endpoint {
+      repo: RepoName::new("gate-api").unwrap(),
+      method: HttpMethod::Get,
+      route: route.to_owned(),
+    };
+    let merged = indexed.engine.store().read(|tx| tx.entity_with_sources(EntityId::of(&key))).unwrap().unwrap();
+    assert_eq!(merged.entity.attrs["auth_requirement"], requirement, "{route}");
+    assert_eq!(merged.entity.certainty, Certainty::Syntactic, "{route}");
+    for attr in attrs {
+      let certainty = &merged.attr_sources[attr].certainty;
+      assert_eq!(merged.attr_sources[attr].owner, Owner::Project { pass: "link".to_owned() }, "{route} {attr}");
+      assert_eq!(certainty.class(), CertaintyClass::Heuristic, "{route} {attr}");
+      assert_eq!(certainty.confidence().map(|confidence| confidence.value()), Some(0.5), "{route} {attr}");
+    }
+  }
 }

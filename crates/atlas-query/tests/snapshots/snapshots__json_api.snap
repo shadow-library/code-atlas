@@ -203,11 +203,11 @@ expression: output
               "value": "all_of",
               "owner": "link",
               "certainty": {
-                "class": "syntactic",
-                "confidence": null,
+                "class": "heuristic",
+                "confidence": 0.5,
                 "freshness": null,
-                "authoritative": true,
-                "tag": "[syntactic]"
+                "authoritative": false,
+                "tag": "[heuristic 0.50]"
               }
             },
             {
@@ -220,11 +220,11 @@ expression: output
               },
               "owner": "link",
               "certainty": {
-                "class": "syntactic",
-                "confidence": null,
+                "class": "heuristic",
+                "confidence": 0.5,
                 "freshness": null,
-                "authoritative": true,
-                "tag": "[syntactic]"
+                "authoritative": false,
+                "tag": "[heuristic 0.50]"
               }
             },
             {
@@ -234,11 +234,11 @@ expression: output
               ],
               "owner": "link",
               "certainty": {
-                "class": "syntactic",
-                "confidence": null,
+                "class": "heuristic",
+                "confidence": 0.5,
                 "freshness": null,
-                "authoritative": true,
-                "tag": "[syntactic]"
+                "authoritative": false,
+                "tag": "[heuristic 0.50]"
               }
             },
             {
@@ -246,11 +246,11 @@ expression: output
               "value": [],
               "owner": "link",
               "certainty": {
-                "class": "syntactic",
-                "confidence": null,
+                "class": "heuristic",
+                "confidence": 0.5,
                 "freshness": null,
-                "authoritative": true,
-                "tag": "[syntactic]"
+                "authoritative": false,
+                "tag": "[heuristic 0.50]"
               }
             }
           ],
@@ -660,10 +660,10 @@ expression: output
                 "owner": "link",
                 "certainty": {
                   "class": "heuristic",
-                  "confidence": 0.8,
+                  "confidence": 0.7,
                   "freshness": null,
                   "authoritative": false,
-                  "tag": "[heuristic 0.80]"
+                  "tag": "[heuristic 0.70]"
                 }
               },
               {
@@ -672,10 +672,10 @@ expression: output
                 "owner": "link",
                 "certainty": {
                   "class": "heuristic",
-                  "confidence": 0.8,
+                  "confidence": 0.7,
                   "freshness": null,
                   "authoritative": false,
-                  "tag": "[heuristic 0.80]"
+                  "tag": "[heuristic 0.70]"
                 }
               },
               {
@@ -684,10 +684,10 @@ expression: output
                 "owner": "link",
                 "certainty": {
                   "class": "heuristic",
-                  "confidence": 0.8,
+                  "confidence": 0.7,
                   "freshness": null,
                   "authoritative": false,
-                  "tag": "[heuristic 0.80]"
+                  "tag": "[heuristic 0.70]"
                 }
               },
               {
@@ -696,10 +696,10 @@ expression: output
                 "owner": "link",
                 "certainty": {
                   "class": "heuristic",
-                  "confidence": 0.8,
+                  "confidence": 0.7,
                   "freshness": null,
                   "authoritative": false,
-                  "tag": "[heuristic 0.80]"
+                  "tag": "[heuristic 0.70]"
                 }
               }
             ]
@@ -843,10 +843,10 @@ expression: output
                 "owner": "link",
                 "certainty": {
                   "class": "heuristic",
-                  "confidence": 0.85,
+                  "confidence": 0.6,
                   "freshness": null,
                   "authoritative": false,
-                  "tag": "[heuristic 0.85]"
+                  "tag": "[heuristic 0.60]"
                 }
               },
               {
@@ -855,10 +855,10 @@ expression: output
                 "owner": "link",
                 "certainty": {
                   "class": "heuristic",
-                  "confidence": 0.85,
+                  "confidence": 0.6,
                   "freshness": null,
                   "authoritative": false,
-                  "tag": "[heuristic 0.85]"
+                  "tag": "[heuristic 0.60]"
                 }
               },
               {
@@ -867,10 +867,10 @@ expression: output
                 "owner": "link",
                 "certainty": {
                   "class": "heuristic",
-                  "confidence": 0.85,
+                  "confidence": 0.6,
                   "freshness": null,
                   "authoritative": false,
-                  "tag": "[heuristic 0.85]"
+                  "tag": "[heuristic 0.60]"
                 }
               },
               {
@@ -879,10 +879,10 @@ expression: output
                 "owner": "link",
                 "certainty": {
                   "class": "heuristic",
-                  "confidence": 0.85,
+                  "confidence": 0.6,
                   "freshness": null,
                   "authoritative": false,
-                  "tag": "[heuristic 0.85]"
+                  "tag": "[heuristic 0.60]"
                 }
               }
             ]
@@ -941,10 +941,10 @@ expression: output
                 "owner": "link",
                 "certainty": {
                   "class": "heuristic",
-                  "confidence": 0.8,
+                  "confidence": 0.5,
                   "freshness": null,
                   "authoritative": false,
-                  "tag": "[heuristic 0.80]"
+                  "tag": "[heuristic 0.50]"
                 }
               },
               {
@@ -953,10 +953,10 @@ expression: output
                 "owner": "link",
                 "certainty": {
                   "class": "heuristic",
-                  "confidence": 0.8,
+                  "confidence": 0.5,
                   "freshness": null,
                   "authoritative": false,
-                  "tag": "[heuristic 0.80]"
+                  "tag": "[heuristic 0.50]"
                 }
               },
               {
@@ -965,10 +965,10 @@ expression: output
                 "owner": "link",
                 "certainty": {
                   "class": "heuristic",
-                  "confidence": 0.8,
+                  "confidence": 0.5,
                   "freshness": null,
                   "authoritative": false,
-                  "tag": "[heuristic 0.80]"
+                  "tag": "[heuristic 0.50]"
                 }
               },
               {
@@ -977,10 +977,10 @@ expression: output
                 "owner": "link",
                 "certainty": {
                   "class": "heuristic",
-                  "confidence": 0.8,
+                  "confidence": 0.5,
                   "freshness": null,
                   "authoritative": false,
-                  "tag": "[heuristic 0.80]"
+                  "tag": "[heuristic 0.50]"
                 }
               }
             ]

@@ -33,7 +33,7 @@ endpoints (10)
     guard JwtAuthGuard [resolved], possibly implements auth bearer [heuristic 0.85]
     guard PermissionsGuard [resolved]
     possibly supports auth bearer [heuristic 0.85] (all_of [heuristic 0.85, link])
-    auth authorization_guards=["PermissionsGuard"] [syntactic, link]
+    auth authorization_guards=["PermissionsGuard"] [heuristic 0.50, link]
     permissions users:write [syntactic]
     consumers: none detected in project (external clients may exist)
   DELETE /users/{id} acme-api:src/users/users.controller.ts:31 [syntactic]
@@ -41,7 +41,7 @@ endpoints (10)
     guard JwtAuthGuard [resolved], possibly implements auth bearer [heuristic 0.85]
     guard PermissionsGuard [resolved]
     possibly supports auth bearer [heuristic 0.85] (all_of [heuristic 0.85, link])
-    auth authorization_guards=["PermissionsGuard"] [syntactic, link]
+    auth authorization_guards=["PermissionsGuard"] [heuristic 0.50, link]
     permissions users:delete [syntactic]
     consumers: none detected in project (external clients may exist)
   GET /users/{id} acme-api:src/users/users.controller.ts:13 [syntactic]
@@ -49,7 +49,7 @@ endpoints (10)
     guard JwtAuthGuard [resolved], possibly implements auth bearer [heuristic 0.85]
     guard PermissionsGuard [resolved]
     possibly supports auth bearer [heuristic 0.85] (all_of [heuristic 0.85, link])
-    auth authorization_guards=["PermissionsGuard"] [syntactic, link]
+    auth authorization_guards=["PermissionsGuard"] [heuristic 0.50, link]
     permissions users:read [syntactic]
     consumer AcmeClient.getUser method acme-sdk:src/client.ts:19  possibly calls endpoint GET /users/{id} [heuristic 0.77]
       callers AcmeClient.should send the bearer token in the Authorization header [resolved], UserCard [resolved], useUser [heuristic 0.85]
@@ -63,7 +63,7 @@ endpoints (10)
     guard JwtAuthGuard [resolved], possibly implements auth bearer [heuristic 0.85]
     guard PermissionsGuard [resolved]
     possibly supports auth bearer [heuristic 0.85] (all_of [heuristic 0.85, link])
-    auth authorization_guards=["PermissionsGuard"] [syntactic, link]
+    auth authorization_guards=["PermissionsGuard"] [heuristic 0.50, link]
     permissions users:write [syntactic]
     consumer AcmeClient.updateUser method acme-sdk:src/client.ts:24  possibly calls endpoint PATCH /users/{id} [heuristic 0.77]
       repos acme-sdk apps -
@@ -89,4 +89,4 @@ auth matrix acme-api
   session_cookie: no detected client sends it; supported by 1 endpoints; implemented by SessionGuard [heuristic 0.80]
 auth matrix acme-billing
 unmatched client call sites (1)
-  GET {}/health from checkHealth at acme-web:src/api/health.ts:4: no endpoint in the project matches this call (no_matching_endpoint [heuristic 0.70, link])
+  GET {}/health from checkHealth at acme-web:src/api/health.ts:4: no endpoint in the project matches this call (no_matching_endpoint [heuristic 0.50, link])

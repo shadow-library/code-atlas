@@ -1,13 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use atlas_core::{ATTR_TEST, Edge, EdgeKind, Entity, EntityId, EntityKey, EntityKind, Evidence, RepoName, SymbolKey};
+use atlas_core::{ATTR_TEST, Certainty, Edge, EdgeKind, Entity, EntityId, EntityKey, EntityKind, Evidence, RepoName, SymbolKey};
 use serde_json::{Value, json};
 
 use crate::compose::{Routes, entity_evidence};
 use crate::error::LinkResult;
 use crate::facts::Facts;
 use crate::http::{ClientLinks, Site};
-use crate::output::{Output, annotated, attr_str, confidence_of, heuristic, relabel, rounded};
+use crate::output::{Output, absence, annotated, attr_str, confidence_of, derived, heuristic, relabel, rounded, weaker};
 
 const MAX_DELEGATION_DEPTH: usize = 4;
 const DIRECT_HINT_CONFIDENCE: f32 = 0.75;
@@ -15,6 +15,10 @@ const HELPER_HINT_CONFIDENCE: f32 = 0.7;
 const UNKNOWN_DETAIL_FACTOR: f32 = 0.7;
 const ANY_COOKIE_FACTOR: f32 = 0.8;
 const OPTION_WITHOUT_HINTS_FACTOR: f32 = 0.8;
+const RULE_NO_SCHEME: &str = "no-detected-auth-scheme";
+const RULE_NAME_CLASSIFICATION: &str = "guard-name-classification";
+const NAME_CLASSIFICATION_CONFIDENCE: f32 = 0.5;
+const RULE_NO_CLIENT: &str = "no-detected-client";
 const RULE_GUARD: &str = "guard-auth";
 const RULE_COMPOSITE: &str = "composite-guard-auth";
 const RULE_CLIENT: &str = "client-auth-hint";
@@ -33,11 +37,13 @@ pub(crate) struct EndpointAuth {
   schemes: BTreeMap<EntityId, Entity>,
   details: BTreeMap<EntityId, SchemeDetail>,
   supported: BTreeMap<EntityId, BTreeSet<EntityId>>,
+  support_certainties: BTreeMap<EntityId, Vec<Certainty>>,
 }
 
 struct Alternative {
   scheme: EntityId,
   confidence: f32,
+  certainty: Certainty,
   via: Vec<String>,
   evidence: Vec<Evidence>,
 }
@@ -55,9 +61,16 @@ struct GuardAuth {
   requires: Edge,
   alternatives: Vec<Alternative>,
   kind: GuardKind,
+  classification: Vec<Certainty>,
 }
 
 impl GuardAuth {
+  fn inputs(&self) -> impl Iterator<Item = &Certainty> {
+    std::iter::once(&self.requires.certainty)
+      .chain(self.alternatives.iter().map(|alternative| &alternative.certainty))
+      .chain(&self.classification)
+  }
+
   fn names_scheme(&self) -> bool {
     matches!(self.kind, GuardKind::Direct | GuardKind::Composite)
   }
@@ -82,6 +95,7 @@ pub(crate) fn link_endpoint_auth(facts: &Facts<'_, '_>, routes: &Routes, output:
     schemes: BTreeMap::new(),
     details: BTreeMap::new(),
     supported: BTreeMap::new(),
+    support_certainties: BTreeMap::new(),
   };
   for scheme in facts.entities(&EntityKind::AuthScheme)? {
     let detail = auth.details.entry(scheme.id).or_default();
@@ -103,8 +117,17 @@ pub(crate) fn link_endpoint_auth(facts: &Facts<'_, '_>, routes: &Routes, output:
     };
     let unclassified = guard_names(&guards, GuardKind::Unknown);
     let authorization = guard_names(&guards, GuardKind::AuthorizationOnly);
+    let mut inputs: Vec<Certainty> = guards.iter().flat_map(GuardAuth::inputs).cloned().collect();
+    if guards.iter().any(|guard| guard.kind == GuardKind::Unknown) {
+      inputs.push(absence(RULE_NO_SCHEME)?);
+    }
+    if guards.iter().any(|guard| guard.kind == GuardKind::AuthorizationOnly) {
+      inputs.push(heuristic(NAME_CLASSIFICATION_CONFIDENCE, RULE_NAME_CLASSIFICATION)?);
+    }
+    let certainty = derived(&route.entity.certainty, &inputs);
     output.extend_entity(
       &route.entity,
+      certainty,
       [
         ("auth_requirement", requirement.clone()),
         ("auth_combinator", json!(combinator)),
@@ -133,7 +156,9 @@ pub(crate) fn link_endpoint_auth(facts: &Facts<'_, '_>, routes: &Routes, output:
       }
     }
     for (scheme, support) in by_scheme {
-      let mut edge = Edge::new(EdgeKind::SupportsAuth, route.id, scheme, "", heuristic(support.confidence, support.rule)?);
+      let certainty = heuristic(support.confidence, support.rule)?;
+      auth.support_certainties.entry(scheme).or_default().push(certainty.clone());
+      let mut edge = Edge::new(EdgeKind::SupportsAuth, route.id, scheme, "", certainty);
       edge.attrs.insert("rule".to_owned(), json!(support.rule));
       edge.attrs.insert("via_guards".to_owned(), json!(support.via));
       edge.attrs.insert("combinator".to_owned(), json!(combinator));
@@ -155,17 +180,22 @@ fn endpoint_guards(facts: &Facts<'_, '_>, endpoint: EntityId) -> LinkResult<Vec<
   for edge in requires {
     let Some(guard) = facts.entity(edge.to)? else { continue };
     let (alternatives, mut kind) = guard_alternatives(facts, &guard, 0)?;
+    let mut classification = Vec::new();
     if alternatives.is_empty() {
-      kind = match is_authorization_guard(&guard) && handlers_require_permission(facts, endpoint)? {
-        true => GuardKind::AuthorizationOnly,
-        false => GuardKind::Unknown,
-      };
+      kind = GuardKind::Unknown;
+      if is_authorization_guard(&guard) {
+        classification = permission_certainties(facts, endpoint)?;
+        if !classification.is_empty() {
+          kind = GuardKind::AuthorizationOnly;
+        }
+      }
     }
     guards.push(GuardAuth {
       name: guard.name.clone(),
       requires: edge,
       alternatives,
       kind,
+      classification,
     });
   }
   Ok(guards)
@@ -176,13 +206,12 @@ fn is_authorization_guard(guard: &Entity) -> bool {
   AUTHORIZATION_GUARD_MARKERS.iter().any(|marker| name.contains(marker))
 }
 
-fn handlers_require_permission(facts: &Facts<'_, '_>, endpoint: EntityId) -> LinkResult<bool> {
+fn permission_certainties(facts: &Facts<'_, '_>, endpoint: EntityId) -> LinkResult<Vec<Certainty>> {
+  let mut certainties = Vec::new();
   for exposure in facts.edges_to(endpoint, &EdgeKind::ExposesEndpoint)? {
-    if !facts.edges_from(exposure.from, &EdgeKind::RequiresPermission)?.is_empty() {
-      return Ok(true);
-    }
+    certainties.extend(facts.edges_from(exposure.from, &EdgeKind::RequiresPermission)?.into_iter().map(|edge| edge.certainty));
   }
-  Ok(false)
+  Ok(certainties)
 }
 
 fn guard_names(guards: &[GuardAuth], kind: GuardKind) -> Vec<&str> {
@@ -195,6 +224,7 @@ fn guard_alternatives(facts: &Facts<'_, '_>, guard: &Entity, depth: usize) -> Li
     alternatives.push(Alternative {
       scheme: implementation.to,
       confidence: confidence_of(&implementation.certainty),
+      certainty: implementation.certainty.clone(),
       via: vec![guard.name.clone()],
       evidence: implementation
         .evidence
@@ -220,6 +250,7 @@ fn guard_alternatives(facts: &Facts<'_, '_>, guard: &Entity, depth: usize) -> Li
       alternatives.push(Alternative {
         scheme: alternative.scheme,
         confidence: alternative.confidence.min(confidence_of(&delegation.certainty)),
+        certainty: weaker(&alternative.certainty, &delegation.certainty),
         via,
         evidence,
       });
@@ -336,6 +367,13 @@ struct Usage {
   evidence: Vec<Evidence>,
 }
 
+#[derive(Default)]
+struct Consumption {
+  repos: BTreeSet<RepoName>,
+  evidence_count: usize,
+  certainties: Vec<Certainty>,
+}
+
 struct UsageSource<'a> {
   from: &'a Entity,
   label: &'static str,
@@ -351,29 +389,41 @@ pub(crate) fn link_client_auth(facts: &Facts<'_, '_>, clients: &ClientLinks, aut
     direct_usages(facts, site, auth, &mut usages)?;
   }
   option_usages(facts, clients, auth, &mut usages)?;
-  let mut consumers: BTreeMap<EntityId, (BTreeSet<RepoName>, usize)> = BTreeMap::new();
+  let mut consumers: BTreeMap<EntityId, Consumption> = BTreeMap::new();
   for ((from, scheme), usage) in usages {
     let rule = if usage.sources.iter().any(|source| *source != RULE_OPTION) {
       RULE_CLIENT
     } else {
       RULE_OPTION
     };
-    let mut edge = Edge::new(EdgeKind::UsesAuth, from, scheme, "", heuristic(usage.confidence, rule)?);
+    let certainty = heuristic(usage.confidence, rule)?;
+    let mut edge = Edge::new(EdgeKind::UsesAuth, from, scheme, "", certainty.clone());
     edge.attrs.insert("sources".to_owned(), json!(usage.sources));
     edge.attrs.insert("hints".to_owned(), json!(usage.hints));
     let endpoints: BTreeSet<&str> = usage.endpoints.iter().filter_map(|endpoint| auth.endpoints.get(endpoint).map(String::as_str)).collect();
     edge.attrs.insert("endpoints".to_owned(), json!(endpoints));
     edge.evidence = usage.evidence;
     let entry = consumers.entry(scheme).or_default();
-    entry.0.extend(usage.repo);
-    entry.1 += edge.evidence.len();
+    entry.repos.extend(usage.repo);
+    entry.evidence_count += edge.evidence.len();
+    entry.certainties.push(certainty);
     output.edge(edge);
   }
   for (id, scheme) in &auth.schemes {
-    let (repos, evidence_count) = consumers.remove(id).unwrap_or_default();
+    let Consumption {
+      repos,
+      evidence_count,
+      certainties,
+    } = consumers.remove(id).unwrap_or_default();
     let endpoints = auth.supported.values().filter(|schemes| schemes.contains(id)).count();
+    let supports = auth.support_certainties.get(id).into_iter().flatten();
+    let mut certainty = derived(&scheme.certainty, certainties.iter().chain(supports));
+    if certainties.is_empty() {
+      certainty = weaker(&certainty, &absence(RULE_NO_CLIENT)?);
+    }
     output.entity(annotated(
       scheme,
+      certainty,
       [
         ("consumers", json!(repos.iter().map(RepoName::as_str).collect::<Vec<_>>())),
         ("used", json!(!repos.is_empty())),

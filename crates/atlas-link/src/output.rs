@@ -10,6 +10,8 @@ use crate::pass::LinkOutput;
 
 const PRODUCER: &str = "atlas-link";
 const PRODUCER_VERSION: u32 = 1;
+const ABSENCE_CONFIDENCE: f32 = 0.5;
+const RULE_DERIVED: &str = "link-derived";
 
 #[derive(Default)]
 pub(crate) struct Output {
@@ -27,11 +29,14 @@ impl Output {
     }
   }
 
-  pub fn extend_entity(&mut self, entity: &Entity, attrs: impl IntoIterator<Item = (&'static str, Value)>) {
+  pub fn extend_entity(&mut self, entity: &Entity, certainty: Certainty, attrs: impl IntoIterator<Item = (&'static str, Value)>) {
     match self.entities.get_mut(&entity.id) {
-      Some(existing) => existing.attrs.extend(attrs.into_iter().map(|(name, value)| (name.to_owned(), value))),
+      Some(existing) => {
+        existing.certainty = weaker(&existing.certainty, &certainty);
+        existing.attrs.extend(attrs.into_iter().map(|(name, value)| (name.to_owned(), value)));
+      }
       None => {
-        self.entities.insert(entity.id, annotated(entity, attrs));
+        self.entities.insert(entity.id, annotated(entity, certainty, attrs));
       }
     }
   }
@@ -103,8 +108,25 @@ pub(crate) fn weaker(left: &Certainty, right: &Certainty) -> Certainty {
   }
 }
 
-pub(crate) fn annotated(entity: &Entity, attrs: impl IntoIterator<Item = (&'static str, Value)>) -> Entity {
+pub(crate) fn derived<'a>(ceiling: &Certainty, inputs: impl IntoIterator<Item = &'a Certainty>) -> Certainty {
+  let weakest = inputs.into_iter().fold(ceiling, |weakest, input| match input.cmp_strength(weakest) {
+    Ordering::Less => input,
+    _ => weakest,
+  });
+  match weakest {
+    Certainty::Heuristic { confidence, .. } => Certainty::heuristic(*confidence, RULE_DERIVED),
+    other => other.clone(),
+  }
+}
+
+pub(crate) fn absence(rule: &str) -> LinkResult<Certainty> {
+  heuristic(ABSENCE_CONFIDENCE, rule)
+}
+
+pub(crate) fn annotated(entity: &Entity, certainty: Certainty, attrs: impl IntoIterator<Item = (&'static str, Value)>) -> Entity {
   let mut copy = entity.clone();
+  copy.certainty = certainty;
+  copy.attrs.clear();
   for (name, value) in attrs {
     copy.attrs.insert(name.to_owned(), value);
   }
