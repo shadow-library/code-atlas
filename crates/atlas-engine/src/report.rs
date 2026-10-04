@@ -7,6 +7,8 @@ use atlas_project::SkipReason;
 use atlas_store::IndexRun;
 use serde::{Deserialize, Serialize};
 
+use crate::auto_scip::AutoScipStatus;
+
 pub const SKIPPED_SAMPLE: usize = 10;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -165,6 +167,7 @@ pub struct ScipCoverage {
   pub files_total: u64,
   pub last_run_ms: Option<i64>,
   pub lag: Option<ScipLag>,
+  pub auto: AutoScipStatus,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

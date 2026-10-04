@@ -1,9 +1,53 @@
+use atlas_engine::{AutoScipOutcome, AutoScipSetting};
+
 use crate::freshness::ScipState;
-use crate::queries::{ChangesAnswer, ReadAnswer, StatusAnswer};
+use crate::queries::{AutoScipView, ChangesAnswer, ReadAnswer, StatusAnswer};
 use crate::text::{RenderText, TextOut, entity_line, snippet};
 
 fn counts(map: &std::collections::BTreeMap<String, u64>) -> String {
   map.iter().map(|(name, count)| format!("{name} {count}")).collect::<Vec<_>>().join(", ")
+}
+
+fn age(secs: u64) -> String {
+  match secs {
+    0..60 => format!("{secs}s"),
+    60..3600 => format!("{}m", secs / 60),
+    3600..86_400 => format!("{}h", secs / 3600),
+    _ => format!("{}d", secs / 86_400),
+  }
+}
+
+fn render_auto_scip(project: &str, view: &AutoScipView, out: &mut TextOut) {
+  let running = if view.in_progress { "; a run is in progress" } else { "" };
+  match view.setting {
+    AutoScipSetting::Off => out.line(0, format!("scip auto: off (enable with `code-atlas project config {project} --scip on`){running}")),
+    AutoScipSetting::On { debounce_secs } => out.line(
+      0,
+      format!("scip auto: on, runs while a watcher is active, after {debounce_secs}s without file changes{running}"),
+    ),
+  }
+  if let Some(run) = &view.last_run {
+    let outcome = match &run.outcome {
+      AutoScipOutcome::Completed { packages_failed: 0 } => "completed".to_owned(),
+      AutoScipOutcome::Completed { packages_failed } => format!("completed, {packages_failed} packages failed"),
+      AutoScipOutcome::Cancelled => "cancelled".to_owned(),
+      AutoScipOutcome::Failed { reason } => format!("failed: {reason}"),
+    };
+    let when = view.last_run_age_secs.map(|secs| format!(" {} ago", age(secs))).unwrap_or_default();
+    out.line(
+      1,
+      format!(
+        "last automatic run{when}: {} files, {} edges in {:.1}s ({outcome})",
+        run.files_ingested,
+        run.edges,
+        run.duration_ms as f64 / 1000.0
+      ),
+    );
+  }
+  for backoff in &view.backoff {
+    let scope = backoff.package.as_deref().map(|package| format!(" for {package}")).unwrap_or_default();
+    out.line(1, format!("paused {}{scope}: {}", backoff.indexer, backoff.reason));
+  }
 }
 
 impl RenderText for StatusAnswer {
@@ -26,6 +70,7 @@ impl RenderText for StatusAnswer {
       Some(ScipState::Behind { files }) => out.line(0, format!("scip: behind on {files} files ({coverage})")),
       None => out.line(0, format!("scip: unknown ({coverage})")),
     }
+    render_auto_scip(&self.project, &self.scip_auto, out);
     if self.skipped_total > 0 {
       let listed = self
         .skipped_files
@@ -122,6 +167,13 @@ mod tests {
       scip_files: 0,
       scip_total: 58,
       scip,
+      scip_auto: AutoScipView {
+        setting: AutoScipSetting::Off,
+        in_progress: false,
+        last_run: None,
+        last_run_age_secs: None,
+        backoff: Vec::new(),
+      },
       inferred_current: 0,
       inferred_stale: 0,
       inferred_needs_revalidation: 0,
@@ -167,5 +219,57 @@ mod tests {
     assert!(many.contains("skipped 4 files: acme-api/big.ts (6.1 MB > max_file_bytes 1 MB), and 3 more\n"), "{many}");
     let none = render(&answer(Some(ScipState::Current), 0, Vec::new()));
     assert!(!none.contains("skipped"), "{none}");
+  }
+
+  #[test]
+  fn should_render_the_automatic_scip_setting_last_run_and_backoff() {
+    let mut on = answer(Some(ScipState::Current), 0, Vec::new());
+    on.scip_auto = AutoScipView {
+      setting: AutoScipSetting::On { debounce_secs: 30 },
+      in_progress: true,
+      last_run: Some(atlas_engine::AutoScipRun {
+        started_ms: 0,
+        duration_ms: 12_340,
+        files_ingested: 120,
+        edges: 4_000,
+        outcome: AutoScipOutcome::Completed { packages_failed: 1 },
+      }),
+      last_run_age_secs: Some(180),
+      backoff: vec![
+        atlas_engine::ScipBackoff {
+          indexer: "scip-typescript".to_owned(),
+          package: None,
+          reason: "npx is not on PATH".to_owned(),
+          retry_at_ms: 0,
+        },
+        atlas_engine::ScipBackoff {
+          indexer: "rust-analyzer".to_owned(),
+          package: Some("acme-api:Cargo.toml".to_owned()),
+          reason: "rust-analyzer exited with status 101".to_owned(),
+          retry_at_ms: 0,
+        },
+      ],
+    };
+
+    let text = render(&on);
+
+    assert!(
+      text.contains("scip auto: on, runs while a watcher is active, after 30s without file changes; a run is in progress\n"),
+      "{text}"
+    );
+    assert!(
+      text.contains("  last automatic run 3m ago: 120 files, 4000 edges in 12.3s (completed, 1 packages failed)\n"),
+      "{text}"
+    );
+    assert!(text.contains("  paused scip-typescript: npx is not on PATH\n"), "{text}");
+    assert!(
+      text.contains("  paused rust-analyzer for acme-api:Cargo.toml: rust-analyzer exited with status 101\n"),
+      "{text}"
+    );
+    let off = render(&answer(Some(ScipState::Current), 0, Vec::new()));
+    assert!(
+      off.contains("scip auto: off (enable with `code-atlas project config acme --scip on`)\n") && !off.contains("last automatic run"),
+      "{off}"
+    );
   }
 }

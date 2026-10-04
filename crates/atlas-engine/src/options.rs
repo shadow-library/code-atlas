@@ -9,6 +9,7 @@ use atlas_semantic::TaskProviders;
 use atlas_similarity::SimilarityConfig;
 use atlas_store::StoreOptions;
 
+use crate::auto_scip::AutoScipOptions;
 use crate::passes::ProjectPass;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,6 +87,7 @@ pub struct EngineOptions {
   pub passes: Vec<Arc<dyn ProjectPass>>,
   pub llm_providers: Option<Arc<TaskProviders>>,
   pub similarity_persist_idle: Duration,
+  pub auto_scip: AutoScipOptions,
   #[doc(hidden)]
   pub extra_detectors: Vec<Arc<dyn DiagnosingDetector>>,
   #[doc(hidden)]
@@ -104,6 +106,7 @@ impl Default for EngineOptions {
       passes: Vec::new(),
       llm_providers: None,
       similarity_persist_idle: Duration::from_secs(30),
+      auto_scip: AutoScipOptions::default(),
       extra_detectors: Vec::new(),
       fault_injection: FaultInjection::default(),
     }
@@ -122,6 +125,7 @@ impl fmt::Debug for EngineOptions {
       .field("passes", &self.passes.iter().map(|pass| pass.name()).collect::<Vec<_>>())
       .field("llm_providers", &self.llm_providers.is_some())
       .field("similarity_persist_idle", &self.similarity_persist_idle)
+      .field("auto_scip", &self.auto_scip)
       .field("extra_detectors", &self.extra_detectors.len())
       .field("fault_injection", &self.fault_injection)
       .finish()

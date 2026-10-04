@@ -44,7 +44,10 @@ pub struct ScipSettings {
 
 impl Default for ScipSettings {
   fn default() -> Self {
-    Self { enabled: true, debounce_secs: 30 }
+    Self {
+      enabled: false,
+      debounce_secs: 30,
+    }
   }
 }
 

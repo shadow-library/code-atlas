@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use atlas_core::Owner;
-use atlas_engine::{IndexStatus, PASS_LINEAGE};
+use atlas_engine::{AutoScipRun, AutoScipSetting, IndexStatus, PASS_LINEAGE, ScipBackoff};
 use atlas_store::{IndexRun, RunStatus};
 use serde::Serialize;
 
@@ -55,6 +55,15 @@ pub struct SkippedFileView {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AutoScipView {
+  pub setting: AutoScipSetting,
+  pub in_progress: bool,
+  pub last_run: Option<AutoScipRun>,
+  pub last_run_age_secs: Option<u64>,
+  pub backoff: Vec<ScipBackoff>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct StatusAnswer {
   pub project: String,
   pub repos: Vec<String>,
@@ -68,6 +77,7 @@ pub struct StatusAnswer {
   pub scip_files: u64,
   pub scip_total: u64,
   pub scip: Option<ScipState>,
+  pub scip_auto: AutoScipView,
   pub inferred_current: u64,
   pub inferred_stale: u64,
   pub inferred_needs_revalidation: u64,
@@ -78,6 +88,13 @@ pub struct StatusAnswer {
   pub dangling_detector_edges_dropped: u64,
   pub skipped_total: u64,
   pub skipped_files: Vec<SkippedFileView>,
+}
+
+fn age_secs(at_ms: i64) -> u64 {
+  let now_ms = std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .map_or(0, |elapsed| i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX));
+  u64::try_from(now_ms.saturating_sub(at_ms) / 1000).unwrap_or(0)
 }
 
 fn failed(file: &atlas_engine::FailedFile) -> FailedFileView {
@@ -110,6 +127,13 @@ impl QueryEngine {
         atlas_engine::ScipLag::Current => ScipState::Current,
         atlas_engine::ScipLag::Behind { files } => ScipState::Behind { files },
       }),
+      scip_auto: AutoScipView {
+        setting: status.scip.auto.setting,
+        in_progress: status.scip.auto.in_progress,
+        last_run_age_secs: status.scip.auto.last_run.as_ref().map(|run| age_secs(run.started_ms + run.duration_ms as i64)),
+        last_run: status.scip.auto.last_run,
+        backoff: status.scip.auto.backoff,
+      },
       inferred_current: status.inferred.current,
       inferred_stale: status.inferred.stale,
       inferred_needs_revalidation: status.inferred.needs_revalidation,

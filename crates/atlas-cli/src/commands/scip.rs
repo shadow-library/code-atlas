@@ -16,6 +16,12 @@ pub fn run(ctx: &Context) -> CliResult<Outcome> {
     npm: Some(&npm),
   })?;
   emit_line(format!("scip run {}: {} packages", report.run, report.packages.len()))?;
+  if !project.settings.scip.enabled {
+    emit_line(format!(
+      "automatic SCIP is off for this project; enable it with `code-atlas project config {} --scip on`",
+      project.name
+    ))?;
+  }
   let mut degraded = !freshness.is_fresh();
   for package in &report.packages {
     let indexer = package.indexer.as_deref().unwrap_or("none");

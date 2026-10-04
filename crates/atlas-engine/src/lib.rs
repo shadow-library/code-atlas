@@ -1,5 +1,6 @@
 mod analyze;
 mod artifact;
+mod auto_scip;
 mod engine;
 mod enrich;
 mod error;
@@ -21,6 +22,7 @@ mod status;
 mod watch;
 
 pub use artifact::artifact_file_facts;
+pub use auto_scip::{AutoScipOptions, AutoScipOutcome, AutoScipRun, AutoScipSetting, AutoScipStatus, ScipBackoff};
 pub use engine::Engine;
 pub use enrich::{
   CallSite, EndpointChoice, EnrichOptions, EnrichPhase, EnrichPlan, EnrichReport, LEXICAL_SHARE, LINK_SHARE, LinkCandidate, LinkContext, LinkFactState, LinkPlan, NameSignal,

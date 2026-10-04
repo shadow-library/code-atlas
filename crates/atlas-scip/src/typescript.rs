@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use atlas_core::Availability;
@@ -94,6 +95,10 @@ impl ScipIndexer for ScipTypescript {
   }
 
   fn index(&self, request: &ScipRequest) -> ScipRun {
+    self.index_with_cancel(request, &AtomicBool::new(false))
+  }
+
+  fn index_with_cancel(&self, request: &ScipRequest, cancel: &AtomicBool) -> ScipRun {
     let version = match Self::resolve_version() {
       Ok(version) => version,
       Err(reason) => return ScipRun::unavailable(SCIP_TYPESCRIPT_ID, reason),
@@ -134,6 +139,7 @@ impl ScipIndexer for ScipTypescript {
       protected: Vec::new(),
       build: &build,
       classify_failure,
+      cancel,
     })
   }
 }

@@ -89,6 +89,7 @@ impl Engine {
       let mut scip = ScipCoverage {
         last_run_ms: scip_meta.last_run_ms,
         lag: Some(header.scip),
+        auto: self.auto_scip_status(tx)?,
         ..ScipCoverage::default()
       };
       for repo in &project.repos {

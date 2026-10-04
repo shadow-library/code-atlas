@@ -1,6 +1,7 @@
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use atlas_core::Availability;
@@ -96,6 +97,10 @@ impl ScipIndexer for RustAnalyzerScip {
   }
 
   fn index(&self, request: &ScipRequest) -> ScipRun {
+    self.index_with_cancel(request, &AtomicBool::new(false))
+  }
+
+  fn index_with_cancel(&self, request: &ScipRequest, cancel: &AtomicBool) -> ScipRun {
     let resolved = match self.resolve() {
       Ok(resolved) => resolved,
       Err(reason) => return ScipRun::unavailable(RUST_ANALYZER_ID, reason),
@@ -119,6 +124,7 @@ impl ScipIndexer for RustAnalyzerScip {
       protected: vec![root.join("Cargo.lock")],
       build: &build,
       classify_failure: |_| None,
+      cancel,
     })
   }
 }

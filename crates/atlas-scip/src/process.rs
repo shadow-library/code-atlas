@@ -1,5 +1,6 @@
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -19,10 +20,15 @@ pub(crate) enum ProcessOutcome {
   TimedOut {
     stderr: String,
   },
+  Cancelled,
   SpawnFailed(String),
 }
 
-pub(crate) fn run_with_timeout(mut command: Command, timeout: Duration) -> ProcessOutcome {
+pub(crate) fn run_with_timeout(command: Command, timeout: Duration) -> ProcessOutcome {
+  run_until(command, timeout, &AtomicBool::new(false))
+}
+
+pub(crate) fn run_until(mut command: Command, timeout: Duration, cancel: &AtomicBool) -> ProcessOutcome {
   command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
   #[cfg(unix)]
   std::os::unix::process::CommandExt::process_group(&mut command, 0);
@@ -43,6 +49,10 @@ pub(crate) fn run_with_timeout(mut command: Command, timeout: Duration) -> Proce
           stdout: collect(&stdout),
           stderr: collect(&stderr),
         };
+      }
+      Ok(None) if cancel.load(Ordering::SeqCst) => {
+        terminate(&mut child);
+        return ProcessOutcome::Cancelled;
       }
       Ok(None) if Instant::now() < deadline => thread::sleep(POLL_INTERVAL),
       Ok(None) => {
@@ -169,6 +179,33 @@ mod tests {
     thread::sleep(Duration::from_millis(300));
     let alive = Command::new("kill").args(["-0", &child.to_string()]).stderr(Stdio::null()).status().unwrap().success();
     assert!(!alive, "child {child} survived a normal exit");
+  }
+
+  #[test]
+  fn should_kill_the_process_group_when_cancelled() {
+    let marker = tempfile::tempdir().unwrap();
+    let pid_file = marker.path().join("grandchild.pid");
+    let script = format!("sleep 60 & echo $! > {}; wait", pid_file.display());
+    let cancel = std::sync::Arc::new(AtomicBool::new(false));
+    let trigger = {
+      let cancel = std::sync::Arc::clone(&cancel);
+      let pid_file = pid_file.clone();
+      thread::spawn(move || {
+        while !pid_file.exists() {
+          thread::sleep(Duration::from_millis(10));
+        }
+        cancel.store(true, Ordering::SeqCst);
+      })
+    };
+    let started = Instant::now();
+    let outcome = run_until(shell(&script), Duration::from_secs(60), &cancel);
+    trigger.join().unwrap();
+    assert!(matches!(outcome, ProcessOutcome::Cancelled), "got {outcome:?}");
+    assert!(started.elapsed() < Duration::from_secs(10));
+    let grandchild: u32 = std::fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
+    thread::sleep(Duration::from_millis(300));
+    let alive = Command::new("kill").args(["-0", &grandchild.to_string()]).stderr(Stdio::null()).status().unwrap().success();
+    assert!(!alive, "grandchild {grandchild} survived the cancellation");
   }
 
   #[test]

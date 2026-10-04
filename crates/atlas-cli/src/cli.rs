@@ -200,9 +200,9 @@ pub struct ConfigArgs {
   pub llm_provider: Option<String>,
   #[arg(long, value_name = "MODEL")]
   pub llm_model: Option<String>,
-  #[arg(long, value_enum)]
+  #[arg(long, value_enum, help = "Run SCIP automatically while `watch` or `mcp --watch` is active (explicit `scip` always works)")]
   pub scip: Option<Toggle>,
-  #[arg(long, value_name = "SECS")]
+  #[arg(long, value_name = "SECS", help = "Seconds without file changes before an automatic SCIP run")]
   pub scip_debounce: Option<u64>,
   #[arg(long, value_name = "BYTES")]
   pub max_file_bytes: Option<u64>,

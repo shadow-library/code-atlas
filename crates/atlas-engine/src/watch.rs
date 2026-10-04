@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use atlas_project::Project;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
+use crate::auto_scip::AutoScip;
 use crate::engine::Engine;
 use crate::error::{EngineError, EngineResult};
 
@@ -220,15 +221,20 @@ struct Worker {
   engine: Weak<Engine>,
   debounce: Duration,
   persist_idle: Duration,
+  auto_scip: Option<AutoScip>,
 }
 
 impl Worker {
-  fn run(&self, receiver: mpsc::Receiver<()>, stop: &AtomicBool) {
+  fn run(&mut self, receiver: mpsc::Receiver<()>, stop: &AtomicBool) {
     let mut pending: Option<Instant> = None;
     let mut persist_due: Option<Instant> = None;
+    let mut quiet_since = Instant::now();
     while !stop.load(Ordering::SeqCst) {
       match receiver.recv_timeout(self.debounce.min(STOP_POLL)) {
-        Ok(()) => pending = Some(Instant::now()),
+        Ok(()) => {
+          pending = Some(Instant::now());
+          quiet_since = Instant::now();
+        }
         Err(RecvTimeoutError::Timeout) => {}
         Err(RecvTimeoutError::Disconnected) => return,
       }
@@ -248,6 +254,9 @@ impl Worker {
         if let Err(error) = engine.persist_similarity() {
           tracing::warn!(error = %error, "could not persist the similarity index");
         }
+      }
+      if let Some(auto_scip) = &mut self.auto_scip {
+        auto_scip.tick(quiet_since, pending.is_some());
       }
     }
   }
@@ -276,10 +285,15 @@ impl Engine {
         signals: Arc::clone(&signals),
         stop: Arc::clone(&stop),
       };
-      let worker = Worker {
+      let mut worker = Worker {
         engine: Arc::downgrade(self),
         debounce: self.options.watch_debounce,
         persist_idle: self.options.similarity_persist_idle,
+        auto_scip: self
+          .options
+          .auto_scip
+          .is_configured()
+          .then(|| AutoScip::new(Arc::downgrade(self), self.options.auto_scip.clone())),
       };
       thread::Builder::new()
         .name("atlas-watch".to_owned())

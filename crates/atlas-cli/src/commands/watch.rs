@@ -1,7 +1,9 @@
+use std::sync::Arc;
 use std::time::Duration;
 
-use atlas_engine::{Engine, FreshnessReport};
+use atlas_engine::{AutoScipOptions, Engine, EngineOptions, FreshnessReport};
 use atlas_project::Project;
+use atlas_scip::{RustAnalyzerScip, ScipTypescript};
 use tokio::runtime::Runtime;
 use tokio::signal::unix::{Signal, SignalKind, signal};
 
@@ -44,9 +46,17 @@ impl Shutdown {
   }
 }
 
+pub(crate) fn auto_scip_options() -> AutoScipOptions {
+  AutoScipOptions::with_indexers(Arc::new(RustAnalyzerScip::new()), Arc::new(ScipTypescript::new()))
+}
+
 pub fn run(ctx: &Context) -> CliResult<Outcome> {
   let project = ctx.resolve()?;
-  let engine = ctx.open_engine(&project)?;
+  let options = EngineOptions {
+    auto_scip: auto_scip_options(),
+    ..EngineOptions::default()
+  };
+  let engine = Arc::new(Engine::open(&project, &ctx.home, options)?);
   let report = engine.ensure_fresh()?;
   if !report.is_fresh() {
     tracing::warn!(project = %project.name, "the initial freshness check was degraded");
@@ -54,6 +64,10 @@ pub fn run(ctx: &Context) -> CliResult<Outcome> {
   let mut shutdown = Shutdown::install()?;
   let mut handle = engine.watch()?;
   note(format!("watching {} ({} repos); press Ctrl-C to stop", project.name, project.repos.len()));
+  note(match project.settings.scip.enabled {
+    true => format!("automatic SCIP runs after {}s without file changes", project.settings.scip.debounce_secs),
+    false => format!("automatic SCIP is off; enable it with `code-atlas project config {} --scip on`", project.name),
+  });
   while let Wake::Tick = shutdown.wait() {
     if !config_changed(&engine.ensure_fresh()?) {
       continue;

@@ -30,6 +30,89 @@ pub fn cache_path(cache_dir: &Path, key: &str) -> PathBuf {
   cache_dir.join(format!("{key}.scip"))
 }
 
+pub const CACHE_ENTRIES_PER_ROOT: usize = 2;
+
+pub(crate) fn cache_scope(indexer: &str, root: &Path) -> String {
+  let mut hasher = blake3::Hasher::new();
+  hasher.update(&(indexer.len() as u64).to_le_bytes());
+  hasher.update(indexer.as_bytes());
+  hasher.update(root.as_os_str().as_encoded_bytes());
+  hasher.finalize().to_hex()[..16].to_owned()
+}
+
+pub(crate) fn entry_stem(scope: &str, key: &str) -> String {
+  format!("{scope}-{key}")
+}
+
+pub(crate) fn unverified_path(cache_dir: &Path, scope: &str, run: &str) -> PathBuf {
+  cache_dir.join(format!("{scope}-unverified-{run}.scip"))
+}
+
+fn is_key(text: &str) -> bool {
+  text.len() == 64 && text.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn remove(path: &Path) {
+  if let Err(error) = std::fs::remove_file(path)
+    && error.kind() != std::io::ErrorKind::NotFound
+  {
+    tracing::debug!(path = %path.display(), %error, "could not prune a scip cache entry");
+  }
+}
+
+fn is_unverified(name: &str, scope: &str) -> bool {
+  name.strip_prefix(scope).is_some_and(|rest| rest.starts_with("-unverified")) && name.ends_with(".scip")
+}
+
+pub(crate) fn prune_unverified(cache_dir: &Path, scope: &str, older_than: std::time::SystemTime) {
+  let Ok(entries) = std::fs::read_dir(cache_dir) else { return };
+  for entry in entries.flatten() {
+    let name = entry.file_name().to_string_lossy().into_owned();
+    let stale = entry.metadata().and_then(|metadata| metadata.modified()).is_ok_and(|modified| modified < older_than);
+    if is_unverified(&name, scope) && stale {
+      remove(&entry.path());
+    }
+  }
+}
+
+pub(crate) fn prune(cache_dir: &Path, scope: &str, keep: usize, published: &str) {
+  let Ok(entries) = std::fs::read_dir(cache_dir) else { return };
+  let prefix = format!("{scope}-");
+  let mut older: Vec<(std::time::SystemTime, String)> = Vec::new();
+  for entry in entries.flatten() {
+    let name = entry.file_name().to_string_lossy().into_owned();
+    let legacy = [".unverified.scip", ".scip", ".json"].iter().any(|suffix| name.strip_suffix(suffix).is_some_and(is_key));
+    if legacy || is_unverified(&name, scope) {
+      remove(&entry.path());
+      continue;
+    }
+    let Some(stem) = name.strip_prefix(&prefix).and_then(|rest| rest.strip_suffix(".scip")).filter(|key| is_key(key)) else {
+      continue;
+    };
+    let stem = entry_stem(scope, stem);
+    if stem == published {
+      continue;
+    }
+    let modified = entry.metadata().and_then(|metadata| metadata.modified()).unwrap_or(std::time::UNIX_EPOCH);
+    older.push((modified, stem));
+  }
+  older.sort_by(|left, right| right.cmp(left));
+  for (_, stem) in older.into_iter().skip(keep.saturating_sub(1)) {
+    remove(&cache_path(cache_dir, &stem));
+    remove(&sidecar_path(cache_dir, &stem));
+  }
+}
+
+pub(crate) fn touch(path: &Path) {
+  let touched = std::fs::File::options()
+    .write(true)
+    .open(path)
+    .and_then(|file| file.set_modified(std::time::SystemTime::now()));
+  if let Err(error) = touched {
+    tracing::debug!(path = %path.display(), %error, "could not refresh a scip cache entry");
+  }
+}
+
 pub(crate) fn sidecar_path(cache_dir: &Path, key: &str) -> PathBuf {
   cache_dir.join(format!("{key}.json"))
 }
