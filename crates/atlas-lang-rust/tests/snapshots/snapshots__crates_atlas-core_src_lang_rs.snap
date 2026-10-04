@@ -517,7 +517,17 @@ symbols:
     impl_of: ~
     extends: []
     implements: []
-    body: ~
+    body:
+      normalized_tokens:
+        - 1984861276
+        - 2
+        - 2236525561
+        - 2
+        - 2236525561
+        - 2
+        - 1951306038
+      token_count: 7
+      line_count: 1
   - local: 10
     parent: ~
     kind: constant
@@ -556,7 +566,18 @@ symbols:
       trait_ref: ~
     extends: []
     implements: []
-    body: ~
+    body:
+      normalized_tokens:
+        - 1984861276
+        - 1
+        - 2785382447
+        - 1
+        - 2236525561
+        - 1
+        - 2785382447
+        - 1
+      token_count: 21
+      line_count: 1
   - local: 11
     parent: ~
     kind: method

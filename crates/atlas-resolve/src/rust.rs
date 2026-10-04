@@ -1,4 +1,4 @@
-use atlas_core::{EntityKind, LanguageFamily, ReceiverHint, RefKind, ReferenceFact, RustTarget, Visibility};
+use atlas_core::{EntityKind, LanguageFamily, ReceiverHint, RefKind, ReferenceFact, RustTarget, Span, Visibility};
 
 use std::collections::{HashSet, VecDeque};
 
@@ -249,12 +249,20 @@ fn is_prelude_name(name: &str, ns: Ns) -> bool {
   }
 }
 
+fn ends_in_annotation(symbol: &SymSurface, at: Option<Span>) -> bool {
+  matches!((symbol.annotation_end_byte, at), (Some(end), Some(at)) if at.end_byte <= end)
+}
+
 fn is_dynamic_segment(segment: &str) -> bool {
   segment.starts_with('[') || segment.starts_with('(')
 }
 
 impl Resolver<'_> {
   pub(crate) fn rust_scope(&self, file: FileIdx, from: Option<u32>) -> Option<RustScope> {
+    self.rust_scope_at(file, from, None)
+  }
+
+  fn rust_scope_at(&self, file: FileIdx, from: Option<u32>, at: Option<Span>) -> Option<RustScope> {
     let surface = self.table.file(file)?;
     let suffix: Vec<String> = match from.and_then(|local| surface.symbol(local)) {
       None => Vec::new(),
@@ -296,9 +304,11 @@ impl Resolver<'_> {
     }
     if let Some(local) = from {
       generics.extend(self.enclosing_type_generics(file, local));
-      may_declare_types |= surface
-        .ancestors(local)
-        .any(|ancestor| surface.symbol(ancestor).is_some_and(|symbol| symbol.declares_local_types));
+      may_declare_types |= surface.ancestors(local).any(|ancestor| {
+        surface
+          .symbol(ancestor)
+          .is_some_and(|symbol| symbol.declares_local_types && !(ancestor == local && ends_in_annotation(symbol, at)))
+      });
     }
     Some(RustScope {
       file,
@@ -349,7 +359,7 @@ impl Resolver<'_> {
   }
 
   pub(crate) fn rust_reference(&self, reference: &ReferenceFact) -> Outcome {
-    let Some(scope) = self.rust_scope(self.file, reference.from.map(|local| local.0)) else {
+    let Some(scope) = self.rust_scope_at(self.file, reference.from.map(|local| local.0), Some(reference.span)) else {
       return Outcome::Unresolved(Miss::NotFound);
     };
     let path = &reference.path;

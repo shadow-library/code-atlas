@@ -10,7 +10,7 @@ use atlas_core::{
 use crate::error::ResolveError;
 use crate::typetext::{ValueType, rust_declared_type, rust_generic_bounds, rust_return_type, ts_return_type, ts_type_params, ts_value_type};
 
-const LOCAL_TYPE_KEYWORDS: [&str; 6] = ["struct", "enum", "union", "trait", "type", "mod"];
+const LOCAL_ITEM_KEYWORDS: [&str; 9] = ["struct", "enum", "union", "trait", "type", "mod", "fn", "impl", "macro_rules!"];
 const MIN_ITEM_BLOCK_BYTES: usize = "{mod m{}}".len();
 const INITIALIZER_FRAME_BYTES: usize = " = ;".len();
 
@@ -35,6 +35,7 @@ pub(crate) struct SymSurface {
   pub derives: Vec<String>,
   pub has_body: bool,
   pub declares_local_types: bool,
+  pub annotation_end_byte: Option<u32>,
   pub span: Span,
 }
 
@@ -378,6 +379,33 @@ fn initializer_fits_item_block(symbol: &atlas_core::SymbolFact, signature: &str)
   span_bytes.saturating_sub(signature.len() + INITIALIZER_FRAME_BYTES) >= MIN_ITEM_BLOCK_BYTES
 }
 
+fn annotation_tail<'s>(symbol: &atlas_core::SymbolFact, signature: &'s str) -> Option<&'s str> {
+  if symbol.kind != EntityKind::Constant {
+    return None;
+  }
+  let name = &symbol.name;
+  let name_end = ["const ", "static ", "mut "].iter().find_map(|keyword| {
+    let needle = format!("{keyword}{name}");
+    signature.find(&needle).map(|at| at + needle.len())
+  })?;
+  signature.get(name_end..)
+}
+
+fn annotation_declares_items(tail: &str) -> bool {
+  tail.contains('{')
+    && tail
+      .split(|character: char| !(character.is_alphanumeric() || character == '_'))
+      .any(|word| LOCAL_ITEM_KEYWORDS.iter().any(|keyword| keyword.trim_end_matches('!') == word))
+}
+
+fn annotation_end_byte(symbol: &atlas_core::SymbolFact, signature: &str) -> Option<u32> {
+  let tail = annotation_tail(symbol, signature)?;
+  if symbol.body.is_none() || tail.ends_with('…') || annotation_declares_items(tail) {
+    return None;
+  }
+  Some(symbol.name_span.end_byte + tail.len() as u32)
+}
+
 fn symbol_surface(family: LanguageFamily, symbol: &atlas_core::SymbolFact, disambiguator: u32) -> SymSurface {
   let signature = symbol.signature.as_deref().unwrap_or_default();
   let is_value_holder = matches!(symbol.kind, EntityKind::Field | EntityKind::Constant | EntityKind::Variable);
@@ -403,11 +431,15 @@ fn symbol_surface(family: LanguageFamily, symbol: &atlas_core::SymbolFact, disam
       },
     ),
   };
-  let keyword_codes: Vec<u32> = LOCAL_TYPE_KEYWORDS.iter().map(|keyword| token_code(NormToken::Keyword(keyword))).collect();
+  let keyword_codes: Vec<u32> = LOCAL_ITEM_KEYWORDS.iter().map(|keyword| token_code(NormToken::Keyword(keyword))).collect();
   let is_initialized_item = matches!(symbol.kind, EntityKind::Constant | EntityKind::Variable);
   let declares_local_types = family == LanguageFamily::Rust
     && match (&symbol.body, is_callable || is_initialized_item) {
-      (Some(body), true) => body.normalized_tokens.iter().any(|code| keyword_codes.contains(code)),
+      (Some(body), true) => {
+        body.token_count as usize > body.normalized_tokens.len()
+          || body.normalized_tokens.iter().any(|code| keyword_codes.contains(code))
+          || annotation_tail(symbol, signature).is_some_and(annotation_declares_items)
+      }
       (None, true) => is_initialized_item && (symbol.span.start_line != symbol.span.end_line || initializer_fits_item_block(symbol, signature)),
       (_, false) => false,
     };
@@ -440,6 +472,7 @@ fn symbol_surface(family: LanguageFamily, symbol: &atlas_core::SymbolFact, disam
       .collect(),
     has_body: symbol.body.is_some(),
     declares_local_types,
+    annotation_end_byte: annotation_end_byte(symbol, signature),
     span: symbol.span,
   }
 }

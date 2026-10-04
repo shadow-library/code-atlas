@@ -522,6 +522,7 @@ impl<'s> Extractor<'s> {
         let equals = children(node).into_iter().find(|child| child.kind() == "=");
         symbol.signature = Some(signature(doc, node, equals.map_or(node.end_byte(), |equals| equals.start_byte())));
         symbol.impl_of = scope.impl_of.clone();
+        symbol.body = value.map(|value| body_fingerprint(value, self.span(doc, value).line_count()));
         Cx::new(doc, Some(self.add(symbol)))
       }
       None => Cx::new(doc, scope.parent),

@@ -553,6 +553,105 @@ fn should_weaken_items_shadowed_inside_const_and_static_initializer_blocks() {
 }
 
 #[test]
+fn should_keep_refs_in_const_annotation_and_plain_initializers_resolved() {
+  let synthetic = rust_project(
+    "use std::sync::LazyLock;\npub struct Config;\nimpl Config {\n  pub const fn new() -> Self { Config }\n}\npub struct Foo;\nimpl Foo {\n  pub fn build() -> Foo { Foo }\n}\npub const DEFAULT: Config = Config::new();\nstatic X: LazyLock<Foo> = LazyLock::new(Foo::build);\n",
+  );
+  let project = &synthetic.project;
+  let config = demo(&[], &["Config"], EntityKind::Struct);
+  let foo = demo(&[], &["Foo"], EntityKind::Struct);
+  let default = demo(&[], &["DEFAULT"], EntityKind::Constant);
+  let x = demo(&[], &["X"], EntityKind::Constant);
+  project.assert_edge(EdgeKind::TypeOf, default, config, RESOLVED);
+  project.assert_edge(EdgeKind::Calls, default, demo(&[], &["Config", "new"], EntityKind::Method), RESOLVED);
+  project.assert_edge(EdgeKind::TypeOf, x, foo, RESOLVED);
+  project.assert_edge(EdgeKind::References, x, demo(&[], &["Foo", "build"], EntityKind::Method), RESOLVED);
+}
+
+#[test]
+fn should_keep_the_annotation_resolved_while_weakening_the_initializer_block() {
+  let synthetic = rust_project("pub struct Config;\npub const C: Config = {\n  struct Config;\n  let _c = Config;\n  Config\n};\n");
+  let project = &synthetic.project;
+  let config = demo(&[], &["Config"], EntityKind::Struct);
+  let c = demo(&[], &["C"], EntityKind::Constant);
+  project.assert_edge(EdgeKind::TypeOf, c, config, RESOLVED);
+  project.assert_certainty(EdgeKind::References, c, config, &heuristic(0.5, "fn-local-item-possible"));
+}
+
+#[test]
+fn should_keep_a_multi_line_annotation_and_item_free_initializer_resolved() {
+  let synthetic = rust_project(
+    "pub struct Config;\npub struct Wrap<T>(T);\npub const fn make() -> Config { Config }\n#[allow(dead_code)]\n/// docs\npub const VALUE: Wrap<\n  Config,\n> =\n  Wrap(\n    make(),\n  );\n",
+  );
+  let project = &synthetic.project;
+  let value = demo(&[], &["VALUE"], EntityKind::Constant);
+  project.assert_edge(EdgeKind::TypeOf, value, demo(&[], &["Config"], EntityKind::Struct), RESOLVED);
+  project.assert_edge(EdgeKind::Calls, value, demo(&[], &["make"], EntityKind::Function), RESOLVED);
+}
+
+#[test]
+fn should_not_let_a_struct_literal_field_or_string_trigger_the_item_scan() {
+  let synthetic = rust_project(
+    "pub struct Config;\npub struct Raw { pub r#type: u8 }\npub const R: Raw = { let _c = Config; Raw { r#type: 1 } };\npub const S: &str = \"struct enum mod fn\";\n",
+  );
+  let project = &synthetic.project;
+  let config = demo(&[], &["Config"], EntityKind::Struct);
+  let r = demo(&[], &["R"], EntityKind::Constant);
+  project.assert_edge(EdgeKind::References, r, config, RESOLVED);
+}
+
+#[test]
+fn should_weaken_when_an_item_hides_past_the_fingerprint_token_cap() {
+  let filler = "0,".repeat(3_000);
+  let source = format!(
+    "pub struct Config;\npub const BIG: () = {{ let _a = [{filler}]; struct Config; let _c = Config; }};\npub fn big() {{ let _a = [{filler}]; struct Config; let _c = Config; }}\n"
+  );
+  let synthetic = rust_project(&source);
+  let project = &synthetic.project;
+  let config = demo(&[], &["Config"], EntityKind::Struct);
+  let weak = heuristic(0.5, "fn-local-item-possible");
+  for caller in [demo(&[], &["BIG"], EntityKind::Constant), demo(&[], &["big"], EntityKind::Function)] {
+    project.assert_no_edge_of_class(EdgeKind::References, caller, config, AUTHORITATIVE);
+    project.assert_certainty(EdgeKind::References, caller, config, &weak);
+  }
+}
+
+#[test]
+fn should_weaken_annotation_refs_when_the_annotation_declares_an_item_block() {
+  let synthetic = rust_project("pub struct Config;\npub const C: [Config; { struct Config; 1 }] = [Config];\n");
+  let project = &synthetic.project;
+  let config = demo(&[], &["Config"], EntityKind::Struct);
+  let c = demo(&[], &["C"], EntityKind::Constant);
+  project.assert_no_edge_of_class(EdgeKind::TypeOf, c, config, AUTHORITATIVE);
+  project.assert_no_edge_of_class(EdgeKind::References, c, config, AUTHORITATIVE);
+}
+
+#[test]
+fn should_resolve_associated_trait_cfg_and_commented_consts() {
+  let synthetic = rust_project(
+    "pub struct Config;\npub struct Wrap<T>(T);\npub const fn make() -> Wrap<Config> { Wrap(Config) }\npub struct S;\nimpl S {\n  pub const E: Config = Config;\n}\npub trait T {\n  const N: Config;\n  const M: Config = Config;\n}\n#[cfg(unix)]\npub const U: Config = Config;\npub const V: Wrap<\n  // note\n  Config, // trailing\n> = make();\n",
+  );
+  let project = &synthetic.project;
+  let config = demo(&[], &["Config"], EntityKind::Struct);
+  for owner in [
+    demo(&[], &["S", "E"], EntityKind::Constant),
+    demo(&[], &["T", "N"], EntityKind::Constant),
+    demo(&[], &["T", "M"], EntityKind::Constant),
+    demo(&[], &["U"], EntityKind::Constant),
+    demo(&[], &["V"], EntityKind::Constant),
+  ] {
+    project.assert_edge(EdgeKind::TypeOf, owner, config, RESOLVED);
+  }
+  project.assert_edge(EdgeKind::References, demo(&[], &["S", "E"], EntityKind::Constant), config, RESOLVED);
+  project.assert_edge(
+    EdgeKind::Calls,
+    demo(&[], &["V"], EntityKind::Constant),
+    demo(&[], &["make"], EntityKind::Function),
+    RESOLVED,
+  );
+}
+
+#[test]
 fn should_keep_detector_lookups_regardless_of_call_order() {
   let manifest = manifest("demo", "");
   for detector_first in [true, false] {

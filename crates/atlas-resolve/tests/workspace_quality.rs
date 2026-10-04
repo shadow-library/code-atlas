@@ -1,10 +1,10 @@
 mod common;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 use std::time::Instant;
 
-use atlas_core::{RefKind, UnresolvedReason};
+use atlas_core::{CertaintyClass, EntityId, EntityKey, EntityKind, RefKind, UnresolvedReason};
 use atlas_project::{PackageGraph, RepoConfig, discover};
 use atlas_resolve::{OutcomeCounts, ProjectSymbolTable, resolve_file};
 
@@ -62,9 +62,23 @@ fn should_report_resolution_quality_on_this_workspace() {
   let mut by_kind: BTreeMap<RefKind, OutcomeCounts> = BTreeMap::new();
   let mut reasons: BTreeMap<(RefKind, String), u32> = BTreeMap::new();
   let mut edges = 0usize;
-  for (facts, _) in &corpus {
+  let mut const_edges = 0u32;
+  let mut const_weakened = 0u32;
+  for (facts, context) in &corpus {
     let resolved = resolve_file(facts, &table).unwrap();
     edges += resolved.edges.len() + resolved.structural.len();
+    let constants: HashSet<EntityId> = facts
+      .symbol_keys(context)
+      .unwrap()
+      .into_iter()
+      .zip(&facts.symbols)
+      .filter(|(_, symbol)| symbol.kind == EntityKind::Constant)
+      .map(|(key, _)| EntityId::of(&EntityKey::Symbol(key)))
+      .collect();
+    for edge in resolved.edges.iter().filter(|edge| constants.contains(&edge.from)) {
+      const_edges += 1;
+      const_weakened += u32::from(edge.certainty.class() == CertaintyClass::Heuristic);
+    }
     for (kind, counts) in &resolved.stats.by_kind {
       by_kind.entry(*kind).or_default().add(counts);
     }
@@ -101,6 +115,7 @@ fn should_report_resolution_quality_on_this_workspace() {
     percent(total.heuristic, total.total()),
     percent(total.unresolved, total.total())
   );
+  eprintln!("const/static-originated edges={const_edges} heuristic={const_weakened}");
   let mut top: Vec<_> = reasons.into_iter().collect();
   top.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
   for ((kind, reason), count) in top.into_iter().take(25) {
