@@ -69,6 +69,8 @@ The plan lives in `docs/plan/implementation-plan.md`.
 ./scripts/check.sh   # fmt --check, clippy -D warnings, test --workspace
 ```
 
+`.cargo/config.toml` builds the bundled SQLite without `SQLITE_ENABLE_MEMORY_MANAGEMENT`, which removes its global page-cache mutex; builds from outside the workspace keep it (slower, still correct) and `doctor` warns.
+
 ## Engine contracts (`atlas-engine`)
 
 ### Freshness
@@ -84,7 +86,7 @@ The plan lives in `docs/plan/implementation-plan.md`.
   Facts of failed or removed files are deleted, never kept stale. `header.files_failed_analysis` keeps counting files that failed in earlier runs.
 - Scans pass the start time of the scan that produced the stored stamps as `previous_scan_ns` (persisted per repo in the `engine:meta` blob); an unknown time hashes everything.
 - Concurrency:
-  - Barriers in one process serialize on the engine mutex; the waiter re-scans (usually a no-op).
+  - Barriers in one process are single-flight: a caller joins only a flight launched after it arrived (ticket `launched + 1`), so it never receives a scan that started before its call. Queries run after the barrier on the store's read-connection pool, outside the engine lock; one query uses one read transaction. `Engine::skip_barrier` / `QueryEngine::without_barrier` exist for benchmarks only and must never be reachable from the CLI or MCP.
   - Across processes, `<db>.index.lock` is held for a whole run, and the store write lock only per persist batch. After taking the index lock, the engine always re-reads the persisted generation (the last finished run in `engine:meta`). If it moved, the engine reloads its state and re-plans from a fresh scan.
   - The `engine:dirty` blob exists while a run is in flight. A barrier that sees it waits for the index lock. A dirty marker found while holding the lock means a crashed run: the engine reloads (ignoring the persisted similarity index), marks the orphaned `barrier`/`index` runs `failed`, recomputes SCIP lag, and the next run re-resolves every file. If dependency rounds do not converge, the run stays `partial` and keeps the dirty marker, so the next run re-resolves everything.
 - Project configuration: `engine:project` holds a fingerprint of the repos (name, path, include/exclude, languages) and `max_file_bytes`. `Engine::open` and `Engine::reload_project` adopt their configuration. Any other engine whose fingerprint differs reports `Degraded("project configuration changed; reopen the engine")` and neither purges nor indexes. Long-lived servers must call `reload_project` when the registry changes. Always open an engine with the full registry `Project`: opening with a subset adopts it and purges every other repo. The transaction that begins a run records the configured repos in `engine:repos` before any file owner is written. On the next run, repos from `engine:repos`, Repository entities and meta that are absent from the adopted configuration are purged, even when the previous run crashed. Stale entries are cleared only after a run finishes.
