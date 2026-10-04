@@ -57,6 +57,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 rayon = "1"
 ignore = "0.4"
 blake3 = "1"
+flate2 = "1"
 notify = "8"
 scip = "0.10"
 protobuf = "=3.7.2"

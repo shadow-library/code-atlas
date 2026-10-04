@@ -1,10 +1,10 @@
 use atlas_core::{ContentHash, Edge, Entity};
 use rusqlite::Connection;
-use serde::de::DeserializeOwned;
 
-use crate::codec::{canonical_json, from_json};
+use crate::codec::{canonical_json, to_json};
 use crate::error::StoreResult;
-use crate::facts::{Assertion, merge_edge, merge_entity, parse_owner};
+use crate::facts::{Assertion, Decoder, OwnedRow, merge_edge, merge_entity};
+use crate::stored::{decode_edge, decode_entity, decode_unresolved};
 use crate::tx::ReadTx;
 
 const DIGEST_CONTEXT: &str = "code-atlas 2026-10-04 fact-set digest v1";
@@ -37,8 +37,8 @@ impl ReadTx<'_> {
     };
     for_each_group::<Entity>(
       conn,
-      "SELECT eo.entity_id, o.key, eo.data FROM entity_owners eo JOIN owners o ON o.id = eo.owner_id ORDER BY eo.entity_id, o.key",
-      "entity",
+      "SELECT o.key, o.content_hash, eo.entity_id, eo.data FROM entity_owners eo JOIN owners o ON o.id = eo.owner_id ORDER BY eo.entity_id, o.key",
+      decode_entity,
       |owners, assertions| {
         let Some(merged) = merge_entity(assertions)? else { return Ok(()) };
         digest.record("entity", &canonical_json(&merged.entity)?, owners);
@@ -47,45 +47,41 @@ impl ReadTx<'_> {
     )?;
     for_each_group::<Edge>(
       conn,
-      "SELECT eo.edge_id, o.key, eo.data FROM edge_owners eo JOIN owners o ON o.id = eo.owner_id ORDER BY eo.edge_id, o.key",
-      "edge",
+      "SELECT o.key, o.content_hash, eo.edge_id, eo.data FROM edge_owners eo JOIN owners o ON o.id = eo.owner_id ORDER BY eo.edge_id, o.key",
+      decode_edge,
       |owners, assertions| {
         let Some(merged) = merge_edge(assertions)? else { return Ok(()) };
         digest.record("edge", &canonical_json(&merged.edge)?, owners);
         Ok(())
       },
     )?;
-    let mut statement = conn.prepare_cached("SELECT o.key, u.data FROM unresolved_refs u JOIN owners o ON o.id = u.owner_id ORDER BY o.key, u.ordinal")?;
-    let rows = statement.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+    let mut statement = conn.prepare_cached("SELECT o.key, o.content_hash, u.src, u.data FROM unresolved_refs u JOIN owners o ON o.id = u.owner_id ORDER BY o.key, u.ordinal")?;
+    let rows = statement.query_map([], OwnedRow::from_row)?;
     for row in rows {
-      let (owner, data) = row?;
-      digest.record("unresolved", &data, &[owner]);
+      let row = row?;
+      let reference = row.decode(decode_unresolved)?.fact;
+      digest.record("unresolved", &to_json(&reference)?, &[row.owner]);
     }
     Ok(ContentHash::from_bytes(*digest.hasher.finalize().as_bytes()))
   }
 }
 
-fn for_each_group<T: DeserializeOwned>(conn: &Connection, sql: &str, what: &'static str, mut visit: impl FnMut(&[String], &[Assertion<T>]) -> StoreResult<()>) -> StoreResult<()> {
+fn for_each_group<T>(conn: &Connection, sql: &str, decode: Decoder<T>, mut visit: impl FnMut(&[String], &[Assertion<T>]) -> StoreResult<()>) -> StoreResult<()> {
   let mut statement = conn.prepare_cached(sql)?;
   let mut rows = statement.query([])?;
   let mut current: Option<i64> = None;
   let mut owners = Vec::new();
   let mut assertions = Vec::new();
   while let Some(row) = rows.next()? {
-    let id: i64 = row.get(0)?;
-    if current.is_some_and(|current| current != id) {
+    let row = OwnedRow::from_row(row)?;
+    if current.is_some_and(|current| current != row.id) {
       visit(&owners, &assertions)?;
       owners.clear();
       assertions.clear();
     }
-    current = Some(id);
-    let owner: String = row.get(1)?;
-    let data: String = row.get(2)?;
-    assertions.push(Assertion {
-      owner: parse_owner(&owner)?,
-      fact: from_json(what, &data)?,
-    });
-    owners.push(owner);
+    current = Some(row.id);
+    assertions.push(row.decode(decode)?);
+    owners.push(row.owner);
   }
   if current.is_some() {
     visit(&owners, &assertions)?;

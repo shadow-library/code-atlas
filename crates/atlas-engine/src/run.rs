@@ -7,7 +7,9 @@ use atlas_project::{FileStamp, PackageGraph, Project};
 use atlas_resolve::SurfaceDelta;
 use atlas_scip::ScipFacts;
 use atlas_similarity::SimilarityIndex;
-use atlas_store::{DerivedBlob, FactDelta, FileRecord, FreshnessPolicy, InferredQuery, NewInferredFact, OwnedFacts, RunOutcome, RunReport, Store, WriteTx};
+use atlas_store::{
+  DerivedBlob, FactDelta, FileRecord, FreshnessPolicy, InferredQuery, NewInferredFact, OwnedFacts, PreparedOwner, RunOutcome, RunReport, SecondaryIndexes, Store, WriteTx,
+};
 use rayon::prelude::*;
 use serde_json::{Value, json};
 
@@ -30,6 +32,7 @@ use crate::state::{
 
 const MAX_RESOLVE_ROUNDS: usize = 4;
 const MAX_CHANGE_SET_ENTRIES: usize = 1_000;
+const BULK_MIN_WRITES: usize = 256;
 
 pub(crate) struct RunEnv<'a> {
   pub store: &'a Store,
@@ -100,12 +103,11 @@ enum Write {
   },
   File {
     key: FileKey,
-    facts: OwnedFacts,
+    prepared: Box<PreparedOwner>,
     update: Option<Box<FileUpdate>>,
   },
   Owner {
-    owner: Owner,
-    facts: OwnedFacts,
+    prepared: Box<PreparedOwner>,
   },
   Record {
     record: FileRecord,
@@ -183,6 +185,13 @@ struct LineageInputs {
   appeared: Vec<LineageSide>,
 }
 
+// The index lock is held for the whole run, so once a run has read the SCIP lag blob no other writer can change it.
+#[derive(Clone, Copy)]
+enum SyncState {
+  Unread,
+  Read,
+}
+
 enum MissingArtifact {
   Fail,
   Skip,
@@ -215,17 +224,22 @@ pub(crate) fn execute(
   trigger: &str,
 ) -> EngineResult<RunSummary> {
   let started = Instant::now();
-  let run = env.store.write(|tx| -> EngineResult<RunId> {
+  let (run, restored) = env.store.write(|tx| -> EngineResult<(RunId, usize)> {
+    let restored = tx.restore_missing_indexes()?;
     let run = tx.begin_run(trigger)?;
     tx.put_blob(DIRTY_BLOB, 1, &run.0.to_le_bytes())?;
     let mut known = read_known_repos(tx)?;
     known.extend(env.project.repos.iter().map(|repo| repo.name.clone()));
     write_known_repos(tx, &known)?;
-    Ok(run)
+    Ok((run, restored))
   })?;
   let span = tracing::info_span!("index_run", run = run.0, trigger, mode = ?mode);
   let _entered = span.enter();
   let mut ledger = Ledger::default();
+  if restored > 0 {
+    tracing::warn!(run = run.0, restored, "rebuilt secondary indexes that an interrupted bulk load left deferred");
+    ledger.add("indexes_restored", restored as u64);
+  }
   match Pipeline::new(env, state, similarity, run, mode).execute(scans, &mut ledger) {
     Ok(files_updated) => {
       let outcome = ledger.outcome();
@@ -320,9 +334,21 @@ impl<'a, 'e> Pipeline<'a, 'e> {
     let mut writes: Vec<Write> = self.deleted.iter().map(|key| Write::RemoveFile { key: key.clone() }).collect();
     let (file_writes, mut processed) = ledger.time("encode", |ledger| self.file_writes(finalized, &artifacts, &analyzed_keys, ledger))?;
     writes.extend(file_writes);
-    writes.extend(fixed.into_iter().map(|(owner, facts)| Write::Owner { owner, facts }));
+    writes.extend(ledger.time("encode", |_| prepare_owners(fixed))?);
     writes.extend(self.record_writes());
+    let mut bulk = match writes.len() >= BULK_MIN_WRITES {
+      true => Some(self.env.store.bulk_writes()?),
+      false => None,
+    };
+    let indexes = match &mut bulk {
+      Some(bulk) => bulk.defer_indexes_while_empty()?,
+      None => SecondaryIndexes::Built,
+    };
     ledger.time("persist", |ledger| self.persist(writes, ledger))?;
+    if let (Some(bulk), SecondaryIndexes::Deferred) = (&mut bulk, indexes) {
+      ledger.add("indexes_deferred", 1);
+      ledger.time("reindex", |_| bulk.restore_indexes())?;
+    }
     self.env.options.fault_injection.crash_point();
     let follow_up = ledger.time("dependents", |ledger| self.follow_up(&resolve, &processed, ledger))?;
     processed.extend(follow_up);
@@ -335,6 +361,11 @@ impl<'a, 'e> Pipeline<'a, 'e> {
     ledger.time("finish", |ledger| self.finish(ledger, &analyzed_keys))?;
     if self.converged == Convergence::Exhausted {
       self.state.pending.force_full_resolve = true;
+    }
+    if let Some(bulk) = bulk
+      && let Err(error) = ledger.time("checkpoint", |_| bulk.finish())
+    {
+      tracing::warn!(error = %error, "the checkpoint after a bulk run failed; SQLite retries it on a later commit");
     }
     Ok(files_updated)
   }
@@ -765,23 +796,31 @@ impl<'a, 'e> Pipeline<'a, 'e> {
     if !analyzed.is_empty() {
       ledger.add("artifact_encode_us", encode_started.elapsed().as_micros() as u64);
     }
-    let mut writes = Vec::new();
-    let mut processed = Vec::new();
-    for owner in finalized {
+    let prepared: Vec<(FinalOwner, PreparedOwner)> = finalized
+      .into_par_iter()
+      .map(|mut owner| {
+        let facts = std::mem::take(&mut owner.facts);
+        let prepared = PreparedOwner::new(file_owner(&owner.key), &facts)?;
+        Ok((owner, prepared))
+      })
+      .collect::<EngineResult<_>>()?;
+    let mut writes = Vec::with_capacity(prepared.len());
+    let mut processed = Vec::with_capacity(prepared.len());
+    for (owner, prepared) in prepared {
       let update = match (encoded_by_key.remove(&owner.key), artifacts.get(&owner.key)) {
         (Some(bytes), Some(artifact)) => Some(Box::new(self.file_update(&owner.key, artifact, bytes))),
         _ => None,
       };
-      processed.push(Processed {
+      writes.push(Write::File {
         key: owner.key.clone(),
+        prepared: Box::new(prepared),
+        update,
+      });
+      processed.push(Processed {
+        key: owner.key,
         symbols: owner.symbols,
         wanted: owner.wanted,
         dangling: owner.counts.dangling_detector_edges,
-      });
-      writes.push(Write::File {
-        key: owner.key,
-        facts: owner.facts,
-        update,
       });
     }
     Ok((writes, processed))
@@ -846,7 +885,12 @@ impl<'a, 'e> Pipeline<'a, 'e> {
     let max_duration = self.env.options.batch_max_duration.max(Duration::from_millis(1));
     let mut pending = writes.into_iter().peekable();
     let run = self.run;
+    let mut synced = SyncState::Unread;
     while pending.peek().is_some() {
+      let known = match synced {
+        SyncState::Unread => None,
+        SyncState::Read => Some(self.state.scip.clone()),
+      };
       let (deltas, scip) = self.env.store.write(|tx| -> EngineResult<(Vec<FactDelta>, ScipMeta)> {
         tx.resume_run(run)?;
         let started = Instant::now();
@@ -858,7 +902,10 @@ impl<'a, 'e> Pipeline<'a, 'e> {
           written += 1;
           apply_write(tx, write, &mut deltas, &mut dropped)?;
         }
-        let mut scip = ScipMeta::read(tx)?;
+        let mut scip = match known {
+          Some(scip) => scip,
+          None => ScipMeta::read(tx)?,
+        };
         if !dropped.is_empty() {
           for key in &dropped {
             let label = key_label(key);
@@ -878,6 +925,7 @@ impl<'a, 'e> Pipeline<'a, 'e> {
         Ok((deltas, scip))
       })?;
       self.state.scip = scip;
+      synced = SyncState::Read;
       ledger.add("persist_batches", 1);
       for delta in deltas {
         ledger.record_delta(&delta);
@@ -1225,8 +1273,8 @@ fn apply_write(tx: &mut WriteTx<'_>, write: Write, deltas: &mut Vec<FactDelta>, 
       tx.mark_stale_where_evidence_removed(&key.0, &key.1)?;
       scip_dropped.insert(key);
     }
-    Write::File { key, facts, update } => {
-      deltas.push(tx.replace_owner(&file_owner(&key), &facts)?);
+    Write::File { key, prepared, update } => {
+      deltas.push(tx.replace_prepared(&prepared)?);
       deltas.push(tx.remove_owner(&scip_owner(&key))?);
       if let Some(update) = update {
         tx.put_blob(&FileArtifact::blob_name(&key.0, &key.1), ARTIFACT_VERSION, &update.artifact)?;
@@ -1237,7 +1285,7 @@ fn apply_write(tx: &mut WriteTx<'_>, write: Write, deltas: &mut Vec<FactDelta>, 
       }
       scip_dropped.insert(key);
     }
-    Write::Owner { owner, facts } => deltas.push(tx.replace_owner(&owner, &facts)?),
+    Write::Owner { prepared } => deltas.push(tx.replace_prepared(&prepared)?),
     Write::Record { record } => tx.upsert_file(&record)?,
     Write::Restamp { key, stamp } => {
       if let Some(mut record) = tx.file(&key.0, &key.1)? {
@@ -1252,6 +1300,17 @@ fn apply_write(tx: &mut WriteTx<'_>, write: Write, deltas: &mut Vec<FactDelta>, 
     }
   }
   Ok(())
+}
+
+fn prepare_owners(owners: Vec<(Owner, OwnedFacts)>) -> EngineResult<Vec<Write>> {
+  owners
+    .into_par_iter()
+    .map(|(owner, facts)| {
+      Ok(Write::Owner {
+        prepared: Box::new(PreparedOwner::new(owner, &facts)?),
+      })
+    })
+    .collect()
 }
 
 fn migrate_inferred(tx: &mut WriteTx<'_>, pairs: &[RenamePair], run: RunId) -> EngineResult<()> {

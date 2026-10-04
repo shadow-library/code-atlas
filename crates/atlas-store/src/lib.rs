@@ -11,6 +11,7 @@ mod lookup;
 mod runs;
 mod schema;
 mod store;
+mod stored;
 mod traverse;
 mod tx;
 
@@ -23,7 +24,7 @@ pub use inferred::*;
 pub use llm::*;
 pub use lookup::*;
 pub use runs::*;
-pub use schema::SCHEMA_VERSION;
+pub use schema::{PROJECT_FINGERPRINT_BLOB, PROJECT_FINGERPRINT_VERSION, SCHEMA_VERSION};
 pub use store::*;
 pub use traverse::*;
 pub use tx::*;

@@ -2,21 +2,27 @@ use std::ffi::OsString;
 use std::fs::{File, OpenOptions};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, ThreadId};
 use std::time::{Duration, Instant};
 
 use rusqlite::{Connection, TransactionBehavior};
 
-use crate::error::{StoreError, StoreResult};
+use crate::error::{StoreError, StoreLock, StoreResult};
 use crate::schema;
 use crate::tx::{ReadTx, WriteTx};
 
 const STATEMENT_CACHE_CAPACITY: usize = 128;
 // SQLite reads a negative cache_size as KiB rather than pages.
 const WRITER_CACHE_KIB: i64 = -65_536;
-const READER_CACHE_KIB: i64 = -16_384;
+const READER_CACHE_MAX_KIB: i64 = 16_384;
+const READERS_CACHE_BUDGET_KIB: i64 = 524_288;
 const MAX_LOCK_BACKOFF: Duration = Duration::from_millis(50);
+const DEFAULT_AUTOCHECKPOINT_PAGES: i64 = 1_000;
+// Bulk runs commit many batches; checkpointing after each one re-copies and fsyncs the same hot pages, so a run defers it.
+const BULK_AUTOCHECKPOINT_PAGES: i64 = 65_536;
+const JOURNAL_SIZE_LIMIT_BYTES: i64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct StoreOptions {
@@ -41,6 +47,78 @@ pub struct Store {
   writer_thread: Mutex<Option<ThreadId>>,
   readers: Readers,
   lock_timeout: Duration,
+  busy_timeout: Duration,
+  bulk_depth: AtomicUsize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Checkpoint {
+  pub wal_frames: i64,
+  pub checkpointed_frames: i64,
+  pub busy: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecondaryIndexes {
+  Built,
+  Deferred,
+}
+
+pub struct BulkWrites<'s> {
+  store: Option<&'s Store>,
+  indexes: SecondaryIndexes,
+}
+
+impl BulkWrites<'_> {
+  pub fn defer_indexes_while_empty(&mut self) -> StoreResult<SecondaryIndexes> {
+    let Some(store) = self.store else { return Ok(self.indexes) };
+    if self.indexes == SecondaryIndexes::Deferred {
+      return Ok(self.indexes);
+    }
+    let deferred = store.write(|tx| -> StoreResult<bool> {
+      if schema::holds_facts(tx.conn())? {
+        schema::create_missing_indexes(tx.conn())?;
+        return Ok(false);
+      }
+      schema::drop_deferrable_indexes(tx.conn())?;
+      Ok(true)
+    })?;
+    if deferred {
+      self.indexes = SecondaryIndexes::Deferred;
+      tracing::info!("deferred the secondary fact indexes while bulk-loading an empty store");
+    }
+    Ok(self.indexes)
+  }
+
+  pub fn restore_indexes(&mut self) -> StoreResult<()> {
+    let Some(store) = self.store else { return Ok(()) };
+    if self.indexes == SecondaryIndexes::Built {
+      return Ok(());
+    }
+    store.write(|tx| schema::create_missing_indexes(tx.conn()))?;
+    self.indexes = SecondaryIndexes::Built;
+    Ok(())
+  }
+
+  pub fn finish(mut self) -> StoreResult<Option<Checkpoint>> {
+    self.restore_indexes()?;
+    match self.store.take() {
+      Some(store) => store.end_bulk(),
+      None => Ok(None),
+    }
+  }
+}
+
+impl Drop for BulkWrites<'_> {
+  fn drop(&mut self) {
+    if let Err(error) = self.restore_indexes() {
+      tracing::warn!(error = %error, "could not rebuild the deferred indexes; the next open rebuilds them");
+    }
+    let Some(store) = self.store.take() else { return };
+    if let Err(error) = store.end_bulk() {
+      tracing::warn!(error = %error, "could not restore the checkpoint policy after bulk writes");
+    }
+  }
 }
 
 enum Location {
@@ -54,7 +132,7 @@ struct Writer {
 }
 
 enum WriterLock {
-  File { path: PathBuf, lock: fd_lock::RwLock<File> },
+  File { kind: StoreLock, path: PathBuf, lock: fd_lock::RwLock<File> },
   InProcess,
 }
 
@@ -72,7 +150,12 @@ struct ReaderPool {
 #[derive(Clone, Copy)]
 enum Role {
   Writer,
-  Reader,
+  Reader { cache_kib: i64 },
+}
+
+fn reader_cache_kib(readers: usize) -> i64 {
+  let readers = i64::try_from(readers.max(1)).unwrap_or(i64::MAX);
+  READER_CACHE_MAX_KIB.min(READERS_CACHE_BUDGET_KIB / readers)
 }
 
 impl Store {
@@ -82,35 +165,46 @@ impl Store {
 
   pub fn open_with(path: impl AsRef<Path>, options: StoreOptions) -> StoreResult<Self> {
     let path = path.as_ref().to_path_buf();
-    let lock_path = lock_path_for(&path);
-    let lock_file = OpenOptions::new()
-      .create(true)
-      .truncate(false)
-      .read(true)
-      .write(true)
-      .open(&lock_path)
-      .map_err(|source| StoreError::Io { path: lock_path.clone(), source })?;
-    let mut lock = WriterLock::File {
-      path: lock_path,
-      lock: fd_lock::RwLock::new(lock_file),
-    };
+    let mut lock = WriterLock::open(StoreLock::Writer, lock_path_for(&path, ".lock"))?;
     let mut conn = Connection::open(&path)?;
     configure(&conn, Role::Writer, options.busy_timeout)?;
     let found = schema::user_version(&conn)?;
     schema::ensure_supported(found)?;
     if found < schema::SCHEMA_VERSION || !is_wal(&conn)? {
-      lock.hold(options.lock_timeout, || -> StoreResult<()> {
-        let mode: String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))?;
-        if !mode.eq_ignore_ascii_case("wal") {
-          return Err(StoreError::corrupt("journal mode", format!("SQLite refused WAL mode and stayed in {mode}")));
-        }
-        schema::migrate(&mut conn)
-      })??;
+      // An older binary checks the schema only when it opens, so the upgrade waits for any run it has in flight.
+      let mut index = WriterLock::open(StoreLock::Index, lock_path_for(&path, ".index.lock"))?;
+      index.hold(options.lock_timeout, || {
+        lock.hold(options.lock_timeout, || -> StoreResult<()> {
+          let mode: String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))?;
+          if !mode.eq_ignore_ascii_case("wal") {
+            return Err(StoreError::corrupt("journal mode", format!("SQLite refused WAL mode and stayed in {mode}")));
+          }
+          schema::migrate(&mut conn).map_err(|source| StoreError::Migration {
+            path: path.clone(),
+            from: found,
+            to: schema::SCHEMA_VERSION,
+            source: Box::new(source),
+          })
+        })
+      })???;
     }
+    if !schema::missing_indexes(&conn)?.is_empty() {
+      // Missing indexes while another process indexes are its deferred bulk load; that run, or the next one, restores them.
+      let mut index = WriterLock::open(StoreLock::Index, lock_path_for(&path, ".index.lock"))?;
+      match index.try_hold(|| lock.hold(options.lock_timeout, || restore_indexes(&mut conn)))? {
+        Some(restored) => {
+          restored??;
+        }
+        None => tracing::info!(path = %path.display(), "secondary indexes are missing while another process indexes; leaving them to its run"),
+      }
+    }
+    let reader_role = Role::Reader {
+      cache_kib: reader_cache_kib(options.readers),
+    };
     let readers = (0..options.readers.max(1))
       .map(|_| {
         let reader = Connection::open(&path)?;
-        configure(&reader, Role::Reader, options.busy_timeout)?;
+        configure(&reader, reader_role, options.busy_timeout)?;
         Ok(reader)
       })
       .collect::<StoreResult<Vec<_>>>()?;
@@ -124,6 +218,8 @@ impl Store {
         holders: Mutex::new(Vec::new()),
       }),
       lock_timeout: options.lock_timeout,
+      busy_timeout: options.busy_timeout,
+      bulk_depth: AtomicUsize::new(0),
     })
   }
 
@@ -140,6 +236,8 @@ impl Store {
       writer_thread: Mutex::new(None),
       readers: Readers::SharedWithWriter,
       lock_timeout: Duration::ZERO,
+      busy_timeout: Duration::ZERO,
+      bulk_depth: AtomicUsize::new(0),
     })
   }
 
@@ -183,15 +281,81 @@ impl Store {
     }
   }
 
+  pub fn bulk_writes(&self) -> StoreResult<BulkWrites<'_>> {
+    if self.bulk_depth.fetch_add(1, Ordering::SeqCst) == 0
+      && let Err(error) = self.on_writer(|conn| Ok(conn.pragma_update(None, "wal_autocheckpoint", BULK_AUTOCHECKPOINT_PAGES)?))
+    {
+      self.bulk_depth.fetch_sub(1, Ordering::SeqCst);
+      return Err(error);
+    }
+    Ok(BulkWrites {
+      store: Some(self),
+      indexes: SecondaryIndexes::Built,
+    })
+  }
+
+  fn end_bulk(&self) -> StoreResult<Option<Checkpoint>> {
+    if self.bulk_depth.fetch_sub(1, Ordering::SeqCst) != 1 {
+      return Ok(None);
+    }
+    let checkpoint = self.on_writer(|conn| {
+      conn.pragma_update(None, "wal_autocheckpoint", DEFAULT_AUTOCHECKPOINT_PAGES)?;
+      // Without a busy wait, TRUNCATE degrades to PASSIVE whenever a reader or writer holds the WAL, so it never stalls them.
+      conn.busy_timeout(Duration::ZERO)?;
+      let checkpoint = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+        Ok(Checkpoint {
+          busy: row.get::<_, i64>(0)? != 0,
+          wal_frames: row.get(1)?,
+          checkpointed_frames: row.get(2)?,
+        })
+      });
+      conn.busy_timeout(self.busy_timeout)?;
+      Ok(checkpoint?)
+    })?;
+    if let Some(checkpoint) = &checkpoint {
+      tracing::debug!(
+        wal_frames = checkpoint.wal_frames,
+        checkpointed_frames = checkpoint.checkpointed_frames,
+        busy = checkpoint.busy,
+        "checkpointed after bulk writes"
+      );
+    }
+    Ok(checkpoint)
+  }
+
+  fn on_writer<T>(&self, f: impl FnOnce(&Connection) -> StoreResult<T>) -> StoreResult<Option<T>> {
+    if let Location::Memory = self.location {
+      return Ok(None);
+    }
+    if self.is_writer_thread(thread::current().id()) {
+      return Err(StoreError::Reentrant);
+    }
+    let writer = lock_ignoring_poison(&self.writer);
+    f(&writer.conn).map(Some)
+  }
+
   fn is_writer_thread(&self, current: ThreadId) -> bool {
     *lock_ignoring_poison(&self.writer_thread) == Some(current)
   }
 }
 
-fn lock_path_for(path: &Path) -> PathBuf {
+fn lock_path_for(path: &Path, suffix: &str) -> PathBuf {
   let mut name = OsString::from(path.as_os_str());
-  name.push(".lock");
+  name.push(suffix);
   PathBuf::from(name)
+}
+
+impl WriteTx<'_> {
+  pub fn restore_missing_indexes(&mut self) -> StoreResult<usize> {
+    schema::create_missing_indexes(self.conn())
+  }
+}
+
+fn restore_indexes(conn: &mut Connection) -> StoreResult<usize> {
+  let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+  let created = schema::create_missing_indexes(&tx)?;
+  tx.commit()?;
+  Ok(created)
 }
 
 fn lock_ignoring_poison<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -213,9 +377,10 @@ fn configure(conn: &Connection, role: Role, busy_timeout: Duration) -> StoreResu
       conn.pragma_update(None, "cache_size", WRITER_CACHE_KIB)?;
       // replace_owner's savepoint copies every page it first touches into a temp-store sub-journal.
       conn.pragma_update(None, "temp_store", "MEMORY")?;
+      conn.pragma_update(None, "journal_size_limit", JOURNAL_SIZE_LIMIT_BYTES)?;
     }
-    Role::Reader => {
-      conn.pragma_update(None, "cache_size", READER_CACHE_KIB)?;
+    Role::Reader { cache_kib } => {
+      conn.pragma_update(None, "cache_size", -cache_kib)?;
       conn.pragma_update(None, "query_only", "ON")?;
     }
   }
@@ -267,10 +432,37 @@ where
 }
 
 impl WriterLock {
-  fn hold<R>(&mut self, timeout: Duration, f: impl FnOnce() -> R) -> StoreResult<R> {
+  fn open(kind: StoreLock, path: PathBuf) -> StoreResult<Self> {
+    let file = OpenOptions::new()
+      .create(true)
+      .truncate(false)
+      .read(true)
+      .write(true)
+      .open(&path)
+      .map_err(|source| StoreError::Io { path: path.clone(), source })?;
+    Ok(Self::File {
+      kind,
+      path,
+      lock: fd_lock::RwLock::new(file),
+    })
+  }
+
+  fn try_hold<R>(&mut self, f: impl FnOnce() -> R) -> StoreResult<Option<R>> {
     let (path, lock) = match self {
+      Self::InProcess => return Ok(Some(f())),
+      Self::File { path, lock, .. } => (path, lock),
+    };
+    match lock.try_write() {
+      Ok(_guard) => Ok(Some(f())),
+      Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::Interrupted) => Ok(None),
+      Err(source) => Err(StoreError::Io { path: path.clone(), source }),
+    }
+  }
+
+  fn hold<R>(&mut self, timeout: Duration, f: impl FnOnce() -> R) -> StoreResult<R> {
+    let (kind, path, lock) = match self {
       Self::InProcess => return Ok(f()),
-      Self::File { path, lock } => (path, lock),
+      Self::File { kind, path, lock } => (*kind, path, lock),
     };
     let started = Instant::now();
     let mut backoff = Duration::from_millis(1);
@@ -282,7 +474,11 @@ impl WriterLock {
       }
       let waited = started.elapsed();
       if waited >= timeout {
-        return Err(StoreError::LockTimeout { path: path.clone(), waited });
+        return Err(StoreError::LockTimeout {
+          lock: kind,
+          path: path.clone(),
+          waited,
+        });
       }
       thread::sleep(backoff.min(timeout - waited));
       backoff = (backoff * 2).min(MAX_LOCK_BACKOFF);
@@ -350,5 +546,19 @@ impl Drop for Lease<'_> {
       lock_ignoring_poison(&self.pool.idle).push(conn);
       self.pool.returned.notify_one();
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn should_bound_the_total_reader_cache_across_every_reader() {
+    assert_eq!(reader_cache_kib(0), 16_384);
+    assert_eq!(reader_cache_kib(14), 16_384);
+    assert_eq!(reader_cache_kib(32), 16_384);
+    assert_eq!(reader_cache_kib(64), 8_192);
+    assert!(reader_cache_kib(64) * 64 <= READERS_CACHE_BUDGET_KIB);
   }
 }

@@ -23,6 +23,7 @@ atlas-link.workspace = true
 rayon.workspace = true
 notify.workspace = true
 blake3.workspace = true
+flate2.workspace = true
 fd-lock.workspace = true
 serde.workspace = true
 serde_json.workspace = true

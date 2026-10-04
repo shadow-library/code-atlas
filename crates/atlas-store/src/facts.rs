@@ -1,13 +1,14 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use atlas_core::{Attrs, Certainty, Edge, EdgeId, Entity, EntityId, EntityKey, EntityKind, Evidence, Owner, RelPath, RepoName, RunId, UnresolvedRef};
+use atlas_core::{Attrs, Certainty, ContentHash, Edge, EdgeId, Entity, EntityId, EntityKey, EntityKind, Evidence, Owner, RelPath, RepoName, RunId, UnresolvedRef};
 use rusqlite::{Connection, OptionalExtension, ToSql, params};
 use serde::{Deserialize, Serialize};
 
 use crate::codec::{certainty_tier, from_json, owner_label, to_json};
 use crate::error::{StoreError, StoreResult};
 use crate::filter::{CertaintyBounds, EdgeFilter, EntityFilter};
+use crate::stored::{OwnerScope, decode_edge, decode_entity, decode_unresolved, encode_edge, encode_entity, encode_unresolved, parse_hash, scope_hash};
 use crate::tx::{ReadTx, WriteTx};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -75,15 +76,15 @@ pub struct OwnedUnresolved {
   pub reference: UnresolvedRef,
 }
 
-struct PreparedEntity<'a> {
-  entity: &'a Entity,
+struct PreparedEntity {
   id: i64,
+  row: EntityRow,
   data: String,
 }
 
-struct PreparedEdge<'a> {
-  edge: &'a Edge,
+struct PreparedEdge {
   id: i64,
+  row: EdgeRow,
   data: String,
 }
 
@@ -93,18 +94,23 @@ struct PreparedUnresolved {
   data: String,
 }
 
-struct Prepared<'a> {
-  entities: Vec<PreparedEntity<'a>>,
-  edges: Vec<PreparedEdge<'a>>,
+pub struct PreparedOwner {
+  owner: Owner,
+  key: String,
+  hash: Option<ContentHash>,
+  entities: Vec<PreparedEntity>,
+  edges: Vec<PreparedEdge>,
   unresolved: Vec<PreparedUnresolved>,
 }
 
-impl<'a> Prepared<'a> {
-  fn new(owner: &Owner, facts: &'a OwnedFacts) -> StoreResult<Self> {
+impl PreparedOwner {
+  pub fn new(owner: Owner, facts: &OwnedFacts) -> StoreResult<Self> {
     let invalid = |reason: String| StoreError::InvalidFacts {
-      owner: owner_label(owner),
+      owner: owner_label(&owner),
       reason,
     };
+    let hash = scope_hash(&owner, &facts.edges);
+    let scope = OwnerScope::new(&owner, hash);
     let mut seen = HashSet::with_capacity(facts.entities.len());
     let mut entities = Vec::with_capacity(facts.entities.len());
     for entity in &facts.entities {
@@ -115,9 +121,9 @@ impl<'a> Prepared<'a> {
         return Err(invalid(format!("entity {} ({}) is asserted twice", entity.id, entity.key)));
       }
       entities.push(PreparedEntity {
-        entity,
         id: entity.id.as_i64(),
-        data: to_json(entity)?,
+        row: EntityRow::of(entity),
+        data: encode_entity(entity, &scope)?,
       });
     }
     let mut seen = HashSet::with_capacity(facts.edges.len());
@@ -127,24 +133,34 @@ impl<'a> Prepared<'a> {
         return Err(invalid(format!("edge {} ({} {} -> {}) is asserted twice", edge.id, edge.kind, edge.from, edge.to)));
       }
       edges.push(PreparedEdge {
-        edge,
         id: edge.id.as_i64(),
-        data: to_json(edge)?,
+        row: EdgeRow::of(edge),
+        data: encode_edge(edge, &scope)?,
       });
     }
     let mut unresolved = facts
       .unresolved
       .iter()
       .map(|reference| {
-        Ok(PreparedUnresolved {
+        let order = to_json(reference)?;
+        let prepared = PreparedUnresolved {
           name: reference_name(reference).to_owned(),
           from: reference.from.as_i64(),
-          data: to_json(reference)?,
-        })
+          data: encode_unresolved(reference, &scope)?,
+        };
+        Ok((order, prepared))
       })
       .collect::<StoreResult<Vec<_>>>()?;
-    unresolved.sort_by(|left, right| left.data.cmp(&right.data));
-    Ok(Self { entities, edges, unresolved })
+    unresolved.sort_by(|left, right| left.0.cmp(&right.0));
+    let key = to_json(&owner)?;
+    Ok(Self {
+      owner,
+      key,
+      hash,
+      entities,
+      edges,
+      unresolved: unresolved.into_iter().map(|(_, prepared)| prepared).collect(),
+    })
   }
 
   fn is_empty(&self) -> bool {
@@ -164,10 +180,14 @@ enum Presence {
 
 impl WriteTx<'_> {
   pub fn replace_owner(&mut self, owner: &Owner, facts: &OwnedFacts) -> StoreResult<FactDelta> {
-    let prepared = Prepared::new(owner, facts)?;
+    self.replace_prepared(&PreparedOwner::new(owner.clone(), facts)?)
+  }
+
+  pub fn replace_prepared(&mut self, prepared: &PreparedOwner) -> StoreResult<FactDelta> {
+    let owner = &prepared.owner;
     let conn = self.conn();
     conn.prepare_cached("SAVEPOINT replace_owner")?.execute([])?;
-    let delta = match apply_owner_facts(conn, owner, &prepared, self.active_run()) {
+    let delta = match apply_owner_facts(conn, prepared, self.active_run()) {
       Ok(delta) => delta,
       Err(error) => {
         if let Err(rollback) = conn.execute_batch("ROLLBACK TO replace_owner; RELEASE replace_owner") {
@@ -195,11 +215,18 @@ impl WriteTx<'_> {
   }
 }
 
-fn apply_owner_facts(conn: &Connection, owner: &Owner, prepared: &Prepared<'_>, active_run: Option<RunId>) -> StoreResult<FactDelta> {
-  let owner_id = match find_owner_id(conn, owner)? {
-    Some(id) => id,
+fn apply_owner_facts(conn: &Connection, prepared: &PreparedOwner, active_run: Option<RunId>) -> StoreResult<FactDelta> {
+  let owner_id = match find_owner(conn, &prepared.key)? {
+    Some(found) => {
+      if found.hash != prepared.hash && !prepared.is_empty() {
+        conn
+          .prepare_cached("UPDATE owners SET content_hash = ?2 WHERE id = ?1")?
+          .execute(params![found.id, prepared.hash.map(|hash| hash.to_string())])?;
+      }
+      found.id
+    }
     None if prepared.is_empty() => return Ok(FactDelta::default()),
-    None => insert_owner(conn, owner)?,
+    None => insert_owner(conn, prepared)?,
   };
   let run = active_run.map(|run| run.0);
   let mut delta = FactDelta::default();
@@ -212,25 +239,32 @@ fn apply_owner_facts(conn: &Connection, owner: &Owner, prepared: &Prepared<'_>, 
   if let Some(run) = active_run
     && !delta.is_empty()
   {
-    crate::runs::record_delta(conn, run, owner, &delta)?;
+    crate::runs::record_delta(conn, run, &prepared.owner, &delta)?;
   }
   Ok(delta)
 }
 
-fn find_owner_id(conn: &Connection, owner: &Owner) -> StoreResult<Option<i64>> {
-  let key = to_json(owner)?;
-  Ok(conn.prepare_cached("SELECT id FROM owners WHERE key = ?1")?.query_row([key], |row| row.get(0)).optional()?)
+struct FoundOwner {
+  id: i64,
+  hash: Option<ContentHash>,
 }
 
-fn insert_owner(conn: &Connection, owner: &Owner) -> StoreResult<i64> {
-  let key = to_json(owner)?;
-  let (kind, repo, path, pass) = match owner {
+fn find_owner(conn: &Connection, key: &str) -> StoreResult<Option<FoundOwner>> {
+  let found = conn
+    .prepare_cached("SELECT id, content_hash FROM owners WHERE key = ?1")?
+    .query_row([key], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?)))
+    .optional()?;
+  found.map(|(id, hash)| Ok(FoundOwner { id, hash: parse_hash(hash)? })).transpose()
+}
+
+fn insert_owner(conn: &Connection, prepared: &PreparedOwner) -> StoreResult<i64> {
+  let (kind, repo, path, pass) = match &prepared.owner {
     Owner::File { repo, path } => ("file", Some(repo.as_str()), Some(path.as_str()), None),
     Owner::Project { pass } => ("project", None, None, Some(pass.as_str())),
   };
   conn
-    .prepare_cached("INSERT INTO owners (key, kind, repo, path, pass) VALUES (?1, ?2, ?3, ?4, ?5)")?
-    .execute(params![key, kind, repo, path, pass])?;
+    .prepare_cached("INSERT INTO owners (key, kind, repo, path, pass, content_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")?
+    .execute(params![prepared.key, kind, repo, path, pass, prepared.hash.map(|hash| hash.to_string())])?;
   Ok(conn.last_insert_rowid())
 }
 
@@ -246,7 +280,7 @@ fn sorted_leftovers(previous: HashMap<i64, String>) -> Vec<i64> {
   ids
 }
 
-fn replace_entities(conn: &Connection, owner_id: i64, run: Option<i64>, incoming: &[PreparedEntity<'_>], delta: &mut FactDelta) -> StoreResult<()> {
+fn replace_entities(conn: &Connection, owner_id: i64, run: Option<i64>, incoming: &[PreparedEntity], delta: &mut FactDelta) -> StoreResult<()> {
   let mut previous = load_owner_rows(conn, "SELECT entity_id, data FROM entity_owners WHERE owner_id = ?1", owner_id)?;
   for item in incoming {
     match previous.remove(&item.id) {
@@ -259,12 +293,12 @@ fn replace_entities(conn: &Connection, owner_id: i64, run: Option<i64>, incoming
         delta.entities.changed += 1;
       }
       None => {
-        let created = insert_entity_projection(conn, item.id, item.entity)?;
+        let created = insert_entity_projection(conn, item.id, &item.row)?;
         conn
           .prepare_cached("INSERT INTO entity_owners (entity_id, owner_id, run_id, data) VALUES (?1, ?2, ?3, ?4)")?
           .execute(params![item.id, owner_id, run, item.data])?;
         if created {
-          delta.created_entities.push(item.entity.id);
+          delta.created_entities.push(EntityId::from_i64(item.id));
         } else {
           refresh_entity(conn, item.id)?;
         }
@@ -286,26 +320,26 @@ fn replace_entities(conn: &Connection, owner_id: i64, run: Option<i64>, incoming
   Ok(())
 }
 
-struct EntityProjection<'a> {
+struct EntityRow {
   key: String,
-  kind: &'a str,
-  name: &'a str,
-  repo: Option<&'a str>,
-  path: Option<&'a str>,
+  kind: String,
+  name: String,
+  repo: Option<String>,
+  path: Option<String>,
   class: &'static str,
   tier: i64,
   confidence: Option<f64>,
 }
 
-impl<'a> EntityProjection<'a> {
-  fn of(entity: &'a Entity) -> Self {
+impl EntityRow {
+  fn of(entity: &Entity) -> Self {
     let class = entity.certainty.class();
     Self {
       key: entity.key.to_string(),
-      kind: entity.kind.as_str(),
-      name: &entity.name,
-      repo: entity.repo.as_ref().map(RepoName::as_str),
-      path: entity.path.as_ref().map(RelPath::as_str),
+      kind: entity.kind.as_str().to_owned(),
+      name: entity.name.clone(),
+      repo: entity.repo.as_ref().map(|repo| repo.as_str().to_owned()),
+      path: entity.path.as_ref().map(|path| path.as_str().to_owned()),
       class: class.as_str(),
       tier: certainty_tier(class),
       confidence: entity.certainty.confidence().map(|confidence| f64::from(confidence.value())),
@@ -313,8 +347,7 @@ impl<'a> EntityProjection<'a> {
   }
 }
 
-fn insert_entity_projection(conn: &Connection, id: i64, entity: &Entity) -> StoreResult<bool> {
-  let row = EntityProjection::of(entity);
+fn insert_entity_projection(conn: &Connection, id: i64, row: &EntityRow) -> StoreResult<bool> {
   let inserted = conn
     .prepare_cached(
       "INSERT INTO entities (id, key, kind, name, repo, path, certainty_class, certainty_tier, confidence) \
@@ -330,7 +363,7 @@ fn refresh_entity(conn: &Connection, id: i64) -> StoreResult<Presence> {
     conn.prepare_cached("DELETE FROM entities WHERE id = ?1")?.execute([id])?;
     return Ok(Presence::Gone);
   };
-  let row = EntityProjection::of(winner);
+  let row = EntityRow::of(winner);
   conn
     .prepare_cached("UPDATE entities SET key = ?2, kind = ?3, name = ?4, repo = ?5, path = ?6, certainty_class = ?7, certainty_tier = ?8, confidence = ?9 WHERE id = ?1")?
     .execute(params![id, row.key, row.kind, row.name, row.repo, row.path, row.class, row.tier, row.confidence])?;
@@ -412,7 +445,7 @@ pub(crate) fn merge_entity(assertions: &[Assertion<Entity>]) -> StoreResult<Opti
   Ok(Some(MergedEntity { entity, attr_sources }))
 }
 
-fn replace_edges(conn: &Connection, owner_id: i64, run: Option<i64>, incoming: &[PreparedEdge<'_>], delta: &mut FactDelta) -> StoreResult<()> {
+fn replace_edges(conn: &Connection, owner_id: i64, run: Option<i64>, incoming: &[PreparedEdge], delta: &mut FactDelta) -> StoreResult<()> {
   let mut previous = load_owner_rows(conn, "SELECT edge_id, data FROM edge_owners WHERE owner_id = ?1", owner_id)?;
   for item in incoming {
     match previous.remove(&item.id) {
@@ -425,7 +458,7 @@ fn replace_edges(conn: &Connection, owner_id: i64, run: Option<i64>, incoming: &
         delta.edges.changed += 1;
       }
       None => {
-        let created = insert_edge_projection(conn, item.id, item.edge)?;
+        let created = insert_edge_projection(conn, item.id, &item.row)?;
         conn
           .prepare_cached("INSERT INTO edge_owners (edge_id, owner_id, run_id, data) VALUES (?1, ?2, ?3, ?4)")?
           .execute(params![item.id, owner_id, run, item.data])?;
@@ -446,22 +479,36 @@ fn replace_edges(conn: &Connection, owner_id: i64, run: Option<i64>, incoming: &
   Ok(())
 }
 
-fn insert_edge_projection(conn: &Connection, id: i64, edge: &Edge) -> StoreResult<bool> {
-  let class = edge.certainty.class();
+struct EdgeRow {
+  kind: String,
+  from: i64,
+  to: i64,
+  class: &'static str,
+  tier: i64,
+  confidence: Option<f64>,
+}
+
+impl EdgeRow {
+  fn of(edge: &Edge) -> Self {
+    let class = edge.certainty.class();
+    Self {
+      kind: edge.kind.as_str().to_owned(),
+      from: edge.from.as_i64(),
+      to: edge.to.as_i64(),
+      class: class.as_str(),
+      tier: certainty_tier(class),
+      confidence: edge.certainty.confidence().map(|confidence| f64::from(confidence.value())),
+    }
+  }
+}
+
+fn insert_edge_projection(conn: &Connection, id: i64, row: &EdgeRow) -> StoreResult<bool> {
   let inserted = conn
     .prepare_cached(
       "INSERT INTO edges (id, kind, src, dst, certainty_class, certainty_tier, confidence) \
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT(id) DO NOTHING",
     )?
-    .execute(params![
-      id,
-      edge.kind.as_str(),
-      edge.from.as_i64(),
-      edge.to.as_i64(),
-      class.as_str(),
-      certainty_tier(class),
-      edge.certainty.confidence().map(|confidence| f64::from(confidence.value())),
-    ])?;
+    .execute(params![id, row.kind, row.from, row.to, row.class, row.tier, row.confidence])?;
   Ok(inserted == 1)
 }
 
@@ -520,15 +567,15 @@ pub(crate) fn merge_edge(assertions: &[Assertion<Edge>]) -> StoreResult<Option<M
 }
 
 fn replace_unresolved(conn: &Connection, owner_id: i64, run: Option<i64>, incoming: &[PreparedUnresolved], delta: &mut FactDelta) -> StoreResult<()> {
-  let previous: Vec<String> = {
-    let mut statement = conn.prepare_cached("SELECT data FROM unresolved_refs WHERE owner_id = ?1 ORDER BY ordinal")?;
-    let rows = statement.query_map([owner_id], |row| row.get(0))?;
+  let previous: Vec<(i64, String)> = {
+    let mut statement = conn.prepare_cached("SELECT src, data FROM unresolved_refs WHERE owner_id = ?1 ORDER BY ordinal")?;
+    let rows = statement.query_map([owner_id], |row| Ok((row.get(0)?, row.get(1)?)))?;
     rows.collect::<Result<_, _>>()?
   };
-  if previous.len() == incoming.len() && previous.iter().zip(incoming).all(|(old, new)| *old == new.data) {
+  if previous.len() == incoming.len() && previous.iter().zip(incoming).all(|((from, data), new)| *from == new.from && *data == new.data) {
     return Ok(());
   }
-  let (added, removed) = sorted_multiset_difference(&previous, incoming);
+  let (added, removed) = multiset_difference(&previous, incoming);
   conn.prepare_cached("DELETE FROM unresolved_refs WHERE owner_id = ?1")?.execute([owner_id])?;
   let mut insert = conn.prepare_cached("INSERT INTO unresolved_refs (owner_id, ordinal, name, src, run_id, data) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")?;
   for (ordinal, item) in incoming.iter().enumerate() {
@@ -539,58 +586,75 @@ fn replace_unresolved(conn: &Connection, owner_id: i64, run: Option<i64>, incomi
   Ok(())
 }
 
-fn sorted_multiset_difference(previous: &[String], incoming: &[PreparedUnresolved]) -> (u64, u64) {
-  let (mut old, mut new) = (0, 0);
-  let (mut added, mut removed) = (0, 0);
-  while old < previous.len() && new < incoming.len() {
-    match previous[old].cmp(&incoming[new].data) {
-      Ordering::Equal => {
-        old += 1;
-        new += 1;
-      }
-      Ordering::Less => {
-        removed += 1;
-        old += 1;
-      }
-      Ordering::Greater => {
-        added += 1;
-        new += 1;
-      }
+fn multiset_difference(previous: &[(i64, String)], incoming: &[PreparedUnresolved]) -> (u64, u64) {
+  let mut balance: HashMap<(&str, i64), i64> = HashMap::with_capacity(incoming.len());
+  for item in incoming {
+    *balance.entry((item.data.as_str(), item.from)).or_default() += 1;
+  }
+  let mut removed = 0;
+  for (from, data) in previous {
+    let slot = balance.entry((data.as_str(), *from)).or_default();
+    match *slot > 0 {
+      true => *slot -= 1,
+      false => removed += 1,
     }
   }
-  (added + (incoming.len() - new) as u64, removed + (previous.len() - old) as u64)
+  let added = balance.values().map(|count| *count as u64).sum();
+  (added, removed)
 }
 
 pub(crate) fn parse_owner(key: &str) -> StoreResult<Owner> {
   from_json("owner", key)
 }
 
-fn entity_assertions(conn: &Connection, id: i64) -> StoreResult<Vec<Assertion<Entity>>> {
-  let mut statement = conn.prepare_cached("SELECT o.key, eo.data FROM entity_owners eo JOIN owners o ON o.id = eo.owner_id WHERE eo.entity_id = ?1")?;
-  let rows = statement.query_map([id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
-  rows
-    .map(|row| {
-      let (owner, data) = row?;
-      Ok(Assertion {
-        owner: parse_owner(&owner)?,
-        fact: from_json("entity", &data)?,
-      })
+pub(crate) type Decoder<T> = fn(i64, &str, &OwnerScope<'_>) -> StoreResult<T>;
+
+pub(crate) struct OwnedRow {
+  pub owner: String,
+  pub hash: Option<String>,
+  pub id: i64,
+  pub data: String,
+}
+
+impl OwnedRow {
+  pub fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+    Ok(Self {
+      owner: row.get(0)?,
+      hash: row.get(1)?,
+      id: row.get(2)?,
+      data: row.get(3)?,
     })
-    .collect()
+  }
+
+  pub fn decode<T>(&self, decode: Decoder<T>) -> StoreResult<Assertion<T>> {
+    let owner = parse_owner(&self.owner)?;
+    let fact = decode(self.id, &self.data, &OwnerScope::new(&owner, parse_hash(self.hash.clone())?))?;
+    Ok(Assertion { owner, fact })
+  }
+}
+
+fn assertions_of<T>(conn: &Connection, sql: &str, id: i64, decode: Decoder<T>) -> StoreResult<Vec<Assertion<T>>> {
+  let mut statement = conn.prepare_cached(sql)?;
+  let rows = statement.query_map([id], OwnedRow::from_row)?;
+  rows.map(|row| row?.decode(decode)).collect()
+}
+
+fn entity_assertions(conn: &Connection, id: i64) -> StoreResult<Vec<Assertion<Entity>>> {
+  assertions_of(
+    conn,
+    "SELECT o.key, o.content_hash, eo.entity_id, eo.data FROM entity_owners eo JOIN owners o ON o.id = eo.owner_id WHERE eo.entity_id = ?1",
+    id,
+    decode_entity,
+  )
 }
 
 fn edge_assertions(conn: &Connection, id: i64) -> StoreResult<Vec<Assertion<Edge>>> {
-  let mut statement = conn.prepare_cached("SELECT o.key, eo.data FROM edge_owners eo JOIN owners o ON o.id = eo.owner_id WHERE eo.edge_id = ?1")?;
-  let rows = statement.query_map([id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
-  rows
-    .map(|row| {
-      let (owner, data) = row?;
-      Ok(Assertion {
-        owner: parse_owner(&owner)?,
-        fact: from_json("edge", &data)?,
-      })
-    })
-    .collect()
+  assertions_of(
+    conn,
+    "SELECT o.key, o.content_hash, eo.edge_id, eo.data FROM edge_owners eo JOIN owners o ON o.id = eo.owner_id WHERE eo.edge_id = ?1",
+    id,
+    decode_edge,
+  )
 }
 
 fn sorted_by_owner<T>(mut assertions: Vec<Assertion<T>>) -> Vec<Assertion<T>> {
@@ -718,18 +782,33 @@ impl ReadTx<'_> {
 
   pub fn owned_facts(&self, owner: &Owner) -> StoreResult<OwnedFacts> {
     let conn = self.conn();
-    let Some(owner_id) = find_owner_id(conn, owner)? else {
+    let Some(found) = find_owner(conn, &to_json(owner)?)? else {
       return Ok(OwnedFacts::default());
     };
-    let entities = owner_column(conn, "SELECT data FROM entity_owners WHERE owner_id = ?1 ORDER BY entity_id", owner_id, "entity")?;
-    let edges = owner_column(conn, "SELECT data FROM edge_owners WHERE owner_id = ?1 ORDER BY edge_id", owner_id, "edge")?;
-    let unresolved = owner_column(
-      conn,
-      "SELECT data FROM unresolved_refs WHERE owner_id = ?1 ORDER BY ordinal",
-      owner_id,
-      "unresolved reference",
-    )?;
-    Ok(OwnedFacts { entities, edges, unresolved })
+    let scope = OwnerScope::new(owner, found.hash);
+    Ok(OwnedFacts {
+      entities: owner_rows(
+        conn,
+        "SELECT entity_id, data FROM entity_owners WHERE owner_id = ?1 ORDER BY entity_id",
+        found.id,
+        &scope,
+        decode_entity,
+      )?,
+      edges: owner_rows(
+        conn,
+        "SELECT edge_id, data FROM edge_owners WHERE owner_id = ?1 ORDER BY edge_id",
+        found.id,
+        &scope,
+        decode_edge,
+      )?,
+      unresolved: owner_rows(
+        conn,
+        "SELECT src, data FROM unresolved_refs WHERE owner_id = ?1 ORDER BY ordinal",
+        found.id,
+        &scope,
+        decode_unresolved,
+      )?,
+    })
   }
 
   pub fn owners_referencing(&self, targets: &[EntityId]) -> StoreResult<Vec<Owner>> {
@@ -751,23 +830,25 @@ impl ReadTx<'_> {
     let mut found = Vec::new();
     let mut statement = self
       .conn()
-      .prepare_cached("SELECT o.key, u.data FROM unresolved_refs u JOIN owners o ON o.id = u.owner_id WHERE u.name = ?1 ORDER BY o.key, u.ordinal")?;
+      .prepare_cached("SELECT o.key, o.content_hash, u.src, u.data FROM unresolved_refs u JOIN owners o ON o.id = u.owner_id WHERE u.name = ?1 ORDER BY o.key, u.ordinal")?;
     for name in unique {
-      let rows = statement.query_map([name], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+      let rows = statement.query_map([name], OwnedRow::from_row)?;
       for row in rows {
-        let (owner, data) = row?;
-        found.push(OwnedUnresolved {
-          owner: parse_owner(&owner)?,
-          reference: from_json("unresolved reference", &data)?,
-        });
+        let Assertion { owner, fact } = row?.decode(decode_unresolved)?;
+        found.push(OwnedUnresolved { owner, reference: fact });
       }
     }
     Ok(found)
   }
 }
 
-fn owner_column<T: serde::de::DeserializeOwned>(conn: &Connection, sql: &str, owner_id: i64, what: &'static str) -> StoreResult<Vec<T>> {
+fn owner_rows<T>(conn: &Connection, sql: &str, owner_id: i64, scope: &OwnerScope<'_>, decode: Decoder<T>) -> StoreResult<Vec<T>> {
   let mut statement = conn.prepare_cached(sql)?;
-  let rows = statement.query_map([owner_id], |row| row.get::<_, String>(0))?;
-  rows.map(|data| from_json(what, &data?)).collect()
+  let rows = statement.query_map([owner_id], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?;
+  rows
+    .map(|row| {
+      let (id, data) = row?;
+      decode(id, &data, scope)
+    })
+    .collect()
 }

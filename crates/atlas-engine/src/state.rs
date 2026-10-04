@@ -26,8 +26,8 @@ pub(crate) const SCIP_BLOB: &str = "engine:scip";
 pub(crate) const SCIP_BLOB_VERSION: u32 = 1;
 pub(crate) const REPOS_BLOB: &str = "engine:repos";
 pub(crate) const REPOS_BLOB_VERSION: u32 = 1;
-pub(crate) const PROJECT_BLOB: &str = "engine:project";
-pub(crate) const PROJECT_BLOB_VERSION: u32 = 1;
+pub(crate) const PROJECT_BLOB: &str = atlas_store::PROJECT_FINGERPRINT_BLOB;
+pub(crate) const PROJECT_BLOB_VERSION: u32 = atlas_store::PROJECT_FINGERPRINT_VERSION;
 pub(crate) const SKIPPED_BLOB: &str = "engine:skipped";
 pub(crate) const SKIPPED_BLOB_VERSION: u32 = 1;
 pub(crate) const FACTS_VERSION: u32 = 1;
@@ -77,6 +77,7 @@ pub(crate) fn project_fingerprint(project: &Project) -> String {
     "name": project.name.as_str(),
     "repos": repos,
     "max_file_bytes": project.settings.max_file_bytes,
+    "store_schema": atlas_store::SCHEMA_VERSION,
   });
   blake3::hash(identity.to_string().as_bytes()).to_hex().to_string()
 }

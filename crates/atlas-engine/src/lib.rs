@@ -20,6 +20,7 @@ mod state;
 mod status;
 mod watch;
 
+pub use artifact::artifact_file_facts;
 pub use engine::Engine;
 pub use enrich::EnrichReport;
 pub use error::{EngineError, EngineResult};

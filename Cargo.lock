@@ -182,6 +182,7 @@ dependencies = [
  "atlas-store",
  "blake3",
  "fd-lock",
+ "flate2",
  "notify",
  "protobuf",
  "rayon",

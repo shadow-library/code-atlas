@@ -21,10 +21,18 @@ pub enum StoreError {
   },
   #[error("database schema version {found} is newer than the supported version {supported}; refusing to open it")]
   SchemaTooNew { found: i64, supported: i64 },
+  #[error("migrating {path} from schema version {from} to {to} failed: {source}; delete the database with its -wal and -shm files and re-index")]
+  Migration {
+    path: PathBuf,
+    from: i64,
+    to: i64,
+    #[source]
+    source: Box<StoreError>,
+  },
   #[error("database schema version {0} is invalid")]
   InvalidSchemaVersion(i64),
-  #[error("timed out after {waited:?} waiting for the writer lock {path}")]
-  LockTimeout { path: PathBuf, waited: Duration },
+  #[error("timed out after {waited:?} waiting for the {lock} {path}")]
+  LockTimeout { lock: StoreLock, path: PathBuf, waited: Duration },
   #[error("this thread already holds a store transaction; use the ReadTx or WriteTx it was given")]
   Reentrant,
   #[error("index run {active} is already active in this write transaction")]
@@ -53,6 +61,21 @@ pub enum StoreError {
 impl StoreError {
   pub(crate) fn corrupt(what: &'static str, detail: impl Into<String>) -> Self {
     Self::Corrupt { what, detail: detail.into() }
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoreLock {
+  Writer,
+  Index,
+}
+
+impl std::fmt::Display for StoreLock {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str(match self {
+      Self::Writer => "writer lock",
+      Self::Index => "index lock",
+    })
   }
 }
 

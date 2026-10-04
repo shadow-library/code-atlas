@@ -1,10 +1,10 @@
-use atlas_core::{CertaintyClass, EdgeId, EdgeKind, EntityId, EntityKind, Owner, RelPath, RepoName, UnresolvedRef};
+use atlas_core::{CertaintyClass, EdgeId, EdgeKind, EntityId, EntityKind, RelPath, RepoName, UnresolvedRef};
 use rusqlite::{OptionalExtension, params, params_from_iter};
 
-use crate::codec::from_json;
 use crate::error::{StoreError, StoreResult};
-use crate::facts::{OwnedUnresolved, parse_owner};
+use crate::facts::{Assertion, OwnedRow, OwnedUnresolved};
 use crate::filter::{CertaintyBounds, EdgeFilter};
+use crate::stored::decode_unresolved;
 use crate::tx::ReadTx;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -100,60 +100,44 @@ impl ReadTx<'_> {
   }
 
   pub fn unresolved_in_repo(&self, repo: &RepoName) -> StoreResult<Vec<OwnedUnresolved>> {
-    let mut statement = self
-      .conn()
-      .prepare_cached("SELECT o.path, u.data FROM owners o JOIN unresolved_refs u ON u.owner_id = o.id WHERE o.kind = 'file' AND o.repo = ?1 ORDER BY o.path, u.ordinal")?;
-    let rows = statement.query_map([repo.as_str()], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
-    let mut found = Vec::new();
-    for row in rows {
-      let (path, data) = row?;
-      let path = RelPath::new(&path).map_err(|error| StoreError::corrupt("owner path", error.to_string()))?;
-      found.push(OwnedUnresolved {
-        owner: Owner::File { repo: repo.clone(), path },
-        reference: from_json("unresolved reference", &data)?,
-      });
-    }
-    Ok(found)
+    self.owned_unresolved(
+      "SELECT o.key, o.content_hash, u.src, u.data FROM owners o JOIN unresolved_refs u ON u.owner_id = o.id \
+       WHERE o.kind = 'file' AND o.repo = ?1 ORDER BY o.path, u.ordinal",
+      vec![repo.as_str().to_owned()],
+      None,
+    )
   }
 
   pub fn unresolved_with_name_prefix(&self, prefix: &str) -> StoreResult<Vec<OwnedUnresolved>> {
     let (sql, bounds) = name_range(
-      "SELECT o.key, u.data FROM unresolved_refs u JOIN owners o ON o.id = u.owner_id WHERE u.name >= ?1",
+      "SELECT o.key, o.content_hash, u.src, u.data FROM unresolved_refs u JOIN owners o ON o.id = u.owner_id WHERE u.name >= ?1",
       "ORDER BY o.key, u.ordinal",
       1,
       prefix,
     );
-    let mut statement = self.conn().prepare_cached(&sql)?;
-    let rows = statement.query_map(params_from_iter(bounds), |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
-    let mut found = Vec::new();
-    for row in rows {
-      let (owner, data) = row?;
-      let reference: UnresolvedRef = from_json("unresolved reference", &data)?;
-      if reference.path.last().is_some_and(|name| name.starts_with(prefix)) {
-        found.push(OwnedUnresolved {
-          owner: parse_owner(&owner)?,
-          reference,
-        });
-      }
-    }
-    Ok(found)
+    self.owned_unresolved(&sql, bounds, Some(prefix))
   }
 
   pub fn unresolved_in_file_with_name_prefix(&self, repo: &RepoName, path: &RelPath, prefix: &str) -> StoreResult<Vec<UnresolvedRef>> {
     let (sql, bounds) = name_range(
-      "SELECT u.data FROM owners o JOIN unresolved_refs u ON u.owner_id = o.id WHERE o.kind = 'file' AND o.repo = ?1 AND o.path = ?2 AND u.name >= ?3",
+      "SELECT o.key, o.content_hash, u.src, u.data FROM owners o JOIN unresolved_refs u ON u.owner_id = o.id \
+       WHERE o.kind = 'file' AND o.repo = ?1 AND o.path = ?2 AND u.name >= ?3",
       "ORDER BY u.ordinal",
       3,
       prefix,
     );
-    let values = [repo.as_str().to_owned(), path.as_str().to_owned()].into_iter().chain(bounds);
-    let mut statement = self.conn().prepare_cached(&sql)?;
-    let rows = statement.query_map(params_from_iter(values), |row| row.get::<_, String>(0))?;
+    let values = [repo.as_str().to_owned(), path.as_str().to_owned()].into_iter().chain(bounds).collect();
+    Ok(self.owned_unresolved(&sql, values, Some(prefix))?.into_iter().map(|found| found.reference).collect())
+  }
+
+  fn owned_unresolved(&self, sql: &str, values: Vec<String>, prefix: Option<&str>) -> StoreResult<Vec<OwnedUnresolved>> {
+    let mut statement = self.conn().prepare_cached(sql)?;
+    let rows = statement.query_map(params_from_iter(values), OwnedRow::from_row)?;
     let mut found = Vec::new();
-    for data in rows {
-      let reference: UnresolvedRef = from_json("unresolved reference", &data?)?;
-      if reference.path.last().is_some_and(|name| name.starts_with(prefix)) {
-        found.push(reference);
+    for row in rows {
+      let Assertion { owner, fact } = row?.decode(decode_unresolved)?;
+      if prefix.is_none_or(|prefix| fact.path.last().is_some_and(|name| name.starts_with(prefix))) {
+        found.push(OwnedUnresolved { owner, reference: fact });
       }
     }
     Ok(found)

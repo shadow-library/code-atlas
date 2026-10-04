@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use atlas_core::{Edge, EntityKey, FileFacts, RelPath, RepoName, Span, SymbolKey};
+use atlas_core::{Edge, EntityKey, RelPath, RepoName, Span, SymbolKey};
 use atlas_engine::Engine;
 use atlas_project::Project;
 use atlas_scip::{ScipFileContext, ScipIndexer, ScipIngestContext, ScipInputFile, ScipOutcome, ScipRequest, ingest};
@@ -170,8 +170,7 @@ fn keys_by_symbol(snapshot: &Snapshot, repo: &RepoName, path: &RelPath) -> HashM
 
 fn file_context(ctx: &RunContext<'_>, repo: &RepoName, path: &RelPath, repo_root: &Path) -> Option<ScipFileContext> {
   let blob = ctx.engine.store().read(|tx| tx.blob(&format!("artifact:{repo}:{path}"))).ok()??;
-  let artifact: serde_json::Value = serde_json::from_slice(&blob.bytes).ok()?;
-  let facts: FileFacts = serde_json::from_value(artifact.get("facts")?.clone()).ok()?;
+  let facts = atlas_engine::artifact_file_facts(&blob.bytes).ok()?;
   let source = fs::read_to_string(repo_root.join(path.as_str())).ok()?;
   let mut available = keys_by_symbol(ctx.snapshot, repo, path);
   let mut keys = Vec::with_capacity(facts.symbols.len());
@@ -258,4 +257,66 @@ pub fn execute_run(run: &OracleRun, ctx: &RunContext<'_>) -> QualityResult<RunOu
     }),
     per_file,
   })
+}
+
+#[cfg(test)]
+mod tests {
+  use atlas_core::ContentHash;
+  use atlas_engine::EngineOptions;
+  use atlas_project::{AtlasHome, ProjectSettings, RepoConfig};
+
+  use super::*;
+
+  fn copy_dir(from: &Path, to: &Path) {
+    fs::create_dir_all(to).unwrap();
+    for entry in fs::read_dir(from).unwrap() {
+      let entry = entry.unwrap();
+      let target = to.join(entry.file_name());
+      match entry.file_type().unwrap().is_dir() {
+        true => copy_dir(&entry.path(), &target),
+        false => {
+          fs::copy(entry.path(), &target).unwrap();
+        }
+      }
+    }
+  }
+
+  #[test]
+  fn should_read_file_facts_from_the_compressed_artifacts_of_a_fresh_index() {
+    let scratch = tempfile::tempdir().unwrap();
+    let root = scratch.path().join("acme-sdk");
+    copy_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/acme/acme-sdk"), &root);
+    let repo = RepoName::new("acme-sdk").unwrap();
+    let project = Project {
+      name: atlas_core::ProjectName::new("acme").unwrap(),
+      settings: ProjectSettings::default(),
+      repos: vec![RepoConfig {
+        name: repo.clone(),
+        path: root.clone(),
+        include: Vec::new(),
+        exclude: Vec::new(),
+        languages: None,
+      }],
+    };
+    let engine = Engine::open(&project, &AtlasHome::rooted_at(scratch.path().join("home")), EngineOptions::default()).unwrap();
+    engine.ensure_fresh().unwrap();
+    let snapshot = Snapshot::load(&engine, &project).unwrap();
+    let ctx = RunContext {
+      target: "acme",
+      project: &project,
+      engine: &engine,
+      snapshot: &snapshot,
+      cache_dir: scratch.path(),
+      cargo: None,
+      npm: None,
+    };
+    let path = RelPath::new("src/money.ts").unwrap();
+
+    let context = file_context(&ctx, &repo, &path, &root).unwrap();
+
+    let source = fs::read_to_string(root.join("src/money.ts")).unwrap();
+    assert_eq!(context.content_hash, ContentHash::of(source.as_bytes()));
+    assert_eq!(context.source, source);
+    assert!(context.symbols.iter().any(|symbol| symbol.name == "toCents"));
+  }
 }

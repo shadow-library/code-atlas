@@ -85,9 +85,18 @@ pub fn dump(db: &Path) -> BTreeMap<String, String> {
   let conn = rusqlite::Connection::open_with_flags(db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
   let mut facts = BTreeMap::new();
   let queries = [
-    ("entity", "SELECT o.key, eo.entity_id, eo.data FROM entity_owners eo JOIN owners o ON o.id = eo.owner_id"),
-    ("edge", "SELECT o.key, eo.edge_id, eo.data FROM edge_owners eo JOIN owners o ON o.id = eo.owner_id"),
-    ("unresolved", "SELECT o.key, u.ordinal, u.data FROM unresolved_refs u JOIN owners o ON o.id = u.owner_id"),
+    (
+      "entity",
+      "SELECT o.key || ' ' || ifnull(o.content_hash, ''), eo.entity_id, eo.data FROM entity_owners eo JOIN owners o ON o.id = eo.owner_id",
+    ),
+    (
+      "edge",
+      "SELECT o.key || ' ' || ifnull(o.content_hash, ''), eo.edge_id, eo.data FROM edge_owners eo JOIN owners o ON o.id = eo.owner_id",
+    ),
+    (
+      "unresolved",
+      "SELECT o.key || ' ' || ifnull(o.content_hash, ''), u.ordinal, u.data FROM unresolved_refs u JOIN owners o ON o.id = u.owner_id",
+    ),
   ];
   for (tag, sql) in queries {
     let mut statement = conn.prepare(sql).unwrap();
