@@ -3,7 +3,11 @@
 Runs headless Claude Code sessions on the same task in two conditions and scores them, deterministic checks first:
 
 - **baseline**: no Code Atlas.
-- **atlas**: the Code Atlas MCP server plus a three-line preamble (`ATLAS_PREAMBLE`, version `PREAMBLE_VERSION` in `crates/atlas-eval/src/agent/plan.rs`).
+- **atlas**: the Code Atlas MCP server plus a preamble prepended to the prompt. `--atlas-preamble` selects the variant (`PreambleVariant` in `crates/atlas-eval/src/agent/plan.rs`):
+  - `standard` (version 1, the default): `STANDARD_PREAMBLE`, three sentences naming the tools and saying to use them before reading files.
+  - `directed` (version 2): `DIRECTED_PREAMBLE`, which says when to call `atlas_context`, `atlas_impact` and `atlas_search`/`atlas_similar`.
+
+  The variant is recorded per run, and `agent report` refuses a batch that mixes variants.
 
 ## Layout
 

@@ -52,6 +52,16 @@ Optional accuracy upgrade: `code-atlas -p acme scip` runs rust-analyzer and scip
 
 A fact may be stated as known only if its certainty is authoritative: `compiler_verified`, `syntactic`, `resolved` or `declared`. Authoritative means "the exact derivation the class names", not "complete": a `resolved` caller list can still miss callers that static analysis cannot see (dynamic dispatch, macros, generated code, reflection, other repos outside the project). `heuristic` facts carry a confidence and a rule name and are leads to verify; `inferred` facts come from an LLM, carry provider, model and rationale, and go stale as soon as their evidence file changes. Absence is never certain: "no callers" and "unused" are reported with the evidence and caveats behind them, and dynamic references that could reach a target are listed instead of ignored. Uncertainty is never silently upgraded; a derived fact is never stronger than the weakest input behind it. Details: [docs/trust-and-limitations.md](docs/trust-and-limitations.md).
 
+## Evaluation results
+
+Measured 2026-10-04/05; full results, sources and caveats are in [docs/evaluation/results.md](docs/evaluation/results.md).
+
+- **Knowledge quality.** On the hand-written fixtures, 98/98 expected edges and 184/184 entities were found, with 0 of 63 forbidden edges. Against the compiler (SCIP), `resolved` edges are 97.6% precise over confirmable edges (95.9% all-in), but they reproduce only 53.3% of the compiler's edges.
+- **Performance.** This repository (116k LOC) indexes in 1.1 s, and the per-query freshness barrier costs 6 ms (p50). At 1M synthetic LOC, indexing takes 5.6 s with 2.21 GiB peak RSS, and mixed read and write throughput is weak: 8 to 26 qps, with p95 up to 974 ms.
+- **Agent A/B (primary).** All 44 runs passed their hidden tests in both conditions (ceiling). The agent made 2 Code Atlas calls in 22 sessions, yet used 18.7% more tokens, because the tool definitions add about 6,300 tokens to every request.
+- **Agent A/B (exploratory, directed preamble).** 21 of 22 sessions called `atlas_context`, and they read 23% fewer bytes. Tokens still rose by 24.8% and correctness did not change.
+- **Conclusion.** These tasks give no evidence that Code Atlas improves an agent's correctness or cost.
+
 ## Documentation
 
 | Document | Contents |
@@ -65,7 +75,7 @@ A fact may be stated as known only if its certainty is authoritative: `compiler_
 | [docs/operations.md](docs/operations.md) | CLI reference, exit codes, home directories, project settings, watch, SCIP, enrichment, doctor |
 | [docs/evaluation/methodology.md](docs/evaluation/methodology.md) | quality eval, performance bench, agent A/B harness |
 | [docs/evaluation/dogfooding.md](docs/evaluation/dogfooding.md) | dated findings from using Code Atlas on itself |
-| `docs/evaluation/results.md` | measured results (to be added) |
+| [docs/evaluation/results.md](docs/evaluation/results.md) | measured knowledge quality, performance and agent A/B results |
 | [fixtures/README.md](fixtures/README.md), [fixtures/expected.schema.md](fixtures/expected.schema.md) | fixture projects and ground-truth format |
 | [eval/README.md](eval/README.md), [eval/tasks/README.md](eval/tasks/README.md) | agent A/B harness reference and task catalogue |
 | [CLAUDE.md](CLAUDE.md) | contributor rules and engine contracts |
@@ -91,7 +101,7 @@ State as of this documentation pass. "Implemented" means covered by tests and th
 | Events, jobs, DB tables/queries | Experimental | entities and edges carry an `experimental` attribute (not shown in text output); heuristic only; project-scoped assumptions |
 | LLM enrichment (`enrich`: similarity verdicts, links for unmatched client calls, optional capability summaries) | Experimental, off by default | results are `inferred`, tagged, and go stale with their evidence; `enrich --dry-run` previews candidates; no verdicts exist in the published fixtures |
 | Rename lineage (`renamed_from`) | Implemented; confidence calibration experimental | heuristic confidence; inferred facts migrate only at 0.85 or higher |
-| Quality eval, perf bench, agent A/B harness | Implemented | results to be published in `docs/evaluation/results.md` |
+| Quality eval, perf bench, agent A/B harness | Implemented | results in [docs/evaluation/results.md](docs/evaluation/results.md) |
 | Other languages (Python, Go, Java, ...) | Unsupported | |
 | Automatic SCIP | Implemented, opt-in (default off) | runs only while a watcher is active, after a debounce (default 30 s); explicit `scip` always works |
 | Automatic LLM enrichment | Not implemented | `enrich` is always an explicit command |

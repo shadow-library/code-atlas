@@ -8,7 +8,7 @@ Three harnesses measure three different things. None replaces the others.
 | Performance bench | How fast and how large, and does it regress? | `atlas-bench` | `perf.{md,json}` in `--out` |
 | Agent A/B | Does an agent with Code Atlas do better work than one without? | `atlas-eval agent` | `eval/reports/<date>/agent.{md,json}` |
 
-Measured results will be published in `docs/evaluation/results.md`. This document covers method and limits only. A committed baseline quality report exists at `eval/reports/2026-10-04/quality.md`; it predates later resolver changes (a re-run at `a03744e` finds 98 of 98 expected fixture edges, the committed file says 96 of 98), so regenerate before quoting numbers.
+Measured results are in [results.md](results.md). This document covers method and limits only.
 
 ## Quality eval
 
@@ -77,7 +77,23 @@ target/release/atlas-bench run --suite quick --out bench/new --compare bench/old
 
 Full reference: `eval/README.md`; task catalogue: `eval/tasks/README.md`; hidden-test verification: `eval/tasks/VERIFICATION.md`.
 
-**Design.** Headless Claude Code sessions run the same task prompt in two conditions: `baseline` (no Code Atlas) and `atlas` (Code Atlas MCP server plus a short preamble, `ATLAS_PREAMBLE` version `PREAMBLE_VERSION` in `crates/atlas-eval/src/agent/plan.rs`). Run order is a seeded shuffle; `--runs-per-condition` defaults to 2.
+**Design.** Headless Claude Code sessions run the same task prompt in two conditions: `baseline`, with no Code Atlas, and `atlas`, with the Code Atlas MCP server and a preamble prepended to the prompt. Run order is a seeded shuffle, and `--runs-per-condition` defaults to 2.
+
+**Preamble variants** (`PreambleVariant` in `crates/atlas-eval/src/agent/plan.rs`, chosen with `--atlas-preamble`):
+
+| Variant | Version | Text (summary) |
+|---|---|---|
+| `standard` (default) | 1 | `STANDARD_PREAMBLE`, three sentences: a Code Atlas server with tools for context, search, impact, tests-for and explain is available; use it to understand the codebase before reading files; `[heuristic]`/`[inferred]` relations are leads to verify |
+| `directed` | 2 | `DIRECTED_PREAMBLE`: call `atlas_context` before searching or reading; call `atlas_impact` before changing shared code; call `atlas_search` or `atlas_similar` before writing a helper; read files you edit with your own tool |
+
+Each run records its variant, and the report shows it in the environment table (`preamble version`). `agent report` refuses a batch that mixes variants.
+
+**Batches run so far.**
+
+- Batch 1 (`eval/runs/2026-10-04-seed1`, `standard`) is the primary comparison, planned in advance (implementation plan §3.3).
+- Batch 2 (`eval/runs/2026-10-05-directed`, `directed`) is exploratory. It was designed after batch 1 showed that the agent almost never called the tools, so it measures what the tools do once used, not whether agents use them unprompted. Because the design is post hoc, its report (`agent-directed.md`) is kept separate and makes no significance claims.
+
+Both batches used the same tasks, model, seed, Code Atlas binary and 2 runs per condition. The harness commits differ (`0dc8a96` and `3c54d92`); the only change between them is the preamble option.
 
 **Tasks.** Eleven: `t00-smoke` (harness check) and ten tasks across categories (find and extend, cross-crate blast radius, planted bug, refactor, architecture-consistent addition, config impact, reuse trap, test discovery, cross-package consistency). Six are on this repository frozen at a base commit, four on `honojs/hono`. Each has hidden tests that fail at base and pass with a reference patch, regression commands, and manually derived ground truth (`relevant_files`, `must_change`, `must_consider`, `reuse_targets`, `forbidden_duplicates`).
 
@@ -112,4 +128,4 @@ target/release/atlas-eval agent report --runs eval/runs/<batch> --out eval/repor
 target/release/atlas-eval agent probe --out /tmp/probe
 ```
 
-Other `run` flags: `--tasks`, `--eval-home`, `--batch` (default `<date>-seed<seed>`), `--condition`, `--seed`, `--parallel` (2), `--judge claude|off`, `--no-probe`, `--validation-timeout-secs`, `--atlas-timeout-secs`, `--tree-root`, `--keep-trees`, `--claude-bin`, `--model`, `--judge-model`, `--claude-config user|isolated`. A batch is resumable: runs with a `score.json` are reused. Artifacts per run (`eval/runs/<batch>/<task>.<condition>.r<i>/`): `run.json`, `transcript.jsonl`, `diff.patch`, `metrics.json`, `score.json`, `atlas-review.json`. External tasks need network once for the pnpm install step; real runs need the `claude` CLI.
+Other `run` flags: `--tasks`, `--eval-home`, `--batch` (default `<date>-seed<seed>`), `--condition`, `--seed`, `--parallel` (2), `--judge claude|off`, `--atlas-preamble standard|directed`, `--no-probe`, `--validation-timeout-secs`, `--atlas-timeout-secs`, `--tree-root`, `--keep-trees`, `--claude-bin`, `--model`, `--judge-model`, `--claude-config user|isolated`. A batch is resumable: runs with a `score.json` are reused. Artifacts per run (`eval/runs/<batch>/<task>.<condition>.r<i>/`): `run.json`, `transcript.jsonl`, `diff.patch`, `metrics.json`, `score.json`, `atlas-review.json`. External tasks need network once for the pnpm install step; real runs need the `claude` CLI.

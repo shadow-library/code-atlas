@@ -151,14 +151,35 @@ Concrete items, grouped by area. Source: reviewer findings accepted as known gap
 
 ### Indexing scale and cost
 
-Figures from the schema-v2 change (ccbf4b4), measured during development with release builds on a machine loaded by concurrent builds (load average 11-19); final numbers are in the evaluation results.
+The first bullet's figures come from the schema-v2 change (ccbf4b4). They were measured during development with release builds on a machine loaded by concurrent builds (load average 11 to 19). Measured numbers are in [results.md](evaluation/results.md#performance).
 
-- Rows are compact and the content hash is stored once per owner, so a body edit that keeps spans rewrites no edge (it was 43 to 172 at 1M LOC). At 1M synthetic LOC the cold index went from 24.3 s to 7.8 s and the database from 827 MB to 407 MB. Run-ledger fact deltas now count rewritten rows, not semantic changes, so a span shift counts as a change.
+- Rows are compact and the content hash is stored once per owner, so a body edit that keeps spans rewrites no edge (it was 43 to 172 at 1M LOC). At 1M synthetic LOC the cold index went from 24.3 s to 7.8 s and the database from 827 MB to 407 MB. The 2026-10-04 report's 388.3 "MB" is MiB, about 407 MB: the same size in a different unit, not a further reduction. Run-ledger fact deltas now count rewritten rows, not semantic changes, so a span shift counts as a change.
 - A migrated v1 database keeps its size until a re-index or `VACUUM`. A legacy row that cannot be decoded fails the migration (delete the database and re-index). An older binary that re-adopts a project can still write legacy rows; they are read, and rewritten compactly on the next replace.
 - A package-graph change still re-resolves and re-persists every owner. The similarity index costs about 300 MiB per 100k symbols (earlier measurement, not re-measured). A cross-process generation change forces a full state reload in every other open engine.
 - The persisted skipped-file list can be stale after a crash (report-only, ENGINE-6).
+- At 1M synthetic LOC, the full performance suite (2026-10-04) measured the following:
+  - Queries under a concurrent edit stream reach only 8 to 26 qps, with p95 up to 974 ms.
+  - `unused` takes about 1.1 s.
+  - The long-running session process peaks at about 4.22 GiB RSS.
 
-Current numbers are in `docs/evaluation/results.md` once published.
+  Read-only workloads and repositories of 100k LOC or less are not affected to this degree.
+
+### Findings from the agent evaluation
+
+From the A/B batches of 2026-10-04 and 2026-10-05 ([results](evaluation/results.md#agent-ab)):
+
+- **No measured benefit.** On 11 tasks with 2 runs per condition, there is no evidence that Code Atlas improves an agent's correctness, and the atlas condition used more tokens and cost more in both batches. All runs passed their hidden tests, so the tasks were too easy to separate the conditions.
+- **Fixed cost.** Connecting the MCP server adds about 6,300 prompt tokens to every model request (16 tool definitions plus server instructions), whether or not a tool is called. On short tasks this costs more than any reduction in file reads saves.
+- **Adoption needs direction.** With the three-sentence standard preamble, which names the tools and says to use them before reading files, the agent called them in 2 of 22 sessions, both in the smoke task. Told when to call them, it called `atlas_context` in 21 of 22, but never `atlas_impact`, `atlas_search` or `atlas_similar`.
+- **Context packs are keyword-seeded and can miss the edit target.**
+  - Measured by `must_change`, the pack held none of the files to edit in 4 of 11 tasks (`t00`, `t03`, `t07`, and `t10` with its empty pack) and only some of them in 5 more (`t02`, `t04`, `t06`, `t08`, `t09`). It held them all only in `t01` and `t05`.
+  - An ambiguous seed name (`User`, matching 2 entities) is dropped rather than resolved against the task text.
+  - A pack can be empty apart from caveats (`t10`).
+
+  Treat a pack as a starting point and confirm edit targets with search.
+- **Partial parses.** 8 of 450 files in hono at `f23b146` parse only partially. Relations near the parse errors may be missing, and queries that touch these files say so in a caveat.
+- **Recall.** Against SCIP, `resolved` edges reproduce 53.3% of the compiler's call, reference and instantiation edges, and references only 40.4%. An empty `callers` or `impact` result is weaker evidence than its certainty tag suggests; read the caveats.
+- **Heuristic confidence.** Against SCIP, the confidence buckets at 0.6 and above hold only 15 edges. All 4 of their conflicts are granularity differences (class versus constructor, method versus receiver constant), while the wrong name-only targets sit at 0.25 to 0.35. Calibration of the confidence values is neither shown nor refuted.
 
 ### Unsupported
 
