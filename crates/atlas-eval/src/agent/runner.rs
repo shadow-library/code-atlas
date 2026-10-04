@@ -16,7 +16,7 @@ use super::diff::{Diff, FileChange};
 use super::error::{AgentError, AgentResult};
 use super::judge::{JudgeInput, JudgeKind, JudgeOutcome, atlas_review_prompt, blinded_prompt, run_judge};
 use super::metrics::{Metrics, MetricsInput, compute_metrics};
-use super::plan::{Condition, PREAMBLE_VERSION, PlannedRun, model_price, today_utc};
+use super::plan::{Condition, PlannedRun, PreambleVariant, model_price, today_utc};
 use super::probe::{ProbeReport, default_user_claude_md, run_probe};
 use super::process::{ProcessExit, run_captured, run_streaming};
 use super::record::{
@@ -63,6 +63,7 @@ pub struct RunnerConfig {
   pub atlas_timeout: Duration,
   pub seed: u64,
   pub probe: bool,
+  pub preamble: PreambleVariant,
 }
 
 struct RunContext<'a> {
@@ -93,7 +94,8 @@ pub fn environment(config: &RunnerConfig) -> Environment {
     code_atlas_version: AtlasCli::new(&config.atlas_bin, config.cache_dir.join("atlas-version-home"), Duration::from_secs(10)).version(),
     atlas_bin_blake3: fs::read(&config.atlas_bin).ok().map(|bytes| blake3::hash(&bytes).to_hex().to_string()),
     atlas_bin: config.atlas_bin.display().to_string(),
-    preamble_version: PREAMBLE_VERSION,
+    preamble_version: config.preamble.version(),
+    preamble_variant: config.preamble,
     repo_override: config.repo_override.as_ref().map(|path| path.display().to_string()),
     probe: None,
   }
@@ -270,6 +272,7 @@ fn execute_run(context: &RunContext<'_>) -> AgentResult<f64> {
   }
   remove_dir(dir)?;
   fs::create_dir_all(dir).map_err(|error| AgentError::io(dir, error))?;
+  let is_atlas = context.planned.condition == Condition::Atlas;
   let mut manifest = RunManifest {
     run_id: context.planned.run_id.clone(),
     task_id: context.task.spec.id.clone(),
@@ -284,7 +287,8 @@ fn execute_run(context: &RunContext<'_>) -> AgentResult<f64> {
     model_requested: context.config.claude.model.clone(),
     models_reported: Vec::new(),
     claude_code_version: None,
-    preamble_version: (context.planned.condition == Condition::Atlas).then_some(PREAMBLE_VERSION),
+    preamble_version: is_atlas.then(|| context.config.preamble.version()),
+    preamble_variant: is_atlas.then_some(context.config.preamble),
     args: Vec::new(),
     env_names: Vec::new(),
     atlas_project: None,
@@ -465,7 +469,7 @@ fn run_session(context: &RunContext<'_>, scratch: &Path, tree: &Path, manifest: 
   let instructions = project_instructions(tree);
   manifest.project_instructions = instructions.as_ref().map(|(_, names)| names.clone()).unwrap_or_default();
   let request = SessionRequest {
-    prompt: context.planned.condition.prompt(&spec.prompt),
+    prompt: context.planned.condition.prompt(context.config.preamble, &spec.prompt),
     tree: tree.to_owned(),
     mcp_config: scratch.join("mcp.json"),
     max_turns: spec.max_turns,

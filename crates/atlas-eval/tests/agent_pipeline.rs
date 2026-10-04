@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use atlas_eval::agent::{
-  self, ClaudeConfig, Condition, ConfigIsolation, DuplicationCheck, JudgeMode, Metrics, RUN_FILE, RunManifest, RunStatus, RunnerConfig, SCORE_FILE, Score, SessionOutcome,
-  TargetRole,
+  self, ClaudeConfig, Condition, ConfigIsolation, DuplicationCheck, JudgeMode, Metrics, PreambleVariant, RUN_FILE, RunManifest, RunStatus, RunnerConfig, SCORE_FILE, Score,
+  SessionOutcome, TargetRole,
 };
 
 const FAKE_CLAUDE: &str = r#"#!/bin/sh
@@ -134,6 +134,7 @@ impl Fixture {
       atlas_timeout: Duration::from_secs(60),
       seed: 3,
       probe: false,
+      preamble: PreambleVariant::Standard,
     }
   }
 }
@@ -196,6 +197,9 @@ fn should_run_score_and_report_both_conditions_with_fake_binaries() {
       "{condition}"
     );
     assert_eq!(run.models_reported, vec!["claude-haiku-4-5-20251001"]);
+    let expected_preamble = (condition == Condition::Atlas).then_some(PreambleVariant::Standard);
+    assert_eq!(run.preamble_variant, expected_preamble, "{condition}");
+    assert_eq!(run.preamble_version, expected_preamble.map(PreambleVariant::version), "{condition}");
     let tree = PathBuf::from(run.tree.clone().unwrap());
     let rendered = tree.display().to_string();
     assert!(!rendered.contains("atlas") && !rendered.contains("baseline") && !rendered.contains("/eval/"), "{rendered}");
@@ -337,4 +341,30 @@ fn should_point_cargo_at_a_target_dir_beside_the_tree_for_setup_sessions_and_val
     session_dirs.push(target);
   }
   assert_ne!(session_dirs[0], session_dirs[1], "each run must build into its own target dir");
+}
+
+#[test]
+fn should_record_the_directed_preamble_in_the_batch_and_every_atlas_manifest() {
+  let fixture = fixture();
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let config = RunnerConfig {
+    preamble: PreambleVariant::Directed,
+    ..fixture.config(2, None)
+  };
+  let manifest = agent::run_batch(&config, &tasks, agent::plan_runs(&tasks, &Condition::ALL, 1, 3)).unwrap();
+  assert_eq!(manifest.environment.preamble_variant, PreambleVariant::Directed);
+  assert_eq!(manifest.environment.preamble_version, 2);
+  let atlas: RunManifest = agent::read_json(&fixture.batch.join("t99-pipeline.atlas.r0").join(RUN_FILE)).unwrap();
+  assert_eq!((atlas.preamble_version, atlas.preamble_variant), (Some(2), Some(PreambleVariant::Directed)));
+  let baseline: RunManifest = agent::read_json(&fixture.batch.join("t99-pipeline.baseline.r0").join(RUN_FILE)).unwrap();
+  assert_eq!((baseline.preamble_version, baseline.preamble_variant), (None, None));
+  let (batch, records) = agent::load_runs(&fixture.batch).unwrap();
+  agent::ensure_single_preamble(batch.as_ref(), &records).unwrap();
+  let standard = RunnerConfig {
+    preamble: PreambleVariant::Standard,
+    ..fixture.config(2, None)
+  };
+  agent::run_batch(&standard, &tasks, agent::plan_runs(&tasks, &[Condition::Atlas], 1, 3)).unwrap();
+  let (batch, records) = agent::load_runs(&fixture.batch).unwrap();
+  assert!(matches!(agent::ensure_single_preamble(batch.as_ref(), &records), Err(agent::AgentError::MixedPreamble(_))));
 }

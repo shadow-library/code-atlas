@@ -20,6 +20,8 @@ pub enum AgentError {
   NoTasks(PathBuf),
   #[error("unknown task id `{0}`")]
   UnknownTask(String),
+  #[error("batch mixes atlas preamble variants ({0}); runs under different preambles are not comparable, rerun them under one")]
+  MixedPreamble(String),
   #[error("invalid argument: {0}")]
   InvalidArgument(String),
 }

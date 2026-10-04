@@ -5,8 +5,8 @@ use std::time::Duration;
 use clap::{Args, Parser, Subcommand};
 
 use atlas_eval::agent::{
-  self, AgentError, AgentReport, ClaudeConfig, Condition, ConfigIsolation, DEFAULT_JUDGE_MODEL, DEFAULT_SESSION_MODEL, DryRunContext, JudgeMode, LoadedTask, RepoSource,
-  RunnerConfig,
+  self, AgentError, AgentReport, ClaudeConfig, Condition, ConfigIsolation, DEFAULT_JUDGE_MODEL, DEFAULT_SESSION_MODEL, DryRunContext, JudgeMode, LoadedTask, PreambleVariant,
+  RepoSource, RunnerConfig,
 };
 use atlas_eval::quality::{self, QualityArgs};
 
@@ -88,6 +88,8 @@ struct RunArgs {
   repo_override: Option<PathBuf>,
   #[arg(long, value_enum, default_value_t = JudgeMode::Claude)]
   judge: JudgeMode,
+  #[arg(long, value_enum, default_value_t = PreambleVariant::Standard)]
+  atlas_preamble: PreambleVariant,
   #[arg(long)]
   no_probe: bool,
   #[arg(long, default_value_t = 900)]
@@ -222,6 +224,7 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
       seed: args.seed,
       parallel: args.parallel,
       budget_usd: args.budget_usd,
+      preamble: args.atlas_preamble,
       notes: &notes,
     };
     print!("{}", agent::render_dry_run(&context));
@@ -246,6 +249,7 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
     atlas_timeout: Duration::from_secs(args.atlas_timeout_secs),
     seed: args.seed,
     probe: !args.no_probe,
+    preamble: args.atlas_preamble,
   };
   let manifest = agent::run_batch(&config, &tasks, planned)?;
   tracing::info!(
@@ -259,6 +263,7 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
 
 fn report(args: &ReportArgs) -> Result<(), AgentError> {
   let (batch, records) = agent::load_runs(&args.runs)?;
+  agent::ensure_single_preamble(batch.as_ref(), &records)?;
   let previous: Option<AgentReport> = args.compare.as_deref().map(agent::read_json).transpose()?;
   let report = agent::build_report(batch.as_ref(), &records, previous.as_ref());
   let date = batch.as_ref().map_or_else(agent::today_utc, |batch| batch.environment.date.clone());

@@ -9,7 +9,7 @@ use super::accuracy::AtlasAccuracy;
 use super::claude::ConfigIsolation;
 use super::error::{AgentError, AgentResult};
 use super::judge::JudgeOutcome;
-use super::plan::{Condition, PlannedRun};
+use super::plan::{Condition, PlannedRun, PreambleVariant};
 use super::probe::ProbeReport;
 use super::process::ProcessExit;
 use super::reuse::{DuplicationFinding, NewFunction, ReuseReference};
@@ -84,6 +84,8 @@ pub struct RunManifest {
   pub models_reported: Vec<String>,
   pub claude_code_version: Option<String>,
   pub preamble_version: Option<u32>,
+  #[serde(default)]
+  pub preamble_variant: Option<PreambleVariant>,
   pub args: Vec<String>,
   pub env_names: Vec<String>,
   pub atlas_project: Option<String>,
@@ -182,6 +184,8 @@ pub struct Environment {
   pub atlas_bin_blake3: Option<String>,
   pub atlas_bin: String,
   pub preamble_version: u32,
+  #[serde(default)]
+  pub preamble_variant: PreambleVariant,
   pub repo_override: Option<String>,
   pub probe: Option<ProbeReport>,
 }

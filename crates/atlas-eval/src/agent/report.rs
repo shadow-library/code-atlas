@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,7 +9,7 @@ use super::access::OutOfTreeAccess;
 use super::error::{AgentError, AgentResult};
 use super::judge::JudgeOutcome;
 use super::metrics::Metrics;
-use super::plan::Condition;
+use super::plan::{Condition, PreambleVariant};
 use super::record::{
   BATCH_FILE, BatchManifest, CostSource, Environment, METRICS_FILE, RUN_FILE, RunManifest, RunStatus, SCORE_FILE, Score, SessionOutcome, SetupStageKind, TRANSCRIPT_FILE,
   read_json, setup_stage_kind,
@@ -832,6 +832,29 @@ fn render_contamination(out: &mut String, report: &AgentReport) {
   out.push('\n');
 }
 
+pub fn ensure_single_preamble(batch: Option<&BatchManifest>, records: &[RunRecord]) -> AgentResult<()> {
+  let mut seen: BTreeSet<(u32, PreambleVariant)> = records
+    .iter()
+    .filter(|record| record.manifest.condition == Condition::Atlas)
+    .filter_map(|record| {
+      record
+        .manifest
+        .preamble_version
+        .map(|version| (version, record.manifest.preamble_variant.unwrap_or_default()))
+    })
+    .collect();
+  if let Some(batch) = batch
+    && !seen.is_empty()
+  {
+    seen.insert((batch.environment.preamble_version, batch.environment.preamble_variant));
+  }
+  if seen.len() <= 1 {
+    return Ok(());
+  }
+  let listed: Vec<String> = seen.iter().map(|(version, variant)| format!("{version} ({variant})")).collect();
+  Err(AgentError::MixedPreamble(listed.join(", ")))
+}
+
 fn render_environment(out: &mut String, report: &AgentReport) {
   let Some(environment) = &report.environment else {
     let _ = writeln!(out, "Environment: unknown (no batch.json).\n");
@@ -849,7 +872,7 @@ fn render_environment(out: &mut String, report: &AgentReport) {
     ("eval repository commit", optional(&environment.code_atlas_commit)),
     ("code-atlas binary version (build commit)", optional(&environment.code_atlas_version)),
     ("code-atlas binary blake3", optional(&environment.atlas_bin_blake3)),
-    ("preamble version", environment.preamble_version.to_string()),
+    ("preamble version", environment.preamble_variant.label()),
     ("repo override", environment.repo_override.clone().unwrap_or_else(|| "none".to_owned())),
     ("spent (reported)", report.spent_usd.map_or_else(|| "unknown".to_owned(), |spent| format!("${spent:.2}"))),
   ];
@@ -942,6 +965,7 @@ mod tests {
       models_reported: vec!["claude-haiku-4-5-20251001".to_owned()],
       claude_code_version: Some("2.1.289".to_owned()),
       preamble_version: None,
+      preamble_variant: None,
       args: Vec::new(),
       env_names: Vec::new(),
       atlas_project: None,
@@ -1127,6 +1151,7 @@ mod tests {
         atlas_bin_blake3: None,
         atlas_bin: "code-atlas".to_owned(),
         preamble_version: 1,
+        preamble_variant: PreambleVariant::Standard,
         repo_override: None,
         probe: None,
       },
@@ -1264,6 +1289,50 @@ mod tests {
   fn should_render_a_stable_markdown_report() {
     let report = build_report(Some(&batch()), &records(), None);
     insta::assert_snapshot!(render_markdown(&report));
+  }
+
+  fn atlas_with_preamble(variant: PreambleVariant) -> RunRecord {
+    let mut run = records().into_iter().find(|record| record.manifest.condition == Condition::Atlas).unwrap();
+    run.manifest.preamble_version = Some(variant.version());
+    run.manifest.preamble_variant = Some(variant);
+    run
+  }
+
+  #[test]
+  fn should_render_the_directed_preamble_with_its_variant_in_the_environment_table() {
+    let mut directed = batch();
+    directed.environment.preamble_version = 2;
+    directed.environment.preamble_variant = PreambleVariant::Directed;
+    let markdown = render_markdown(&build_report(Some(&directed), &records(), None));
+    assert!(markdown.contains("| preamble version | 2 (directed) |"));
+    let standard = render_markdown(&build_report(Some(&batch()), &records(), None));
+    assert!(standard.contains("| preamble version | 1 |"));
+  }
+
+  #[test]
+  fn should_refuse_a_batch_mixing_preamble_versions() {
+    let mixed = vec![atlas_with_preamble(PreambleVariant::Standard), atlas_with_preamble(PreambleVariant::Directed)];
+    let error = ensure_single_preamble(None, &mixed).unwrap_err();
+    assert_eq!(
+      error.to_string(),
+      "batch mixes atlas preamble variants (1 (standard), 2 (directed)); runs under different preambles are not comparable, rerun them under one"
+    );
+  }
+
+  #[test]
+  fn should_refuse_atlas_runs_whose_preamble_differs_from_the_batch_environment() {
+    let runs = vec![atlas_with_preamble(PreambleVariant::Directed)];
+    assert!(matches!(ensure_single_preamble(Some(&batch()), &runs), Err(AgentError::MixedPreamble(_))));
+  }
+
+  #[test]
+  fn should_accept_a_batch_with_one_preamble_and_ignore_baseline_runs() {
+    let runs = vec![atlas_with_preamble(PreambleVariant::Directed), atlas_with_preamble(PreambleVariant::Directed)];
+    let mut directed = batch();
+    directed.environment.preamble_version = 2;
+    directed.environment.preamble_variant = PreambleVariant::Directed;
+    assert!(ensure_single_preamble(Some(&directed), &runs).is_ok());
+    assert!(ensure_single_preamble(Some(&batch()), &records()).is_ok());
   }
 
   #[test]

@@ -6,9 +6,57 @@ use serde::{Deserialize, Serialize};
 
 use super::spec::LoadedTask;
 
-pub const ATLAS_PREAMBLE: &str = "A Code Atlas MCP server is available with tools for repository knowledge (context, search, impact, tests-for, explain). \
+pub const STANDARD_PREAMBLE: &str = "A Code Atlas MCP server is available with tools for repository knowledge (context, search, impact, tests-for, explain). \
 Use it to understand the codebase before reading files. Relations tagged [heuristic]/[inferred] are leads to verify.";
-pub const PREAMBLE_VERSION: u32 = 1;
+pub const DIRECTED_PREAMBLE: &str = "A Code Atlas MCP server is available with tools for repository knowledge. \
+Before searching or reading files, call atlas_context with a one-line description of the task and read what it returns. \
+Before changing a function or type that other code uses, call atlas_impact on it. \
+Before writing a new helper, call atlas_search or atlas_similar to look for an existing one. \
+Relations tagged [heuristic]/[inferred] are leads to verify. To edit a file, read it with your own file tool.";
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "snake_case")]
+pub enum PreambleVariant {
+  #[default]
+  Standard,
+  Directed,
+}
+
+impl PreambleVariant {
+  pub fn as_str(self) -> &'static str {
+    match self {
+      Self::Standard => "standard",
+      Self::Directed => "directed",
+    }
+  }
+
+  pub fn version(self) -> u32 {
+    match self {
+      Self::Standard => 1,
+      Self::Directed => 2,
+    }
+  }
+
+  pub fn text(self) -> &'static str {
+    match self {
+      Self::Standard => STANDARD_PREAMBLE,
+      Self::Directed => DIRECTED_PREAMBLE,
+    }
+  }
+
+  pub fn label(self) -> String {
+    match self {
+      Self::Standard => self.version().to_string(),
+      Self::Directed => format!("{} ({})", self.version(), self.as_str()),
+    }
+  }
+}
+
+impl fmt::Display for PreambleVariant {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.write_str(self.as_str())
+  }
+}
 
 const ASSUMED_TURN_CAP: u32 = 40;
 const ASSUMED_CACHE_READ_PER_TURN: f64 = 40_000.0;
@@ -35,10 +83,10 @@ impl Condition {
     }
   }
 
-  pub fn prompt(self, task_prompt: &str) -> String {
+  pub fn prompt(self, preamble: PreambleVariant, task_prompt: &str) -> String {
     match self {
       Self::Baseline => task_prompt.to_owned(),
-      Self::Atlas => format!("{ATLAS_PREAMBLE}\n\n{task_prompt}"),
+      Self::Atlas => format!("{}\n\n{task_prompt}", preamble.text()),
     }
   }
 }
@@ -178,6 +226,7 @@ pub struct DryRunContext<'a> {
   pub seed: u64,
   pub parallel: usize,
   pub budget_usd: Option<f64>,
+  pub preamble: PreambleVariant,
   pub notes: &'a [String],
 }
 
@@ -185,6 +234,9 @@ pub fn render_dry_run(context: &DryRunContext<'_>) -> String {
   let mut out = String::new();
   let _ = writeln!(out, "planned runs: {} (seed {}, parallel {})", context.runs.len(), context.seed, context.parallel);
   let _ = writeln!(out, "model: {}  judge: {}", context.model, context.judge_model.unwrap_or("off"));
+  if context.runs.iter().any(|run| run.condition == Condition::Atlas) {
+    let _ = writeln!(out, "atlas preamble: {} (version {})", context.preamble, context.preamble.version());
+  }
   let _ = writeln!(out, "order  run_id                                   max_turns  timeout_min  est_usd");
   let mut total: Option<f64> = Some(0.0);
   for run in context.runs {
@@ -257,8 +309,10 @@ mod tests {
 
   #[test]
   fn should_prefix_only_the_atlas_prompt_with_the_preamble() {
-    assert_eq!(Condition::Baseline.prompt("Fix it."), "Fix it.");
-    assert_eq!(Condition::Atlas.prompt("Fix it."), format!("{ATLAS_PREAMBLE}\n\nFix it."));
+    assert_eq!(Condition::Baseline.prompt(PreambleVariant::Standard, "Fix it."), "Fix it.");
+    assert_eq!(Condition::Baseline.prompt(PreambleVariant::Directed, "Fix it."), "Fix it.");
+    assert_eq!(Condition::Atlas.prompt(PreambleVariant::Standard, "Fix it."), format!("{STANDARD_PREAMBLE}\n\nFix it."));
+    assert_eq!(Condition::Atlas.prompt(PreambleVariant::Directed, "Fix it."), format!("{DIRECTED_PREAMBLE}\n\nFix it."));
   }
 
   #[test]
@@ -297,6 +351,43 @@ mod tests {
     assert_eq!(model_price("claude-sonnet-5-5").map(|price| price.input), Some(2.0));
     assert_eq!(model_price("claude-opus-5-5").map(|price| price.input), Some(4.0));
     assert_eq!(model_price("claude-unknown-1"), None);
+  }
+
+  #[test]
+  fn should_expose_exact_preamble_text_version_and_label_per_variant() {
+    assert_eq!(PreambleVariant::default(), PreambleVariant::Standard);
+    assert_eq!((PreambleVariant::Standard.version(), PreambleVariant::Standard.label()), (1, "1".to_owned()));
+    assert_eq!((PreambleVariant::Directed.version(), PreambleVariant::Directed.label()), (2, "2 (directed)".to_owned()));
+    assert_eq!(
+      PreambleVariant::Directed.text(),
+      "A Code Atlas MCP server is available with tools for repository knowledge. Before searching or reading files, call atlas_context with a one-line description of the task and read what it returns. Before changing a function or type that other code uses, call atlas_impact on it. Before writing a new helper, call atlas_search or atlas_similar to look for an existing one. Relations tagged [heuristic]/[inferred] are leads to verify. To edit a file, read it with your own file tool."
+    );
+    assert_eq!(
+      PreambleVariant::Standard.text(),
+      "A Code Atlas MCP server is available with tools for repository knowledge (context, search, impact, tests-for, explain). Use it to understand the codebase before reading files. Relations tagged [heuristic]/[inferred] are leads to verify."
+    );
+  }
+
+  #[test]
+  fn should_show_the_preamble_variant_in_the_dry_run_only_when_atlas_runs_are_planned() {
+    let tasks = [task("t1")];
+    let render = |conditions: &[Condition], preamble| {
+      let runs = plan_runs(&tasks, conditions, 1, 1);
+      render_dry_run(&DryRunContext {
+        tasks: &tasks,
+        runs: &runs,
+        model: "claude-haiku-4-5",
+        judge_model: None,
+        seed: 1,
+        parallel: 1,
+        budget_usd: None,
+        preamble,
+        notes: &[],
+      })
+    };
+    assert!(render(&Condition::ALL, PreambleVariant::Directed).contains("atlas preamble: directed (version 2)\n"));
+    assert!(render(&Condition::ALL, PreambleVariant::Standard).contains("atlas preamble: standard (version 1)\n"));
+    assert!(!render(&[Condition::Baseline], PreambleVariant::Directed).contains("atlas preamble"));
   }
 
   #[test]
