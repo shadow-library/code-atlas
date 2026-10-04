@@ -34,7 +34,7 @@ pub fn run(project: Option<String>, command: Command) -> CliResult<Outcome> {
     Command::Api(args) => query::run(&ctx, QueryCommand::Api(args)),
     Command::Explain(args) => query::run(&ctx, QueryCommand::Explain(args)),
     Command::Connect(command) => connect::run(&ctx, command),
-    Command::Mcp => mcp::run(&ctx),
+    Command::Mcp(args) => mcp::run(&ctx, args),
     Command::Debug(command) => debug::run(&ctx, command),
     Command::Doctor => doctor::run(&ctx),
   }

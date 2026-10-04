@@ -62,7 +62,7 @@ pub enum Command {
   #[command(subcommand, about = "Wire Code Atlas into an agent client")]
   Connect(ConnectCommand),
   #[command(about = "Serve the MCP protocol on stdio")]
-  Mcp,
+  Mcp(McpArgs),
   #[command(subcommand, about = "Inspect internals")]
   Debug(DebugCommand),
   #[command(about = "Check tools, registry, databases and locks")]
@@ -167,6 +167,12 @@ pub struct ConfigArgs {
 pub struct IndexArgs {
   #[arg(long, help = "Re-analyse every file instead of only what changed")]
   pub full: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct McpArgs {
+  #[arg(long, help = "Also watch the repos so answers stay fresh between calls")]
+  pub watch: bool,
 }
 
 #[derive(Debug, Args)]

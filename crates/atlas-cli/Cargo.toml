@@ -16,6 +16,7 @@ workspace = true
 atlas-core.workspace = true
 atlas-project.workspace = true
 atlas-engine.workspace = true
+atlas-mcp.workspace = true
 atlas-query.workspace = true
 atlas-scip.workspace = true
 atlas-semantic.workspace = true

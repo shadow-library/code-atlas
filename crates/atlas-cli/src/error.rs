@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use atlas_core::CoreError;
 use atlas_engine::EngineError;
+use atlas_mcp::McpError;
 use atlas_project::ProjectError;
 use atlas_query::QueryError;
 use thiserror::Error;
@@ -71,8 +72,8 @@ pub enum CliError {
   ClaudeUnavailable { reason: String, command: String },
   #[error("aborted")]
   Declined,
-  #[error("the MCP server is not available in this build")]
-  McpUnavailable,
+  #[error(transparent)]
+  Mcp(McpError),
   #[error("cannot install the signal handler: {0}")]
   Signal(#[source] io::Error),
   #[error("run {0} does not exist")]
@@ -106,7 +107,6 @@ impl CliError {
       | Self::MarkerConflict { .. }
       | Self::ProjectNameUnderivable(_)
       | Self::ConfirmationRequired { .. }
-      | Self::McpUnavailable
       | Self::InvalidSetting(_)
       | Self::ClaudeUnavailable { .. } => Exit::Usage,
       Self::RunNotFound(_) | Self::FileNotIndexed { .. } => Exit::NoMatch,
@@ -124,7 +124,7 @@ impl CliError {
       Self::Engine(EngineError::ProjectConfigChanged) => Some("another process changed the project; retry the command"),
       Self::ConfirmationRequired { .. } => Some("pass --yes to proceed without a prompt"),
       Self::ClaudeUnavailable { .. } => None,
-      Self::McpUnavailable => Some("rebuild code-atlas with the atlas-mcp crate wired in"),
+      Self::Mcp(_) => Some("the MCP client must speak JSON-RPC over this process's stdin and stdout"),
       Self::RunNotFound(_) => Some("list recent runs with `code-atlas status`"),
       Self::FileNotIndexed { .. } => Some("check the repo name with `code-atlas project show` and the path relative to the repo root"),
       Self::MalformedGuidance(_) => Some("fix or delete the code-atlas:begin / code-atlas:end markers, then rerun"),
@@ -158,6 +158,16 @@ fn project_exit(error: &ProjectError) -> Exit {
   match error {
     ProjectError::Io { .. } | ProjectError::HomeNotFound | ProjectError::RegistrySerialize(_) => Exit::Failure,
     _ => Exit::Usage,
+  }
+}
+
+impl From<McpError> for CliError {
+  fn from(error: McpError) -> Self {
+    match error {
+      McpError::Project(error) => Self::Project(error),
+      McpError::Engine(error) => Self::Engine(error),
+      other => Self::Mcp(other),
+    }
   }
 }
 

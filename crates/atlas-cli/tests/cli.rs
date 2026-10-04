@@ -1,7 +1,10 @@
 use std::fs;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::process::{Child, ChildStdin};
 use std::process::{Command, Output, Stdio};
+use std::sync::mpsc::{self, Receiver};
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use tempfile::TempDir;
@@ -438,16 +441,6 @@ fn should_inspect_runs_and_files_with_debug_commands() {
 }
 
 #[test]
-fn should_report_mcp_as_unavailable_with_usage_exit() {
-  let sandbox = Sandbox::new();
-  let root = sandbox.create_acme();
-  let output = sandbox.run(&root.join("acme-api"), &["mcp"]);
-  assert_eq!(code(&output), 2);
-  assert_eq!(stdout(&output), "");
-  assert!(stderr(&output).contains("not available"));
-}
-
-#[test]
 fn should_keep_progress_and_diagnostics_off_stdout_during_index() {
   let sandbox = Sandbox::new();
   let root = sandbox.create_acme();
@@ -703,4 +696,144 @@ fn should_reload_the_project_when_another_process_changes_it_while_watching() {
   let status = child.wait().unwrap();
   assert_eq!(reloaded.as_deref(), Some("project configuration changed; reloaded (3 repos)"));
   assert_eq!(status.code(), Some(0));
+}
+
+struct McpSession {
+  child: Child,
+  stdin: Option<ChildStdin>,
+  lines: Receiver<String>,
+  seen: Vec<String>,
+}
+
+impl McpSession {
+  fn start(sandbox: &Sandbox, cwd: &Path) -> Self {
+    assert_ok(&sandbox.run(cwd, &["connect", "claude", "--yes"]));
+    let config: Value = serde_json::from_str(&fs::read_to_string(cwd.join(".mcp.json")).unwrap()).unwrap();
+    let server = &config["mcpServers"]["code-atlas"];
+    let arguments: Vec<&str> = server["args"].as_array().unwrap().iter().map(|argument| argument.as_str().unwrap()).collect();
+    let mut child = Command::new(server["command"].as_str().unwrap())
+      .args(arguments)
+      .current_dir(cwd)
+      .env("CODE_ATLAS_HOME", sandbox.home.path())
+      .stdin(Stdio::piped())
+      .stdout(Stdio::piped())
+      .stderr(Stdio::null())
+      .spawn()
+      .unwrap();
+    let stdin = child.stdin.take();
+    let stdout = child.stdout.take().unwrap();
+    let (sender, lines) = mpsc::channel();
+    std::thread::spawn(move || {
+      for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+        if sender.send(line).is_err() {
+          return;
+        }
+      }
+    });
+    Self {
+      child,
+      stdin,
+      lines,
+      seen: Vec::new(),
+    }
+  }
+
+  fn send(&mut self, message: Value) {
+    let stdin = self.stdin.as_mut().unwrap();
+    writeln!(stdin, "{message}").unwrap();
+    stdin.flush().unwrap();
+  }
+
+  fn request(&mut self, id: u64, method: &str, params: Value) -> Value {
+    self.send(serde_json::json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}));
+    loop {
+      let line = self.lines.recv_timeout(Duration::from_secs(60)).unwrap_or_else(|_| panic!("no response to {method}"));
+      let message: Value = serde_json::from_str(&line).unwrap_or_else(|error| panic!("stdout line is not JSON ({error}): {line}"));
+      assert_eq!(message["jsonrpc"], "2.0", "{line}");
+      self.seen.push(line);
+      if message["id"] == id {
+        return message;
+      }
+    }
+  }
+
+  fn handshake(&mut self) {
+    let reply = self.request(
+      1,
+      "initialize",
+      serde_json::json!({"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "smoke", "version": "0"}}),
+    );
+    assert!(reply["result"]["serverInfo"].is_object(), "{reply}");
+    self.send(serde_json::json!({"jsonrpc": "2.0", "method": "notifications/initialized"}));
+  }
+
+  fn wait_for_exit(mut self) -> (Option<i32>, Vec<String>) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+      if let Some(status) = self.child.try_wait().unwrap() {
+        while let Ok(line) = self.lines.try_recv() {
+          self.seen.push(line);
+        }
+        return (status.code(), self.seen);
+      }
+      if Instant::now() > deadline {
+        let _ = self.child.kill();
+        panic!("the MCP server did not exit within 10s");
+      }
+      std::thread::sleep(Duration::from_millis(50));
+    }
+  }
+}
+
+fn assert_only_json_rpc(lines: &[String]) {
+  assert!(!lines.is_empty());
+  for line in lines {
+    let message: Value = serde_json::from_str(line).unwrap_or_else(|error| panic!("stdout line is not JSON ({error}): {line}"));
+    assert_eq!(message["jsonrpc"], "2.0", "{line}");
+  }
+}
+
+#[test]
+fn should_serve_mcp_over_stdio_with_the_command_connect_writes_and_exit_on_stdin_close() {
+  let sandbox = Sandbox::new();
+  let root = sandbox.create_acme();
+  let api = root.join("acme-api");
+  assert_ok(&sandbox.run(&api, &["index"]));
+  let mut session = McpSession::start(&sandbox, &api);
+  session.handshake();
+  let tools = session.request(2, "tools/list", serde_json::json!({}));
+  let names: Vec<&str> = tools["result"]["tools"].as_array().unwrap().iter().map(|tool| tool["name"].as_str().unwrap()).collect();
+  assert!(names.contains(&"atlas_context") && names.contains(&"atlas_impact"), "{names:?}");
+  let search = session.request(3, "tools/call", serde_json::json!({"name": "atlas_search", "arguments": {"query": "toCents"}}));
+  assert_ne!(search["result"]["isError"], true, "{search}");
+  let text = search["result"]["content"][0]["text"].as_str().unwrap();
+  assert!(text.contains("toCents"), "{text}");
+  drop(session.stdin.take());
+  let (code, lines) = session.wait_for_exit();
+  assert_eq!(code, Some(0));
+  assert_only_json_rpc(&lines);
+}
+
+#[test]
+fn should_exit_cleanly_on_sigterm_while_serving_mcp() {
+  let sandbox = Sandbox::new();
+  let root = sandbox.create_acme();
+  let api = root.join("acme-api");
+  assert_ok(&sandbox.run(&api, &["index"]));
+  let mut session = McpSession::start(&sandbox, &api);
+  session.handshake();
+  session.request(2, "tools/list", serde_json::json!({}));
+  let signalled = Command::new("kill").args(["-TERM", &session.child.id().to_string()]).status().unwrap();
+  assert!(signalled.success());
+  let (code, lines) = session.wait_for_exit();
+  assert_eq!(code, Some(0));
+  assert_only_json_rpc(&lines);
+}
+
+#[test]
+fn should_fail_mcp_with_a_usage_exit_outside_every_project() {
+  let sandbox = Sandbox::new();
+  let output = sandbox.run(&sandbox.work(), &["mcp"]);
+  assert_eq!(code(&output), 2, "{}", stderr(&output));
+  assert_eq!(stdout(&output), "");
 }

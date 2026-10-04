@@ -1,15 +1,15 @@
-use atlas_project::{AtlasHome, Project};
+use atlas_mcp::ServeOptions;
 
+use crate::cli::McpArgs;
 use crate::context::Context;
-use crate::error::{CliError, CliResult};
+use crate::error::CliResult;
 use crate::output::Outcome;
 
-pub fn run(ctx: &Context) -> CliResult<Outcome> {
-  let project = ctx.resolve()?;
-  serve(&project, &ctx.home)?;
+pub fn run(ctx: &Context, args: McpArgs) -> CliResult<Outcome> {
+  let mut options = ServeOptions::new(ctx.home.clone(), ctx.cwd.clone()).with_watch(args.watch);
+  if let Some(project) = &ctx.project {
+    options = options.with_project(project.clone());
+  }
+  atlas_mcp::serve(options)?;
   Ok(Outcome::Complete)
-}
-
-fn serve(_project: &Project, _home: &AtlasHome) -> CliResult<()> {
-  Err(CliError::McpUnavailable)
 }

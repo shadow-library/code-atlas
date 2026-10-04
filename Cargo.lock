@@ -121,6 +121,7 @@ version = "0.1.0"
 dependencies = [
  "atlas-core",
  "atlas-engine",
+ "atlas-mcp",
  "atlas-project",
  "atlas-query",
  "atlas-scip",
