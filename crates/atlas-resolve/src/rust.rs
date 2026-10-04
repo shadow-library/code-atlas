@@ -189,8 +189,11 @@ impl RustScope {
     }
   }
 
-  fn module_level(&self) -> Self {
-    Self::at_module(self.file, self.module.clone())
+  fn use_target_scope(&self) -> Self {
+    Self {
+      may_declare_types: self.may_declare_types,
+      ..Self::at_module(self.file, self.module.clone())
+    }
   }
 }
 
@@ -473,7 +476,7 @@ impl Resolver<'_> {
       let mut generated = false;
       let mut explicit: Vec<Hit> = Vec::new();
       for entry in surface.uses_in(&use_scope).filter(|entry| entry.bound_name() == Some(name)) {
-        match self.rust_use_target(&scope.module_level(), entry, ns, guard) {
+        match self.rust_use_target(&scope.use_target_scope(), entry, ns, guard) {
           Ok(hit) => explicit.push(hit),
           Err(Miss::MacroGenerated) => generated = true,
           Err(_) => {}
@@ -488,7 +491,7 @@ impl Resolver<'_> {
       let globs: Vec<(RustScope, &UseSurface)> = surface
         .uses_in(&use_scope)
         .filter(|entry| entry.bound_name().is_none())
-        .map(|entry| (scope.module_level(), entry))
+        .map(|entry| (scope.use_target_scope(), entry))
         .collect();
       if globs.iter().any(|(module_scope, glob)| self.rust_use_target(module_scope, glob, Ns::Type, guard).is_err()) {
         return Err(Miss::Unsupported("fn-local item"));

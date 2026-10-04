@@ -628,3 +628,42 @@ fn should_list_callers_of_an_interface_when_a_class_newly_implements_it() {
       .any(|edge| edge.to == candidate && edge.certainty == heuristic(0.3, "interface-dispatch-candidate"))
   );
 }
+
+#[test]
+fn should_weaken_a_glob_of_a_fn_local_module_that_shares_a_module_level_name() {
+  let synthetic = rust_project(
+    "pub mod m { pub fn g() {} }\npub use m::*;\npub fn f() {\n  mod m { pub fn g() {} }\n  use m::*;\n  g();\n}\npub struct S;\nimpl S {\n  pub fn method(&self) {\n    mod m { pub fn g() {} }\n    use m::*;\n    g();\n  }\n}\npub fn outer() {\n  fn inner() {\n    mod m { pub fn g() {} }\n    use m::*;\n    g();\n  }\n}\npub fn plain() {\n  use m::*;\n  g();\n}\n",
+  );
+  let project = &synthetic.project;
+  let g = demo(&["m"], &["g"], EntityKind::Function);
+  let weak = heuristic(0.5, "fn-local-item-possible");
+  for caller in [
+    demo(&[], &["f"], EntityKind::Function),
+    demo(&[], &["S", "method"], EntityKind::Method),
+    demo(&[], &["outer"], EntityKind::Function),
+  ] {
+    project.assert_no_edge_of_class(EdgeKind::Calls, caller, g, AUTHORITATIVE);
+    project.assert_certainty(EdgeKind::Calls, caller, g, &weak);
+  }
+  project.assert_edge(EdgeKind::Calls, demo(&[], &["plain"], EntityKind::Function), g, RESOLVED);
+}
+
+#[test]
+fn should_weaken_a_const_initializer_block_that_declares_an_item_on_one_line() {
+  let synthetic = rust_project(
+    "pub struct Config;\npub const C: () = { struct Config; let _c = Config; };\npub const D: Config = Config;\npub struct S;\nimpl S {\n  pub const E: () = { struct Config; let _c = Config; };\n}\npub fn f() {\n  const G: () = { struct Config; let _c = Config; };\n}\npub fn h() { let _c = Config; }\n",
+  );
+  let project = &synthetic.project;
+  let config = demo(&[], &["Config"], EntityKind::Struct);
+  let weak = heuristic(0.5, "fn-local-item-possible");
+  for caller in [
+    demo(&[], &["C"], EntityKind::Constant),
+    demo(&[], &["S", "E"], EntityKind::Constant),
+    demo(&[], &["f"], EntityKind::Function),
+  ] {
+    project.assert_no_edge_of_class(EdgeKind::References, caller, config, AUTHORITATIVE);
+    project.assert_certainty(EdgeKind::References, caller, config, &weak);
+  }
+  project.assert_edge(EdgeKind::References, demo(&[], &["D"], EntityKind::Constant), config, RESOLVED);
+  project.assert_edge(EdgeKind::References, demo(&[], &["h"], EntityKind::Function), config, RESOLVED);
+}

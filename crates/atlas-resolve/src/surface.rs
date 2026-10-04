@@ -11,6 +11,8 @@ use crate::error::ResolveError;
 use crate::typetext::{ValueType, rust_declared_type, rust_generic_bounds, rust_return_type, ts_return_type, ts_type_params, ts_value_type};
 
 const LOCAL_TYPE_KEYWORDS: [&str; 6] = ["struct", "enum", "union", "trait", "type", "mod"];
+const MIN_ITEM_BLOCK_BYTES: usize = "{mod m{}}".len();
+const INITIALIZER_FRAME_BYTES: usize = " = ;".len();
 
 #[derive(Debug, Clone)]
 pub(crate) struct SymSurface {
@@ -371,6 +373,11 @@ fn is_scope_item(family: LanguageFamily, symbol: &SymSurface, symbols: &[SymSurf
   }
 }
 
+fn initializer_fits_item_block(symbol: &atlas_core::SymbolFact, signature: &str) -> bool {
+  let span_bytes = (symbol.span.end_byte - symbol.span.start_byte) as usize;
+  span_bytes.saturating_sub(signature.len() + INITIALIZER_FRAME_BYTES) >= MIN_ITEM_BLOCK_BYTES
+}
+
 fn symbol_surface(family: LanguageFamily, symbol: &atlas_core::SymbolFact, disambiguator: u32) -> SymSurface {
   let signature = symbol.signature.as_deref().unwrap_or_default();
   let is_value_holder = matches!(symbol.kind, EntityKind::Field | EntityKind::Constant | EntityKind::Variable);
@@ -401,7 +408,7 @@ fn symbol_surface(family: LanguageFamily, symbol: &atlas_core::SymbolFact, disam
   let declares_local_types = family == LanguageFamily::Rust
     && match (&symbol.body, is_callable || is_initialized_item) {
       (Some(body), true) => body.normalized_tokens.iter().any(|code| keyword_codes.contains(code)),
-      (None, true) => is_initialized_item && symbol.span.start_line != symbol.span.end_line,
+      (None, true) => is_initialized_item && (symbol.span.start_line != symbol.span.end_line || initializer_fits_item_block(symbol, signature)),
       (_, false) => false,
     };
   SymSurface {
