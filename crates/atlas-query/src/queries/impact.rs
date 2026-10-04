@@ -5,10 +5,10 @@ use serde::Serialize;
 
 use crate::QueryEngine;
 use crate::dynamic::dynamic_member_calls;
-use crate::engine::unresolved_risk;
+use crate::engine::{macro_generated_refs, unresolved_risk};
 use crate::error::QueryResult;
 use crate::graph::{Graph, Reached, Step, WalkSpec};
-use crate::model::{Caveat, EntityRef, Hop, Response, Targeted};
+use crate::model::{Caveat, EntityRef, Hop, MacroGapScope, Response, Targeted};
 use crate::policy::{Direction, Policy};
 use crate::queries::common::{MAX_NODES, file_entity, file_symbols, is_test, package_key, resolve_one};
 use crate::queries::traverse::{dispatch_caveat, risk_name};
@@ -302,6 +302,7 @@ fn impact(graph: &Graph<'_, '_>, targets: &[Entity], request: &ImpactRequest) ->
     risk.extend(unresolved_risk(graph, target.id, risk_name(target))?);
     risk.extend(dynamic_member_calls(graph, target)?);
     risk.extend(dispatch_caveat(graph, target)?);
+    risk.extend(macro_generated_refs(graph, target, &seeds_of(graph, std::slice::from_ref(target))?, MacroGapScope::Impact)?);
   }
   let mut caveats = Vec::new();
   if walk.truncated {

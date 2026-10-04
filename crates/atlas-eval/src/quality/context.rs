@@ -262,6 +262,7 @@ mod tests {
           path: path.to_owned(),
           line: Some(1),
         }),
+        certainty: None,
       },
       score: 1.0,
       why: String::new(),

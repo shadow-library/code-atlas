@@ -63,14 +63,36 @@ fn should_answer_every_query_kind_over_a_freshly_indexed_acme_project() {
   let answer = &overview["answer"];
   let repos: Vec<&str> = answer["repos"].as_array().unwrap().iter().map(|repo| repo["repo"].as_str().unwrap()).collect();
   assert_eq!(repos, ACME_REPOS);
+  let apis = answer["apis"].as_array().unwrap();
+  let summary = |api: &serde_json::Value| (api["repo"].clone(), api["endpoints"].clone(), api["auth_schemes"].clone());
   assert_eq!(
-    answer["apis"],
-    serde_json::json!([
-      { "repo": "acme-api", "endpoints": 8, "auth_schemes": ["api_key", "bearer", "session_cookie"] },
-      { "repo": "acme-billing", "endpoints": 2, "auth_schemes": [] }
-    ])
+    apis.iter().map(summary).collect::<Vec<_>>(),
+    [
+      ("acme-api".into(), 8.into(), serde_json::json!(["api_key", "bearer", "session_cookie"])),
+      ("acme-billing".into(), 2.into(), serde_json::json!([]))
+    ]
   );
-  assert_eq!(answer["events"], serde_json::json!([{ "event": "order.created", "publishers": 1, "subscribers": 1 }]));
+  let scheme_tags: Vec<(&str, &str)> = apis[0]["auth_scheme_certainty"]
+    .as_object()
+    .unwrap()
+    .iter()
+    .map(|(name, certainty)| (name.as_str(), certainty["tag"].as_str().unwrap()))
+    .collect();
+  assert_eq!(
+    scheme_tags,
+    [("api_key", "[heuristic 0.80]"), ("bearer", "[heuristic 0.85]"), ("session_cookie", "[heuristic 0.80]")]
+  );
+  assert!(apis[1].get("auth_scheme_certainty").is_none(), "{apis:?}");
+  let events = answer["events"].as_array().unwrap();
+  assert_eq!(
+    (
+      events.len(),
+      events[0]["event"].as_str(),
+      events[0]["publishers"].as_u64(),
+      events[0]["certainty"]["tag"].as_str()
+    ),
+    (1, Some("order.created"), Some(1), Some("[heuristic 0.80]"))
+  );
 
   let search = sandbox.run(&api_repo, &["search", "formatMoney", "--json"]).ok().answer();
   let exact: Vec<Found> = entity_refs(&search["exact_name"]);

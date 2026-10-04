@@ -5,10 +5,10 @@ use serde::Serialize;
 
 use crate::QueryEngine;
 use crate::dynamic::dynamic_member_calls;
-use crate::engine::unresolved_risk;
+use crate::engine::{macro_generated_refs, unresolved_risk};
 use crate::error::QueryResult;
 use crate::graph::{Graph, Reached, Step, WalkSpec, group_by_repo};
-use crate::model::{Caveat, EntityRef, Hop, Response, Targeted};
+use crate::model::{Caveat, EntityRef, Hop, MacroGapScope, Response, Targeted};
 use crate::policy::{Direction, Policy};
 use crate::queries::common::{DEFAULT_LIMIT, MAX_NODES, file_symbols, resolve_one};
 use crate::target::TargetFilter;
@@ -215,6 +215,12 @@ fn traversal(graph: &Graph<'_, '_>, kind: TraversalKind, request: &TraverseReque
     caveats.extend(unresolved_risk(graph, target.id, risk_name(target))?);
     caveats.extend(dynamic_member_calls(graph, target)?);
     caveats.extend(dispatch_caveat(graph, target)?);
+  } else {
+    let scope = match kind {
+      TraversalKind::Dependencies => MacroGapScope::Dependencies,
+      _ => MacroGapScope::Callees,
+    };
+    caveats.extend(macro_generated_refs(graph, target, &seeds, scope)?);
   }
   Ok(TraversalAnswer {
     kind,

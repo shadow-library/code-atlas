@@ -119,6 +119,9 @@ impl CliError {
       Self::Project(ProjectError::ProjectNotFound(_)) => Some("list registered projects with `code-atlas project list`"),
       Self::Project(ProjectError::Ambiguous { .. }) => Some("pass --project <name>, or run `code-atlas init --project <name>` in the repo to pin one"),
       Self::Project(ProjectError::NotInProject { .. }) => Some("run `code-atlas init` in the repo, or `code-atlas project create <name> --repo <path>`, or pass --project <name>"),
+      Self::Project(ProjectError::InvalidGlob { .. }) => {
+        Some("globs use gitignore syntax, e.g. 'src/**', 'legacy/' or '*.generated.ts'; quote them so the shell does not expand them")
+      }
       Self::Project(ProjectError::RepoNotFound { .. }) => Some("list a project's repos with `code-atlas project show <name>`"),
       Self::Engine(EngineError::IndexLockTimeout { .. }) => Some("another index run holds the lock; retry when it finishes"),
       Self::Engine(EngineError::ProjectConfigChanged) => Some("another process changed the project; retry the command"),

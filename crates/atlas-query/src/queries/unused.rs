@@ -362,7 +362,12 @@ fn symbol_candidate(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity)
   }
   if let Some(Caveat::UnresolvedRisk { total, by_reason, .. }) = unresolved_risk(graph, entity.id, &entity.name)? {
     let reasons: Vec<String> = by_reason.iter().map(|(reason, count)| format!("{count} {reason}")).collect();
-    evidence.push(format!("{total} unresolved references named {:?} could reach it ({})", entity.name, reasons.join(", ")));
+    evidence.push(format!(
+      "{} named {:?} could reach it ({})",
+      crate::text::counted(total, "unresolved reference"),
+      entity.name,
+      reasons.join(", ")
+    ));
     class = UnusedClass::PossiblyUnused;
   }
   for reason in dynamic_risk(graph, scan, entity)? {
@@ -496,7 +501,10 @@ fn dynamic_risk(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> 
     ));
   }
   if let Some(Caveat::DynamicMemberCalls { total, .. }) = dynamic_member_calls(graph, entity)? {
-    reasons.push(format!("{total} dynamic member calls could reach this (computed property access)"));
+    reasons.push(format!(
+      "{} could reach this (computed property access)",
+      crate::text::counted(total, "dynamic member call")
+    ));
   }
   Ok(reasons)
 }

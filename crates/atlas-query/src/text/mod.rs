@@ -17,7 +17,7 @@ use serde::Serialize;
 use crate::engine::Snippet;
 use crate::error::QueryResult;
 use crate::freshness::{Freshness, FreshnessState, ScipState};
-use crate::model::{Caveat, EntityRef, Hop, Listing, Response, Targeted};
+use crate::model::{Caveat, EntityRef, Hop, Listing, MacroGapScope, Response, Targeted};
 
 const FAILED_FILES_SHOWN: usize = 10;
 
@@ -93,15 +93,37 @@ fn render_freshness(freshness: &Freshness, out: &mut TextOut) {
   }
 }
 
-pub(crate) fn entity_line(entity: &EntityRef) -> String {
+pub(crate) fn entity_head(entity: &EntityRef) -> String {
   match &entity.location {
     Some(location) => format!("{} {} {location}", entity.short, entity.kind),
     None => format!("{} {}", entity.short, entity.kind),
   }
 }
 
+pub(crate) fn entity_line(entity: &EntityRef) -> String {
+  match entity.tag() {
+    Some(tag) => format!("{} {tag}", entity_head(entity)),
+    None => entity_head(entity),
+  }
+}
+
 pub(crate) fn hop_text(hop: &Hop) -> String {
   format!("{} {} {}", hop.phrase, hop.entity, hop.certainty.tag)
+}
+
+pub(crate) fn counted(count: usize, noun: &str) -> String {
+  match count {
+    1 => format!("1 {noun}"),
+    many => format!("{many} {noun}s"),
+  }
+}
+
+pub(crate) fn labelled_text(entity: &EntityRef, relation: &Hop) -> String {
+  format!("{} ({})", entity.tagged_short(), relation.certainty.tag)
+}
+
+pub(crate) fn phrased_text(entity: &EntityRef, relation: &Hop) -> String {
+  format!("{} {} ({})", relation.phrase, entity.tagged_short(), relation.certainty.tag)
 }
 
 pub(crate) fn path_text(hops: &[Hop]) -> String {
@@ -143,21 +165,50 @@ fn caveat_line(out: &mut TextOut, caveat: &Caveat) {
     Caveat::Truncated { max_nodes } => out.line(1, format!("traversal truncated at {max_nodes} nodes; results are incomplete")),
     Caveat::UnresolvedRisk { name, total, by_reason, sites } => {
       let reasons: Vec<String> = by_reason.iter().map(|(reason, count)| format!("{count} {reason}")).collect();
-      out.line(1, format!("{total} unresolved references named {name:?} could hide relations ({})", reasons.join(", ")));
+      out.line(
+        1,
+        format!("{} named {name:?} could hide relations ({})", counted(*total, "unresolved reference"), reasons.join(", ")),
+      );
       for site in sites {
         out.line(2, format!("{} {} ({})", site.location, site.path, site.reason));
       }
       omitted(out, 2, total.saturating_sub(sites.len()));
     }
     Caveat::DynamicMemberCalls { total, sites } => {
-      out.line(1, format!("{total} dynamic member calls could reach this (computed property access)"));
+      out.line(1, format!("{} could reach this (computed property access)", counted(*total, "dynamic member call")));
+      for site in sites {
+        out.line(2, format!("{} {}", site.location, site.path));
+      }
+      omitted(out, 2, total.saturating_sub(sites.len()));
+    }
+    Caveat::MacroGeneratedRefs { target, scope, total, sites } => {
+      let effect = match scope {
+        MacroGapScope::Callees => "its callees may be incomplete",
+        MacroGapScope::Dependencies => "its dependencies may be incomplete",
+        MacroGapScope::Impact => "this concerns the target's own body and does not hide dependents",
+      };
+      out.line(
+        1,
+        format!(
+          "{} in {target} to possibly macro-generated names {} not resolved; {effect}",
+          counted(*total, "reference"),
+          if *total == 1 { "was" } else { "were" }
+        ),
+      );
       for site in sites {
         out.line(2, format!("{} {}", site.location, site.path));
       }
       omitted(out, 2, total.saturating_sub(sites.len()));
     }
     Caveat::ProblemFiles { total, files } => {
-      out.line(1, format!("{total} files in scope parsed partially or failed; their relations may be missing"));
+      out.line(
+        1,
+        format!(
+          "{} in scope parsed partially or failed; {} relations may be missing",
+          counted(*total, "file"),
+          if *total == 1 { "its" } else { "their" }
+        ),
+      );
       for file in files {
         out.line(2, format!("{} {}", file.location, file.status));
       }

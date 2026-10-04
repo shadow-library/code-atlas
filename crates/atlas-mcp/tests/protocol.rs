@@ -2,6 +2,7 @@ mod common;
 
 use std::fs;
 
+use atlas_core::Certainty;
 use atlas_project::{Registry, RepoSpec};
 use common::{ACME_REPOS, start, start_limited, start_watching, start_with, text_of};
 use serde_json::{Value, json};
@@ -37,6 +38,24 @@ async fn should_advertise_the_workflow_instructions_after_initialize() {
   assert!(instructions.starts_with("Code Atlas answers questions about ONE indexed project"));
   assert!(instructions.contains("atlas_context"));
   assert!(instructions.contains("[heuristic] and [inferred] relations are leads: verify them in the source"));
+  harness.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn should_name_certainty_tags_exactly_as_the_query_output_renders_them() {
+  let harness = start(&ACME_REPOS).await;
+  let instructions = harness.client.peer_info().unwrap().instructions.clone().unwrap();
+  let tools = harness.client.list_all_tools().await.unwrap();
+
+  for certainty in [Certainty::CompilerVerified, Certainty::Syntactic, Certainty::Resolved, Certainty::Declared] {
+    let tag = certainty.tag();
+    assert!(instructions.contains(&tag), "{tag} missing from {instructions}");
+  }
+  assert!(!instructions.contains("compiler_verified"), "{instructions}");
+  for tool in &tools {
+    let description = tool.description.clone().unwrap();
+    assert!(!description.contains("compiler_verified"), "{}: {description}", tool.name);
+  }
   harness.stop().await.unwrap();
 }
 

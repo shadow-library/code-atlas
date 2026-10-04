@@ -29,7 +29,7 @@ impl RenderText for ImpactAnswer {
     group(out, "endpoint consumers", &self.consumers);
     out.line(0, format!("affected repos ({})", self.repos.len()));
     for repo in &self.repos {
-      let apps: Vec<String> = repo.applications.iter().map(|app| app.short.clone()).collect();
+      let apps: Vec<String> = repo.applications.iter().map(|app| app.tagged_short()).collect();
       let apps = match apps.is_empty() {
         true => String::new(),
         false => format!(" apps: {}", apps.join(", ")),

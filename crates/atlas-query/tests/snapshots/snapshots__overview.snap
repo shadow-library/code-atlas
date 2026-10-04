@@ -28,10 +28,10 @@ top modules by fan-in
   acme-api:src/orders/orders.service.ts (3 importers)
   acme-api:src/users/users.service.ts (3 importers)
 APIs
-  acme-api: 8 endpoints, auth api_key, bearer, session_cookie
+  acme-api: 8 endpoints, auth api_key [heuristic 0.80], bearer [heuristic 0.85], session_cookie [heuristic 0.80]
   acme-billing: 2 endpoints, auth none detected
 events
-  order.created: 1 publishers, 1 subscribers
+  order.created [heuristic 0.80]: 1 publisher, 1 subscriber
 patterns
   HTTP endpoints: nestjs handler (8), axum handler (2)
   auth: nest_guard (3)

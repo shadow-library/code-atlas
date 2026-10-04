@@ -1,5 +1,5 @@
 use crate::queries::{RelationCount, SymbolAnswer};
-use crate::text::{RenderText, TextOut, entity_line, snippet};
+use crate::text::{RenderText, TextOut, entity_head, entity_line, snippet};
 
 fn count(label: &str, count: RelationCount) -> String {
   match count.uncertain {
@@ -10,7 +10,7 @@ fn count(label: &str, count: RelationCount) -> String {
 
 impl RenderText for SymbolAnswer {
   fn render_text(&self, out: &mut TextOut) {
-    out.line(0, format!("{} {}", entity_line(&self.entity), self.certainty.tag));
+    out.line(0, format!("{} {}", entity_head(&self.entity), self.certainty.tag));
     out.line(1, format!("key {}", self.entity.key));
     if let Some(signature) = &self.signature {
       out.line(1, format!("sig {signature}"));

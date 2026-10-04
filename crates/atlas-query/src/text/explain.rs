@@ -1,6 +1,6 @@
 use crate::model::AttrView;
 use crate::queries::{AssertionView, ExplainAnswer};
-use crate::text::{RenderText, TextOut, entity_line, snippet};
+use crate::text::{RenderText, TextOut, entity_head, entity_line, snippet};
 
 fn assertions(out: &mut TextOut, assertions: &[AssertionView]) {
   out.line(0, format!("assertions ({})", assertions.len()));
@@ -33,7 +33,7 @@ impl RenderText for ExplainAnswer {
         lineage,
         inferred,
       } => {
-        out.line(0, format!("{} {}", entity_line(entity), certainty.tag));
+        out.line(0, format!("{} {}", entity_head(entity), certainty.tag));
         out.line(1, format!("key {}", entity.key));
         out.line(1, format!("id {}", entity.id));
         attr_lines(out, attrs);

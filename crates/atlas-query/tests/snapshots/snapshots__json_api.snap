@@ -107,6 +107,13 @@ expression: output
                       "repo": "acme-api",
                       "path": "src/auth/jwt-auth.guard.ts",
                       "line": 5
+                    },
+                    "certainty": {
+                      "class": "heuristic",
+                      "confidence": 0.85,
+                      "freshness": null,
+                      "authoritative": false,
+                      "tag": "[heuristic 0.85]"
                     }
                   },
                   "relation": {
@@ -167,6 +174,13 @@ expression: output
                     "repo": "acme-api",
                     "path": "src/auth/jwt-auth.guard.ts",
                     "line": 5
+                  },
+                  "certainty": {
+                    "class": "heuristic",
+                    "confidence": 0.85,
+                    "freshness": null,
+                    "authoritative": false,
+                    "tag": "[heuristic 0.85]"
                   }
                 },
                 "relation": {
@@ -521,6 +535,13 @@ expression: output
                       "repo": "acme-api",
                       "path": "src/auth/jwt-auth.guard.ts",
                       "line": 5
+                    },
+                    "certainty": {
+                      "class": "heuristic",
+                      "confidence": 0.85,
+                      "freshness": null,
+                      "authoritative": false,
+                      "tag": "[heuristic 0.85]"
                     }
                   },
                   "relation": {
@@ -561,6 +582,13 @@ expression: output
                 "repo": "acme-api",
                 "path": "src/auth/api-key.guard.ts",
                 "line": 5
+              },
+              "certainty": {
+                "class": "heuristic",
+                "confidence": 0.8,
+                "freshness": null,
+                "authoritative": false,
+                "tag": "[heuristic 0.80]"
               }
             },
             "supported": {
@@ -718,6 +746,13 @@ expression: output
                 "repo": "acme-api",
                 "path": "src/auth/jwt-auth.guard.ts",
                 "line": 5
+              },
+              "certainty": {
+                "class": "heuristic",
+                "confidence": 0.85,
+                "freshness": null,
+                "authoritative": false,
+                "tag": "[heuristic 0.85]"
               }
             },
             "supported": {
@@ -901,6 +936,13 @@ expression: output
                 "repo": "acme-api",
                 "path": "src/auth/session.guard.ts",
                 "line": 6
+              },
+              "certainty": {
+                "class": "heuristic",
+                "confidence": 0.8,
+                "freshness": null,
+                "authoritative": false,
+                "tag": "[heuristic 0.80]"
               }
             },
             "supported": {

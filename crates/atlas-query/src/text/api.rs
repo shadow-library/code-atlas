@@ -1,9 +1,9 @@
 use crate::model::AttrView;
 use crate::queries::{ApiAnswer, EndpointView, LinkState, Related, SchemeSupport, SupportBasis, UsageState};
-use crate::text::{RenderText, TextOut, caveats, entity_line, hop_text, listing};
+use crate::text::{RenderText, TextOut, caveats, counted, entity_line, hop_text, labelled_text, listing, phrased_text};
 
 fn related(item: &Related) -> String {
-  format!("{} {}", item.entity.short, item.relation.certainty.tag)
+  labelled_text(&item.entity, &item.relation)
 }
 
 fn redundant(attr: &AttrView, schemes_rendered: bool) -> bool {
@@ -36,13 +36,21 @@ fn endpoint_text(out: &mut TextOut, indent: usize, view: &EndpointView, consumer
     ),
   );
   match &view.handler {
-    Some(handler) => out.line(indent + 1, format!("handler {} {}", handler.entity.short, handler.relation.certainty.tag)),
+    Some(handler) => out.line(indent + 1, format!("handler {}", related(handler))),
     None => out.line(indent + 1, "handler unresolved"),
   }
   for guard in &view.guards {
     let schemes = match guard.schemes.is_empty() {
       true => String::new(),
-      false => format!(", {}", guard.schemes.iter().map(|scheme| hop_text(&scheme.relation)).collect::<Vec<_>>().join(", ")),
+      false => format!(
+        ", {}",
+        guard
+          .schemes
+          .iter()
+          .map(|scheme| phrased_text(&scheme.entity, &scheme.relation))
+          .collect::<Vec<_>>()
+          .join(", ")
+      ),
     };
     out.line(indent + 1, format!("guard {}{schemes}", related(&guard.guard)));
   }
@@ -52,7 +60,7 @@ fn endpoint_text(out: &mut TextOut, indent: usize, view: &EndpointView, consumer
       .as_ref()
       .map(|attr| format!(" ({} {})", attr.value_text(), attr.tag()))
       .unwrap_or_default();
-    out.line(indent + 1, format!("{}{combinator}", hop_text(&support.scheme.relation)));
+    out.line(indent + 1, format!("{}{combinator}", phrased_text(&support.scheme.entity, &support.scheme.relation)));
   }
   let extra: Vec<AttrView> = view.auth_attrs.iter().filter(|attr| !redundant(attr, !view.auth.is_empty())).cloned().collect();
   if !extra.is_empty() {
@@ -67,7 +75,7 @@ fn endpoint_text(out: &mut TextOut, indent: usize, view: &EndpointView, consumer
     (false, _) => {}
   }
   for consumer in &view.consumers {
-    let via = consumer.client_call.as_ref().map(|call| format!(" via {}", call.short)).unwrap_or_default();
+    let via = consumer.client_call.as_ref().map(|call| format!(" via {}", call.tagged_short())).unwrap_or_default();
     out.line(
       indent + 1,
       format!("consumer {}{via}  {}", entity_line(&consumer.consumer.entity), hop_text(&consumer.consumer.relation)),
@@ -78,7 +86,7 @@ fn endpoint_text(out: &mut TextOut, indent: usize, view: &EndpointView, consumer
     if !consumer.auth_used.is_empty() {
       out.line(indent + 2, format!("auth used {}", joined(&consumer.auth_used)));
     }
-    let apps: Vec<&str> = consumer.applications.iter().map(|app| app.short.as_str()).collect();
+    let apps: Vec<String> = consumer.applications.iter().map(|app| app.tagged_short()).collect();
     out.line(
       indent + 2,
       format!(
@@ -110,20 +118,20 @@ impl RenderText for ApiAnswer {
           Some(SchemeSupport {
             endpoints,
             basis: SupportBasis::SupportsAuth,
-          }) => format!("supported by {endpoints} endpoints"),
+          }) => format!("supported by {}", counted(*endpoints, "endpoint")),
           Some(SchemeSupport {
             endpoints,
             basis: SupportBasis::DerivedFromGuards,
-          }) => format!("supported by {endpoints} endpoints (derived from guards, not linked)"),
+          }) => format!("supported by {} (derived from guards, not linked)", counted(*endpoints, "endpoint")),
           None => "endpoint support unknown".to_owned(),
         };
         let guards = match scheme.implemented_by.is_empty() {
           true => "-".to_owned(),
           false => scheme.implemented_by.iter().map(related).collect::<Vec<_>>().join(", "),
         };
-        out.line(1, format!("{}: {state}; {support}; implemented by {guards}", scheme.scheme.short));
+        out.line(1, format!("{}: {state}; {support}; implemented by {guards}", scheme.scheme.tagged_short()));
         for user in &scheme.used_by {
-          out.line(2, format!("{} {}", entity_line(&user.entity), user.relation.certainty.tag));
+          out.line(2, format!("{} {} ({})", user.relation.phrase, entity_line(&user.entity), user.relation.certainty.tag));
         }
       }
     }
@@ -136,7 +144,10 @@ impl RenderText for ApiAnswer {
           .as_ref()
           .map(|attr| format!(" ({} {})", attr.value_text(), attr.tag()))
           .unwrap_or_default();
-        out.line(indent, format!("{} from {}{site}: {}{detail}", call.call.short, call.caller.entity.short, call.reason));
+        out.line(
+          indent,
+          format!("{} from {}{site}: {}{detail}", call.call.tagged_short(), call.caller.entity.tagged_short(), call.reason),
+        );
       });
     }
     caveats(out, &self.caveats);

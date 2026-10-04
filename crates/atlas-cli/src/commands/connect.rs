@@ -207,7 +207,7 @@ fn guidance_block(project: &str) -> String {
      - Before changing a shared symbol, endpoint or type, run `impact` on it.\n\
      - Before writing a new helper, run `search` and `similar` to find code to reuse.\n\
      - When a relation drives a decision, run `explain` on it to see its evidence.\n\
-     - Treat results tagged `[heuristic]` or `[inferred]` as leads to verify in the source; untagged results are authoritative.\n\
+     - Untagged entities and relations tagged `[resolved]`, `[syntactic]`, `[compiler]` or `[declared]` are reliable but not exhaustive; treat anything tagged `[heuristic]` or `[inferred]` as a lead to verify in the source. A tag after an entity name tags the entity; a tag in parentheses or in a `verb target [tag]` step tags the relation.\n\
      - If an answer's first line says DEGRADED, verify it against the files before relying on it.\n\
      {GUIDANCE_END}"
   )

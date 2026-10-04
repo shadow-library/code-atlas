@@ -1,5 +1,5 @@
 use crate::queries::PatternsAnswer;
-use crate::text::{RenderText, TextOut, entity_line, snippet};
+use crate::text::{RenderText, TextOut, counted, entity_line, snippet};
 
 impl RenderText for PatternsAnswer {
   fn render_text(&self, out: &mut TextOut) {
@@ -27,7 +27,7 @@ impl RenderText for PatternsAnswer {
         }
       }
       if shape.count > shape.exemplars.len() {
-        out.line(1, format!("{} more instances", shape.count - shape.exemplars.len()));
+        out.line(1, counted(shape.count - shape.exemplars.len(), "more instance"));
       }
     }
     if self.omitted_shapes > 0 {

@@ -17,7 +17,7 @@ likely unused (5)
 possibly unused (9)
   GET /admin/stats api_endpoint acme-api:src/admin/admin.controller.ts:8
     no detected consumers in project; external clients outside the project may exist
-  session_cookie auth_scheme acme-api:src/auth/session.guard.ts:6
+  session_cookie auth_scheme acme-api:src/auth/session.guard.ts:6 [heuristic 0.80]
     no client in the project sends this scheme
   GET /v1/reports/export api_endpoint acme-api:src/reports/reports.controller.ts:10
     no detected consumers in project; external clients outside the project may exist

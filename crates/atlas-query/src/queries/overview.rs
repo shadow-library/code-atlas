@@ -7,7 +7,7 @@ use serde::Serialize;
 use crate::QueryEngine;
 use crate::error::QueryResult;
 use crate::graph::Graph;
-use crate::model::{AttrView, CertaintyTag, EntityRef, Response};
+use crate::model::{AttrView, CertaintyTag, EntityRef, Response, non_authoritative};
 use crate::policy::Policy;
 use crate::queries::common::{attr_str, attribute_names, is_router_relative, superseded_fragments};
 use crate::queries::patterns::{PatternTopic, instances};
@@ -55,6 +55,8 @@ pub struct DomainSummary {
   #[serde(skip_serializing_if = "is_zero")]
   pub router_fragments: usize,
   pub auth_schemes: Vec<String>,
+  #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+  pub auth_scheme_certainty: BTreeMap<String, CertaintyTag>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -62,6 +64,8 @@ pub struct EventSummary {
   pub event: String,
   pub publishers: usize,
   pub subscribers: usize,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub certainty: Option<Box<CertaintyTag>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -246,6 +250,7 @@ fn apis(graph: &Graph<'_, '_>) -> QueryResult<Vec<DomainSummary>> {
       endpoints: 0,
       router_fragments: 0,
       auth_schemes: Vec::new(),
+      auth_scheme_certainty: BTreeMap::new(),
     });
     match fragment {
       true => summary.router_fragments += 1,
@@ -254,16 +259,17 @@ fn apis(graph: &Graph<'_, '_>) -> QueryResult<Vec<DomainSummary>> {
   }
   for scheme in graph.entities_of_kind(&EntityKind::AuthScheme)? {
     let repo = scheme.repo.as_ref().map(ToString::to_string).unwrap_or_default();
-    by_repo
-      .entry(repo.clone())
-      .or_insert_with(|| DomainSummary {
-        repo,
-        endpoints: 0,
-        router_fragments: 0,
-        auth_schemes: Vec::new(),
-      })
-      .auth_schemes
-      .push(scheme.name);
+    let summary = by_repo.entry(repo.clone()).or_insert_with(|| DomainSummary {
+      repo,
+      endpoints: 0,
+      router_fragments: 0,
+      auth_schemes: Vec::new(),
+      auth_scheme_certainty: BTreeMap::new(),
+    });
+    if let Some(tag) = non_authoritative(&scheme.certainty) {
+      summary.auth_scheme_certainty.insert(scheme.name.clone(), *tag);
+    }
+    summary.auth_schemes.push(scheme.name);
   }
   let mut summaries: Vec<DomainSummary> = by_repo.into_values().collect();
   for summary in &mut summaries {
@@ -278,6 +284,7 @@ fn events(graph: &Graph<'_, '_>) -> QueryResult<Vec<EventSummary>> {
     summaries.push(EventSummary {
       publishers: graph.edges_in(event.id, &[EdgeKind::Publishes])?.len(),
       subscribers: graph.edges_in(event.id, &[EdgeKind::Subscribes])?.len(),
+      certainty: non_authoritative(&event.certainty),
       event: event.name,
     });
   }

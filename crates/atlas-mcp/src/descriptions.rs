@@ -4,7 +4,7 @@ Code Atlas answers questions about ONE indexed project (a group of repos) from a
 2. Before writing new code, run atlas_search and atlas_similar to find something to reuse.
 3. Before changing shared code, run atlas_impact on it; use atlas_tests_for to pick tests.
 4. Read only the code the results list. To edit a file, read it with your own file-reading tool; use atlas_read for code you only need to view.
-5. [resolved]/[syntactic]/[compiler_verified]/[declared] relations are reliable but not exhaustive; always read the caveats. [heuristic] and [inferred] relations are leads: verify them in the source before relying on them.
+5. Untagged entities and [resolved]/[syntactic]/[compiler]/[declared] relations are reliable but not exhaustive; always read the caveats. [heuristic] and [inferred] relations are leads: verify them in the source before relying on them; entities carry the same tags. A tag after an entity name tags the entity; a tag in parentheses or in a `verb target [tag]` step tags the relation.
 6. An empty result is not proof of absence: read the caveats (unresolved references, files that failed to parse, hidden low-confidence relations).
 7. After editing, call atlas_changes or re-query; freshness is automatic, there is no reindex tool.
 8. Targets: a name (UsersService.findOne), a [repo:]path[:line], 'GET /users/{id}' or a full key. If not found or ambiguous, use atlas_search.

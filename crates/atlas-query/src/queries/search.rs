@@ -20,6 +20,8 @@ const STRUCTURAL_THRESHOLD: f64 = 0.6;
 const STRUCTURAL_SEEDS: usize = 3;
 const STRUCTURAL_PER_SEED: usize = 5;
 const STRUCTURAL_CANDIDATE_FACTOR: usize = 4;
+const NAME_COVERAGE_WEIGHT: f64 = 0.5;
+const STOPWORDS: [&str; 10] = ["a", "an", "the", "of", "and", "or", "for", "in", "on", "with"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchRequest {
@@ -98,22 +100,27 @@ pub(crate) fn normalised(text: &str) -> String {
   text.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
 }
 
-pub(crate) fn query_terms(text: &str) -> BTreeSet<String> {
-  let mut terms = BTreeSet::new();
+pub(crate) fn identifier_tokens(text: &str) -> BTreeSet<String> {
+  let mut tokens = BTreeSet::new();
   for word in text.split(|c: char| !c.is_alphanumeric()).filter(|word| !word.is_empty()) {
     let mut current = String::new();
     let mut previous_lower = false;
     for c in word.chars() {
       if c.is_uppercase() && previous_lower && !current.is_empty() {
-        terms.insert(std::mem::take(&mut current));
+        tokens.insert(std::mem::take(&mut current));
       }
       previous_lower = c.is_lowercase() || c.is_ascii_digit();
       current.extend(c.to_lowercase());
     }
     if !current.is_empty() {
-      terms.insert(current);
+      tokens.insert(current);
     }
   }
+  tokens
+}
+
+pub(crate) fn query_terms(text: &str) -> BTreeSet<String> {
+  let mut terms = identifier_tokens(text);
   terms.retain(|term| term.len() >= 3);
   terms
 }
@@ -181,31 +188,54 @@ fn coverage_boost(hit: &SearchHit, significant: usize) -> f64 {
   (1.0 + COVERAGE_WEIGHT * covered) / (1.0 + COVERAGE_WEIGHT)
 }
 
-fn related_token(left: &str, right: &str) -> bool {
-  let (short, long) = if left.len() <= right.len() { (left, right) } else { (right, left) };
-  short.len() >= 3 && long.starts_with(short)
+struct QueryShape {
+  phrase: String,
+  tokens: BTreeSet<String>,
+  significant: BTreeSet<String>,
+  ranking: BTreeSet<String>,
 }
 
-fn names_cover(hit: &SearchHit, qualified: &str, significant: &BTreeSet<&str>, phrase: &str, words: &[String]) -> bool {
-  if !phrase.is_empty() && (normalised(&hit.name) == phrase || normalised(qualified) == phrase) {
-    return true;
+impl QueryShape {
+  fn of(text: &str) -> Self {
+    let tokens = identifier_tokens(text);
+    let significant: BTreeSet<String> = tokens.iter().filter(|token| !STOPWORDS.contains(&token.as_str())).cloned().collect();
+    let ranking = significant.iter().filter(|token| token.len() >= 3).cloned().collect();
+    Self {
+      phrase: normalised(text),
+      tokens,
+      significant,
+      ranking,
+    }
   }
-  let Some(name) = hit.matched_fields.iter().find(|field| field.field == Field::Name) else {
-    return false;
-  };
-  let covers_query = !significant.is_empty() && significant.iter().all(|term| name.terms.iter().any(|candidate| candidate == term));
-  let within_query = query_terms(&hit.name).iter().all(|token| words.iter().any(|word| related_token(token, word)));
-  covers_query && within_query
+
+  fn is_exact_name(&self, name: &str, qualified: &str) -> bool {
+    if !self.phrase.is_empty() && (normalised(name) == self.phrase || normalised(qualified) == self.phrase) {
+      return true;
+    }
+    let tokens = identifier_tokens(name);
+    !tokens.is_empty() && (tokens == self.tokens || tokens == self.significant)
+  }
+
+  fn name_coverage(&self, name: &str) -> f64 {
+    if self.ranking.is_empty() {
+      return 0.0;
+    }
+    let covered = identifier_tokens(name).intersection(&self.ranking).count();
+    covered as f64 / self.ranking.len() as f64
+  }
 }
 
 fn search(graph: &Graph<'_, '_>, index: &SimilarityIndex, request: &SearchRequest) -> QueryResult<SearchAnswer> {
   let hits = lexical_hits(index, &request.text, &request.kinds, request.repo.as_deref(), request.limit.max(1) * 3);
   let words = query_words(&request.text);
+  let shape = QueryShape::of(&request.text);
   let significant: BTreeSet<&str> = hits.iter().flat_map(|hit| hit.direct_terms.iter().map(String::as_str)).collect();
-  let boosted: Vec<f64> = hits.iter().map(|hit| hit.score * coverage_boost(hit, significant.len())).collect();
+  let boosted: Vec<f64> = hits
+    .iter()
+    .map(|hit| hit.score * coverage_boost(hit, significant.len()) * (1.0 + NAME_COVERAGE_WEIGHT * shape.name_coverage(&hit.name)))
+    .collect();
   let mut order: Vec<usize> = (0..hits.len()).collect();
   order.sort_by(|left, right| boosted[*right].total_cmp(&boosted[*left]).then(left.cmp(right)));
-  let phrase = normalised(&request.text);
   let top = order.first().map_or(0.0, |index| boosted[*index]);
   let mut exact_name = Vec::new();
   let mut strong = Vec::new();
@@ -235,7 +265,7 @@ fn search(graph: &Graph<'_, '_>, index: &SimilarityIndex, request: &SearchReques
     };
     if is_test(&entity) {
       tests.push(view);
-    } else if names_cover(hit, &view.entity.short, &significant, &phrase, &words) {
+    } else if shape.is_exact_name(&hit.name, &view.entity.short) {
       if seeds.len() < STRUCTURAL_SEEDS {
         seeds.push((entity.id, view.entity.short.clone()));
       }

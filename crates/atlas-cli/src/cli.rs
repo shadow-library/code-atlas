@@ -55,12 +55,18 @@ pub enum Command {
   Context(ContextArgs),
   #[command(about = "Shortcut for `query callers`")]
   Callers(TraverseArgs),
+  #[command(about = "Shortcut for `query callees`")]
+  Callees(TraverseArgs),
   #[command(about = "Shortcut for `query symbol`")]
   Symbol(SymbolArgs),
   #[command(about = "Shortcut for `query api`")]
   Api(ApiArgs),
   #[command(about = "Shortcut for `query explain`")]
   Explain(ExplainArgs),
+  #[command(about = "Shortcut for `query read`")]
+  Read(ReadArgs),
+  #[command(name = "tests-for", about = "Shortcut for `query tests-for`")]
+  TestsFor(TestsForArgs),
   #[command(subcommand, about = "Wire Code Atlas into an agent client")]
   Connect(ConnectCommand),
   #[command(about = "Serve the MCP protocol on stdio")]
@@ -75,6 +81,8 @@ pub enum Command {
 pub enum ProjectCommand {
   Create(CreateArgs),
   AddRepo(AddRepoArgs),
+  #[command(about = "Change a repo's include/exclude globs and language filter")]
+  SetRepo(SetRepoArgs),
   RemoveRepo(RemoveRepoArgs),
   RenameRepo(RenameRepoArgs),
   List(JsonFlag),
@@ -104,6 +112,45 @@ pub struct AddRepoArgs {
   pub path: PathBuf,
   #[arg(long)]
   pub name: Option<String>,
+  #[command(flatten)]
+  pub filters: RepoFilterArgs,
+}
+
+#[derive(Debug, Args)]
+pub struct RepoFilterArgs {
+  #[arg(long = "include", value_name = "GLOB", help = "Index only paths matching this gitignore-style glob (repeatable)")]
+  pub include: Vec<String>,
+  #[arg(long = "exclude", value_name = "GLOB", help = "Skip paths matching this gitignore-style glob (repeatable)")]
+  pub exclude: Vec<String>,
+  #[arg(
+    long,
+    value_name = "LANGS",
+    value_delimiter = ',',
+    help = "Index only these languages: rust, ts (typescript, tsx, javascript, jsx), comma separated"
+  )]
+  pub languages: Option<Vec<String>>,
+}
+
+#[derive(Debug, Args)]
+#[command(group(ArgGroup::new("change").required(true).multiple(true).args(["include", "exclude", "languages", "clear_filters"])))]
+pub struct SetRepoArgs {
+  #[arg(value_name = "PROJECT")]
+  pub project_name: String,
+  pub repo: String,
+  #[arg(long = "include", value_name = "GLOB", conflicts_with = "clear_filters", help = "Replace the include globs (repeatable)")]
+  pub include: Vec<String>,
+  #[arg(long = "exclude", value_name = "GLOB", conflicts_with = "clear_filters", help = "Replace the exclude globs (repeatable)")]
+  pub exclude: Vec<String>,
+  #[arg(
+    long,
+    value_name = "LANGS",
+    value_delimiter = ',',
+    conflicts_with = "clear_filters",
+    help = "Replace the language filter: rust, ts, comma separated"
+  )]
+  pub languages: Option<Vec<String>>,
+  #[arg(long, help = "Remove every include glob, exclude glob and language filter")]
+  pub clear_filters: bool,
 }
 
 #[derive(Debug, Args)]

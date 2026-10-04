@@ -22,13 +22,15 @@ impl fmt::Display for Location {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EntityRef {
   pub key: String,
   pub id: String,
   pub short: String,
   pub kind: String,
   pub location: Option<Location>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub certainty: Option<Box<CertaintyTag>>,
 }
 
 impl EntityRef {
@@ -39,6 +41,18 @@ impl EntityRef {
       short: short_name(&entity.key),
       kind: entity.kind.as_str().to_owned(),
       location: location_of(entity),
+      certainty: non_authoritative(&entity.certainty),
+    }
+  }
+
+  pub fn tag(&self) -> Option<&str> {
+    self.certainty.as_ref().map(|certainty| certainty.tag.as_str())
+  }
+
+  pub fn tagged_short(&self) -> String {
+    match self.tag() {
+      Some(tag) => format!("{} {tag}", self.short),
+      None => self.short.clone(),
     }
   }
 
@@ -57,6 +71,10 @@ impl EntityRef {
     };
     (repo, path, line, self.key.clone())
   }
+}
+
+pub(crate) fn non_authoritative(certainty: &Certainty) -> Option<Box<CertaintyTag>> {
+  Some(CertaintyTag::of(certainty)).filter(|tag| !tag.authoritative).map(Box::new)
 }
 
 pub(crate) fn location_of(entity: &Entity) -> Option<Location> {
@@ -197,6 +215,14 @@ pub struct ProblemFile {
   pub status: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MacroGapScope {
+  Callees,
+  Dependencies,
+  Impact,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "caveat", rename_all = "snake_case")]
 pub enum Caveat {
@@ -210,6 +236,12 @@ pub enum Caveat {
     sites: Vec<UnresolvedSite>,
   },
   DynamicMemberCalls {
+    total: usize,
+    sites: Vec<UnresolvedSite>,
+  },
+  MacroGeneratedRefs {
+    target: String,
+    scope: MacroGapScope,
     total: usize,
     sites: Vec<UnresolvedSite>,
   },

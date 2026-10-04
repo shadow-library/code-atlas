@@ -1,4 +1,4 @@
-use atlas_query::{QueryEngine, QueryError, RenderText, Response, SearchRequest, Snippet, Targeted, render_json, render_text};
+use atlas_query::{EntityRef, QueryEngine, QueryError, RenderText, Response, SearchRequest, Snippet, Targeted, render_json, render_text};
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -96,11 +96,14 @@ fn suggest(query: &QueryEngine, spec: &str) -> Vec<String> {
     .chain(&answer.strong)
     .chain(&answer.related)
     .take(SUGGESTIONS)
-    .map(|hit| match &hit.entity.location {
-      Some(location) => format!("{} {} {location}  {}", hit.entity.short, hit.entity.kind, hit.entity.key),
-      None => format!("{} {}  {}", hit.entity.short, hit.entity.kind, hit.entity.key),
-    })
+    .map(|hit| suggestion_line(&hit.entity))
     .collect()
+}
+
+fn suggestion_line(entity: &EntityRef) -> String {
+  let location = entity.location.as_ref().map(|location| format!(" {location}")).unwrap_or_default();
+  let tag = entity.tag().map(|tag| format!(" {tag}")).unwrap_or_default();
+  format!("{} {}{location}{tag}  {}", entity.short, entity.kind, entity.key)
 }
 
 fn with_suggestions_text(mut text: String, suggestions: &[String]) -> String {
@@ -119,6 +122,8 @@ fn with_suggestions_text(mut text: String, suggestions: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
+  use atlas_core::{Certainty, Confidence, Entity, EntityKey, EntityKind};
+
   use super::*;
 
   #[test]
@@ -143,5 +148,23 @@ mod tests {
     assert_eq!(document["bytes"], 12);
     assert_eq!(document["partial_text"], "{\"a\":\"");
     assert_eq!(dropped, 6);
+  }
+
+  #[test]
+  fn should_tag_a_non_authoritative_suggestion_and_leave_an_authoritative_one_bare() {
+    let tagged = Certainty::heuristic(Confidence::new(0.8).unwrap(), "route match");
+    let key = EntityKey::Other {
+      kind: EntityKind::AuthScheme,
+      repo: None,
+      name: "bearer".to_owned(),
+    };
+    let heuristic = EntityRef::of(&Entity::new(key.clone(), tagged.clone()));
+    let syntactic = EntityRef::of(&Entity::new(key, Certainty::Syntactic));
+
+    assert_eq!(suggestion_line(&syntactic), format!("{} {}  {}", syntactic.short, syntactic.kind, syntactic.key));
+    assert_eq!(
+      suggestion_line(&heuristic),
+      format!("{} {} {}  {}", heuristic.short, heuristic.kind, tagged.tag(), heuristic.key)
+    );
   }
 }

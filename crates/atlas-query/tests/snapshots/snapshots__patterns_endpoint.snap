@@ -26,7 +26,7 @@ patterns for "endpoint": 10 instances in 4 shapes
     27|   update(@Param('id') id: string, @Body() input: UpdateUserInput) {
     28|     return this.usersService.update(id, input);
     29|   }
-  1 more instances
+  1 more instance
 2. nestjs handler, @<Verb> @UseGuards (3)
   OrdersController.findOne method acme-api:src/orders/orders.controller.ts:13
     sig findOne(id: string)

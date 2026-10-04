@@ -283,9 +283,10 @@ fn should_write_connect_claude_files_idempotently() {
   assert_eq!(server["command"], fs::canonicalize(env!("CARGO_BIN_EXE_code-atlas")).unwrap().display().to_string());
   assert_eq!(server["args"], serde_json::json!(["mcp", "--project", "acme"]));
   let guidance = fs::read_to_string(api.join("AGENTS.md")).unwrap();
-  for tool in ["`context`", "`impact`", "`search`", "`similar`", "`explain`", "[heuristic]", "[inferred]"] {
+  for tool in ["`context`", "`impact`", "`search`", "`similar`", "`explain`", "[heuristic]", "[inferred]", "[compiler]"] {
     assert!(guidance.contains(tool), "missing {tool}");
   }
+  assert!(!guidance.contains("compiler_verified"), "{guidance}");
 
   let mcp_before = fs::read(api.join(".mcp.json")).unwrap();
   let agents_before = fs::read(api.join("AGENTS.md")).unwrap();

@@ -5,88 +5,88 @@ expression: output
 fresh run=1 (+0 files, <t>)
 endpoints (10)
   GET /admin/stats acme-api:src/admin/admin.controller.ts:8 [syntactic]
-    handler AdminController.stats [syntactic]
-    guard SessionGuard [resolved], possibly implements auth session_cookie [heuristic 0.80]
-    possibly supports auth session_cookie [heuristic 0.80] (all_of [heuristic 0.80, link])
+    handler AdminController.stats ([syntactic])
+    guard SessionGuard ([resolved]), possibly implements auth session_cookie [heuristic 0.80] ([heuristic 0.80])
+    possibly supports auth session_cookie [heuristic 0.80] ([heuristic 0.80]) (all_of [heuristic 0.80, link])
     consumers: none detected in project (external clients may exist)
   POST /orders acme-api:src/orders/orders.controller.ts:19 [resolved]
-    handler OrdersController.create [resolved]
-    guard JwtAuthGuard [resolved], possibly implements auth bearer [heuristic 0.85]
-    possibly supports auth bearer [heuristic 0.85] (all_of [heuristic 0.85, link])
+    handler OrdersController.create ([resolved])
+    guard JwtAuthGuard ([resolved]), possibly implements auth bearer [heuristic 0.85] ([heuristic 0.85])
+    possibly supports auth bearer [heuristic 0.85] ([heuristic 0.85]) (all_of [heuristic 0.85, link])
     consumer AcmeClient.createOrder method acme-sdk:src/client.ts:29  possibly calls endpoint POST /orders [heuristic 0.72]
-      callers OrderForm [resolved], useCreateOrder [heuristic 0.85]
+      callers OrderForm ([resolved]), useCreateOrder ([heuristic 0.85])
       repos acme-sdk, acme-web apps -
   GET /orders/{id} acme-api:src/orders/orders.controller.ts:13 [resolved]
-    handler OrdersController.findOne [resolved]
-    guard JwtOrApiKeyGuard [resolved]
-    possibly supports auth bearer [heuristic 0.70] (any_of [heuristic 0.70, link])
-    possibly supports auth api_key [heuristic 0.70] (any_of [heuristic 0.70, link])
+    handler OrdersController.findOne ([resolved])
+    guard JwtOrApiKeyGuard ([resolved])
+    possibly supports auth bearer [heuristic 0.85] ([heuristic 0.70]) (any_of [heuristic 0.70, link])
+    possibly supports auth api_key [heuristic 0.80] ([heuristic 0.70]) (any_of [heuristic 0.70, link])
     consumer AcmeApiClient::get_order method acme-billing:src/acme_client.rs:30  possibly calls endpoint GET /orders/{id} [heuristic 0.77]
-      callers create_invoice [resolved]
-      auth used api_key [heuristic 0.75]
+      callers create_invoice ([resolved])
+      auth used api_key [heuristic 0.80] ([heuristic 0.75])
       repos acme-billing apps acme-billing
     consumer AcmeClient.getOrder method acme-sdk:src/client.ts:34  possibly calls endpoint GET /orders/{id} [heuristic 0.77]
-      callers AcmeClient.should send the api key in the x-api-key header [resolved]
+      callers AcmeClient.should send the api key in the x-api-key header ([resolved])
       repos acme-sdk apps -
   POST /users acme-api:src/users/users.controller.ts:19 [syntactic]
-    handler UsersController.create [syntactic]
-    guard JwtAuthGuard [resolved], possibly implements auth bearer [heuristic 0.85]
-    guard PermissionsGuard [resolved]
-    possibly supports auth bearer [heuristic 0.85] (all_of [heuristic 0.85, link])
+    handler UsersController.create ([syntactic])
+    guard JwtAuthGuard ([resolved]), possibly implements auth bearer [heuristic 0.85] ([heuristic 0.85])
+    guard PermissionsGuard ([resolved])
+    possibly supports auth bearer [heuristic 0.85] ([heuristic 0.85]) (all_of [heuristic 0.85, link])
     auth authorization_guards=["PermissionsGuard"] [heuristic 0.50, link]
-    permissions users:write [syntactic]
+    permissions users:write ([syntactic])
     consumers: none detected in project (external clients may exist)
   DELETE /users/{id} acme-api:src/users/users.controller.ts:31 [syntactic]
-    handler UsersController.remove [syntactic]
-    guard JwtAuthGuard [resolved], possibly implements auth bearer [heuristic 0.85]
-    guard PermissionsGuard [resolved]
-    possibly supports auth bearer [heuristic 0.85] (all_of [heuristic 0.85, link])
+    handler UsersController.remove ([syntactic])
+    guard JwtAuthGuard ([resolved]), possibly implements auth bearer [heuristic 0.85] ([heuristic 0.85])
+    guard PermissionsGuard ([resolved])
+    possibly supports auth bearer [heuristic 0.85] ([heuristic 0.85]) (all_of [heuristic 0.85, link])
     auth authorization_guards=["PermissionsGuard"] [heuristic 0.50, link]
-    permissions users:delete [syntactic]
+    permissions users:delete ([syntactic])
     consumers: none detected in project (external clients may exist)
   GET /users/{id} acme-api:src/users/users.controller.ts:13 [syntactic]
-    handler UsersController.findOne [syntactic]
-    guard JwtAuthGuard [resolved], possibly implements auth bearer [heuristic 0.85]
-    guard PermissionsGuard [resolved]
-    possibly supports auth bearer [heuristic 0.85] (all_of [heuristic 0.85, link])
+    handler UsersController.findOne ([syntactic])
+    guard JwtAuthGuard ([resolved]), possibly implements auth bearer [heuristic 0.85] ([heuristic 0.85])
+    guard PermissionsGuard ([resolved])
+    possibly supports auth bearer [heuristic 0.85] ([heuristic 0.85]) (all_of [heuristic 0.85, link])
     auth authorization_guards=["PermissionsGuard"] [heuristic 0.50, link]
-    permissions users:read [syntactic]
+    permissions users:read ([syntactic])
     consumer AcmeClient.getUser method acme-sdk:src/client.ts:19  possibly calls endpoint GET /users/{id} [heuristic 0.77]
-      callers AcmeClient.should send the bearer token in the Authorization header [resolved], UserCard [resolved], useUser [heuristic 0.85]
+      callers AcmeClient.should send the bearer token in the Authorization header ([resolved]), UserCard ([resolved]), useUser ([heuristic 0.85])
       repos acme-sdk, acme-web apps -
     consumer useMe function acme-web:src/hooks/useMe.ts:7  possibly calls endpoint GET /users/{id} [heuristic 0.47]
-      callers OrderForm [resolved], src/main.tsx [resolved], App [resolved]
-      auth used bearer [heuristic 0.75]
+      callers OrderForm ([resolved]), src/main.tsx ([resolved]), App ([resolved])
+      auth used bearer [heuristic 0.85] ([heuristic 0.75])
       repos acme-web apps -
   PATCH /users/{id} acme-api:src/users/users.controller.ts:25 [syntactic]
-    handler UsersController.update [syntactic]
-    guard JwtAuthGuard [resolved], possibly implements auth bearer [heuristic 0.85]
-    guard PermissionsGuard [resolved]
-    possibly supports auth bearer [heuristic 0.85] (all_of [heuristic 0.85, link])
+    handler UsersController.update ([syntactic])
+    guard JwtAuthGuard ([resolved]), possibly implements auth bearer [heuristic 0.85] ([heuristic 0.85])
+    guard PermissionsGuard ([resolved])
+    possibly supports auth bearer [heuristic 0.85] ([heuristic 0.85]) (all_of [heuristic 0.85, link])
     auth authorization_guards=["PermissionsGuard"] [heuristic 0.50, link]
-    permissions users:write [syntactic]
+    permissions users:write ([syntactic])
     consumer AcmeClient.updateUser method acme-sdk:src/client.ts:24  possibly calls endpoint PATCH /users/{id} [heuristic 0.77]
       repos acme-sdk apps -
   GET /v1/reports/export acme-api:src/reports/reports.controller.ts:10 [syntactic]
-    handler ReportsController.export [syntactic]
-    guard ApiKeyGuard [resolved], possibly implements auth api_key [heuristic 0.80]
-    possibly supports auth api_key [heuristic 0.80] (all_of [heuristic 0.80, link])
+    handler ReportsController.export ([syntactic])
+    guard ApiKeyGuard ([resolved]), possibly implements auth api_key [heuristic 0.80] ([heuristic 0.80])
+    possibly supports auth api_key [heuristic 0.80] ([heuristic 0.80]) (all_of [heuristic 0.80, link])
     consumers: none detected in project (external clients may exist)
   POST /invoices acme-billing:src/lib.rs:26 [syntactic]
-    handler create_invoice [resolved]
+    handler create_invoice ([resolved])
     consumers: none detected in project (external clients may exist)
   GET /invoices/{id} acme-billing:src/lib.rs:26 [syntactic]
-    handler get_invoice [resolved]
+    handler get_invoice ([resolved])
     consumers: none detected in project (external clients may exist)
 auth matrix acme-api
-  api_key: sent by clients in acme-billing, acme-sdk; supported by 2 endpoints; implemented by ApiKeyGuard [heuristic 0.80]
-    AcmeApiClient::get_order method acme-billing:src/acme_client.rs:30 [heuristic 0.75]
-    AcmeClient.headers method acme-sdk:src/client.ts:12 [heuristic 0.70]
-  bearer: sent by clients in acme-sdk, acme-web; supported by 6 endpoints; implemented by JwtAuthGuard [heuristic 0.85]
-    AcmeClient.headers method acme-sdk:src/client.ts:12 [heuristic 0.70]
-    acme constant acme-web:src/api/client.ts:6 [heuristic 0.60]
-    useMe function acme-web:src/hooks/useMe.ts:7 [heuristic 0.75]
-  session_cookie: no detected client sends it; supported by 1 endpoints; implemented by SessionGuard [heuristic 0.80]
+  api_key [heuristic 0.80]: sent by clients in acme-billing, acme-sdk; supported by 2 endpoints; implemented by ApiKeyGuard ([heuristic 0.80])
+    possibly uses auth AcmeApiClient::get_order method acme-billing:src/acme_client.rs:30 ([heuristic 0.75])
+    possibly uses auth AcmeClient.headers method acme-sdk:src/client.ts:12 ([heuristic 0.70])
+  bearer [heuristic 0.85]: sent by clients in acme-sdk, acme-web; supported by 6 endpoints; implemented by JwtAuthGuard ([heuristic 0.85])
+    possibly uses auth AcmeClient.headers method acme-sdk:src/client.ts:12 ([heuristic 0.70])
+    possibly uses auth acme constant acme-web:src/api/client.ts:6 ([heuristic 0.60])
+    possibly uses auth useMe function acme-web:src/hooks/useMe.ts:7 ([heuristic 0.75])
+  session_cookie [heuristic 0.80]: no detected client sends it; supported by 1 endpoint; implemented by SessionGuard ([heuristic 0.80])
 auth matrix acme-billing
 unmatched client call sites (1)
-  GET {}/health from checkHealth at acme-web:src/api/health.ts:4: no endpoint in the project matches this call (no_matching_endpoint [heuristic 0.50, link])
+  GET {}/health [heuristic 0.70] from checkHealth at acme-web:src/api/health.ts:4: no endpoint in the project matches this call (no_matching_endpoint [heuristic 0.50, link])

@@ -1,5 +1,5 @@
 use crate::queries::OverviewAnswer;
-use crate::text::{RenderText, TextOut, entity_line};
+use crate::text::{RenderText, TextOut, counted, entity_line};
 
 const PACKAGES_SHOWN: usize = 15;
 const APPLICATIONS_SHOWN: usize = 10;
@@ -31,7 +31,10 @@ impl RenderText for OverviewAnswer {
         1,
         format!(
           "{} [{}] {}: {} external deps{internal}{dependents}",
-          package.package.short, package.ecosystem, package.repo, package.external_dependencies
+          package.package.tagged_short(),
+          package.ecosystem,
+          package.repo,
+          package.external_dependencies
         ),
       );
     }
@@ -72,7 +75,17 @@ impl RenderText for OverviewAnswer {
       for api in &self.apis {
         let schemes = match api.auth_schemes.is_empty() {
           true => "none detected".to_owned(),
-          false => api.auth_schemes.join(", "),
+          false => {
+            let tagged: Vec<String> = api
+              .auth_schemes
+              .iter()
+              .map(|scheme| match api.auth_scheme_certainty.get(scheme) {
+                Some(certainty) => format!("{scheme} {}", certainty.tag),
+                None => scheme.clone(),
+              })
+              .collect();
+            tagged.join(", ")
+          }
         };
         let fragments = match api.router_fragments {
           0 => String::new(),
@@ -84,7 +97,14 @@ impl RenderText for OverviewAnswer {
     if !self.events.is_empty() {
       out.line(0, "events");
       for event in &self.events {
-        out.line(1, format!("{}: {} publishers, {} subscribers", event.event, event.publishers, event.subscribers));
+        let name = match &event.certainty {
+          Some(certainty) => format!("{} {}", event.event, certainty.tag),
+          None => event.event.clone(),
+        };
+        out.line(
+          1,
+          format!("{name}: {}, {}", counted(event.publishers, "publisher"), counted(event.subscribers, "subscriber")),
+        );
       }
     }
     if !self.patterns.is_empty() {

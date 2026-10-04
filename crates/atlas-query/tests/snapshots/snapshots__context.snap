@@ -118,7 +118,7 @@ MUST READ (12)
 SKIM (16)
   GET /orders/{id} api_endpoint acme-api:src/orders/orders.controller.ts:13  why: same route as /orders/{id} (another method)
   DELETE /users/{id} api_endpoint acme-api:src/users/users.controller.ts:31  why: pattern exemplar: DELETE on a route shaped like /orders/{id}
-  api_key auth_scheme acme-api:src/auth/api-key.guard.ts:5  why: auth scheme api_key named in the task
+  api_key auth_scheme acme-api:src/auth/api-key.guard.ts:5 [heuristic 0.80]  why: auth scheme api_key named in the task
   POST /orders api_endpoint acme-api:src/orders/orders.controller.ts:19  why: same resource as /orders/{id}
   GET /v1/reports/export api_endpoint acme-api:src/reports/reports.controller.ts:10  why: requires guard ApiKeyGuard [resolved]
   OrdersService.findOne method acme-api:src/orders/orders.service.ts:23  why: called by OrdersController.findOne [resolved]
@@ -172,7 +172,7 @@ TESTS (4)
   OrdersController test_suite acme-api:src/orders/orders.controller.spec.ts:4  why: instantiates OrdersController [resolved] (direct)
     run: [acme-api] npx jest src/orders/orders.controller.spec.ts -t "OrdersController"
 UNCERTAIN (1)
-  bearer auth_scheme acme-api:src/auth/jwt-auth.guard.ts:5 UNCERTAIN  why: possibly auth supported by GET /orders/{id} [heuristic 0.70]
+  bearer auth_scheme acme-api:src/auth/jwt-auth.guard.ts:5 [heuristic 0.85] UNCERTAIN  why: possibly auth supported by GET /orders/{id} [heuristic 0.70]
 OMITTED (16)
   ApiKeyGuard.canActivate method acme-api:src/auth/api-key.guard.ts:8 [shown inside an enclosing MUST READ body]
   ApiKeyGuard.constructor method acme-api:src/auth/api-key.guard.ts:6 [shown inside an enclosing MUST READ body]

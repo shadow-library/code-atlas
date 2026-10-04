@@ -1,14 +1,14 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use atlas_core::{EntityId, ParseStatus, RefKind, RepoName, UnresolvedReason};
+use atlas_core::{Entity, EntityId, EntityKey, ParseStatus, RefKind, RepoName, UnresolvedReason};
 use atlas_engine::{Engine, EngineError};
 use serde::Serialize;
 
 use crate::error::QueryResult;
 use crate::freshness::Freshness;
 use crate::graph::Graph;
-use crate::model::{Caveat, Location, ProblemFile, Targeted, UnresolvedSite};
+use crate::model::{Caveat, Location, MacroGapScope, ProblemFile, Targeted, UnresolvedSite, short_name};
 use crate::policy::Policy;
 
 const RISK_SITES_SHOWN: usize = 5;
@@ -164,6 +164,41 @@ pub(crate) fn unresolved_risk(graph: &Graph<'_, '_>, target: EntityId, name: &st
     name: name.to_owned(),
     total,
     by_reason,
+    sites,
+  }))
+}
+
+pub(crate) fn macro_generated_refs(graph: &Graph<'_, '_>, target: &Entity, owners: &[EntityId], scope: MacroGapScope) -> QueryResult<Option<Caveat>> {
+  let (repo, path) = match (&target.key, &target.repo, &target.path) {
+    (EntityKey::File { repo, path }, _, _) => (repo, path),
+    (_, Some(repo), Some(path)) => (repo, path),
+    _ => return Ok(None),
+  };
+  let mut sites: Vec<UnresolvedSite> = graph
+    .tx()
+    .unresolved_in_file_with_name_prefix(repo, path, "")?
+    .into_iter()
+    .filter(|reference| owners.contains(&reference.from) && matches!(&reference.reason, UnresolvedReason::Unsupported { detail } if detail == "macro_generated"))
+    .map(|reference| UnresolvedSite {
+      location: Location {
+        repo: reference.repo.to_string(),
+        path: reference.file.to_string(),
+        line: Some(reference.span.start_line),
+      },
+      path: reference.path.join("."),
+      reason: "macro generated".to_owned(),
+    })
+    .collect();
+  if sites.is_empty() {
+    return Ok(None);
+  }
+  sites.sort_by(|left, right| left.location.cmp(&right.location).then_with(|| left.path.cmp(&right.path)));
+  let total = sites.len();
+  sites.truncate(RISK_SITES_SHOWN);
+  Ok(Some(Caveat::MacroGeneratedRefs {
+    target: short_name(&target.key),
+    scope,
+    total,
     sites,
   }))
 }

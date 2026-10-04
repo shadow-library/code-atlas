@@ -2,9 +2,10 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
-use atlas_project::{Project, ProjectSettings, RepoSpec};
+use atlas_core::Language;
+use atlas_project::{Project, ProjectSettings, RepoConfig, RepoFilters, RepoSpec};
 
-use crate::cli::{AddRepoArgs, ConfigArgs, CreateArgs, DeleteArgs, JsonFlag, ProjectCommand, RemoveRepoArgs, RenameRepoArgs, ShowArgs, Toggle};
+use crate::cli::{AddRepoArgs, ConfigArgs, CreateArgs, DeleteArgs, JsonFlag, ProjectCommand, RemoveRepoArgs, RenameRepoArgs, SetRepoArgs, ShowArgs, Toggle};
 use crate::confirm::confirm;
 use crate::context::Context;
 use crate::error::{CliError, CliResult};
@@ -14,6 +15,7 @@ pub fn run(ctx: &Context, command: ProjectCommand) -> CliResult<Outcome> {
   match command {
     ProjectCommand::Create(args) => create(ctx, args),
     ProjectCommand::AddRepo(args) => add_repo(ctx, args),
+    ProjectCommand::SetRepo(args) => set_repo(ctx, args),
     ProjectCommand::RemoveRepo(args) => remove_repo(ctx, args),
     ProjectCommand::RenameRepo(args) => rename_repo(ctx, args),
     ProjectCommand::List(args) => list(ctx, args),
@@ -41,6 +43,9 @@ fn describe(project: &Project) -> String {
   let mut text = format!("{} ({} repos)\n", project.name, project.repos.len());
   for repo in &project.repos {
     text.push_str(&format!("  {}  {}\n", repo.name, repo.path.display()));
+    for line in filter_lines(repo) {
+      text.push_str(&format!("    {line}\n"));
+    }
   }
   text
 }
@@ -56,9 +61,99 @@ fn create(ctx: &Context, args: CreateArgs) -> CliResult<Outcome> {
 fn add_repo(ctx: &Context, args: AddRepoArgs) -> CliResult<Outcome> {
   let mut spec = RepoSpec::new(args.path);
   spec.name = args.name;
+  spec.include = args.filters.include;
+  spec.exclude = args.filters.exclude;
+  spec.languages = args.filters.languages.as_deref().map(parse_languages).transpose()?;
   let mut registry = ctx.registry()?;
   let repo = registry.add_repo(&args.project_name, spec)?;
   emit_line(format!("added repo {} ({}) to project {}", repo.name, repo.path.display(), args.project_name))?;
+  Ok(Outcome::Complete)
+}
+
+const LANGUAGE_HELP: &str = "rust, ts, typescript, tsx, javascript or jsx";
+
+fn parse_languages(raw: &[String]) -> CliResult<Vec<Language>> {
+  let mut languages = Vec::new();
+  for name in raw {
+    let selected: Vec<Language> = match name.trim().to_ascii_lowercase().as_str() {
+      "rust" => vec![Language::Rust],
+      "ts" => vec![Language::TypeScript, Language::Tsx, Language::JavaScript, Language::Jsx],
+      other => vec![
+        other
+          .parse::<Language>()
+          .map_err(|_| CliError::InvalidSetting(format!("unknown language {name:?}; expected {LANGUAGE_HELP}")))?,
+      ],
+    };
+    languages.extend(selected);
+  }
+  languages.sort();
+  languages.dedup();
+  Ok(languages)
+}
+
+fn filter_lines(repo: &RepoConfig) -> Vec<String> {
+  let mut lines = Vec::new();
+  if !repo.include.is_empty() {
+    lines.push(format!("include {}", repo.include.join(", ")));
+  }
+  if !repo.exclude.is_empty() {
+    lines.push(format!("exclude {}", repo.exclude.join(", ")));
+  }
+  if let Some(languages) = &repo.languages {
+    lines.push(format!("languages {}", languages.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ")));
+  }
+  lines
+}
+
+fn filter_changes(before: &RepoConfig, after: &RepoConfig) -> Vec<String> {
+  let languages = |repo: &RepoConfig| {
+    repo
+      .languages
+      .as_ref()
+      .map_or_else(|| "(all)".to_owned(), |languages| languages.iter().map(ToString::to_string).collect::<Vec<_>>().join(","))
+  };
+  let globs = |values: &[String]| match values.is_empty() {
+    true => "(none)".to_owned(),
+    false => values.join(", "),
+  };
+  [
+    ("include", globs(&before.include), globs(&after.include)),
+    ("exclude", globs(&before.exclude), globs(&after.exclude)),
+    ("languages", languages(before), languages(after)),
+  ]
+  .into_iter()
+  .filter(|(_, old, new)| old != new)
+  .map(|(name, old, new)| format!("{name}: {old} -> {new}"))
+  .collect()
+}
+
+fn set_repo(ctx: &Context, args: SetRepoArgs) -> CliResult<Outcome> {
+  let languages = args.languages.as_deref().map(parse_languages).transpose()?;
+  let mut registry = ctx.registry()?;
+  let (before, after) = registry.set_repo_filters(&args.project_name, &args.repo, |current| {
+    let mut updated = match args.clear_filters {
+      true => RepoFilters::default(),
+      false => current.clone(),
+    };
+    if !args.include.is_empty() {
+      updated.include = args.include.clone();
+    }
+    if !args.exclude.is_empty() {
+      updated.exclude = args.exclude.clone();
+    }
+    if languages.is_some() {
+      updated.languages = languages.clone();
+    }
+    updated
+  })?;
+  let changes = filter_changes(&before, &after);
+  if changes.is_empty() {
+    emit_line("no changes")?;
+    return Ok(Outcome::Complete);
+  }
+  for change in changes {
+    emit_line(format!("{}: {change}", args.repo))?;
+  }
   Ok(Outcome::Complete)
 }
 

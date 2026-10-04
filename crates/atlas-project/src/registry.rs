@@ -108,6 +108,13 @@ impl RepoSpec {
   }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RepoFilters {
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
+  pub languages: Option<Vec<Language>>,
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RegistryFile {
@@ -207,6 +214,29 @@ impl Registry {
       }
       target.repos[index].name = to;
       Ok(())
+    })
+  }
+
+  pub fn set_repo_filters(&mut self, project: &str, repo: &str, update: impl FnOnce(&RepoFilters) -> RepoFilters) -> Result<(RepoConfig, RepoConfig), ProjectError> {
+    self.mutate(|projects| {
+      let target = find_project_mut(projects, project)?;
+      let index = repo_index(target, repo)?;
+      let before = target.repos[index].clone();
+      let filters = update(&RepoFilters {
+        include: before.include.clone(),
+        exclude: before.exclude.clone(),
+        languages: before.languages.clone(),
+      });
+      PathGlobs::new(&filters.include)?;
+      PathGlobs::new(&filters.exclude)?;
+      let after = RepoConfig {
+        include: filters.include,
+        exclude: filters.exclude,
+        languages: filters.languages,
+        ..before.clone()
+      };
+      target.repos[index] = after.clone();
+      Ok((before, after))
     })
   }
 
@@ -587,6 +617,57 @@ mod tests {
     let mut spec = RepoSpec::new(&dir);
     spec.exclude = vec!["{a".to_owned()];
     assert!(matches!(registry.add_repo("acme", spec), Err(ProjectError::InvalidGlob { .. })));
+  }
+
+  #[test]
+  fn should_replace_repo_filters_in_place_and_return_before_and_after() {
+    let sandbox = Sandbox::new();
+    let one = sandbox.repo_dir("one");
+    let two = sandbox.repo_dir("two");
+    let mut registry = sandbox.registry();
+    registry.create_project("acme", vec![RepoSpec::new(&one), RepoSpec::new(&two)]).unwrap();
+
+    let (before, after) = registry
+      .set_repo_filters("acme", "one", |current| RepoFilters {
+        exclude: vec!["dist/".to_owned()],
+        ..current.clone()
+      })
+      .unwrap();
+
+    assert_eq!((before.exclude, after.exclude), (Vec::<String>::new(), vec!["dist/".to_owned()]));
+    assert_eq!(after.path, before.path);
+    let reloaded = sandbox.registry();
+    let names: Vec<&str> = reloaded.project("acme").unwrap().repos.iter().map(|repo| repo.name.as_str()).collect();
+    assert_eq!(names, ["one", "two"]);
+    assert_eq!(reloaded.project("acme").unwrap().repos[0].exclude, ["dist/"]);
+  }
+
+  #[test]
+  fn should_leave_the_registry_file_byte_identical_when_a_filter_glob_is_invalid() {
+    let sandbox = Sandbox::new();
+    let one = sandbox.repo_dir("one");
+    let mut registry = sandbox.registry();
+    registry.create_project("acme", vec![RepoSpec::new(&one)]).unwrap();
+    let before = fs::read(sandbox.home.registry_path()).unwrap();
+
+    let result = registry.set_repo_filters("acme", "one", |current| RepoFilters {
+      exclude: vec!["{a".to_owned()],
+      ..current.clone()
+    });
+
+    assert!(matches!(result, Err(ProjectError::InvalidGlob { .. })));
+    assert_eq!(fs::read(sandbox.home.registry_path()).unwrap(), before);
+  }
+
+  #[test]
+  fn should_report_an_unknown_repo_when_setting_filters() {
+    let sandbox = Sandbox::new();
+    let mut registry = sandbox.registry();
+    registry.create_project("acme", vec![]).unwrap();
+
+    let result = registry.set_repo_filters("acme", "ghost", |current| current.clone());
+
+    assert!(matches!(result, Err(ProjectError::RepoNotFound { repo, .. }) if repo == "ghost"));
   }
 
   #[test]
