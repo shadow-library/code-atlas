@@ -56,7 +56,7 @@ Pipeline phases as reported by `code-atlas debug run <id>`: `plan, analyze, symb
 
 ## Storage
 
-One database per project at `<data dir>/<project>/atlas.db` (see [operations](operations.md) for the data dir). SQLite in WAL mode, `synchronous = NORMAL`, foreign keys on; readers are `query_only`. Schema version is stored in `user_version`; migrations run at open.
+One database per project at `<data dir>/<project>/atlas.db` (see [operations](operations.md) for the data dir). SQLite in WAL mode, `synchronous = NORMAL`, foreign keys on; readers are `query_only`. Schema version is stored in `user_version` (currently 2); migrations run at open, under the index lock, so an older binary's in-flight run finishes first. Assertion rows use a compact encoding (values derivable from the owner or the key are elided and rehydrated on read; legacy v1 rows stay readable). A migrated database keeps its file size until a re-index or `VACUUM`, and the migration overwrites the project fingerprint so an older engine still running degrades instead of writing. Per-file artifacts are zlib-compressed. Each read connection has a 16 MiB page cache (capped at 512 MiB across readers); mmap is off. Bulk loads drop secondary indexes while the store is empty and rebuild them before follow-up rounds.
 
 | Tables | Purpose |
 |---|---|
@@ -83,7 +83,7 @@ Key properties:
 
 Degraded cases: the update failed (store error, lock timeout, panic); a file could not be read or analyzed; a project pass failed (the run is `partial`); a repo root is unavailable; another engine adopted a different project configuration. Facts of failed or removed files are deleted, never kept stale.
 
-SCIP and LLM enrichment never run inside the barrier. Any file re-written by a run loses its `scip:` owner and is recorded as lagging, so SCIP edges never describe an older version of a file. Inferred facts become `stale` when any evidence file's hash changes.
+SCIP and LLM enrichment never run inside the barrier (automatic SCIP runs on the watcher's own thread, and never makes the barrier degraded). Any file re-written by a run loses its `scip:` owner and is recorded as lagging, so SCIP edges never describe an older version of a file. Inferred facts become `stale` when any evidence file's hash changes.
 
 **Incremental equals full.** A file owner's facts are a pure function of its persisted artifact, the symbol table and the set of entities asserted by file owners. Run ids, timings and absolute paths are never part of file- or pass-owned facts. `tests/incremental_equivalence.rs` and `tests/regressions.rs` replay seeded random edit sequences and compare the fact-set digest against a fresh full index. The one exception is `renamed_from` lineage, which is history and cannot be derived from the tree.
 
@@ -93,7 +93,7 @@ SCIP and LLM enrichment never run inside the barrier. Any file re-written by a r
 |---|---|
 | Within a process | concurrent barriers coalesce into single-flight scans (a barrier joins a flight launched after its arrival, so it never sees a scan older than its call); queries run outside the engine lock on a pool of read-only connections (the MCP server uses max(configured readers, cores); default 4) |
 | Across processes | `<db>.index.lock` is held for a whole index run; the store write lock only per persist batch. After taking the lock the engine re-reads the persisted generation and reloads and re-plans if another process moved it |
-| In-flight marker | `engine:dirty` exists while a run is in flight; a barrier that sees it waits for the index lock |
+| In-flight marker | `engine:dirty` exists while a run is in flight; a barrier that sees it first tries the index lock without waiting: if the lock is free the previous run crashed and the barrier recovers; if it is busy, a run is live and the barrier waits for the lock (up to the lock timeout) |
 | Store | one writer at a time; re-entering the store from a thread already holding a transaction fails with `StoreError::Reentrant` |
 | Watcher | notify events mark the watcher dirty and are debounced (200 ms); similarity is persisted after 30 s idle |
 | Registry | `projects.toml` is read-modify-written under `projects.toml.lock` |
@@ -112,7 +112,7 @@ Several processes (CLI, MCP server, `watch`) can use one project at once. The MC
 | Dependency rounds do not converge | run stays `partial` and keeps the dirty marker; next run re-resolves everything |
 | Registry changed under a long-lived engine | `Degraded("project configuration changed; reopen the engine")`; `watch` and the MCP server reload |
 | Repo root missing | `Degraded`; other repos still index |
-| SCIP indexer missing, timeout (10 min), network failure | reported per package as unavailable or failed; the index is unaffected |
+| SCIP indexer missing, timeout (10 min), network failure | reported per indexing unit as unavailable or failed; the index is unaffected. Automatic runs back off for an hour after an unavailable indexer and hold a failed package until its inputs change |
 | LLM provider unavailable or over budget | tasks skipped; the enrich run is `partial`; CLI exit code 3 |
 
 Failure modes and how they surface to users are catalogued in [trust and limitations](trust-and-limitations.md#failure-modes-and-how-they-surface).

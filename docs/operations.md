@@ -54,7 +54,7 @@ Global flags: `-p, --project <NAME>`, `--log-level <FILTER>` (overrides `RUST_LO
 | Command | Purpose |
 |---|---|
 | `project create <NAME> --repo <PATH[=NAME]>...` | register a project; repo names default to a slug of the directory name |
-| `project add-repo <PROJECT> <PATH> [--name]`, `remove-repo`, `rename-repo <PROJECT> <OLD> <NEW>` | edit repos; removed or renamed repos are dropped or re-keyed on the next query or index |
+| `project add-repo <PROJECT> <PATH> [--name] [--include GLOB]... [--exclude GLOB]... [--languages rust,ts]`, `remove-repo`, `rename-repo <PROJECT> <OLD> <NEW>`, `set-repo <PROJECT> <REPO> (--include\|--exclude\|--languages\|--clear-filters)` | edit repos (`set-repo` replaces the given filters atomically); removed or renamed repos are dropped or re-keyed on the next query or index |
 | `project list [--json]`, `project show <NAME> [--json]` | inspect the registry |
 | `project delete <NAME> [--purge-data] [-y]` | unregister; `--purge-data` also deletes the database and caches |
 | `project config <PROJECT> [flags]` | show or change settings (below) |
@@ -63,9 +63,9 @@ Global flags: `-p, --project <NAME>`, `--log-level <FILTER>` (overrides `RUST_LO
 | `status [--json]` | freshness, parse and skip counts, unresolved reasons, edge certainty histogram per kind, SCIP coverage, inferred-fact counts, LLM spend, recent runs |
 | `watch` | keep the index fresh in the foreground until Ctrl-C; reloads on registry changes, persists similarity on exit |
 | `scip` | run compiler-grade indexers now |
-| `enrich [--budget-calls N] [--budget-tokens N]` | opt-in LLM enrichment |
+| `enrich [--budget-calls N] [--budget-tokens N] [--summaries] [--dry-run]` | opt-in LLM enrichment; `--dry-run` lists each task's candidates without calling the LLM or writing facts; `--summaries` adds module capability summaries |
 | `query overview\|search\|symbol\|callers\|callees\|dependents\|dependencies\|impact\|tests-for\|api\|similar\|unused\|patterns\|context\|explain\|read\|changes` | the query surface; all accept `--json` |
-| `search`, `impact`, `context`, `callers`, `symbol`, `api`, `explain` | shortcuts for the same `query` subcommands (no shortcuts for `callees`, `similar`, `unused`, `tests-for`, `read`, `changes`, `overview`) |
+| `search`, `impact`, `context`, `callers`, `callees`, `symbol`, `api`, `explain`, `read`, `tests-for` | shortcuts for the same `query` subcommands (none for `similar`, `unused`, `patterns`, `changes`, `overview`, `dependents`, `dependencies`) |
 | `connect claude [--scope project\|user] [-y]` | wire into Claude Code, see [agent integration](agent-integration.md) |
 | `mcp [--watch]` | serve MCP on stdio |
 | `debug run <ID>`, `debug explain-context <TASK>`, `debug dump-file <REPO:PATH>` | per-run phase timings and counts, context scoring, raw facts of a file |
@@ -101,11 +101,11 @@ Quickstart output (acme): `indexed acme: run 1, 58 files updated`; `status` show
 | `llm.enabled` | `--llm on\|off` | off |
 | `llm.provider` | `--llm-provider claude-cli\|anthropic\|openai-compatible\|none` | claude-cli when enabled |
 | `llm.model` | `--llm-model <MODEL>` | per-task default |
-| `scip.enabled` | `--scip on\|off` | on (not read by anything, see below) |
-| `scip.debounce_secs` | `--scip-debounce <SECS>` | 30 (not read by anything) |
+| `scip.enabled` | `--scip on\|off` | off; when on, SCIP runs automatically while `watch` or `mcp --watch` is active |
+| `scip.debounce_secs` | `--scip-debounce <SECS>` | 30; quiet time before an automatic run |
 | `max_file_bytes` | `--max-file-bytes <BYTES>` | 1048576 |
 
-Changing `max_file_bytes` changes the project fingerprint; running engines reload. Per-repo `include`, `exclude` (glob patterns) and `languages` can only be set by editing `projects.toml`:
+Changing `max_file_bytes` changes the project fingerprint; running engines reload. Per-repo `include`, `exclude` (gitignore-style globs) and `languages` (`rust`, `ts`) are set with `project add-repo` / `project set-repo` or by editing `projects.toml`:
 
 ```toml
 [[project.repo]]
@@ -123,13 +123,13 @@ You never need `watch` for correctness: every query runs the freshness barrier. 
 
 ## SCIP
 
-`code-atlas scip` runs `rust-analyzer scip` per Cargo package and `npx @sourcegraph/scip-typescript` per npm package, ingests the results as `compiler_verified` edges, and prints per-package counts (`acme-api:package.json [scip-typescript] ingested 32 files, 118 edges`). Afterwards `status` shows `scip: current (47/58 files covered)` and edge histograms gain `compiler_verified` counts (acme: `calls: compiler_verified 63, heuristic 10, resolved 65`).
+`code-atlas scip` runs `rust-analyzer scip` once per Cargo workspace (at the workspace root; standalone crates per package) and `npx @sourcegraph/scip-typescript` per npm package, ingests the results as `compiler_verified` edges, and prints per-package counts (`acme-api:package.json [scip-typescript] ingested 32 files, 118 edges`). Afterwards `status` shows `scip: current (47/58 files covered)` and edge histograms gain `compiler_verified` counts (acme: `calls: compiler_verified 63, heuristic 10, resolved 65`).
 
-- Never automatic and never inside a query. Any file re-indexed later is marked lagging until the next `scip` run.
+- Never inside a query. By default it only runs on `code-atlas scip`; any file re-indexed later is marked lagging until the next run. With `project config <p> --scip on`, a watcher (`watch`, `mcp --watch`) schedules a run once no file event has arrived for `scip.debounce_secs`, on its own thread, never blocking queries. One SCIP run per project at a time (`atlas.db.scip.lock`; explicit runs wait, automatic runs skip, `status` shows "in progress"). An unavailable indexer pauses automatic runs for an hour; a failed package is held while its inputs are unchanged (up to an hour).
 - Needs `rust-analyzer` (PATH or `rustup which`) and `npx` (cached package or `npm ping`); `doctor` checks both. Default timeout 10 minutes per package; rust-analyzer needs about 2 GB RSS and builds the workspace.
 - Runners leave no files in the repo (`CARGO_TARGET_DIR` is redirected into the cache; `Cargo.lock` is restored; missing `tsconfig.json` is inferred via a symlink overlay).
-- Results are cached by indexer version and input file hashes under `scip-cache/`; the cache is never garbage-collected.
-- The `scip.enabled` and `scip.debounce_secs` settings are currently inert: `code-atlas scip` ran with `--scip off` set.
+- Results are cached under `scip-cache/` per indexer and root, keyed by indexer version and input file hashes; the newest 2 entries per root are kept. An index whose inputs changed during the run is returned but never cached.
+- Workspace-wide indexing on this repository took 62 s instead of 666 s and produced 2082 cross-crate `compiler_verified` calls instead of 0 (one measurement from the commit message).
 
 ## LLM enrichment, settings and costs
 
@@ -142,8 +142,8 @@ code-atlas project config acme --llm on --llm-provider openai-compatible --llm-m
 code-atlas -p acme enrich --budget-calls 50 --budget-tokens 200000
 ```
 
-- `enrich` classifies candidate similarity pairs (structural clusters with Jaccard 0.6 or more, name-related) and re-runs stale facts whose evidence changed. Results are stored as `inferred` facts. Nothing else is sent to a provider; capability summaries and client-call linking are not wired in.
-- Defaults per run: 50 calls, 200,000 input tokens, concurrency 4. Calls are skipped (and reported) once the budget is exhausted. Responses are cached by prompt hash, so repeated runs on unchanged code make no calls.
+- `enrich` runs, within one shared budget: LLM link tasks for client calls the link pass could not match (candidates are same-method endpoints), similarity classification of structural pairs and of lexical candidates (shared name words, signatures, BM25 neighbours), optional capability summaries (`--summaries`), and revalidation of stale facts. Results are stored as `inferred` facts; a link goes stale when its client file or candidate set changes. Nothing else is sent to a provider. `--dry-run` prints what each task would see.
+- Defaults per run: 50 calls, 200,000 input tokens, concurrency 4; the dry run prints the split (links up to 1/5, structural pairs next (no fixed share), lexical pairs up to 2/5, summaries up to 1/5 when enabled, revalidation the rest). Calls are skipped (and reported) once the budget is exhausted. Responses are cached by prompt hash, so repeated runs on unchanged code make no calls.
 - Default models: `claude-sonnet-5-5` for similarity, `claude-haiku-4-5-20251001` for lighter tasks; `--llm-model` overrides all tasks. The `claude-cli` provider runs `claude -p` without tools, settings or session persistence.
 - Cost: `status` shows `llm calls N tokens in X out Y cost ~$Z`. The estimate uses a built-in price table of unverified list prices for Sonnet and Haiku families; models outside the table have no estimate (tokens are still counted). The `claude-cli` provider consumes the user's Claude subscription or API usage; treat the figure as a guide.
 - With the provider unavailable or disabled, `enrich` skips tasks, the run is recorded `partial`, and the exit code is 3. Inferred facts older than their evidence show as `stale`.

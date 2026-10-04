@@ -70,7 +70,7 @@ Strength order (used to pick the winning assertion): `compiler_verified` > `synt
 
 Heuristic rules defined by the resolver include `dyn-dispatch-candidate` (0.3), `interface-dispatch-candidate` (0.3), `override-dispatch-candidate` (0.3), `method-name-only` (0.5 for one candidate, 0.35 for two, 0.25 for three), `field-name-only` (0.5), `macro-name-in-crate` (0.6), `macro-token-scan` (0.6), `param-type-recovery` (0.7), `dist-to-src` (0.85, applied per hop), `fn-local-item-possible` (0.5). Absence rules from the link pass use a fixed 0.5 (`no-detected-auth-scheme`, `no-detected-client`, `no-detected-counterpart`, `no-matching-route`). Heuristic certainty is carried through every hop (re-exports, extends chains, globs), so a path is as weak as its weakest edge.
 
-Rendering rules: a fact is stated plainly only if authoritative. Heuristic relations are hedged in prose (`possibly calls endpoint GET /orders/{id} [heuristic 0.77]`), inferred ones as `likely ...`. Default confidence floors for heuristic relations: 0.25 for callers, callees, dependents and dependencies; 0.3 for context packs; 0.0 (nothing hidden) for impact, tests-for, api, unused, explain, symbol and similar. `--min-confidence` overrides the floor where the command has it, and hidden relations are counted in the caveats.
+Rendering rules: a fact is stated plainly only if authoritative. Every non-authoritative entity carries its tag after its name; relation tags go in parentheses (`X [heuristic 0.80] ([heuristic 0.70])`) or after the target of a `verb target [tag]` step. Heuristic relations are hedged in prose (`possibly calls endpoint GET /orders/{id} [heuristic 0.77]`), inferred ones as `likely ...`. Default confidence floors for heuristic relations: 0.25 for callers, callees, dependents and dependencies; 0.3 for context packs; 0.0 (nothing hidden) for impact, tests-for, api, unused, explain, symbol and similar. `--min-confidence` overrides the floor where the command has it, and hidden relations are counted in the caveats.
 
 ## Provenance and evidence
 
@@ -100,7 +100,7 @@ References that do not resolve are stored with a reason and shown only as caveat
 
 ## Inferred facts, staleness and revalidation
 
-Inferred facts live in `inferred_facts` with subjects, evidence, provider, model, rationale and a payload. Relations in use: `equivalent_to`, `similar_to`, `calls_endpoint`, `capability_summary` (the engine's `enrich` pass currently generates only similarity-pair classifications).
+Inferred facts live in `inferred_facts` with subjects, evidence, provider, model, rationale and a payload. Relations in use: `equivalent_to`, `similar_to`, `calls_endpoint`, `capability_summary`. `enrich` produces similarity-pair classifications, `calls_endpoint` links for client calls the link pass could not match (shown only as tagged inferred consumers, never merged into deterministic edges), and, with `--summaries`, capability summaries.
 
 Freshness is computed from evidence hashes (`Freshness::of_evidence`):
 
@@ -108,7 +108,7 @@ Freshness is computed from evidence hashes (`Freshness::of_evidence`):
 |---|---|---|
 | `current` | none | every evidence file still has its recorded hash |
 | `stale` | `stale` | an evidence file changed or no longer exists |
-| `needs_revalidation` | `needs-revalidation` | a subject was renamed or moved (lineage) |
+| `needs_revalidation` | `needs-revalidation` | a subject was renamed or moved (lineage); an inferred client-call link also needs revalidation when the client file or the candidate endpoint set changes (queries recompute the set live; `explain` says why a link is settled or stale and, if a static link now exists, its tag) |
 
 Stale and low-confidence (below 0.5) facts are excluded from default query results; `--include-stale` shows stale ones. Deterministic facts are never stale: they are re-derived or deleted when their file changes. `code-atlas enrich` re-runs due facts through the provider (cached by prompt hash).
 

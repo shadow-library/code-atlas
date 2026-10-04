@@ -46,7 +46,7 @@ code-atlas connect claude
 
 Inside a registered repo the `-p acme` flag is inferred from the working directory. Set `CODE_ATLAS_HOME=/tmp/atlas-scratch` to keep experiments out of your real registry and databases. `connect claude` writes `.mcp.json` and a guidance block into `AGENTS.md` (or an existing `CLAUDE.md`); `--scope user` registers the server with `claude mcp add-json` instead. Nothing else is needed to use the index: there is no separate reindex step, because every query refreshes it.
 
-Optional accuracy upgrade: `code-atlas -p acme scip` runs rust-analyzer and scip-typescript and promotes matching edges to `compiler_verified`.
+Optional accuracy upgrade: `code-atlas -p acme scip` runs rust-analyzer and scip-typescript and promotes matching edges to `compiler_verified`. Cargo workspaces are indexed at the workspace root, so cross-crate references are verified too. With `project config acme --scip on`, SCIP also runs automatically while `watch` or `mcp --watch` is active.
 
 ## Trust model
 
@@ -89,11 +89,12 @@ State as of this documentation pass. "Implemented" means covered by tests and th
 | SCIP ingestion (`compiler_verified`) | Implemented, opt-in | manual `code-atlas scip`; never runs inside a query |
 | Near-duplicate and lexical search | Implemented | similarity is evidence, never equivalence |
 | Events, jobs, DB tables/queries | Experimental | entities and edges carry an `experimental` attribute (not shown in text output); heuristic only; project-scoped assumptions |
-| LLM enrichment (`enrich`, inferred similarity verdicts) | Experimental, off by default | only similarity-pair classification is wired into `enrich`; no verdicts exist in the published fixtures |
+| LLM enrichment (`enrich`: similarity verdicts, links for unmatched client calls, optional capability summaries) | Experimental, off by default | results are `inferred`, tagged, and go stale with their evidence; `enrich --dry-run` previews candidates; no verdicts exist in the published fixtures |
 | Rename lineage (`renamed_from`) | Implemented; confidence calibration experimental | heuristic confidence; inferred facts migrate only at 0.85 or higher |
 | Quality eval, perf bench, agent A/B harness | Implemented | results to be published in `docs/evaluation/results.md` |
 | Other languages (Python, Go, Java, ...) | Unsupported | |
-| Automatic SCIP or LLM runs on file change | Not implemented | `scip.enabled` and `scip.debounce_secs` settings exist but nothing reads them |
+| Automatic SCIP | Implemented, opt-in (default off) | runs only while a watcher is active, after a debounce (default 30 s); explicit `scip` always works |
+| Automatic LLM enrichment | Not implemented | `enrich` is always an explicit command |
 
 ## Development
 

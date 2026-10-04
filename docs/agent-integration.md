@@ -26,7 +26,7 @@ The server serves one project (`--project`, or inferred from the working directo
 
 Targets accepted everywhere: a name (`UsersService.findOne`), `[repo:]path[:line]`, an endpoint (`GET /users/{id}`), or a full key. A name that is not found or is ambiguous returns candidates or a pointer to `atlas_search`. There is no reindex tool: freshness is automatic, and `atlas_changes` confirms what the index saw after an edit.
 
-`atlas_dependents` and `atlas_dependencies` exist in the CLI (`query dependents`, `query dependencies`) but are not exposed over MCP at this commit.
+`atlas_dependents` and `atlas_dependencies` exist in the CLI (`query dependents`, `query dependencies`) but are not exposed over MCP at this commit. The CLI has top-level shortcuts for `search`, `impact`, `context`, `callers`, `callees`, `symbol`, `api`, `explain`, `read` and `tests-for`.
 
 ## Recommended workflow
 
@@ -43,16 +43,18 @@ Targets accepted everywhere: a name (`UsersService.findOne`), `[repo:]path[:line
 
 | You see | Meaning | What to do |
 |---|---|---|
-| `[compiler]`, `[syntactic]`, `[resolved]`, `[declared]` (or no hedge) | exact under the class's rules, not exhaustive | rely on it; still read the caveats |
+| `[compiler]`, `[syntactic]`, `[resolved]`, `[declared]`, or no tag on an entity | exact under the class's rules, not exhaustive | rely on it; still read the caveats |
+| `Name kind path [heuristic 0.80]` | the **entity** is uncertain (a tag after the entity name) | verify the entity exists as described |
+| `X [entity tag] ([relation tag])`, `verb target [tag]` | entity and relation certainty are separate: parentheses, or a tag after the target of a `verb target` step, tag the relation | read both |
 | `possibly calls ... [heuristic 0.72]` | a rule with a confidence; may be wrong | open the source |
-| `likely ... [inferred 0.81]` | LLM-derived with rationale | verify; check `stale` markers |
+| `likely ... [inferred 0.81]` | LLM-derived with rationale (for example a client call linked to an endpoint by `enrich`, shown as a tagged consumer in `api`, `impact`, `unused`, `explain`) | verify; check `stale` markers |
 | `[inferred 0.81 stale]`, `[... needs-revalidation]` | evidence changed since the LLM looked | treat as unknown |
 | `UNCERTAIN` on an impact entry | every path to it passes through a non-authoritative edge | verify |
 | `caveats:` block | unresolved references, dynamic member calls, partial parses, hidden low-confidence relations, skipped files | decides whether "none found" means anything |
 | first line `DEGRADED: ...` | index could not be fully refreshed; affected files listed | verify against files |
 | header `skipped N files (see status)` | files over the size limit, symlinks or non-UTF-8 paths are not indexed | check `atlas_status` |
 
-The compiler-verified tag renders as `[compiler]` in text output; the JSON field `certainty.class` is `compiler_verified` and `certainty.authoritative` is a boolean. In JSON, every relation carries `certainty` (`class`, `confidence`, `freshness`, `authoritative`, `tag`) and every response carries a `freshness` object. Known wording gaps: the MCP instructions name `[compiler_verified]` but text output renders `[compiler]`; entity listings carry no tag, so "untagged is authoritative" does not apply to them (only relation lines are tagged); and the search heading "exact name" can include hits that match only one query token. Rules of thumb: an empty result is not proof of absence; "unused" means "no inbound edges found"; a similarity match is a lead.
+Compiler-verified relations render as `[compiler]` everywhere in text output (tool descriptions use the same spelling); the JSON field `certainty.class` is `compiler_verified` and `certainty.authoritative` is a boolean. In JSON, every relation carries `certainty` (`class`, `confidence`, `freshness`, `authoritative`, `tag`) and every response carries a `freshness` object. Rules of thumb: an empty result is not proof of absence; "unused" means "no inbound edges found"; a similarity match is a lead.
 
 ## `connect claude`
 

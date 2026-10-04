@@ -104,7 +104,7 @@ Concrete items, grouped by area. Source: reviewer findings accepted as known gap
 
 - Function-local items (`struct`, `enum`, `trait`, `type`, `mod`, `fn` declared inside a function body) are invisible to the analyzer. A name that may be shadowed by such an item resolves at most `heuristic 0.5` (`fn-local-item-possible`), and a local type in a body longer than 4,096 tokens is not detected. Two narrow variants of wrong resolution were accepted as residual gaps after review.
 - `let x = T::new()` leaves `x` with an unknown type (analyzer emits no hint), and method chains on expressions (`(expr)` heads) are `dynamic`. Rust method-call recall is the weakest edge class; improvement via return-type propagation is not implemented.
-- `self` and `Self` inside an `impl` nested in a method body are unknown, so those calls and field accesses are at most name-only heuristics at 0.5 and may pick the outer type's member (backlog RESOLVE-4, open).
+- `self` and `Self` inside a fn, impl or trait item nested in a body stay unresolved (`Unsupported: self in nested item`, no candidates), even when the nested impl is for a module-level type, because a name match could pick the outer type's same-named member. Calls and field accesses through them are missing, not guessed.
 - Impl-level generic bounds are not recorded (names only), so such receivers are unknown. Bindings in fn items nested in a body keep capped hints (`param-type-recovery` 0.7).
 - Field accesses through `Deref` impls and tuple-struct fields (`.0`) are not resolved. Methods of derived std or serde traits on project types are `external`.
 - Token scanning of macro bodies drops calls on the left of `=>` guards in `select!` arms (RECALL-1).
@@ -112,7 +112,7 @@ Concrete items, grouped by area. Source: reviewer findings accepted as known gap
 
 ### Resolution (TypeScript and JavaScript)
 
-- `this` inside object-literal methods and `function` expressions is treated as the enclosing class until the analyzer marks it unknown.
+- A rebound `this` inside a class (local classes, object-literal methods, non-arrow functions) is `Unsupported: rebound this` with no candidates, including functions invoked with the instance as `this` (`forEach(fn, this)`, `fn.call(this)`). Outside a class it keeps name-only candidates. Explicit `this: T` parameter annotations are ignored, so such receivers are treated as rebound `this`.
 - Declaration files (`.d.ts`), `node_modules` types and path aliases outside `tsconfig` are not resolved through the compiler; external types are `external`.
 - Without `node_modules` (or `tsconfig.json`), SCIP external types resolve poorly, local edges are unaffected. A hoisted monorepo `node_modules` above a package without `tsconfig.json` is not seen by the SCIP overlay (SCIP-1).
 - Dynamic `require` and `import()` are unresolved by design.
@@ -131,31 +131,31 @@ Concrete items, grouped by area. Source: reviewer findings accepted as known gap
 
 ### SCIP
 
-- Production SCIP runs rust-analyzer once per Cargo package manifest, not once per workspace, so cross-crate edges between workspace members may not be `compiler_verified` (SCIP-2). The quality evaluation indexes workspaces at the root to confirm cross-crate edges, which production does not yet do.
+- Cargo workspace members are indexed as one rust-analyzer run at the workspace root, so cross-crate edges can be `compiler_verified`. scip-typescript still runs per npm package: cross-package references inside an npm workspace stay unverified. Standalone crates run per package.
 - rust-analyzer builds the workspace (build scripts): about 2 GB RSS and tens of seconds cold. scip-typescript needs `npx` and either a cached package or network access.
-- SCIP covers `calls`, `references`, `instantiates`, `implements` and `extends` only, and only in files the indexer covered. A file changed after the last SCIP run is lagging and its edges stay at `resolved`. `scip.enabled` and `scip.debounce_secs` are stored by `project config` but nothing reads them: SCIP runs only on `code-atlas scip` regardless of `--scip off`, and never automatically.
+- SCIP covers `calls`, `references`, `instantiates`, `implements` and `extends` only, and only in files the indexer covered. A file changed after the last SCIP run is lagging and its edges stay at `resolved`. Automatic SCIP is opt-in (`project config <p> --scip on`) and runs only while a watcher is active, after the debounce; it starts rust-analyzer or `npx scip-typescript` unasked, and a failed package is held for up to an hour unless its inputs change (changes to lockfiles, `rust-toolchain*` or `.cargo/config*` alone do not lift the hold). Without a watcher SCIP runs only on `code-atlas scip`.
 
 ### Similarity and LLM
 
-- Structural similarity misses equivalent code of a different shape; the LLM candidate generator only receives structural clusters of 0.6 or more, so those pairs never get a verdict (SEM-1). Lexical or signature based candidate generation is not implemented.
-- `enrich` runs similarity-pair classification and revalidation. Capability summaries and client-call linking exist as task types in `atlas-semantic` but are not wired into `enrich`, and the watcher does not trigger enrichment.
+- Structural similarity misses equivalent code of a different shape. `enrich` now also proposes lexical candidates (shared name words, signatures, BM25 neighbours), but verdicts need an LLM and are budget-bound, so many pairs get none.
+- `enrich` shares one budget across phases (links up to 1/5, structural pairs next (no fixed share), lexical pairs up to 2/5, summaries up to 1/5 when `--summaries` is given, revalidation the rest). LLM links for unmatched client calls are `inferred` consumers, shown tagged in `api`, `impact`, `unused` and `explain`; they go stale when the client file or the candidate set changes. Only same-method endpoints are offered as candidates. The watcher never triggers enrichment.
 - Cost figures are estimates from a built-in price table of unverified list prices (Sonnet and Haiku families); unknown models have no estimate.
 
 ### Search, context, queries
 
 - Search is lexical. A comment-free code base gives BM25 only identifiers and signatures, so conceptual queries ("detect racily clean files") may rank vocabulary matches above the real logic (QUERY-4 improved grouping; recall depends on naming).
 - Context packs are budgeted selections. Items "likely to edit" show only an outline; read those files directly.
-- `callees` and `impact` do not list the target's own unresolved outgoing references. On `macro-heavy-rust`, `callees Point::manhattan` prints `none found` with no caveat, although the index stores three `macro_generated` references from that method (`add`, `self.x`, `self.y`). `callers` does list unresolved references that carry the target's name.
-- The search group heading "exact name" over-claims: hits that match only one query token (for example `Order.userId` for "user lookup") appear under it.
-- Entity listings carry no certainty tag, so the guidance "untagged results are authoritative" does not cover them; only relation lines are tagged.
-- The rendered tag for compiler-verified edges is `[compiler]`, while the MCP server instructions say `[compiler_verified]` (the JSON `class` is `compiler_verified`).
+- `callees`, `dependencies` and `impact` name unresolved references in the target's own body that may be macro-generated (`callees Point::manhattan` lists `add`, `self.x`, `self.y`), but they cannot say what those names would resolve to.
+- Certainty tags: every non-authoritative entity is tagged after its name, relation tags are in parentheses or after the target, and `[compiler]` is the only spelling. JSON carries `class`, `confidence`, `freshness`, `authoritative` and `tag`.
 - `atlas_dependents` and `atlas_dependencies` exist in the CLI (`query dependents`, `query dependencies`) but are not MCP tools at this commit.
 
-### Indexing scale and cost (measured before the performance round)
+### Indexing scale and cost
 
-- Evidence carries a per-edge content hash, so any byte change in a file rewrites every edge it owns (tens to hundreds of edges per one-file edit); a package-graph change re-resolves and re-persists every owner.
-- Database size (about 250 KB per file at last measurement) and per-file artifact blobs grow linearly; the similarity index costs about 300 MiB per 100k symbols.
-- Persist dominates cold indexing. A cross-process generation change forces a full state reload in every other open engine.
+Figures from the schema-v2 change (ccbf4b4), measured during development with release builds on a machine loaded by concurrent builds (load average 11-19); final numbers are in the evaluation results.
+
+- Rows are compact and the content hash is stored once per owner, so a body edit that keeps spans rewrites no edge (it was 43 to 172 at 1M LOC). At 1M synthetic LOC the cold index went from 24.3 s to 7.8 s and the database from 827 MB to 407 MB. Run-ledger fact deltas now count rewritten rows, not semantic changes, so a span shift counts as a change.
+- A migrated v1 database keeps its size until a re-index or `VACUUM`. A legacy row that cannot be decoded fails the migration (delete the database and re-index). An older binary that re-adopts a project can still write legacy rows; they are read, and rewritten compactly on the next replace.
+- A package-graph change still re-resolves and re-persists every owner. The similarity index costs about 300 MiB per 100k symbols (earlier measurement, not re-measured). A cross-process generation change forces a full state reload in every other open engine.
 - The persisted skipped-file list can be stale after a crash (report-only, ENGINE-6).
 
 Current numbers are in `docs/evaluation/results.md` once published.
@@ -163,7 +163,7 @@ Current numbers are in `docs/evaluation/results.md` once published.
 ### Unsupported
 
 - Languages other than Rust, TypeScript, JavaScript, TSX and JSX (extensions `rs ts mts cts tsx js mjs cjs jsx`). No Python, Go, Java, C#, C/C++, PHP, Ruby.
-- Projects of more than the repos you register; there is no remote or hosted index. Hidden files, `.gitignore`d files, symlinks, files over `max_file_bytes`, and the directories `node_modules target dist build .git .next coverage vendor` are not indexed unless an `include` pattern in `projects.toml` names a default-excluded directory.
+- Projects of more than the repos you register; there is no remote or hosted index. Hidden files, `.gitignore`d files, symlinks, files over `max_file_bytes`, and the directories `node_modules target dist build .git .next coverage vendor` are not indexed unless an `include` pattern (`project add-repo --include`, `project set-repo`) names a default-excluded directory.
 - Windows: not supported in practice. `watch` and the SCIP and LLM subprocess handling use unix signals and process groups, and nothing is tested on Windows.
 - Runtime behaviour: no profiling, tracing or coverage data; no environment values; no infrastructure (Terraform, Kubernetes) analysis.
 
