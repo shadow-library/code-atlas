@@ -1,0 +1,38 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+likely unused (5)
+  SessionStore.save method acme-api:src/auth/session.store.ts:16
+    no inbound usage edges at any certainty; exported only within application package acme-api
+  legacySlugify function acme-api:src/common/slug.ts:1
+    no inbound usage edges at any certainty; exported only within application package acme-api
+  checkHealth function acme-web:src/api/health.ts:3
+    no inbound usage edges at any certainty; exported only within application package acme-web
+  setToken function acme-web:src/api/session.ts:7
+    no inbound usage edges at any certainty; exported only within application package acme-web
+  parseMoney function acme-web:src/utils/currency.ts:1
+    no inbound usage edges at any certainty; exported only within application package acme-web
+possibly unused (9)
+  GET /admin/stats api_endpoint acme-api:src/admin/admin.controller.ts:8
+    no detected consumers in project; external clients outside the project may exist
+  session_cookie auth_scheme acme-api:src/auth/session.guard.ts:6
+    no client in the project sends this scheme
+  GET /v1/reports/export api_endpoint acme-api:src/reports/reports.controller.ts:10
+    no detected consumers in project; external clients outside the project may exist
+  POST /users api_endpoint acme-api:src/users/users.controller.ts:19
+    no detected consumers in project; external clients outside the project may exist
+  DELETE /users/{id} api_endpoint acme-api:src/users/users.controller.ts:31
+    no detected consumers in project; external clients outside the project may exist
+  consume_order_created function acme-billing:src/events.rs:23
+    no inbound usage edges at any certainty; pub item of library crate acme-billing; other crates may use it; subscribes to order.created; a message runtime may invoke it
+  GET /invoices/{id} api_endpoint acme-billing:src/lib.rs:26
+    no detected consumers in project; external clients outside the project may exist
+  POST /invoices api_endpoint acme-billing:src/lib.rs:26
+    no detected consumers in project; external clients outside the project may exist
+  AcmeClient.updateUser method acme-sdk:src/client.ts:24
+    no inbound usage edges at any certainty; public API of a library package (@acme/sdk is depended on by acme-web); consumers outside the project may exist
+excluded as entrypoints without inbound edges: 12 constructor, 1 main entrypoint, 3 method of a class implementing an interface (may be framework-invoked), 6 route handler, 3 trait or interface implementation
+caveats:
+  env var definitions (.env, compose, helm) are not indexed; unused env vars cannot be detected

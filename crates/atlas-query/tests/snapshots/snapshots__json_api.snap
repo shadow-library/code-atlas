@@ -1,0 +1,997 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+{
+  "freshness": {
+    "state": "fresh",
+    "run": 1,
+    "files_updated": 0,
+    "duration_ms": 0,
+    "watcher_clean": false,
+    "scip": {
+      "state": "never_run"
+    },
+    "stale_inferred_facts": 0,
+    "files_failed_analysis": 0,
+    "notes": []
+  },
+  "answer": {
+    "consumer_links": "linked",
+    "endpoints": {
+      "total": 1,
+      "items": [
+        {
+          "endpoint": {
+            "key": "endpoint:acme-api:GET /users/{id}",
+            "id": "e678e5286e5676ee",
+            "short": "GET /users/{id}",
+            "kind": "api_endpoint",
+            "location": {
+              "repo": "acme-api",
+              "path": "src/users/users.controller.ts",
+              "line": 13
+            }
+          },
+          "method": "GET",
+          "route": "/users/{id}",
+          "certainty": {
+            "class": "syntactic",
+            "confidence": null,
+            "freshness": null,
+            "authoritative": true,
+            "tag": "[syntactic]"
+          },
+          "handler": {
+            "entity": {
+              "key": "ts:acme-api:acme-api:src/users/users.controller::UsersController::findOne#method",
+              "id": "e485a4bb18a317ae",
+              "short": "UsersController.findOne",
+              "kind": "method",
+              "location": {
+                "repo": "acme-api",
+                "path": "src/users/users.controller.ts",
+                "line": 13
+              }
+            },
+            "relation": {
+              "edge": "a1f110878a6d7712",
+              "kind": "exposes_endpoint",
+              "phrase": "exposed by",
+              "entity": "UsersController.findOne",
+              "certainty": {
+                "class": "syntactic",
+                "confidence": null,
+                "freshness": null,
+                "authoritative": true,
+                "tag": "[syntactic]"
+              }
+            }
+          },
+          "guards": [
+            {
+              "guard": {
+                "entity": {
+                  "key": "ts:acme-api:acme-api:src/auth/jwt-auth.guard::JwtAuthGuard#class",
+                  "id": "0be1a15856fc7eb8",
+                  "short": "JwtAuthGuard",
+                  "kind": "class",
+                  "location": {
+                    "repo": "acme-api",
+                    "path": "src/auth/jwt-auth.guard.ts",
+                    "line": 4
+                  }
+                },
+                "relation": {
+                  "edge": "cfc1d83a80a61f41",
+                  "kind": "requires_guard",
+                  "phrase": "requires guard",
+                  "entity": "JwtAuthGuard",
+                  "certainty": {
+                    "class": "resolved",
+                    "confidence": null,
+                    "freshness": null,
+                    "authoritative": true,
+                    "tag": "[resolved]"
+                  }
+                }
+              },
+              "schemes": [
+                {
+                  "entity": {
+                    "key": "auth:acme-api:bearer",
+                    "id": "1e3870481b5798a8",
+                    "short": "bearer",
+                    "kind": "auth_scheme",
+                    "location": {
+                      "repo": "acme-api",
+                      "path": "src/auth/jwt-auth.guard.ts",
+                      "line": 5
+                    }
+                  },
+                  "relation": {
+                    "edge": "6e91581ab897826c",
+                    "kind": "implements_auth",
+                    "phrase": "possibly implements auth",
+                    "entity": "bearer",
+                    "certainty": {
+                      "class": "heuristic",
+                      "confidence": 0.85,
+                      "freshness": null,
+                      "authoritative": false,
+                      "tag": "[heuristic 0.85]"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "guard": {
+                "entity": {
+                  "key": "ts:acme-api:acme-api:src/auth/permissions.guard::PermissionsGuard#class",
+                  "id": "49febfe775171f93",
+                  "short": "PermissionsGuard",
+                  "kind": "class",
+                  "location": {
+                    "repo": "acme-api",
+                    "path": "src/auth/permissions.guard.ts",
+                    "line": 6
+                  }
+                },
+                "relation": {
+                  "edge": "dc2cf1ce13fa2703",
+                  "kind": "requires_guard",
+                  "phrase": "requires guard",
+                  "entity": "PermissionsGuard",
+                  "certainty": {
+                    "class": "resolved",
+                    "confidence": null,
+                    "freshness": null,
+                    "authoritative": true,
+                    "tag": "[resolved]"
+                  }
+                }
+              },
+              "schemes": []
+            }
+          ],
+          "auth": [
+            {
+              "scheme": {
+                "entity": {
+                  "key": "auth:acme-api:bearer",
+                  "id": "1e3870481b5798a8",
+                  "short": "bearer",
+                  "kind": "auth_scheme",
+                  "location": {
+                    "repo": "acme-api",
+                    "path": "src/auth/jwt-auth.guard.ts",
+                    "line": 5
+                  }
+                },
+                "relation": {
+                  "edge": "717aac620b5e7a16",
+                  "kind": "supports_auth",
+                  "phrase": "possibly supports auth",
+                  "entity": "bearer",
+                  "certainty": {
+                    "class": "heuristic",
+                    "confidence": 0.85,
+                    "freshness": null,
+                    "authoritative": false,
+                    "tag": "[heuristic 0.85]"
+                  }
+                }
+              },
+              "combinator": {
+                "name": "combinator",
+                "value": "all_of",
+                "owner": "link",
+                "certainty": {
+                  "class": "heuristic",
+                  "confidence": 0.85,
+                  "freshness": null,
+                  "authoritative": false,
+                  "tag": "[heuristic 0.85]"
+                }
+              }
+            }
+          ],
+          "auth_attrs": [
+            {
+              "name": "auth_combinator",
+              "value": "all_of",
+              "owner": "link",
+              "certainty": {
+                "class": "syntactic",
+                "confidence": null,
+                "freshness": null,
+                "authoritative": true,
+                "tag": "[syntactic]"
+              }
+            },
+            {
+              "name": "auth_requirement",
+              "value": {
+                "all_of": [
+                  "bearer",
+                  "authorization_only:PermissionsGuard"
+                ]
+              },
+              "owner": "link",
+              "certainty": {
+                "class": "syntactic",
+                "confidence": null,
+                "freshness": null,
+                "authoritative": true,
+                "tag": "[syntactic]"
+              }
+            },
+            {
+              "name": "authorization_guards",
+              "value": [
+                "PermissionsGuard"
+              ],
+              "owner": "link",
+              "certainty": {
+                "class": "syntactic",
+                "confidence": null,
+                "freshness": null,
+                "authoritative": true,
+                "tag": "[syntactic]"
+              }
+            },
+            {
+              "name": "unclassified_guards",
+              "value": [],
+              "owner": "link",
+              "certainty": {
+                "class": "syntactic",
+                "confidence": null,
+                "freshness": null,
+                "authoritative": true,
+                "tag": "[syntactic]"
+              }
+            }
+          ],
+          "permissions": [
+            {
+              "entity": {
+                "key": "permission:acme-api:users:read",
+                "id": "f8ebdf718a803b8f",
+                "short": "users:read",
+                "kind": "permission",
+                "location": {
+                  "repo": "acme-api",
+                  "path": "src/users/users.controller.ts",
+                  "line": 14
+                }
+              },
+              "relation": {
+                "edge": "84c1fd4b36b24d6d",
+                "kind": "requires_permission",
+                "phrase": "requires permission",
+                "entity": "users:read",
+                "certainty": {
+                  "class": "syntactic",
+                  "confidence": null,
+                  "freshness": null,
+                  "authoritative": true,
+                  "tag": "[syntactic]"
+                }
+              }
+            }
+          ],
+          "consumers": [
+            {
+              "consumer": {
+                "entity": {
+                  "key": "ts:acme-sdk:@acme/sdk:src/client::AcmeClient::getUser#method",
+                  "id": "5211a415be2bc596",
+                  "short": "AcmeClient.getUser",
+                  "kind": "method",
+                  "location": {
+                    "repo": "acme-sdk",
+                    "path": "src/client.ts",
+                    "line": 19
+                  }
+                },
+                "relation": {
+                  "edge": "ee8515031bd8f049",
+                  "kind": "calls_endpoint",
+                  "phrase": "possibly calls endpoint",
+                  "entity": "GET /users/{id}",
+                  "certainty": {
+                    "class": "heuristic",
+                    "confidence": 0.77,
+                    "freshness": null,
+                    "authoritative": false,
+                    "tag": "[heuristic 0.77]"
+                  }
+                }
+              },
+              "client_call": null,
+              "callers": [
+                {
+                  "entity": {
+                    "key": "ts:acme-sdk:@acme/sdk:src/client.test::AcmeClient::should send the bearer token in the Authorization header#test",
+                    "id": "18dd1e3034c12a17",
+                    "short": "AcmeClient.should send the bearer token in the Authorization header",
+                    "kind": "test",
+                    "location": {
+                      "repo": "acme-sdk",
+                      "path": "src/client.test.ts",
+                      "line": 8
+                    }
+                  },
+                  "relation": {
+                    "edge": "626e0ea2c2646929",
+                    "kind": "calls",
+                    "phrase": "calls",
+                    "entity": "AcmeClient.getUser",
+                    "certainty": {
+                      "class": "resolved",
+                      "confidence": null,
+                      "freshness": null,
+                      "authoritative": true,
+                      "tag": "[resolved]"
+                    }
+                  }
+                },
+                {
+                  "entity": {
+                    "key": "ts:acme-web:acme-web:src/components/UserCard::UserCard#function",
+                    "id": "f11953d21cc68618",
+                    "short": "UserCard",
+                    "kind": "function",
+                    "location": {
+                      "repo": "acme-web",
+                      "path": "src/components/UserCard.tsx",
+                      "line": 3
+                    }
+                  },
+                  "relation": {
+                    "edge": "0d8f4e98d819562b",
+                    "kind": "calls",
+                    "phrase": "calls",
+                    "entity": "useUser",
+                    "certainty": {
+                      "class": "resolved",
+                      "confidence": null,
+                      "freshness": null,
+                      "authoritative": true,
+                      "tag": "[resolved]"
+                    }
+                  }
+                },
+                {
+                  "entity": {
+                    "key": "ts:acme-web:acme-web:src/hooks/useUser::useUser#function",
+                    "id": "f41e7e91fb71d3f2",
+                    "short": "useUser",
+                    "kind": "function",
+                    "location": {
+                      "repo": "acme-web",
+                      "path": "src/hooks/useUser.ts",
+                      "line": 6
+                    }
+                  },
+                  "relation": {
+                    "edge": "07e0359edb2b4fe0",
+                    "kind": "calls",
+                    "phrase": "possibly calls",
+                    "entity": "AcmeClient.getUser",
+                    "certainty": {
+                      "class": "heuristic",
+                      "confidence": 0.85,
+                      "freshness": null,
+                      "authoritative": false,
+                      "tag": "[heuristic 0.85]"
+                    }
+                  }
+                }
+              ],
+              "repos": [
+                "acme-sdk",
+                "acme-web"
+              ],
+              "applications": [],
+              "auth_used": []
+            },
+            {
+              "consumer": {
+                "entity": {
+                  "key": "ts:acme-web:acme-web:src/hooks/useMe::useMe#function",
+                  "id": "986bdfff34f999f4",
+                  "short": "useMe",
+                  "kind": "function",
+                  "location": {
+                    "repo": "acme-web",
+                    "path": "src/hooks/useMe.ts",
+                    "line": 7
+                  }
+                },
+                "relation": {
+                  "edge": "461391acb5c7763b",
+                  "kind": "calls_endpoint",
+                  "phrase": "possibly calls endpoint",
+                  "entity": "GET /users/{id}",
+                  "certainty": {
+                    "class": "heuristic",
+                    "confidence": 0.468,
+                    "freshness": null,
+                    "authoritative": false,
+                    "tag": "[heuristic 0.47]"
+                  }
+                }
+              },
+              "client_call": null,
+              "callers": [
+                {
+                  "entity": {
+                    "key": "ts:acme-web:acme-web:src/components/OrderForm::OrderForm#function",
+                    "id": "44f94f41f7ec104f",
+                    "short": "OrderForm",
+                    "kind": "function",
+                    "location": {
+                      "repo": "acme-web",
+                      "path": "src/components/OrderForm.tsx",
+                      "line": 7
+                    }
+                  },
+                  "relation": {
+                    "edge": "b0c89934917e8e06",
+                    "kind": "calls",
+                    "phrase": "calls",
+                    "entity": "useMe",
+                    "certainty": {
+                      "class": "resolved",
+                      "confidence": null,
+                      "freshness": null,
+                      "authoritative": true,
+                      "tag": "[resolved]"
+                    }
+                  }
+                },
+                {
+                  "entity": {
+                    "key": "file:acme-web:src/main.tsx",
+                    "id": "a0cc622ca19a046d",
+                    "short": "src/main.tsx",
+                    "kind": "file",
+                    "location": {
+                      "repo": "acme-web",
+                      "path": "src/main.tsx",
+                      "line": null
+                    }
+                  },
+                  "relation": {
+                    "edge": "c04dd5fa0eb11b0a",
+                    "kind": "calls",
+                    "phrase": "calls",
+                    "entity": "App",
+                    "certainty": {
+                      "class": "resolved",
+                      "confidence": null,
+                      "freshness": null,
+                      "authoritative": true,
+                      "tag": "[resolved]"
+                    }
+                  }
+                },
+                {
+                  "entity": {
+                    "key": "ts:acme-web:acme-web:src/main::App#function",
+                    "id": "4a48e3c2c9a5e72e",
+                    "short": "App",
+                    "kind": "function",
+                    "location": {
+                      "repo": "acme-web",
+                      "path": "src/main.tsx",
+                      "line": 7
+                    }
+                  },
+                  "relation": {
+                    "edge": "20ec7f4210200e7f",
+                    "kind": "calls",
+                    "phrase": "calls",
+                    "entity": "useMe",
+                    "certainty": {
+                      "class": "resolved",
+                      "confidence": null,
+                      "freshness": null,
+                      "authoritative": true,
+                      "tag": "[resolved]"
+                    }
+                  }
+                }
+              ],
+              "repos": [
+                "acme-web"
+              ],
+              "applications": [],
+              "auth_used": [
+                {
+                  "entity": {
+                    "key": "auth:acme-api:bearer",
+                    "id": "1e3870481b5798a8",
+                    "short": "bearer",
+                    "kind": "auth_scheme",
+                    "location": {
+                      "repo": "acme-api",
+                      "path": "src/auth/jwt-auth.guard.ts",
+                      "line": 5
+                    }
+                  },
+                  "relation": {
+                    "edge": "25b37534608cfdbc",
+                    "kind": "uses_auth",
+                    "phrase": "possibly uses auth",
+                    "entity": "bearer",
+                    "certainty": {
+                      "class": "heuristic",
+                      "confidence": 0.75,
+                      "freshness": null,
+                      "authoritative": false,
+                      "tag": "[heuristic 0.75]"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "auth_matrix": [
+      {
+        "repo": "acme-api",
+        "schemes": [
+          {
+            "scheme": {
+              "key": "auth:acme-api:api_key",
+              "id": "ad00d36daa76f735",
+              "short": "api_key",
+              "kind": "auth_scheme",
+              "location": {
+                "repo": "acme-api",
+                "path": "src/auth/api-key.guard.ts",
+                "line": 5
+              }
+            },
+            "supported": {
+              "endpoints": 2,
+              "basis": "supports_auth"
+            },
+            "implemented_by": [
+              {
+                "entity": {
+                  "key": "ts:acme-api:acme-api:src/auth/api-key.guard::ApiKeyGuard#class",
+                  "id": "3f5fdd594c6e5f73",
+                  "short": "ApiKeyGuard",
+                  "kind": "class",
+                  "location": {
+                    "repo": "acme-api",
+                    "path": "src/auth/api-key.guard.ts",
+                    "line": 4
+                  }
+                },
+                "relation": {
+                  "edge": "0f20c6cb3e3a2268",
+                  "kind": "implements_auth",
+                  "phrase": "possibly implements auth",
+                  "entity": "api_key",
+                  "certainty": {
+                    "class": "heuristic",
+                    "confidence": 0.8,
+                    "freshness": null,
+                    "authoritative": false,
+                    "tag": "[heuristic 0.80]"
+                  }
+                }
+              }
+            ],
+            "used": "used",
+            "used_by": [
+              {
+                "entity": {
+                  "key": "rust:acme-billing:acme-billing:acme_client::AcmeApiClient::get_order#method",
+                  "id": "3ba807f776cfd5f4",
+                  "short": "AcmeApiClient::get_order",
+                  "kind": "method",
+                  "location": {
+                    "repo": "acme-billing",
+                    "path": "src/acme_client.rs",
+                    "line": 30
+                  }
+                },
+                "relation": {
+                  "edge": "aba71498f6df471f",
+                  "kind": "uses_auth",
+                  "phrase": "possibly uses auth",
+                  "entity": "api_key",
+                  "certainty": {
+                    "class": "heuristic",
+                    "confidence": 0.75,
+                    "freshness": null,
+                    "authoritative": false,
+                    "tag": "[heuristic 0.75]"
+                  }
+                }
+              },
+              {
+                "entity": {
+                  "key": "ts:acme-sdk:@acme/sdk:src/client::AcmeClient::headers#method",
+                  "id": "856e98b433ff1aa3",
+                  "short": "AcmeClient.headers",
+                  "kind": "method",
+                  "location": {
+                    "repo": "acme-sdk",
+                    "path": "src/client.ts",
+                    "line": 12
+                  }
+                },
+                "relation": {
+                  "edge": "b09859236987adb4",
+                  "kind": "uses_auth",
+                  "phrase": "possibly uses auth",
+                  "entity": "api_key",
+                  "certainty": {
+                    "class": "heuristic",
+                    "confidence": 0.7,
+                    "freshness": null,
+                    "authoritative": false,
+                    "tag": "[heuristic 0.70]"
+                  }
+                }
+              }
+            ],
+            "used_by_repos": [
+              "acme-billing",
+              "acme-sdk"
+            ],
+            "link_attrs": [
+              {
+                "name": "consumers",
+                "value": [
+                  "acme-billing",
+                  "acme-sdk"
+                ],
+                "owner": "link",
+                "certainty": {
+                  "class": "heuristic",
+                  "confidence": 0.8,
+                  "freshness": null,
+                  "authoritative": false,
+                  "tag": "[heuristic 0.80]"
+                }
+              },
+              {
+                "name": "evidence_count",
+                "value": 3,
+                "owner": "link",
+                "certainty": {
+                  "class": "heuristic",
+                  "confidence": 0.8,
+                  "freshness": null,
+                  "authoritative": false,
+                  "tag": "[heuristic 0.80]"
+                }
+              },
+              {
+                "name": "supported_by_endpoints",
+                "value": 2,
+                "owner": "link",
+                "certainty": {
+                  "class": "heuristic",
+                  "confidence": 0.8,
+                  "freshness": null,
+                  "authoritative": false,
+                  "tag": "[heuristic 0.80]"
+                }
+              },
+              {
+                "name": "used",
+                "value": true,
+                "owner": "link",
+                "certainty": {
+                  "class": "heuristic",
+                  "confidence": 0.8,
+                  "freshness": null,
+                  "authoritative": false,
+                  "tag": "[heuristic 0.80]"
+                }
+              }
+            ]
+          },
+          {
+            "scheme": {
+              "key": "auth:acme-api:bearer",
+              "id": "1e3870481b5798a8",
+              "short": "bearer",
+              "kind": "auth_scheme",
+              "location": {
+                "repo": "acme-api",
+                "path": "src/auth/jwt-auth.guard.ts",
+                "line": 5
+              }
+            },
+            "supported": {
+              "endpoints": 6,
+              "basis": "supports_auth"
+            },
+            "implemented_by": [
+              {
+                "entity": {
+                  "key": "ts:acme-api:acme-api:src/auth/jwt-auth.guard::JwtAuthGuard#class",
+                  "id": "0be1a15856fc7eb8",
+                  "short": "JwtAuthGuard",
+                  "kind": "class",
+                  "location": {
+                    "repo": "acme-api",
+                    "path": "src/auth/jwt-auth.guard.ts",
+                    "line": 4
+                  }
+                },
+                "relation": {
+                  "edge": "6e91581ab897826c",
+                  "kind": "implements_auth",
+                  "phrase": "possibly implements auth",
+                  "entity": "bearer",
+                  "certainty": {
+                    "class": "heuristic",
+                    "confidence": 0.85,
+                    "freshness": null,
+                    "authoritative": false,
+                    "tag": "[heuristic 0.85]"
+                  }
+                }
+              }
+            ],
+            "used": "used",
+            "used_by": [
+              {
+                "entity": {
+                  "key": "ts:acme-sdk:@acme/sdk:src/client::AcmeClient::headers#method",
+                  "id": "856e98b433ff1aa3",
+                  "short": "AcmeClient.headers",
+                  "kind": "method",
+                  "location": {
+                    "repo": "acme-sdk",
+                    "path": "src/client.ts",
+                    "line": 12
+                  }
+                },
+                "relation": {
+                  "edge": "98c4da3c7848d5c7",
+                  "kind": "uses_auth",
+                  "phrase": "possibly uses auth",
+                  "entity": "bearer",
+                  "certainty": {
+                    "class": "heuristic",
+                    "confidence": 0.7,
+                    "freshness": null,
+                    "authoritative": false,
+                    "tag": "[heuristic 0.70]"
+                  }
+                }
+              },
+              {
+                "entity": {
+                  "key": "ts:acme-web:acme-web:src/api/client::acme#constant",
+                  "id": "80739461361dc98c",
+                  "short": "acme",
+                  "kind": "constant",
+                  "location": {
+                    "repo": "acme-web",
+                    "path": "src/api/client.ts",
+                    "line": 6
+                  }
+                },
+                "relation": {
+                  "edge": "3e76e370046ee5f9",
+                  "kind": "uses_auth",
+                  "phrase": "possibly uses auth",
+                  "entity": "bearer",
+                  "certainty": {
+                    "class": "heuristic",
+                    "confidence": 0.6,
+                    "freshness": null,
+                    "authoritative": false,
+                    "tag": "[heuristic 0.60]"
+                  }
+                }
+              },
+              {
+                "entity": {
+                  "key": "ts:acme-web:acme-web:src/hooks/useMe::useMe#function",
+                  "id": "986bdfff34f999f4",
+                  "short": "useMe",
+                  "kind": "function",
+                  "location": {
+                    "repo": "acme-web",
+                    "path": "src/hooks/useMe.ts",
+                    "line": 7
+                  }
+                },
+                "relation": {
+                  "edge": "25b37534608cfdbc",
+                  "kind": "uses_auth",
+                  "phrase": "possibly uses auth",
+                  "entity": "bearer",
+                  "certainty": {
+                    "class": "heuristic",
+                    "confidence": 0.75,
+                    "freshness": null,
+                    "authoritative": false,
+                    "tag": "[heuristic 0.75]"
+                  }
+                }
+              }
+            ],
+            "used_by_repos": [
+              "acme-sdk",
+              "acme-web"
+            ],
+            "link_attrs": [
+              {
+                "name": "consumers",
+                "value": [
+                  "acme-sdk",
+                  "acme-web"
+                ],
+                "owner": "link",
+                "certainty": {
+                  "class": "heuristic",
+                  "confidence": 0.85,
+                  "freshness": null,
+                  "authoritative": false,
+                  "tag": "[heuristic 0.85]"
+                }
+              },
+              {
+                "name": "evidence_count",
+                "value": 13,
+                "owner": "link",
+                "certainty": {
+                  "class": "heuristic",
+                  "confidence": 0.85,
+                  "freshness": null,
+                  "authoritative": false,
+                  "tag": "[heuristic 0.85]"
+                }
+              },
+              {
+                "name": "supported_by_endpoints",
+                "value": 6,
+                "owner": "link",
+                "certainty": {
+                  "class": "heuristic",
+                  "confidence": 0.85,
+                  "freshness": null,
+                  "authoritative": false,
+                  "tag": "[heuristic 0.85]"
+                }
+              },
+              {
+                "name": "used",
+                "value": true,
+                "owner": "link",
+                "certainty": {
+                  "class": "heuristic",
+                  "confidence": 0.85,
+                  "freshness": null,
+                  "authoritative": false,
+                  "tag": "[heuristic 0.85]"
+                }
+              }
+            ]
+          },
+          {
+            "scheme": {
+              "key": "auth:acme-api:session_cookie",
+              "id": "42b8e527be28aa34",
+              "short": "session_cookie",
+              "kind": "auth_scheme",
+              "location": {
+                "repo": "acme-api",
+                "path": "src/auth/session.guard.ts",
+                "line": 6
+              }
+            },
+            "supported": {
+              "endpoints": 1,
+              "basis": "supports_auth"
+            },
+            "implemented_by": [
+              {
+                "entity": {
+                  "key": "ts:acme-api:acme-api:src/auth/session.guard::SessionGuard#class",
+                  "id": "be535c09edbee848",
+                  "short": "SessionGuard",
+                  "kind": "class",
+                  "location": {
+                    "repo": "acme-api",
+                    "path": "src/auth/session.guard.ts",
+                    "line": 5
+                  }
+                },
+                "relation": {
+                  "edge": "2af522220abb1b14",
+                  "kind": "implements_auth",
+                  "phrase": "possibly implements auth",
+                  "entity": "session_cookie",
+                  "certainty": {
+                    "class": "heuristic",
+                    "confidence": 0.8,
+                    "freshness": null,
+                    "authoritative": false,
+                    "tag": "[heuristic 0.80]"
+                  }
+                }
+              }
+            ],
+            "used": "unused",
+            "used_by": [],
+            "used_by_repos": [],
+            "link_attrs": [
+              {
+                "name": "consumers",
+                "value": [],
+                "owner": "link",
+                "certainty": {
+                  "class": "heuristic",
+                  "confidence": 0.8,
+                  "freshness": null,
+                  "authoritative": false,
+                  "tag": "[heuristic 0.80]"
+                }
+              },
+              {
+                "name": "evidence_count",
+                "value": 0,
+                "owner": "link",
+                "certainty": {
+                  "class": "heuristic",
+                  "confidence": 0.8,
+                  "freshness": null,
+                  "authoritative": false,
+                  "tag": "[heuristic 0.80]"
+                }
+              },
+              {
+                "name": "supported_by_endpoints",
+                "value": 1,
+                "owner": "link",
+                "certainty": {
+                  "class": "heuristic",
+                  "confidence": 0.8,
+                  "freshness": null,
+                  "authoritative": false,
+                  "tag": "[heuristic 0.80]"
+                }
+              },
+              {
+                "name": "used",
+                "value": false,
+                "owner": "link",
+                "certainty": {
+                  "class": "heuristic",
+                  "confidence": 0.8,
+                  "freshness": null,
+                  "authoritative": false,
+                  "tag": "[heuristic 0.80]"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "unmatched_calls": {
+      "total": 0,
+      "items": []
+    },
+    "caveats": []
+  }
+}

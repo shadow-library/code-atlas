@@ -1,0 +1,19 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+UsersController.findOne method acme-api:src/users/users.controller.ts:13 [syntactic]
+  key ts:acme-api:acme-api:src/users/users.controller::UsersController::findOne#method
+  id e485a4bb18a317ae
+  attr attributes: [{"args":[{"type":"str","value":":id"}],"path":["Get"],"span":{"end_byte":551,"end_col":13,"end_line":13,"start_byte":540,"start_col":2,"start_line":13}},{"args":[{"type":"str","value":"users:read"}],"path":["RequirePermission"],"span":{"end_byte":586,"end_col":34,"end_line":14,"start_byte":554,"start_col":2,"start_line":14}}] [syntactic, file]
+  attr language: typescript [syntactic, file]
+  attr params: [{"attributes":[{"args":[{"type":"str","value":"id"}],"path":["Param"],"span":{"end_byte":609,"end_col":22,"end_line":15,"start_byte":597,"start_col":10,"start_line":15}}],"name":"id","span":{"end_byte":620,"end_col":33,"end_line":15,"start_byte":597,"start_col":10,"start_line":15},"type_text":"string"}] [syntactic, file]
+assertions (1)
+  file acme-api:src/users/users.controller.ts [syntactic] (file last indexed in run 1)
+    evidence acme-api:src/users/users.controller.ts:13 by atlas-lang-ts@1
+      13|   @Get(':id')
+      14|   @RequirePermission('users:read')
+      15|   findOne(@Param('id') id: string) {
+      16|     return this.usersService.findOne(id);
+      17|   }

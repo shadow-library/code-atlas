@@ -1,0 +1,10 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+ambiguous target "findOne": 4 candidates; pass a full key or narrow with kind/repo
+  OrdersController.findOne method acme-api:src/orders/orders.controller.ts:13  ts:acme-api:acme-api:src/orders/orders.controller::OrdersController::findOne#method
+  OrdersService.findOne method acme-api:src/orders/orders.service.ts:23  ts:acme-api:acme-api:src/orders/orders.service::OrdersService::findOne#method
+  UsersController.findOne method acme-api:src/users/users.controller.ts:13  ts:acme-api:acme-api:src/users/users.controller::UsersController::findOne#method
+  UsersService.findOne method acme-api:src/users/users.service.ts:18  ts:acme-api:acme-api:src/users/users.service::UsersService::findOne#method

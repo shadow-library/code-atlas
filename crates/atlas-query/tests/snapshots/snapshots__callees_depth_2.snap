@@ -1,0 +1,9 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+callees of OrdersController.findOne method acme-api:src/orders/orders.controller.ts:13 depth=2
+acme-api (2)
+  OrdersService.findOne method acme-api:src/orders/orders.service.ts:23  called by OrdersController.findOne [resolved]
+  formatMoney function acme-api:src/common/money.ts:1  called by OrdersService.findOne [resolved] > called by OrdersController.findOne [resolved]

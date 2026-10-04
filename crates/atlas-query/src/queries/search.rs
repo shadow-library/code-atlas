@@ -1,0 +1,313 @@
+use std::collections::BTreeSet;
+
+use atlas_core::{EntityKind, RepoName};
+use atlas_semantic::RELATION_CAPABILITY_SUMMARY;
+use atlas_similarity::{Field, SearchHit, SearchOptions, SimilarityIndex};
+use atlas_store::{FreshnessPolicy, InferredQuery};
+use serde::Serialize;
+
+use crate::QueryEngine;
+use crate::error::QueryResult;
+use crate::graph::Graph;
+use crate::model::{Caveat, CertaintyTag, EntityRef, Response};
+use crate::policy::{InferredAdmission, Policy};
+use crate::queries::common::{first_line, is_test};
+
+const DEFAULT_SEARCH_LIMIT: usize = 10;
+const STRONG_FRACTION: f64 = 0.6;
+const STRUCTURAL_THRESHOLD: f64 = 0.6;
+const STRUCTURAL_SEEDS: usize = 3;
+const STRUCTURAL_PER_SEED: usize = 5;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchRequest {
+  pub text: String,
+  pub kinds: Vec<EntityKind>,
+  pub repo: Option<String>,
+  pub limit: usize,
+  pub include_stale: bool,
+}
+
+impl SearchRequest {
+  pub fn new(text: impl Into<String>) -> Self {
+    Self {
+      text: text.into(),
+      kinds: Vec::new(),
+      repo: None,
+      limit: DEFAULT_SEARCH_LIMIT,
+      include_stale: false,
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SearchHitView {
+  pub entity: EntityRef,
+  pub signature: Option<String>,
+  pub doc: Option<String>,
+  pub score: f64,
+  pub matched_fields: Vec<String>,
+  pub direct_terms: Vec<String>,
+  pub expansion_terms: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct StructuralHit {
+  pub entity: EntityRef,
+  pub similar_to: String,
+  pub jaccard: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct InferredHit {
+  pub entity: EntityRef,
+  pub summary: String,
+  pub matched_terms: Vec<String>,
+  pub certainty: CertaintyTag,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SearchAnswer {
+  pub query: String,
+  pub total_hits: usize,
+  pub exact_name: Vec<SearchHitView>,
+  pub strong: Vec<SearchHitView>,
+  pub related: Vec<SearchHitView>,
+  pub structurally_similar: Vec<StructuralHit>,
+  pub inferred_capabilities: Vec<InferredHit>,
+  pub caveats: Vec<Caveat>,
+}
+
+impl QueryEngine {
+  pub fn search(&self, request: &SearchRequest) -> QueryResult<Response<SearchAnswer>> {
+    let freshness = self.barrier()?;
+    let index = self.engine().similarity();
+    let policy = Policy {
+      min_confidence: 0.0,
+      include_stale: request.include_stale,
+    };
+    let answer = self.read(policy, |graph| search(graph, &index, request))?;
+    Ok(Response { freshness, answer })
+  }
+}
+
+pub(crate) fn normalised(text: &str) -> String {
+  text.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
+}
+
+pub(crate) fn query_terms(text: &str) -> BTreeSet<String> {
+  let mut terms = BTreeSet::new();
+  for word in text.split(|c: char| !c.is_alphanumeric()).filter(|word| !word.is_empty()) {
+    let mut current = String::new();
+    let mut previous_lower = false;
+    for c in word.chars() {
+      if c.is_uppercase() && previous_lower && !current.is_empty() {
+        terms.insert(std::mem::take(&mut current));
+      }
+      previous_lower = c.is_lowercase() || c.is_ascii_digit();
+      current.extend(c.to_lowercase());
+    }
+    if !current.is_empty() {
+      terms.insert(current);
+    }
+  }
+  terms.retain(|term| term.len() >= 3);
+  terms
+}
+
+pub(crate) fn lexical_hits(index: &SimilarityIndex, text: &str, kinds: &[EntityKind], repo: Option<&str>, k: usize) -> Vec<SearchHit> {
+  let repos = repo.and_then(|repo| RepoName::new(repo).ok()).into_iter().collect();
+  index.search(text, &SearchOptions { k, kinds: kinds.to_vec(), repos })
+}
+
+fn field_name(field: Field) -> &'static str {
+  match field {
+    Field::Name => "name",
+    Field::Signature => "signature",
+    Field::Doc => "doc",
+    Field::Path => "path",
+    Field::References => "references",
+  }
+}
+
+pub(crate) fn query_words(text: &str) -> Vec<String> {
+  let mut words = Vec::new();
+  for word in text.split(|c: char| !c.is_alphanumeric()).filter(|word| !word.is_empty()) {
+    words.push(word.to_lowercase());
+    let mut current = String::new();
+    let mut previous_lower = false;
+    for c in word.chars() {
+      if c.is_uppercase() && previous_lower && !current.is_empty() {
+        words.push(std::mem::take(&mut current));
+      }
+      previous_lower = c.is_lowercase() || c.is_ascii_digit();
+      current.extend(c.to_lowercase());
+    }
+    if !current.is_empty() {
+      words.push(current);
+    }
+  }
+  words.sort();
+  words.dedup();
+  words
+}
+
+pub(crate) fn unstemmed(terms: &[String], words: &[String]) -> Vec<String> {
+  terms
+    .iter()
+    .map(|term| {
+      words
+        .iter()
+        .filter(|word| word.starts_with(term.as_str()))
+        .min_by_key(|word| (word.len(), word.as_str()))
+        .cloned()
+        .unwrap_or_else(|| term.clone())
+    })
+    .collect()
+}
+
+pub(crate) fn rounded(value: f64) -> f64 {
+  (value * 1000.0).round() / 1000.0
+}
+
+fn search(graph: &Graph<'_, '_>, index: &SimilarityIndex, request: &SearchRequest) -> QueryResult<SearchAnswer> {
+  let hits = lexical_hits(index, &request.text, &request.kinds, request.repo.as_deref(), request.limit.max(1) * 3);
+  let words = query_words(&request.text);
+  let top = hits.first().map_or(0.0, |hit| hit.score);
+  let wanted: BTreeSet<String> = std::iter::once(normalised(&request.text))
+    .chain(request.text.split_whitespace().map(normalised))
+    .filter(|word| !word.is_empty())
+    .collect();
+  let mut exact_name = Vec::new();
+  let mut strong = Vec::new();
+  let mut related = Vec::new();
+  let mut tests = Vec::new();
+  let mut seeds = Vec::new();
+  for hit in &hits {
+    let Some(entity) = graph.entity(hit.entity)? else { continue };
+    let view = SearchHitView {
+      entity: EntityRef::of(&entity),
+      signature: entity.signature.clone(),
+      doc: first_line(entity.doc.as_deref()),
+      score: rounded(hit.score),
+      matched_fields: hit
+        .matched_fields
+        .iter()
+        .map(|field| format!("{}: {}", field_name(field.field), unstemmed(&field.terms, &words).join(" ")))
+        .collect(),
+      direct_terms: unstemmed(&hit.direct_terms, &words),
+      expansion_terms: hit
+        .via_expansion
+        .iter()
+        .map(|expansion| format!("{} (from {})", expansion.term, unstemmed(&expansion.from, &words).join(", ")))
+        .collect(),
+    };
+    if is_test(&entity) {
+      tests.push(view);
+    } else if wanted.contains(&normalised(&entity.name)) {
+      if seeds.len() < STRUCTURAL_SEEDS {
+        seeds.push((entity.id, view.entity.short.clone()));
+      }
+      exact_name.push(view);
+    } else if hit.score >= STRONG_FRACTION * top {
+      strong.push(view);
+    } else {
+      related.push(view);
+    }
+  }
+  related.extend(tests);
+  let total_hits = exact_name.len() + strong.len() + related.len();
+  let mut remaining = request.limit;
+  for group in [&mut exact_name, &mut strong, &mut related] {
+    group.truncate(remaining);
+    remaining -= group.len();
+  }
+  let mut structurally_similar = Vec::new();
+  let shown: BTreeSet<String> = exact_name.iter().chain(&strong).chain(&related).map(|hit| hit.entity.id.clone()).collect();
+  for (seed, name) in &seeds {
+    for found in index.near_duplicates(*seed, STRUCTURAL_THRESHOLD, STRUCTURAL_PER_SEED) {
+      let Some(entity) = graph.entity(found.entity)? else { continue };
+      if shown.contains(&entity.id.to_string()) {
+        continue;
+      }
+      structurally_similar.push(StructuralHit {
+        entity: EntityRef::of(&entity),
+        similar_to: name.clone(),
+        jaccard: rounded(found.exact_jaccard),
+      });
+    }
+  }
+  let (inferred_capabilities, hidden) = capability_matches(graph, &request.text)?;
+  let mut caveats = Vec::new();
+  if let Some(hidden) = hidden {
+    caveats.push(hidden);
+  }
+  if total_hits > exact_name.len() + strong.len() + related.len() {
+    caveats.push(Caveat::Note {
+      message: format!("{} more lexical hits omitted (raise limit)", total_hits - exact_name.len() - strong.len() - related.len()),
+    });
+  }
+  Ok(SearchAnswer {
+    query: request.text.clone(),
+    total_hits,
+    exact_name,
+    strong,
+    related,
+    structurally_similar,
+    inferred_capabilities,
+    caveats,
+  })
+}
+
+fn capability_matches(graph: &Graph<'_, '_>, text: &str) -> QueryResult<(Vec<InferredHit>, Option<Caveat>)> {
+  let terms = query_terms(text);
+  let facts = graph.tx().inferred_facts(&InferredQuery {
+    subject: None,
+    relation: Some(RELATION_CAPABILITY_SUMMARY.to_owned()),
+    freshness: FreshnessPolicy::IncludeStale,
+  })?;
+  let mut hits = Vec::new();
+  let (mut stale, mut low) = (0, 0);
+  for fact in facts {
+    let summary = fact.payload.get("summary").and_then(serde_json::Value::as_str).unwrap_or_default().to_owned();
+    let capabilities: Vec<String> = fact
+      .payload
+      .get("capabilities")
+      .and_then(serde_json::Value::as_array)
+      .map(|values| values.iter().filter_map(|value| value.as_str().map(str::to_owned)).collect())
+      .unwrap_or_default();
+    let described = query_terms(&format!("{summary} {}", capabilities.join(" ")));
+    let matched: Vec<String> = terms.intersection(&described).cloned().collect();
+    if matched.is_empty() {
+      continue;
+    }
+    let Some(subject) = fact.subjects.first() else { continue };
+    match graph.policy.inferred_admission(&fact) {
+      InferredAdmission::StaleHidden => {
+        stale += 1;
+        continue;
+      }
+      InferredAdmission::LowConfidence => {
+        low += 1;
+        continue;
+      }
+      InferredAdmission::Current | InferredAdmission::StaleShown => {}
+    }
+    let Some(entity) = graph.entity(*subject)? else { continue };
+    hits.push(InferredHit {
+      entity: EntityRef::of(&entity),
+      summary,
+      matched_terms: matched,
+      certainty: CertaintyTag::inferred(&fact.certainty, &fact.freshness),
+    });
+  }
+  hits.sort_by(|left, right| {
+    right
+      .matched_terms
+      .len()
+      .cmp(&left.matched_terms.len())
+      .then_with(|| left.entity.sort_key().cmp(&right.entity.sort_key()))
+  });
+  let hidden = (stale + low > 0).then_some(Caveat::InferredHidden { stale, low_confidence: low });
+  Ok((hits, hidden))
+}

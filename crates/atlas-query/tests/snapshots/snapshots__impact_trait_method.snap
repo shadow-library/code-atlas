@@ -1,0 +1,38 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+impact of InvoiceStore::insert method acme-billing:src/store.rs:16 depth=3
+direct dependents (4)
+  consume_order_created function acme-billing:src/events.rs:23 score=1.035
+    why: calls InvoiceStore::insert [resolved]
+  persist function acme-billing:src/handlers.rs:15 score=1.035
+    why: calls InvoiceStore::insert [resolved]
+  PgInvoiceStore::<InvoiceStore>::insert method acme-billing:src/store.rs:36 score=0.935
+    why: implements InvoiceStore::insert [resolved]
+  InMemoryInvoiceStore::<InvoiceStore>::insert method acme-billing:src/store.rs:53 score=0.935
+    why: implements InvoiceStore::insert [resolved]
+transitive dependents (3)
+  create_invoice function acme-billing:src/handlers.rs:19 score=0.535
+    why: calls persist [resolved] > calls InvoiceStore::insert [resolved]
+  router function acme-billing:src/lib.rs:25 score=0.301
+    why: references create_invoice [resolved] > calls persist [resolved] > calls InvoiceStore::insert [resolved]
+  src/lib.rs file acme-billing:src/lib.rs score=0.168
+    why: imports create_invoice [resolved] > calls persist [resolved] > calls InvoiceStore::insert [resolved]
+affected endpoints (1)
+  POST /invoices api_endpoint acme-billing:src/lib.rs:26 score=0.535
+    why: exposed by create_invoice [resolved] > calls persist [resolved] > calls InvoiceStore::insert [resolved]
+endpoint consumers (0)
+affected repos (1)
+  acme-billing: 8 items apps: acme-billing
+relevant tests (2, 2 uncertain)
+  unknown_invoice_returns_404 test acme-billing:tests/invoices.rs:14 score=0.120 UNCERTAIN
+    why: possibly covers file src/lib.rs [heuristic 0.60] > references create_invoice [resolved] > calls persist [resolved] > calls InvoiceStore::insert [resolved]
+  stored_invoice_is_returned test acme-billing:tests/invoices.rs:23 score=0.120 UNCERTAIN
+    why: possibly covers file src/lib.rs [heuristic 0.60] > references create_invoice [resolved] > calls persist [resolved] > calls InvoiceStore::insert [resolved]
+config and env (0)
+unresolved risk (1)
+  2 unresolved references named "insert" could hide relations (2 ambiguous)
+    acme-billing:src/store.rs:38 rows.insert (ambiguous)
+    acme-billing:tests/invoices.rs:26 store.insert (ambiguous)

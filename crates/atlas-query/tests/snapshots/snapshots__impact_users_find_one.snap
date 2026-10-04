@@ -1,0 +1,53 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+impact of UsersService.findOne method acme-api:src/users/users.service.ts:18 depth=3
+direct dependents (2)
+  UsersController.findOne method acme-api:src/users/users.controller.ts:13 score=1.035
+    why: calls UsersService.findOne [resolved]
+  UsersService.update method acme-api:src/users/users.service.ts:28 score=1.035
+    why: calls UsersService.findOne [resolved]
+transitive dependents (1)
+  UsersController.update method acme-api:src/users/users.controller.ts:25 score=0.535
+    why: calls UsersService.update [resolved] > calls UsersService.findOne [resolved]
+affected endpoints (2)
+  GET /users/{id} api_endpoint acme-api:src/users/users.controller.ts:13 score=1.035
+    why: exposed by UsersController.findOne [syntactic] > calls UsersService.findOne [resolved]
+  PATCH /users/{id} api_endpoint acme-api:src/users/users.controller.ts:25 score=0.535
+    why: exposed by UsersController.update [syntactic] > calls UsersService.update [resolved] > calls UsersService.findOne [resolved]
+endpoint consumers (8, 8 uncertain)
+  AcmeClient.getUser method acme-sdk:src/client.ts:19 score=0.381 UNCERTAIN
+    why: possibly calls endpoint GET /users/{id} [heuristic 0.77] > exposed by UsersController.findOne [syntactic] > calls UsersService.findOne [resolved]
+  AcmeClient.updateUser method acme-sdk:src/client.ts:24 score=0.266 UNCERTAIN
+    why: possibly calls endpoint PATCH /users/{id} [heuristic 0.77] > exposed by UsersController.update [syntactic] > calls UsersService.update [resolved] > calls UsersService.findOne [resolved]
+  useMe function acme-web:src/hooks/useMe.ts:7 score=0.245 UNCERTAIN
+    why: possibly calls endpoint GET /users/{id} [heuristic 0.47] > exposed by UsersController.findOne [syntactic] > calls UsersService.findOne [resolved]
+  useUser function acme-web:src/hooks/useUser.ts:6 score=0.231 UNCERTAIN
+    why: possibly calls AcmeClient.getUser [heuristic 0.85] > possibly calls endpoint GET /users/{id} [heuristic 0.77] > exposed by UsersController.findOne [syntactic] > calls UsersService.findOne [resolved]
+  OrderForm function acme-web:src/components/OrderForm.tsx:7 score=0.175 UNCERTAIN
+    why: calls useMe [resolved] > possibly calls endpoint GET /users/{id} [heuristic 0.47] > exposed by UsersController.findOne [syntactic] > calls UsersService.findOne [resolved]
+  App function acme-web:src/main.tsx:7 score=0.175 UNCERTAIN
+    why: calls useMe [resolved] > possibly calls endpoint GET /users/{id} [heuristic 0.47] > exposed by UsersController.findOne [syntactic] > calls UsersService.findOne [resolved]
+  src/components/OrderForm.tsx file acme-web:src/components/OrderForm.tsx score=0.091 UNCERTAIN
+    why: imports useMe [resolved] > possibly calls endpoint GET /users/{id} [heuristic 0.47] > exposed by UsersController.findOne [syntactic] > calls UsersService.findOne [resolved]
+  src/main.tsx file acme-web:src/main.tsx score=0.091 UNCERTAIN
+    why: imports useMe [resolved] > possibly calls endpoint GET /users/{id} [heuristic 0.47] > exposed by UsersController.findOne [syntactic] > calls UsersService.findOne [resolved]
+affected repos (3)
+  acme-api: 7 items apps: acme-api
+  acme-sdk: 3 items (only via uncertain edges)
+  acme-web: 6 items (only via uncertain edges)
+relevant tests (5, 3 uncertain)
+  UsersService.findOne.should return the user when it exists test acme-api:src/users/users.service.spec.ts:13 score=1.035
+    why: calls UsersService.findOne [resolved]
+  UsersService.findOne.should throw NotFoundException when the user is missing test acme-api:src/users/users.service.spec.ts:18 score=1.035
+    why: calls UsersService.findOne [resolved]
+  UsersService test_suite acme-api:src/users/users.service.spec.ts:6 score=0.300 UNCERTAIN
+    why: possibly covers file src/users/users.service.ts [heuristic 0.60] > calls UsersService.findOne [resolved]
+  AcmeClient.should send the bearer token in the Authorization header test acme-sdk:src/client.test.ts:8 score=0.266 UNCERTAIN
+    why: calls AcmeClient.getUser [resolved] > possibly calls endpoint GET /users/{id} [heuristic 0.77] > exposed by UsersController.findOne [syntactic] > calls UsersService.findOne [resolved]
+  AcmeClient test_suite acme-sdk:src/client.test.ts:5 score=0.139 UNCERTAIN
+    why: possibly covers file src/client.ts [heuristic 0.60] > possibly calls endpoint GET /users/{id} [heuristic 0.77] > exposed by UsersController.findOne [syntactic] > calls UsersService.findOne [resolved]
+config and env (0)
+unresolved risk (0)

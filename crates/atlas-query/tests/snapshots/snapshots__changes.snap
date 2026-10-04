@@ -1,0 +1,29 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+run 1 barrier ok
+  analyzed: acme-api:src/admin/admin.controller.ts, acme-api:src/admin/admin.module.ts, acme-api:src/app.module.ts, acme-api:src/auth/api-key.guard.ts, acme-api:src/auth/auth.module.ts, acme-api:src/auth/jwt-auth.guard.ts, acme-api:src/auth/jwt-or-api-key.guard.ts, acme-api:src/auth/permissions.guard.ts, acme-api:src/auth/require-permission.decorator.ts, acme-api:src/auth/session.guard.ts, acme-api:src/auth/session.store.ts, acme-api:src/billing/billing.module.ts, acme-api:src/billing/billing.service.ts, acme-api:src/billing/rounding.ts, acme-api:src/common/database.config.ts, acme-api:src/common/money.ts, acme-api:src/common/slug.ts, acme-api:src/main.ts, acme-api:src/orders/order.entity.ts, acme-api:src/orders/orders.controller.spec.ts
+  38 more file entries omitted
+  acme-api:package.json entities +1 -0 ~0 edges +17 -0 ~0 unresolved +0 -0
+  acme-api:src/admin/admin.controller.ts entities +4 -0 ~0 edges +8 -0 ~0 unresolved +5 -0
+  acme-api:src/admin/admin.module.ts entities +2 -0 ~0 edges +5 -0 ~0 unresolved +1 -0
+  acme-api:src/app.module.ts entities +2 -0 ~0 edges +23 -0 ~0 unresolved +4 -0
+  acme-api:src/auth/api-key.guard.ts entities +7 -0 ~0 edges +7 -0 ~0 unresolved +11 -0
+  acme-api:src/auth/auth.module.ts entities +3 -0 ~0 edges +21 -0 ~0 unresolved +4 -0
+  acme-api:src/auth/jwt-auth.guard.ts entities +7 -0 ~0 edges +7 -0 ~0 unresolved +12 -0
+  acme-api:src/auth/jwt-or-api-key.guard.ts entities +6 -0 ~0 edges +16 -0 ~0 unresolved +7 -0
+  acme-api:src/auth/permissions.guard.ts entities +5 -0 ~0 edges +8 -0 ~0 unresolved +11 -0
+  acme-api:src/auth/require-permission.decorator.ts entities +3 -0 ~0 edges +4 -0 ~0 unresolved +1 -0
+  acme-api:src/auth/session.guard.ts entities +6 -0 ~0 edges +10 -0 ~0 unresolved +8 -0
+  acme-api:src/auth/session.store.ts entities +8 -0 ~0 edges +11 -0 ~0 unresolved +6 -0
+  acme-api:src/billing/billing.module.ts entities +2 -0 ~0 edges +5 -0 ~0 unresolved +1 -0
+  acme-api:src/billing/billing.service.ts entities +4 -0 ~0 edges +8 -0 ~0 unresolved +1 -0
+  acme-api:src/billing/rounding.ts entities +3 -0 ~0 edges +3 -0 ~0 unresolved +2 -0
+  acme-api:src/common/database.config.ts entities +3 -0 ~0 edges +3 -0 ~0 unresolved +1 -0
+  acme-api:src/common/money.ts entities +2 -0 ~0 edges +2 -0 ~0 unresolved +4 -0
+  acme-api:src/common/slug.ts entities +2 -0 ~0 edges +2 -0 ~0 unresolved +3 -0
+  acme-api:src/main.ts entities +3 -0 ~0 edges +7 -0 ~0 unresolved +6 -0
+  acme-api:src/orders/order.entity.ts entities +7 -0 ~0 edges +7 -0 ~0 unresolved +6 -0
+  45 more changed owners

@@ -1,0 +1,17 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+UsersService.findOne method acme-api:src/users/users.service.ts:18 [syntactic]
+  key ts:acme-api:acme-api:src/users/users.service::UsersService::findOne#method
+  sig async findOne(id: string): Promise<User>
+  visibility public
+  parent UsersService class acme-api:src/users/users.service.ts:14
+  callers 4 | callees 0 | references 0 | tests 3 (1 uncertain) | implementors 0 | children 0
+  body:
+    18|   async findOne(id: string): Promise<User> {
+    19|     const user = await this.users.findOneBy({ id });
+    20|     if (!user) throw new NotFoundException(`User ${id} not found`);
+    21|     return user;
+    22|   }

@@ -1,0 +1,9 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+dependencies of UsersController class acme-api:src/users/users.controller.ts:8 depth=1
+acme-api (2)
+  JwtAuthGuard class acme-api:src/auth/jwt-auth.guard.ts:4  referenced by UsersController [resolved]
+  PermissionsGuard class acme-api:src/auth/permissions.guard.ts:6  referenced by UsersController [resolved]

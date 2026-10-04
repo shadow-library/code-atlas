@@ -1,0 +1,194 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+context for "add a DELETE /orders/:id endpoint with api-key auth" (~2335 of 6000 tokens)
+MUST READ (12)
+  UsersController.remove method acme-api:src/users/users.controller.ts:31  why: exposes endpoint DELETE /users/{id} [syntactic]
+    31|   @Delete(':id')
+    32|   @RequirePermission('users:delete')
+    33|   remove(@Param('id') id: string) {
+    34|     return this.usersService.remove(id);
+    35|   }
+  JwtOrApiKeyGuard class acme-api:src/auth/jwt-or-api-key.guard.ts:6  why: guard required by GET /orders/{id} [resolved]
+     6| @Injectable()
+     7| export class JwtOrApiKeyGuard implements CanActivate {
+     8|   constructor(
+     9|     private readonly jwtGuard: JwtAuthGuard,
+    10|     private readonly apiKeyGuard: ApiKeyGuard,
+    11|   ) {}
+    12|
+    13|   async canActivate(context: ExecutionContext): Promise<boolean> {
+    14|     const request = context.switchToHttp().getRequest();
+    15|     if (request.headers['x-api-key']) return this.apiKeyGuard.canActivate(context);
+    16|     if (request.headers['authorization']) return this.jwtGuard.canActivate(context);
+    17|     throw new UnauthorizedException('No credentials supplied');
+    18|   }
+    19| }
+  ApiKeyGuard class acme-api:src/auth/api-key.guard.ts:4  why: search hit on api key auth
+     4| @Injectable()
+     5| export class ApiKeyGuard implements CanActivate {
+     6|   constructor(private readonly configService: ConfigService) {}
+     7|
+     8|   canActivate(context: ExecutionContext): boolean {
+     9|     const request = context.switchToHttp().getRequest();
+    10|     const provided: string | undefined = request.headers['x-api-key'];
+    11|     const allowed = (this.configService.get<string>('API_KEYS') ?? '').split(',').filter(Boolean);
+    12|     if (!provided || !allowed.includes(provided)) throw new UnauthorizedException('Invalid API key');
+    13|     request.user = { id: 'service', permissions: ['orders:read'] };
+    14|     return true;
+    15|   }
+    16| }
+  UsersService.remove method acme-api:src/users/users.service.ts:33  why: search hit on delete id
+    33|   async remove(id: string): Promise<void> {
+    34|     const result = await this.users.delete({ id });
+    35|     if (!result.affected) throw new NotFoundException(`User ${id} not found`);
+    36|   }
+  UsersService class acme-api:src/users/users.service.ts:14  why: contains UsersService.remove [syntactic]
+    sig class UsersService
+      constructor(private readonly users: Repository<User>)
+      private readonly users: Repository<User>
+      async findOne(id: string): Promise<User>
+      create(input: CreateUserInput): Promise<User>
+      async update(id: string, input: UpdateUserInput): Promise<User>
+      async remove(id: string): Promise<void>
+  OrdersController.findOne method acme-api:src/orders/orders.controller.ts:13  why: exposes endpoint GET /orders/{id} [resolved]
+    13|   @Get(':id')
+    14|   @UseGuards(JwtOrApiKeyGuard)
+    15|   findOne(@Param('id') id: string) {
+    16|     return this.ordersService.findOne(id);
+    17|   }
+  JwtAuthGuard class acme-api:src/auth/jwt-auth.guard.ts:4  why: guard required by POST /orders [resolved]
+     4| @Injectable()
+     5| export class JwtAuthGuard implements CanActivate {
+     6|   constructor(private readonly jwt: JwtService) {}
+     7|
+     8|   async canActivate(context: ExecutionContext): Promise<boolean> {
+     9|     const request = context.switchToHttp().getRequest();
+    10|     const header: string | undefined = request.headers['authorization'];
+    11|     if (!header?.startsWith('Bearer ')) throw new UnauthorizedException('Missing bearer token');
+    12|     try {
+    13|       request.user = await this.jwt.verifyAsync(header.slice('Bearer '.length), { secret: process.env.JWT_SECRET });
+    14|       return true;
+    15|     } catch {
+    16|       throw new UnauthorizedException('Invalid bearer token');
+    17|     }
+    18|   }
+    19| }
+  OrdersController.create method acme-api:src/orders/orders.controller.ts:19  why: exposes endpoint POST /orders [resolved]
+    19|   @Post()
+    20|   @UseGuards(JwtAuthGuard)
+    21|   create(@Body() input: CreateOrderInput) {
+    22|     return this.ordersService.create(input);
+    23|   }
+  UsersController class acme-api:src/users/users.controller.ts:8  why: contains UsersController.remove [syntactic]
+    sig class UsersController
+      constructor(private readonly usersService: UsersService)
+      private readonly usersService: UsersService
+      findOne(id: string)
+      create(input: CreateUserInput)
+      update(id: string, input: UpdateUserInput)
+      remove(id: string)
+  PermissionsGuard class acme-api:src/auth/permissions.guard.ts:6  why: guard required by DELETE /users/{id} [resolved]
+     6| @Injectable()
+     7| export class PermissionsGuard implements CanActivate {
+     8|   constructor(private readonly reflector: Reflector) {}
+     9|
+    10|   canActivate(context: ExecutionContext): boolean {
+    11|     const required = this.reflector.getAllAndOverride<string | undefined>(PERMISSION_KEY, [context.getHandler(), context.getClass()]);
+    12|     if (!required) return true;
+    13|     const user = context.switchToHttp().getRequest().user as { permissions?: string[] } | undefined;
+    14|     if (!user?.permissions?.includes(required)) throw new ForbiddenException(`Missing permission ${required}`);
+    15|     return true;
+    16|   }
+    17| }
+  ReportsController.export method acme-api:src/reports/reports.controller.ts:10  why: exposes endpoint GET /v1/reports/export [syntactic]
+    10|   @Get('v1/reports/export')
+    11|   @UseGuards(ApiKeyGuard)
+    12|   export() {
+    13|     return this.reportsService.exportCsv();
+    14|   }
+  OrdersController class acme-api:src/orders/orders.controller.ts:9  why: contains OrdersController.findOne [syntactic]
+    sig class OrdersController
+      constructor(private readonly ordersService: OrdersService)
+      private readonly ordersService: OrdersService
+      findOne(id: string)
+      create(input: CreateOrderInput)
+SKIM (17)
+  GET /orders/{id} api_endpoint acme-api:src/orders/orders.controller.ts:13  why: same route as /orders/{id} (another method)
+  DELETE /users/{id} api_endpoint acme-api:src/users/users.controller.ts:31  why: pattern exemplar: DELETE on a route shaped like /orders/{id}
+  api_key auth_scheme acme-api:src/auth/api-key.guard.ts:5  why: auth scheme api_key named in the task
+  POST /orders api_endpoint acme-api:src/orders/orders.controller.ts:19  why: same resource as /orders/{id}
+  GET /v1/reports/export api_endpoint acme-api:src/reports/reports.controller.ts:10  why: requires guard ApiKeyGuard [resolved]
+  OrdersService.findOne method acme-api:src/orders/orders.service.ts:23  why: called by OrdersController.findOne [resolved]
+    sig async findOne(id: string)
+  OrdersService.create method acme-api:src/orders/orders.service.ts:29  why: called by OrdersController.create [resolved]
+    sig async create(input: CreateOrderInput): Promise<Order>
+  RequirePermission function acme-api:src/auth/require-permission.decorator.ts:5  why: called by UsersController.remove [resolved]
+    sig const RequirePermission = (permission: string) =>
+  AcmeAuth type_alias acme-sdk:src/types.ts:1  why: search hit on api key auth
+    sig type AcmeAuth = { type: 'bearer'; token: string } | { type: 'apiKey'; key: string }
+  TOKEN_KEY constant acme-web:src/api/session.ts:1  why: search hit on api key
+    sig const TOKEN_KEY = 'acme.token'
+  OrdersService class acme-api:src/orders/orders.service.ts:15  why: contains OrdersService.findOne [syntactic]
+    sig class OrdersService
+      constructor(private readonly orders: Repository<Order>, private readonly events: EventEmitter2, private readonly billing: BillingService)
+      private readonly orders: Repository<Order>
+      private readonly events: EventEmitter2
+      private readonly billing: BillingService
+      async findOne(id: string)
+      async create(input: CreateOrderInput): Promise<Order>
+  setToken function acme-web:src/api/session.ts:7  why: search hit on api key
+    sig function setToken(token: string): void
+  UsersService.constructor method acme-api:src/users/users.service.ts:16  why: contained in UsersService [syntactic]
+    sig constructor(private readonly users: Repository<User>)
+  UsersService.create method acme-api:src/users/users.service.ts:24  why: contained in UsersService [syntactic]
+    sig create(input: CreateUserInput): Promise<User>
+  UsersService.findOne method acme-api:src/users/users.service.ts:18  why: contained in UsersService [syntactic]
+    sig async findOne(id: string): Promise<User>
+  UsersService.update method acme-api:src/users/users.service.ts:28  why: contained in UsersService [syntactic]
+    sig async update(id: string, input: UpdateUserInput): Promise<User>
+  ReportsController class acme-api:src/reports/reports.controller.ts:6  why: contains ReportsController.export [syntactic]
+    sig class ReportsController
+      constructor(private readonly reportsService: ReportsService)
+      private readonly reportsService: ReportsService
+      export()
+PATTERN (2)
+  AuthModule class acme-api:src/auth/auth.module.ts:11  why: registry: references JwtOrApiKeyGuard and 4 siblings [resolved]
+  SessionGuard class acme-api:src/auth/session.guard.ts:5  why: sibling of ApiKeyGuard registered in AuthModule
+IMPACT (6)
+  AcmeApiClient::get_order method acme-billing:src/acme_client.rs:30 UNCERTAIN  why: possibly calls endpoint GET /orders/{id} [heuristic 0.77]
+  AcmeClient.getOrder method acme-sdk:src/client.ts:34 UNCERTAIN  why: possibly calls endpoint GET /orders/{id} [heuristic 0.77]
+  AcmeClient.headers method acme-sdk:src/client.ts:12 UNCERTAIN  why: possibly uses auth api_key [heuristic 0.70]
+  AcmeClient.createOrder method acme-sdk:src/client.ts:29 UNCERTAIN  why: possibly calls endpoint POST /orders [heuristic 0.72]
+  useMe function acme-web:src/hooks/useMe.ts:7 UNCERTAIN  why: possibly uses auth bearer [heuristic 0.75]
+  acme constant acme-web:src/api/client.ts:6 UNCERTAIN  why: possibly uses auth bearer [heuristic 0.60]
+TESTS (4)
+  UsersService test_suite acme-api:src/users/users.service.spec.ts:6  why: instantiates UsersService [resolved] (direct)
+    run: [acme-api] npx jest src/users/users.service.spec.ts -t "UsersService"
+  OrdersController.should delegate findOne to the service test acme-api:src/orders/orders.controller.spec.ts:10  why: calls OrdersController.findOne [resolved] (direct)
+    run: [acme-api] npx jest src/orders/orders.controller.spec.ts -t "OrdersController should delegate findOne to the service"
+  OrdersController.should delegate create to the service test acme-api:src/orders/orders.controller.spec.ts:16  why: calls OrdersController.create [resolved] (direct)
+    run: [acme-api] npx jest src/orders/orders.controller.spec.ts -t "OrdersController should delegate create to the service"
+  OrdersController test_suite acme-api:src/orders/orders.controller.spec.ts:4  why: instantiates OrdersController [resolved] (direct)
+    run: [acme-api] npx jest src/orders/orders.controller.spec.ts -t "OrdersController"
+UNCERTAIN (1)
+  bearer auth_scheme acme-api:src/auth/jwt-auth.guard.ts:5 UNCERTAIN  why: possibly auth supported by GET /orders/{id} [heuristic 0.70]
+OMITTED (16)
+  ApiKeyGuard.canActivate method acme-api:src/auth/api-key.guard.ts:8 [shown inside an enclosing MUST READ body]
+  ApiKeyGuard.constructor method acme-api:src/auth/api-key.guard.ts:6 [shown inside an enclosing MUST READ body]
+  JwtAuthGuard.canActivate method acme-api:src/auth/jwt-auth.guard.ts:8 [shown inside an enclosing MUST READ body]
+  JwtOrApiKeyGuard.canActivate method acme-api:src/auth/jwt-or-api-key.guard.ts:13 [shown inside an enclosing MUST READ body]
+  JwtOrApiKeyGuard.constructor method acme-api:src/auth/jwt-or-api-key.guard.ts:8 [shown inside an enclosing MUST READ body]
+  BillingService.applyTax method acme-api:src/billing/billing.service.ts:9 [low relevance]
+  JwtAuthGuard.constructor method acme-api:src/auth/jwt-auth.guard.ts:6 [low relevance]
+  OrdersController.constructor method acme-api:src/orders/orders.controller.ts:11 [low relevance]
+  PermissionsGuard.canActivate method acme-api:src/auth/permissions.guard.ts:10 [low relevance]
+  PermissionsGuard.constructor method acme-api:src/auth/permissions.guard.ts:8 [low relevance]
+  ReportsService.exportCsv method acme-api:src/reports/reports.service.ts:13 [low relevance]
+  UsersController.constructor method acme-api:src/users/users.controller.ts:11 [low relevance]
+  UsersController.create method acme-api:src/users/users.controller.ts:19 [low relevance]
+  UsersController.findOne method acme-api:src/users/users.controller.ts:13 [low relevance]
+  UsersController.update method acme-api:src/users/users.controller.ts:25 [low relevance]
+  formatMoney function acme-api:src/common/money.ts:1 [low relevance]

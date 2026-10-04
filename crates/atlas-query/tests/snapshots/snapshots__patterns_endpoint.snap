@@ -1,0 +1,72 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+patterns for "endpoint": 10 instances in 4 shapes
+1. nestjs handler, @<Verb> @RequirePermission (4)
+  UsersController.findOne method acme-api:src/users/users.controller.ts:13
+    sig findOne(id: string)
+    13|   @Get(':id')
+    14|   @RequirePermission('users:read')
+    15|   findOne(@Param('id') id: string) {
+    16|     return this.usersService.findOne(id);
+    17|   }
+  UsersController.create method acme-api:src/users/users.controller.ts:19
+    sig create(input: CreateUserInput)
+    19|   @Post()
+    20|   @RequirePermission('users:write')
+    21|   create(@Body() input: CreateUserInput) {
+    22|     return this.usersService.create(input);
+    23|   }
+  UsersController.update method acme-api:src/users/users.controller.ts:25
+    sig update(id: string, input: UpdateUserInput)
+    25|   @Patch(':id')
+    26|   @RequirePermission('users:write')
+    27|   update(@Param('id') id: string, @Body() input: UpdateUserInput) {
+    28|     return this.usersService.update(id, input);
+    29|   }
+  1 more instances
+2. nestjs handler, @<Verb> @UseGuards (3)
+  OrdersController.findOne method acme-api:src/orders/orders.controller.ts:13
+    sig findOne(id: string)
+    13|   @Get(':id')
+    14|   @UseGuards(JwtOrApiKeyGuard)
+    15|   findOne(@Param('id') id: string) {
+    16|     return this.ordersService.findOne(id);
+    17|   }
+  OrdersController.create method acme-api:src/orders/orders.controller.ts:19
+    sig create(input: CreateOrderInput)
+    19|   @Post()
+    20|   @UseGuards(JwtAuthGuard)
+    21|   create(@Body() input: CreateOrderInput) {
+    22|     return this.ordersService.create(input);
+    23|   }
+  ReportsController.export method acme-api:src/reports/reports.controller.ts:10
+    sig export()
+    10|   @Get('v1/reports/export')
+    11|   @UseGuards(ApiKeyGuard)
+    12|   export() {
+    13|     return this.reportsService.exportCsv();
+    14|   }
+3. axum handler, registered without decorators (2)
+  create_invoice function acme-billing:src/handlers.rs:19
+    sig pub async fn create_invoice(State(state): State<AppState>, Json(request): Json<CreateInvoice>) -> Result<(StatusCode, Json<Invoice>), ApiError>
+    19| pub async fn create_invoice(State(state): State<AppState>, Json(request): Json<CreateInvoice>) -> Result<(StatusCode, Json<Invoice>), ApiError> {
+    20|   let order = state.acme.get_order(&request.order_id).await?;
+    21|   let invoice = Invoice { id: format!("inv_{}", order.id), order_id: order.id, amount_cents: order.total_cents };
+    22|   let saved = persist(state.store.as_ref(), invoice)?;
+    23|   Ok((StatusCode::CREATED, Json(saved)))
+    24| }
+  get_invoice function acme-billing:src/handlers.rs:26
+    sig pub async fn get_invoice(State(state): State<AppState>, Path(id): Path<String>) -> Result<Json<Invoice>, ApiError>
+    26| pub async fn get_invoice(State(state): State<AppState>, Path(id): Path<String>) -> Result<Json<Invoice>, ApiError> {
+    27|   state.store.find(&id).map(Json).ok_or(ApiError::NotFound(id))
+    28| }
+4. nestjs handler, @<Verb> (1)
+  AdminController.stats method acme-api:src/admin/admin.controller.ts:8
+    sig stats()
+     8|   @Get('stats')
+     9|   stats() {
+    10|     return { uptimeSeconds: Math.floor(process.uptime()), pid: process.pid };
+    11|   }

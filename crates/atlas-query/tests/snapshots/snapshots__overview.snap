@@ -1,0 +1,47 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+project acme: 4 repos, 65 files
+repos
+  acme-api: 34 files (typescript 32)
+  acme-sdk: 8 files (typescript 6)
+  acme-web: 13 files (tsx 3, typescript 8)
+  acme-billing: 10 files (rust 9)
+packages (4)
+  acme-api [npm] acme-api: 16 external deps
+  acme-billing [cargo] acme-billing: 7 external deps
+  @acme/sdk [npm] acme-sdk: 2 external deps; used by acme-web
+  acme-web [npm] acme-web: 6 external deps -> @acme/sdk
+applications (2)
+  acme-api acme-api [syntactic] (basis manifest: package.json start script [syntactic, structure])
+  acme-billing acme-billing [syntactic] (basis manifest: cargo bin target [syntactic, structure])
+    entrypoints: main function acme-billing:src/main.rs:7
+top modules by fan-in
+  acme-billing:src/store.rs (5 importers)
+  acme-sdk:src/index.ts (5 importers)
+  acme-api:src/auth/jwt-auth.guard.ts (4 importers)
+  acme-api:src/orders/order.entity.ts (4 importers)
+  acme-sdk:src/types.ts (4 importers)
+  acme-api:src/auth/api-key.guard.ts (3 importers)
+  acme-api:src/orders/orders.service.ts (3 importers)
+  acme-api:src/users/users.service.ts (3 importers)
+APIs
+  acme-api: 8 endpoints, auth api_key, bearer, session_cookie
+  acme-billing: 2 endpoints, auth none detected
+events
+  order.created: 1 publishers, 1 subscribers
+patterns
+  HTTP endpoints: nestjs handler (8), axum handler (2)
+  auth: nest_guard (3)
+  tests: jest, *.spec.ts (2), tokio, tests/ directory (2), vitest, *.test.ts (2)
+  data access: maps to table via typeorm (2)
+  events: publishes (1), subscribes (1)
+  config: reads env (8), reads config via this.configService (1)
+  DI via constructor injection (11 decorated classes)
+  multiple HTTP frameworks: axum, nestjs
+health
+  442 unresolved references: ambiguous 2, dynamic 73, external 333, not_found 34
+  scip coverage 0/58 files
+  inferred facts current 0 stale 0 needs revalidation 0

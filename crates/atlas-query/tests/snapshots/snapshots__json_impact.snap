@@ -1,0 +1,396 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+{
+  "freshness": {
+    "state": "fresh",
+    "run": 1,
+    "files_updated": 0,
+    "duration_ms": 0,
+    "watcher_clean": false,
+    "scip": {
+      "state": "never_run"
+    },
+    "stale_inferred_facts": 0,
+    "files_failed_analysis": 0,
+    "notes": []
+  },
+  "answer": {
+    "outcome": "found",
+    "targets": [
+      {
+        "key": "ts:acme-sdk:@acme/sdk:src/money::toCents#function",
+        "id": "d209f398d5da9e95",
+        "short": "toCents",
+        "kind": "function",
+        "location": {
+          "repo": "acme-sdk",
+          "path": "src/money.ts",
+          "line": 1
+        }
+      }
+    ],
+    "depth": 3,
+    "direct": {
+      "total": 4,
+      "uncertain": 2,
+      "items": [
+        {
+          "entity": {
+            "key": "ts:acme-web:acme-web:src/components/OrderForm::OrderForm#function",
+            "id": "44f94f41f7ec104f",
+            "short": "OrderForm",
+            "kind": "function",
+            "location": {
+              "repo": "acme-web",
+              "path": "src/components/OrderForm.tsx",
+              "line": 7
+            }
+          },
+          "depth": 1,
+          "score": 0.885,
+          "uncertain": true,
+          "why": [
+            {
+              "edge": "4d47686e0f9d18d7",
+              "kind": "calls",
+              "phrase": "possibly calls",
+              "entity": "toCents",
+              "certainty": {
+                "class": "heuristic",
+                "confidence": 0.85,
+                "freshness": null,
+                "authoritative": false,
+                "tag": "[heuristic 0.85]"
+              }
+            }
+          ]
+        },
+        {
+          "entity": {
+            "key": "file:acme-sdk:src/index.ts",
+            "id": "c9ce796ab9f63c64",
+            "short": "src/index.ts",
+            "kind": "file",
+            "location": {
+              "repo": "acme-sdk",
+              "path": "src/index.ts",
+              "line": null
+            }
+          },
+          "depth": 1,
+          "score": 0.835,
+          "uncertain": false,
+          "why": [
+            {
+              "edge": "9c3af9cc0ea73ed4",
+              "kind": "re_exports",
+              "phrase": "re-exports",
+              "entity": "toCents",
+              "certainty": {
+                "class": "resolved",
+                "confidence": null,
+                "freshness": null,
+                "authoritative": true,
+                "tag": "[resolved]"
+              }
+            }
+          ]
+        },
+        {
+          "entity": {
+            "key": "file:acme-sdk:src/money.test.ts",
+            "id": "5acfc157eb7ef2e7",
+            "short": "src/money.test.ts",
+            "kind": "file",
+            "location": {
+              "repo": "acme-sdk",
+              "path": "src/money.test.ts",
+              "line": null
+            }
+          },
+          "depth": 1,
+          "score": 0.435,
+          "uncertain": false,
+          "why": [
+            {
+              "edge": "8b3fcbaa63ad7df2",
+              "kind": "imports",
+              "phrase": "imports",
+              "entity": "toCents",
+              "certainty": {
+                "class": "resolved",
+                "confidence": null,
+                "freshness": null,
+                "authoritative": true,
+                "tag": "[resolved]"
+              }
+            }
+          ]
+        },
+        {
+          "entity": {
+            "key": "file:acme-web:src/components/OrderForm.tsx",
+            "id": "08666f4d48d6cf50",
+            "short": "src/components/OrderForm.tsx",
+            "kind": "file",
+            "location": {
+              "repo": "acme-web",
+              "path": "src/components/OrderForm.tsx",
+              "line": null
+            }
+          },
+          "depth": 1,
+          "score": 0.375,
+          "uncertain": true,
+          "why": [
+            {
+              "edge": "64d2f2c8578da662",
+              "kind": "imports",
+              "phrase": "possibly imports",
+              "entity": "toCents",
+              "certainty": {
+                "class": "heuristic",
+                "confidence": 0.85,
+                "freshness": null,
+                "authoritative": false,
+                "tag": "[heuristic 0.85]"
+              }
+            }
+          ]
+        }
+      ],
+      "collapsed": 0
+    },
+    "transitive": {
+      "total": 2,
+      "uncertain": 2,
+      "items": [
+        {
+          "entity": {
+            "key": "ts:acme-web:acme-web:src/main::App#function",
+            "id": "4a48e3c2c9a5e72e",
+            "short": "App",
+            "kind": "function",
+            "location": {
+              "repo": "acme-web",
+              "path": "src/main.tsx",
+              "line": 7
+            }
+          },
+          "depth": 2,
+          "score": 0.46,
+          "uncertain": true,
+          "why": [
+            {
+              "edge": "fd1c56e4c015d408",
+              "kind": "calls",
+              "phrase": "calls",
+              "entity": "OrderForm",
+              "certainty": {
+                "class": "resolved",
+                "confidence": null,
+                "freshness": null,
+                "authoritative": true,
+                "tag": "[resolved]"
+              }
+            },
+            {
+              "edge": "4d47686e0f9d18d7",
+              "kind": "calls",
+              "phrase": "possibly calls",
+              "entity": "toCents",
+              "certainty": {
+                "class": "heuristic",
+                "confidence": 0.85,
+                "freshness": null,
+                "authoritative": false,
+                "tag": "[heuristic 0.85]"
+              }
+            }
+          ]
+        },
+        {
+          "entity": {
+            "key": "file:acme-web:src/main.tsx",
+            "id": "a0cc622ca19a046d",
+            "short": "src/main.tsx",
+            "kind": "file",
+            "location": {
+              "repo": "acme-web",
+              "path": "src/main.tsx",
+              "line": null
+            }
+          },
+          "depth": 2,
+          "score": 0.205,
+          "uncertain": true,
+          "why": [
+            {
+              "edge": "43a779122358567b",
+              "kind": "imports",
+              "phrase": "imports",
+              "entity": "OrderForm",
+              "certainty": {
+                "class": "resolved",
+                "confidence": null,
+                "freshness": null,
+                "authoritative": true,
+                "tag": "[resolved]"
+              }
+            },
+            {
+              "edge": "4d47686e0f9d18d7",
+              "kind": "calls",
+              "phrase": "possibly calls",
+              "entity": "toCents",
+              "certainty": {
+                "class": "heuristic",
+                "confidence": 0.85,
+                "freshness": null,
+                "authoritative": false,
+                "tag": "[heuristic 0.85]"
+              }
+            }
+          ]
+        }
+      ],
+      "collapsed": 0
+    },
+    "endpoints": {
+      "total": 0,
+      "uncertain": 0,
+      "items": [],
+      "collapsed": 0
+    },
+    "consumers": {
+      "total": 0,
+      "uncertain": 0,
+      "items": [],
+      "collapsed": 0
+    },
+    "repos": [
+      {
+        "repo": "acme-sdk",
+        "items": 4,
+        "only_uncertain": false,
+        "applications": []
+      },
+      {
+        "repo": "acme-web",
+        "items": 4,
+        "only_uncertain": true,
+        "applications": []
+      }
+    ],
+    "tests": {
+      "total": 3,
+      "uncertain": 1,
+      "items": [
+        {
+          "entity": {
+            "key": "ts:acme-sdk:@acme/sdk:src/money.test::toCents::should convert whole and fractional amounts#test",
+            "id": "a6f2b98cbab313a6",
+            "short": "toCents.should convert whole and fractional amounts",
+            "kind": "test",
+            "location": {
+              "repo": "acme-sdk",
+              "path": "src/money.test.ts",
+              "line": 6
+            }
+          },
+          "depth": 1,
+          "score": 1.035,
+          "uncertain": false,
+          "why": [
+            {
+              "edge": "1c56bbb31c89dd1d",
+              "kind": "calls",
+              "phrase": "calls",
+              "entity": "toCents",
+              "certainty": {
+                "class": "resolved",
+                "confidence": null,
+                "freshness": null,
+                "authoritative": true,
+                "tag": "[resolved]"
+              }
+            }
+          ]
+        },
+        {
+          "entity": {
+            "key": "ts:acme-sdk:@acme/sdk:src/money.test::toCents::should keep the sign of negative amounts#test",
+            "id": "ee3620af0768f72c",
+            "short": "toCents.should keep the sign of negative amounts",
+            "kind": "test",
+            "location": {
+              "repo": "acme-sdk",
+              "path": "src/money.test.ts",
+              "line": 12
+            }
+          },
+          "depth": 1,
+          "score": 1.035,
+          "uncertain": false,
+          "why": [
+            {
+              "edge": "0d714fb112dc777b",
+              "kind": "calls",
+              "phrase": "calls",
+              "entity": "toCents",
+              "certainty": {
+                "class": "resolved",
+                "confidence": null,
+                "freshness": null,
+                "authoritative": true,
+                "tag": "[resolved]"
+              }
+            }
+          ]
+        },
+        {
+          "entity": {
+            "key": "ts:acme-sdk:@acme/sdk:src/money.test::toCents#test_suite",
+            "id": "b93e5804c2dd3544",
+            "short": "toCents",
+            "kind": "test_suite",
+            "location": {
+              "repo": "acme-sdk",
+              "path": "src/money.test.ts",
+              "line": 5
+            }
+          },
+          "depth": 1,
+          "score": 0.6,
+          "uncertain": true,
+          "why": [
+            {
+              "edge": "fc8f15e7db231281",
+              "kind": "covers_file",
+              "phrase": "possibly covers file",
+              "entity": "src/money.ts",
+              "certainty": {
+                "class": "heuristic",
+                "confidence": 0.6,
+                "freshness": null,
+                "authoritative": false,
+                "tag": "[heuristic 0.60]"
+              }
+            }
+          ]
+        }
+      ],
+      "collapsed": 0
+    },
+    "config": {
+      "total": 0,
+      "uncertain": 0,
+      "items": [],
+      "collapsed": 0
+    },
+    "unresolved_risk": [],
+    "caveats": []
+  }
+}

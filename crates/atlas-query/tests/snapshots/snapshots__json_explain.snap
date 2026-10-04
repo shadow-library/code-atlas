@@ -1,0 +1,222 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+{
+  "freshness": {
+    "state": "fresh",
+    "run": 1,
+    "files_updated": 0,
+    "duration_ms": 0,
+    "watcher_clean": false,
+    "scip": {
+      "state": "never_run"
+    },
+    "stale_inferred_facts": 0,
+    "files_failed_analysis": 0,
+    "notes": []
+  },
+  "answer": {
+    "outcome": "found",
+    "subject": "entity",
+    "entity": {
+      "key": "endpoint:acme-api:GET /orders/{id}",
+      "id": "179fc97fb302f7b7",
+      "short": "GET /orders/{id}",
+      "kind": "api_endpoint",
+      "location": {
+        "repo": "acme-api",
+        "path": "src/orders/orders.controller.ts",
+        "line": 13
+      }
+    },
+    "certainty": {
+      "class": "resolved",
+      "confidence": null,
+      "freshness": null,
+      "authoritative": true,
+      "tag": "[resolved]"
+    },
+    "attrs": [
+      {
+        "name": "auth_combinator",
+        "value": "any_of",
+        "owner": "link",
+        "certainty": {
+          "class": "resolved",
+          "confidence": null,
+          "freshness": null,
+          "authoritative": true,
+          "tag": "[resolved]"
+        }
+      },
+      {
+        "name": "auth_requirement",
+        "value": {
+          "any_of": [
+            "api_key",
+            "bearer"
+          ]
+        },
+        "owner": "link",
+        "certainty": {
+          "class": "resolved",
+          "confidence": null,
+          "freshness": null,
+          "authoritative": true,
+          "tag": "[resolved]"
+        }
+      },
+      {
+        "name": "authorization_guards",
+        "value": [],
+        "owner": "link",
+        "certainty": {
+          "class": "resolved",
+          "confidence": null,
+          "freshness": null,
+          "authoritative": true,
+          "tag": "[resolved]"
+        }
+      },
+      {
+        "name": "controller",
+        "value": "OrdersController",
+        "owner": "file",
+        "certainty": {
+          "class": "resolved",
+          "confidence": null,
+          "freshness": null,
+          "authoritative": true,
+          "tag": "[resolved]"
+        }
+      },
+      {
+        "name": "framework",
+        "value": "nestjs",
+        "owner": "file",
+        "certainty": {
+          "class": "resolved",
+          "confidence": null,
+          "freshness": null,
+          "authoritative": true,
+          "tag": "[resolved]"
+        }
+      },
+      {
+        "name": "handler",
+        "value": "OrdersController.findOne",
+        "owner": "file",
+        "certainty": {
+          "class": "resolved",
+          "confidence": null,
+          "freshness": null,
+          "authoritative": true,
+          "tag": "[resolved]"
+        }
+      },
+      {
+        "name": "params",
+        "value": [
+          "id"
+        ],
+        "owner": "file",
+        "certainty": {
+          "class": "resolved",
+          "confidence": null,
+          "freshness": null,
+          "authoritative": true,
+          "tag": "[resolved]"
+        }
+      },
+      {
+        "name": "route_source",
+        "value": "constant",
+        "owner": "file",
+        "certainty": {
+          "class": "resolved",
+          "confidence": null,
+          "freshness": null,
+          "authoritative": true,
+          "tag": "[resolved]"
+        }
+      },
+      {
+        "name": "unclassified_guards",
+        "value": [],
+        "owner": "link",
+        "certainty": {
+          "class": "resolved",
+          "confidence": null,
+          "freshness": null,
+          "authoritative": true,
+          "tag": "[resolved]"
+        }
+      }
+    ],
+    "assertions": [
+      {
+        "owner": "file acme-api:src/orders/orders.controller.ts",
+        "certainty": {
+          "class": "resolved",
+          "confidence": null,
+          "freshness": null,
+          "authoritative": true,
+          "tag": "[resolved]"
+        },
+        "derived_in": "file last indexed in run 1",
+        "evidence": [
+          {
+            "location": {
+              "repo": "acme-api",
+              "path": "src/orders/orders.controller.ts",
+              "line": 13
+            },
+            "producer": "atlas-lang-ts@1",
+            "note": null,
+            "excerpt": {
+              "state": "text",
+              "start_line": 13,
+              "lines": [
+                "  @Get(':id')"
+              ],
+              "omitted_lines": 0
+            }
+          }
+        ]
+      },
+      {
+        "owner": "project pass link",
+        "certainty": {
+          "class": "resolved",
+          "confidence": null,
+          "freshness": null,
+          "authoritative": true,
+          "tag": "[resolved]"
+        },
+        "derived_in": "re-derived by pass link on every run",
+        "evidence": [
+          {
+            "location": {
+              "repo": "acme-api",
+              "path": "src/orders/orders.controller.ts",
+              "line": 13
+            },
+            "producer": "atlas-lang-ts@1",
+            "note": null,
+            "excerpt": {
+              "state": "text",
+              "start_line": 13,
+              "lines": [
+                "  @Get(':id')"
+              ],
+              "omitted_lines": 0
+            }
+          }
+        ]
+      }
+    ],
+    "lineage": [],
+    "inferred": []
+  }
+}

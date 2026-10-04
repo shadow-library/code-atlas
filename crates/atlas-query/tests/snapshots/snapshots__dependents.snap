@@ -1,0 +1,14 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+dependents of toCents function acme-sdk:src/money.ts:1 depth=1
+acme-sdk (4)
+  src/index.ts file acme-sdk:src/index.ts  re-exports toCents [resolved]
+  src/money.test.ts file acme-sdk:src/money.test.ts  imports toCents [resolved]
+  toCents.should convert whole and fractional amounts test acme-sdk:src/money.test.ts:6  calls toCents [resolved]
+  toCents.should keep the sign of negative amounts test acme-sdk:src/money.test.ts:12  calls toCents [resolved]
+acme-web (2)
+  src/components/OrderForm.tsx file acme-web:src/components/OrderForm.tsx  possibly imports toCents [heuristic 0.85]
+  OrderForm function acme-web:src/components/OrderForm.tsx:7  possibly calls toCents [heuristic 0.85]

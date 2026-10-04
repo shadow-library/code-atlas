@@ -1,0 +1,12 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+callers of UsersService.findOne method acme-api:src/users/users.service.ts:18 depth=2
+acme-api (5)
+  UsersController.findOne method acme-api:src/users/users.controller.ts:13  calls UsersService.findOne [resolved]
+  UsersService.findOne.should return the user when it exists test acme-api:src/users/users.service.spec.ts:13  calls UsersService.findOne [resolved]
+  UsersService.findOne.should throw NotFoundException when the user is missing test acme-api:src/users/users.service.spec.ts:18  calls UsersService.findOne [resolved]
+  UsersService.update method acme-api:src/users/users.service.ts:28  calls UsersService.findOne [resolved]
+  UsersController.update method acme-api:src/users/users.controller.ts:25  calls UsersService.update [resolved] > calls UsersService.findOne [resolved]

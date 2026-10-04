@@ -1,0 +1,440 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+{
+  "freshness": {
+    "state": "fresh",
+    "run": 1,
+    "files_updated": 0,
+    "duration_ms": 0,
+    "watcher_clean": false,
+    "scip": {
+      "state": "never_run"
+    },
+    "stale_inferred_facts": 0,
+    "files_failed_analysis": 0,
+    "notes": []
+  },
+  "answer": {
+    "task": "convert currency string to cents",
+    "budget": 1500,
+    "estimated_tokens": 668,
+    "must_read": [
+      {
+        "entity": {
+          "key": "ts:acme-sdk:@acme/sdk:src/money::toCents#function",
+          "id": "d209f398d5da9e95",
+          "short": "toCents",
+          "kind": "function",
+          "location": {
+            "repo": "acme-sdk",
+            "path": "src/money.ts",
+            "line": 1
+          }
+        },
+        "score": 0.285045,
+        "why": "search hit on string cents",
+        "certainty": null,
+        "via": null,
+        "uncertain": false,
+        "signature": "function toCents(amount: string): number",
+        "doc": null,
+        "skeleton": [],
+        "body": {
+          "state": "text",
+          "start_line": 1,
+          "lines": [
+            "export function toCents(amount: string): number {",
+            "  const trimmed = amount.trim();",
+            "  const negative = trimmed.startsWith('-');",
+            "  const [whole, fraction = ''] = (negative ? trimmed.slice(1) : trimmed).split('.');",
+            "  const cents = Number(whole) * 100 + Number(fraction.padEnd(2, '0').slice(0, 2));",
+            "  return negative ? -cents : cents;",
+            "}"
+          ],
+          "omitted_lines": 0
+        },
+        "run": null
+      },
+      {
+        "entity": {
+          "key": "rust:acme-billing:acme-billing:money::to_cents#function",
+          "id": "c6c60f5f6ca699a8",
+          "short": "to_cents",
+          "kind": "function",
+          "location": {
+            "repo": "acme-billing",
+            "path": "src/money.rs",
+            "line": 1
+          }
+        },
+        "score": 0.260934,
+        "why": "exercised by test converts_whole_and_fractional_amounts matching convert",
+        "certainty": null,
+        "via": null,
+        "uncertain": false,
+        "signature": "pub fn to_cents(amount: &str) -> i64",
+        "doc": null,
+        "skeleton": [],
+        "body": {
+          "state": "text",
+          "start_line": 1,
+          "lines": [
+            "pub fn to_cents(amount: &str) -> i64 {",
+            "  let trimmed = amount.trim();",
+            "  let (negative, unsigned) = match trimmed.strip_prefix('-') {",
+            "    Some(rest) => (true, rest),",
+            "    None => (false, trimmed),",
+            "  };",
+            "  let (whole, fraction) = unsigned.split_once('.').unwrap_or((unsigned, \"\"));",
+            "  let fraction = format!(\"{fraction:0<2}\");",
+            "  let cents = whole.parse::<i64>().unwrap_or(0) * 100 + fraction[..2].parse::<i64>().unwrap_or(0);",
+            "  if negative {",
+            "    -cents",
+            "  } else {",
+            "    cents",
+            "  }",
+            "}"
+          ],
+          "omitted_lines": 0
+        },
+        "run": null
+      },
+      {
+        "entity": {
+          "key": "ts:acme-web:acme-web:src/utils/currency::parseMoney#function",
+          "id": "629cc89d19d3f7f3",
+          "short": "parseMoney",
+          "kind": "function",
+          "location": {
+            "repo": "acme-web",
+            "path": "src/utils/currency.ts",
+            "line": 1
+          }
+        },
+        "score": 0.24866,
+        "why": "search hit on currency string",
+        "certainty": null,
+        "via": null,
+        "uncertain": false,
+        "signature": "function parseMoney(input: string): number",
+        "doc": null,
+        "skeleton": [],
+        "body": {
+          "state": "text",
+          "start_line": 1,
+          "lines": [
+            "export function parseMoney(input: string): number {",
+            "  const value = input.trim();",
+            "  const sign = value[0] === '-' ? -1 : 1;",
+            "  const digits = value.replace(/^-/, '');",
+            "  const dot = digits.indexOf('.');",
+            "  const whole = dot === -1 ? digits : digits.slice(0, dot);",
+            "  const fraction = dot === -1 ? '' : digits.slice(dot + 1);",
+            "  return sign * (Number(whole) * 100 + Number(`${fraction}00`.slice(0, 2)));",
+            "}"
+          ],
+          "omitted_lines": 0
+        },
+        "run": null
+      },
+      {
+        "entity": {
+          "key": "ts:acme-api:acme-api:src/common/money::formatMoney#function",
+          "id": "8206fc974d98b462",
+          "short": "formatMoney",
+          "kind": "function",
+          "location": {
+            "repo": "acme-api",
+            "path": "src/common/money.ts",
+            "line": 1
+          }
+        },
+        "score": 0.205362,
+        "why": "search hit on string cents",
+        "certainty": null,
+        "via": null,
+        "uncertain": false,
+        "signature": "function formatMoney(cents: number): string",
+        "doc": null,
+        "skeleton": [],
+        "body": {
+          "state": "text",
+          "start_line": 1,
+          "lines": [
+            "export function formatMoney(cents: number): string {",
+            "  const sign = cents < 0 ? '-' : '';",
+            "  const abs = Math.abs(cents);",
+            "  const whole = Math.floor(abs / 100);",
+            "  const fraction = String(abs % 100).padStart(2, '0');",
+            "  return `${sign}$${whole}.${fraction}`;",
+            "}"
+          ],
+          "omitted_lines": 0
+        },
+        "run": null
+      }
+    ],
+    "skim": [],
+    "patterns": [],
+    "reuse": [],
+    "impact": [],
+    "tests": [
+      {
+        "entity": {
+          "key": "ts:acme-sdk:@acme/sdk:src/money.test::toCents::should convert whole and fractional amounts#test",
+          "id": "a6f2b98cbab313a6",
+          "short": "toCents.should convert whole and fractional amounts",
+          "kind": "test",
+          "location": {
+            "repo": "acme-sdk",
+            "path": "src/money.test.ts",
+            "line": 6
+          }
+        },
+        "score": 0.285045,
+        "why": "calls toCents [resolved] (direct)",
+        "certainty": {
+          "class": "resolved",
+          "confidence": null,
+          "freshness": null,
+          "authoritative": true,
+          "tag": "[resolved]"
+        },
+        "via": {
+          "edge": "1c56bbb31c89dd1d",
+          "kind": "calls",
+          "phrase": "calls",
+          "entity": "toCents",
+          "certainty": {
+            "class": "resolved",
+            "confidence": null,
+            "freshness": null,
+            "authoritative": true,
+            "tag": "[resolved]"
+          }
+        },
+        "uncertain": false,
+        "signature": null,
+        "doc": null,
+        "skeleton": [],
+        "body": null,
+        "run": "[acme-sdk] npx vitest run src/money.test.ts -t \"toCents should convert whole and fractional amounts\""
+      },
+      {
+        "entity": {
+          "key": "ts:acme-sdk:@acme/sdk:src/money.test::toCents::should keep the sign of negative amounts#test",
+          "id": "ee3620af0768f72c",
+          "short": "toCents.should keep the sign of negative amounts",
+          "kind": "test",
+          "location": {
+            "repo": "acme-sdk",
+            "path": "src/money.test.ts",
+            "line": 12
+          }
+        },
+        "score": 0.285045,
+        "why": "calls toCents [resolved] (direct)",
+        "certainty": {
+          "class": "resolved",
+          "confidence": null,
+          "freshness": null,
+          "authoritative": true,
+          "tag": "[resolved]"
+        },
+        "via": {
+          "edge": "0d714fb112dc777b",
+          "kind": "calls",
+          "phrase": "calls",
+          "entity": "toCents",
+          "certainty": {
+            "class": "resolved",
+            "confidence": null,
+            "freshness": null,
+            "authoritative": true,
+            "tag": "[resolved]"
+          }
+        },
+        "uncertain": false,
+        "signature": null,
+        "doc": null,
+        "skeleton": [],
+        "body": null,
+        "run": "[acme-sdk] npx vitest run src/money.test.ts -t \"toCents should keep the sign of negative amounts\""
+      },
+      {
+        "entity": {
+          "key": "rust:acme-billing:acme-billing:money/tests::converts_whole_and_fractional_amounts#test",
+          "id": "fcf5293f58472bf9",
+          "short": "converts_whole_and_fractional_amounts",
+          "kind": "test",
+          "location": {
+            "repo": "acme-billing",
+            "path": "src/money.rs",
+            "line": 21
+          }
+        },
+        "score": 0.260934,
+        "why": "calls to_cents [resolved] (direct)",
+        "certainty": {
+          "class": "resolved",
+          "confidence": null,
+          "freshness": null,
+          "authoritative": true,
+          "tag": "[resolved]"
+        },
+        "via": {
+          "edge": "3009c6f373ec0de2",
+          "kind": "calls",
+          "phrase": "calls",
+          "entity": "to_cents",
+          "certainty": {
+            "class": "resolved",
+            "confidence": null,
+            "freshness": null,
+            "authoritative": true,
+            "tag": "[resolved]"
+          }
+        },
+        "uncertain": false,
+        "signature": null,
+        "doc": null,
+        "skeleton": [],
+        "body": null,
+        "run": "[acme-billing] cargo test -p acme-billing --lib money::tests::converts_whole_and_fractional_amounts"
+      },
+      {
+        "entity": {
+          "key": "rust:acme-billing:acme-billing:money/tests::keeps_the_sign_of_negative_amounts#test",
+          "id": "4022988c2bee4980",
+          "short": "keeps_the_sign_of_negative_amounts",
+          "kind": "test",
+          "location": {
+            "repo": "acme-billing",
+            "path": "src/money.rs",
+            "line": 28
+          }
+        },
+        "score": 0.260934,
+        "why": "calls to_cents [resolved] (direct)",
+        "certainty": {
+          "class": "resolved",
+          "confidence": null,
+          "freshness": null,
+          "authoritative": true,
+          "tag": "[resolved]"
+        },
+        "via": {
+          "edge": "9faab593da1a310e",
+          "kind": "calls",
+          "phrase": "calls",
+          "entity": "to_cents",
+          "certainty": {
+            "class": "resolved",
+            "confidence": null,
+            "freshness": null,
+            "authoritative": true,
+            "tag": "[resolved]"
+          }
+        },
+        "uncertain": false,
+        "signature": null,
+        "doc": null,
+        "skeleton": [],
+        "body": null,
+        "run": "[acme-billing] cargo test -p acme-billing --lib money::tests::keeps_the_sign_of_negative_amounts"
+      },
+      {
+        "entity": {
+          "key": "rust:acme-billing:acme-billing:money/tests::#module",
+          "id": "556418f3031bdf31",
+          "short": "money/tests",
+          "kind": "module",
+          "location": {
+            "repo": "acme-billing",
+            "path": "src/money.rs",
+            "line": 17
+          }
+        },
+        "score": 0.260934,
+        "why": "covers file src/money.rs [syntactic] (covers file)",
+        "certainty": {
+          "class": "syntactic",
+          "confidence": null,
+          "freshness": null,
+          "authoritative": true,
+          "tag": "[syntactic]"
+        },
+        "via": {
+          "edge": "db12900be6739351",
+          "kind": "covers_file",
+          "phrase": "covers file",
+          "entity": "src/money.rs",
+          "certainty": {
+            "class": "syntactic",
+            "confidence": null,
+            "freshness": null,
+            "authoritative": true,
+            "tag": "[syntactic]"
+          }
+        },
+        "uncertain": false,
+        "signature": null,
+        "doc": null,
+        "skeleton": [],
+        "body": null,
+        "run": "[acme-billing] cargo test -p acme-billing --lib money::tests"
+      },
+      {
+        "entity": {
+          "key": "ts:acme-sdk:@acme/sdk:src/money.test::toCents#test_suite",
+          "id": "b93e5804c2dd3544",
+          "short": "toCents",
+          "kind": "test_suite",
+          "location": {
+            "repo": "acme-sdk",
+            "path": "src/money.test.ts",
+            "line": 5
+          }
+        },
+        "score": 0.285045,
+        "why": "possibly covers file src/money.ts [heuristic 0.60] (covers file)",
+        "certainty": {
+          "class": "heuristic",
+          "confidence": 0.6,
+          "freshness": null,
+          "authoritative": false,
+          "tag": "[heuristic 0.60]"
+        },
+        "via": {
+          "edge": "fc8f15e7db231281",
+          "kind": "covers_file",
+          "phrase": "possibly covers file",
+          "entity": "src/money.ts",
+          "certainty": {
+            "class": "heuristic",
+            "confidence": 0.6,
+            "freshness": null,
+            "authoritative": false,
+            "tag": "[heuristic 0.60]"
+          }
+        },
+        "uncertain": true,
+        "signature": null,
+        "doc": null,
+        "skeleton": [],
+        "body": null,
+        "run": "[acme-sdk] npx vitest run src/money.test.ts -t \"toCents\""
+      }
+    ],
+    "uncertain": [],
+    "summaries": [],
+    "omitted": {
+      "total": 0,
+      "items": []
+    },
+    "explain": null,
+    "caveats": []
+  }
+}

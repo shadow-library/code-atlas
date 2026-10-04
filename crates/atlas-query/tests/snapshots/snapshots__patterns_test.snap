@@ -1,0 +1,108 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+patterns for "test": 6 instances in 3 shapes
+1. jest, *.spec.ts (2)
+  OrdersController test_suite acme-api:src/orders/orders.controller.spec.ts:4
+    sig describe('OrdersController')
+     4| describe('OrdersController', () => {
+     5|   const ordersService = { findOne: jest.fn(), create: jest.fn() };
+     6|   const controller = new OrdersController(ordersService as unknown as OrdersService);
+     7|
+     8|   afterEach(() => jest.resetAllMocks());
+     9|
+    10|   it('should delegate findOne to the service', async () => {
+    11|     ordersService.findOne.mockResolvedValue({ id: 'o1', display: '$12.00' });
+    12|     await expect(controller.findOne('o1')).resolves.toEqual({ id: 'o1', display: '$12.00' });
+    13|     expect(ordersService.findOne).toHaveBeenCalledWith('o1');
+    14|   });
+    15|
+    16|   it('should delegate create to the service', async () => {
+    17|     ordersService.create.mockResolvedValue({ id: 'o2' });
+    18|     await controller.create({ userId: 'u1', subtotalCents: 1000 });
+    19|     expect(ordersService.create).toHaveBeenCalledWith({ userId: 'u1', subtotalCents: 1000 });
+    20|   });
+    21| });
+  UsersService test_suite acme-api:src/users/users.service.spec.ts:6
+    sig describe('UsersService')
+     6| describe('UsersService', () => {
+     7|   const repository = { findOneBy: jest.fn(), save: jest.fn(), create: jest.fn(), delete: jest.fn() };
+     8|   const service = new UsersService(repository as never);
+     9|
+    10|   afterEach(() => jest.resetAllMocks());
+    11|
+    12|   describe('findOne', () => {
+    13|     it('should return the user when it exists', async () => {
+    14|       repository.findOneBy.mockResolvedValue({ id: 'u1', email: 'a@acme.test' });
+    15|       await expect(service.findOne('u1')).resolves.toMatchObject({ id: 'u1' });
+    16|     });
+    17|
+    18|     it('should throw NotFoundException when the user is missing', async () => {
+    19|       repository.findOneBy.mockResolvedValue(null);
+    20|       await expect(service.findOne('missing')).rejects.toBeInstanceOf(NotFoundException);
+    21|     });
+    22|   });
+    23|
+    24|   describe('normalizeEmail', () => {
+    25|     it('should lowercase and trim', () => {
+    26|       expect(normalizeEmail('  Ada@Acme.TEST ')).toBe('ada@acme.test');
+    27|     });
+    28|   });
+    29| });
+2. tokio, tests/ directory (2)
+  unknown_invoice_returns_404 test acme-billing:tests/invoices.rs:14
+    sig async fn unknown_invoice_returns_404()
+    14| #[tokio::test]
+    15| async fn unknown_invoice_returns_404() {
+    16|   let response = app_with(Arc::new(InMemoryInvoiceStore::default()))
+    17|     .oneshot(Request::builder().uri("/invoices/inv_missing").body(Body::empty()).unwrap())
+    18|     .await
+    19|     .unwrap();
+    20|   assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    21| }
+  stored_invoice_is_returned test acme-billing:tests/invoices.rs:23
+    sig async fn stored_invoice_is_returned()
+    23| #[tokio::test]
+    24| async fn stored_invoice_is_returned() {
+    25|   let store = Arc::new(InMemoryInvoiceStore::default());
+    26|   store.insert(Invoice { id: "inv_1".to_string(), order_id: "o1".to_string(), amount_cents: 1234 }).unwrap();
+    27|   let response = app_with(store).oneshot(Request::builder().uri("/invoices/inv_1").body(Body::empty()).unwrap()).await.unwrap();
+    28|   assert_eq!(response.status(), StatusCode::OK);
+    29| }
+3. vitest, *.test.ts (2)
+  AcmeClient test_suite acme-sdk:src/client.test.ts:5
+    sig describe('AcmeClient')
+     5| describe('AcmeClient', () => {
+     6|   afterEach(() => vi.unstubAllGlobals());
+     7|
+     8|   it('should send the bearer token in the Authorization header', async () => {
+     9|     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'u1' }) });
+    10|     vi.stubGlobal('fetch', fetchMock);
+    11|     const client = new AcmeClient({ baseUrl: 'https://api.acme.test/', auth: { type: 'bearer', token: 't0k' } });
+    12|     await client.getUser('u1');
+    13|     expect(fetchMock).toHaveBeenCalledWith('https://api.acme.test/users/u1', { headers: expect.objectContaining({ Authorization: 'Bearer t0k' }) });
+    14|   });
+    15|
+    16|   it('should send the api key in the x-api-key header', async () => {
+    17|     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'o1' }) });
+    18|     vi.stubGlobal('fetch', fetchMock);
+    19|     const client = new AcmeClient({ baseUrl: 'https://api.acme.test', auth: { type: 'apiKey', key: 'k3y' } });
+    20|     await client.getOrder('o1');
+    21|     expect(fetchMock.mock.calls[0][1].headers['x-api-key']).toBe('k3y');
+    22|   });
+    23| });
+  toCents test_suite acme-sdk:src/money.test.ts:5
+    sig describe('toCents')
+     5| describe('toCents', () => {
+     6|   it('should convert whole and fractional amounts', () => {
+     7|     expect(toCents('12.34')).toBe(1234);
+     8|     expect(toCents('12.3')).toBe(1230);
+     9|     expect(toCents('12')).toBe(1200);
+    10|   });
+    11|
+    12|   it('should keep the sign of negative amounts', () => {
+    13|     expect(toCents('-1.50')).toBe(-150);
+    14|   });
+    15| });

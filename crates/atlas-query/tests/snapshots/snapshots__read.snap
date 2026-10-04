@@ -1,0 +1,13 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+toCents function acme-sdk:src/money.ts:1
+1| export function toCents(amount: string): number {
+2|   const trimmed = amount.trim();
+3|   const negative = trimmed.startsWith('-');
+4|   const [whole, fraction = ''] = (negative ? trimmed.slice(1) : trimmed).split('.');
+5|   const cents = Number(whole) * 100 + Number(fraction.padEnd(2, '0').slice(0, 2));
+6|   return negative ? -cents : cents;
+7| }

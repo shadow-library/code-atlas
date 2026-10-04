@@ -1,0 +1,12 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+tests for UsersService class acme-api:src/users/users.service.ts:14 (3)
+  UsersService test_suite acme-api:src/users/users.service.spec.ts:6 [direct]  instantiates UsersService [resolved]
+    run: [acme-api] npx jest src/users/users.service.spec.ts -t "UsersService"
+  UsersService.findOne.should return the user when it exists test acme-api:src/users/users.service.spec.ts:13 [direct]  calls UsersService.findOne [resolved]
+    run: [acme-api] npx jest src/users/users.service.spec.ts -t "UsersService findOne should return the user when it exists"
+  UsersService.findOne.should throw NotFoundException when the user is missing test acme-api:src/users/users.service.spec.ts:18 [direct]  calls UsersService.findOne [resolved]
+    run: [acme-api] npx jest src/users/users.service.spec.ts -t "UsersService findOne should throw NotFoundException when the user is missing"
