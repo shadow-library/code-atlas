@@ -1,0 +1,7467 @@
+{
+  "schema_version": 1,
+  "suite": "full",
+  "date": "2026-10-04",
+  "environment": {
+    "os": "macos",
+    "arch": "aarch64",
+    "logical_cpus": 14,
+    "rayon_threads": 14,
+    "build_profile": "release",
+    "usage_source": "/usr/bin/time -l"
+  },
+  "corpora": [
+    {
+      "name": "self",
+      "kind": "self",
+      "commit": null,
+      "repos": 1,
+      "files": 564,
+      "loc": 115763,
+      "tree_hash": null,
+      "skipped": null
+    },
+    {
+      "name": "fixtures-acme",
+      "kind": "fixtures",
+      "commit": null,
+      "repos": 4,
+      "files": 59,
+      "loc": 1120,
+      "tree_hash": null,
+      "skipped": null
+    },
+    {
+      "name": "fixtures-globex",
+      "kind": "fixtures",
+      "commit": null,
+      "repos": 2,
+      "files": 12,
+      "loc": 169,
+      "tree_hash": null,
+      "skipped": null
+    },
+    {
+      "name": "synth-10k",
+      "kind": "synthetic",
+      "commit": null,
+      "repos": 1,
+      "files": 68,
+      "loc": 10627,
+      "tree_hash": "1d8a3f1fc4f807a175e4fe0166ba421a6a4b0bce9c077c20c9512476ab89fc0f",
+      "skipped": null
+    },
+    {
+      "name": "synth-100k",
+      "kind": "synthetic",
+      "commit": null,
+      "repos": 2,
+      "files": 583,
+      "loc": 100495,
+      "tree_hash": "8406fdb8116071ce11d7ac0ed253e4ce81ceea8cdc1cc7a9e7244dcccaf81762",
+      "skipped": null
+    },
+    {
+      "name": "synth-100k-5-repos",
+      "kind": "synthetic",
+      "commit": null,
+      "repos": 5,
+      "files": 585,
+      "loc": 101170,
+      "tree_hash": "1f46220fa178871b03644a262c0042fbcaa38051301db2e07b3f0f32e1f6014a",
+      "skipped": null
+    },
+    {
+      "name": "synth-multi-project",
+      "kind": "synthetic",
+      "commit": null,
+      "repos": 6,
+      "files": 555,
+      "loc": 91264,
+      "tree_hash": "cf5c0a3e997d49e023403d1a0fef744a7d8225249689730552d3effd8570a4f7",
+      "skipped": null
+    },
+    {
+      "name": "ripgrep",
+      "kind": "external",
+      "commit": "3fce3b5bb0236da2df6d99672afb8a719642eca7",
+      "repos": 1,
+      "files": 110,
+      "loc": 56386,
+      "tree_hash": null,
+      "skipped": null
+    },
+    {
+      "name": "hono",
+      "kind": "external",
+      "commit": "f23b146afcec63606144cde50b5fbd360dd60238",
+      "repos": 1,
+      "files": 450,
+      "loc": 91940,
+      "tree_hash": null,
+      "skipped": null
+    },
+    {
+      "name": "synth-1m",
+      "kind": "synthetic",
+      "commit": null,
+      "repos": 2,
+      "files": 5511,
+      "loc": 1001293,
+      "tree_hash": "6ff0b62f01574fb83aa4b2e17aba208bdfbfaa68fdbe6883b32ee02f09287e90",
+      "skipped": null
+    }
+  ],
+  "records": [
+    {
+      "corpus": "self",
+      "scenario": "cold_index",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 0.6,
+        "cpu_total_s": 3.69,
+        "cpu_user_s": 3.11,
+        "cpu_utilisation": 3.1260504201680677,
+        "db_bytes": 82867144.0,
+        "files_per_s": 524.928051839482,
+        "index_ms": 1074.432959,
+        "loc_per_s": 107743.34408704602,
+        "open_ms": 12.441125,
+        "peak_rss_bytes": 565362688.0,
+        "persist_similarity_ms": 38.084584,
+        "phase_analyze_ms": 103.0,
+        "phase_checkpoint_ms": 94.0,
+        "phase_dependents_ms": 79.0,
+        "phase_encode_ms": 39.0,
+        "phase_existence_ms": 7.0,
+        "phase_finish_ms": 0.0,
+        "phase_lineage_inputs_ms": 5.0,
+        "phase_lineage_ms": 0.0,
+        "phase_load_ms": 0.0,
+        "phase_manifests_ms": 0.0,
+        "phase_passes_ms": 10.0,
+        "phase_persist_ms": 406.0,
+        "phase_plan_ms": 1.0,
+        "phase_reindex_ms": 77.0,
+        "phase_resolve_ms": 60.0,
+        "phase_scip_dangling_ms": 0.0,
+        "phase_similarity_ms": 134.0,
+        "phase_symbols_ms": 31.0,
+        "process_wall_s": 1.19,
+        "similarity_blob_bytes": 8531320.0
+      },
+      "info": {
+        "counts": {
+          "artifact_bytes": 9957467,
+          "artifact_encode_us": 14309,
+          "artifacts_loaded": 0,
+          "dangling_detector_edges_dropped": 109,
+          "detector_targets_checked": 16,
+          "edges_added": 65689,
+          "edges_changed": 0,
+          "edges_removed": 0,
+          "entities_added": 14919,
+          "entities_changed": 0,
+          "entities_removed": 0,
+          "files_added": 606,
+          "files_analyzed": 564,
+          "files_deleted": 0,
+          "files_modified": 0,
+          "files_repackaged": 0,
+          "files_restamped": 0,
+          "files_skipped": 0,
+          "graphs_changed": 0,
+          "indexes_deferred": 1,
+          "owners_resolved": 564,
+          "persist_batches": 6,
+          "renames_detected": 0,
+          "similarity_documents": 14174,
+          "unresolvable_detector_edges_dropped": 0,
+          "unresolved_added": 76001,
+          "unresolved_removed": 0,
+          "wanted_target_owners": 0
+        },
+        "files_analyzed": 564,
+        "loc": 115763,
+        "parse_failed": 0,
+        "parse_ok": 562,
+        "parse_partial": 2,
+        "parse_samples": [
+          "partial: code-atlas/fixtures/adversarial/broken-syntax/crate/src/lib.rs",
+          "partial: code-atlas/fixtures/adversarial/broken-syntax/src/broken.ts"
+        ],
+        "repeats": 3,
+        "run_outcome": "ok",
+        "spread": {
+          "cpu_sys_s": [
+            0.58,
+            0.61
+          ],
+          "cpu_total_s": [
+            3.6599999999999997,
+            3.72
+          ],
+          "cpu_user_s": [
+            3.05,
+            3.12
+          ],
+          "cpu_utilisation": [
+            3.0,
+            3.324324324324324
+          ],
+          "db_bytes": [
+            82867144.0,
+            82867144.0
+          ],
+          "files_per_s": [
+            506.6249366772725,
+            562.6887242641927
+          ],
+          "index_ms": [
+            1002.330375,
+            1113.249584
+          ],
+          "loc_per_s": [
+            103986.56479533884,
+            115493.8560053116
+          ],
+          "open_ms": [
+            12.250459,
+            12.453375
+          ],
+          "peak_rss_bytes": [
+            563298304.0,
+            571260928.0
+          ],
+          "persist_similarity_ms": [
+            36.583042000000006,
+            39.176916
+          ],
+          "phase_analyze_ms": [
+            103.0,
+            110.0
+          ],
+          "phase_checkpoint_ms": [
+            90.0,
+            96.0
+          ],
+          "phase_dependents_ms": [
+            79.0,
+            79.0
+          ],
+          "phase_encode_ms": [
+            38.0,
+            39.0
+          ],
+          "phase_existence_ms": [
+            7.0,
+            7.0
+          ],
+          "phase_finish_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_lineage_inputs_ms": [
+            4.0,
+            5.0
+          ],
+          "phase_lineage_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_load_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_manifests_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_passes_ms": [
+            9.0,
+            11.0
+          ],
+          "phase_persist_ms": [
+            346.0,
+            444.0
+          ],
+          "phase_plan_ms": [
+            1.0,
+            1.0
+          ],
+          "phase_reindex_ms": [
+            74.0,
+            80.0
+          ],
+          "phase_resolve_ms": [
+            58.0,
+            61.0
+          ],
+          "phase_scip_dangling_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_similarity_ms": [
+            134.0,
+            135.0
+          ],
+          "phase_symbols_ms": [
+            31.0,
+            31.0
+          ],
+          "process_wall_s": [
+            1.11,
+            1.22
+          ],
+          "similarity_blob_bytes": [
+            8531320.0,
+            8531320.0
+          ]
+        }
+      }
+    },
+    {
+      "corpus": "self",
+      "scenario": "warm_startup",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "first_barrier_ms": 7.666375,
+        "open_ms": 242.157959
+      },
+      "info": {
+        "first_barrier_fresh": true,
+        "first_barrier_ran_index": false,
+        "readers": 14
+      }
+    },
+    {
+      "corpus": "self",
+      "scenario": "no_change_barrier",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "barrier_max_ms": 6.214333,
+        "barrier_p50_ms": 5.966625,
+        "barrier_p95_ms": 6.124542
+      },
+      "info": {
+        "iterations": 50,
+        "unexpected_index_runs": 0
+      }
+    },
+    {
+      "corpus": "self",
+      "scenario": "query_latency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "api_max_ms": 9.248958,
+        "api_nobarrier_max_ms": 1.999625,
+        "api_nobarrier_p50_ms": 1.948833,
+        "api_p50_ms": 8.374792000000001,
+        "callers_max_ms": 9.347792,
+        "callers_nobarrier_max_ms": 3.437375,
+        "callers_nobarrier_p50_ms": 0.16520900000000002,
+        "callers_nobarrier_p95_ms": 2.582666,
+        "callers_p50_ms": 6.135708,
+        "callers_p95_ms": 9.235333,
+        "context_max_ms": 23.544292,
+        "context_nobarrier_max_ms": 16.706917,
+        "context_nobarrier_p50_ms": 5.022709,
+        "context_nobarrier_p95_ms": 14.998542,
+        "context_p50_ms": 11.302459,
+        "context_p95_ms": 21.899958,
+        "impact_max_ms": 15.381083,
+        "impact_nobarrier_max_ms": 8.8515,
+        "impact_nobarrier_p50_ms": 0.864,
+        "impact_nobarrier_p95_ms": 3.977167,
+        "impact_p50_ms": 6.952,
+        "impact_p95_ms": 10.980917,
+        "search_max_ms": 6.485625,
+        "search_nobarrier_max_ms": 0.397,
+        "search_nobarrier_p50_ms": 0.28037500000000004,
+        "search_nobarrier_p95_ms": 0.384291,
+        "search_p50_ms": 6.245167,
+        "search_p95_ms": 6.439416,
+        "similar_max_ms": 10.169292,
+        "similar_nobarrier_max_ms": 3.137791,
+        "similar_nobarrier_p50_ms": 0.791167,
+        "similar_nobarrier_p95_ms": 2.924,
+        "similar_p50_ms": 7.055625,
+        "similar_p95_ms": 9.456292,
+        "symbol_max_ms": 6.883709,
+        "symbol_nobarrier_max_ms": 0.713916,
+        "symbol_nobarrier_p50_ms": 0.0675,
+        "symbol_nobarrier_p95_ms": 0.3525,
+        "symbol_p50_ms": 6.058708,
+        "symbol_p95_ms": 6.38825,
+        "unused_max_ms": 266.094375,
+        "unused_nobarrier_max_ms": 255.609792,
+        "unused_nobarrier_p50_ms": 254.08554100000003,
+        "unused_p50_ms": 260.868834
+      },
+      "info": {
+        "api_errors": 0,
+        "api_found": 3,
+        "api_nobarrier_errors": 0,
+        "api_nobarrier_found": 3,
+        "api_nobarrier_samples": 3,
+        "api_samples": 3,
+        "callers_errors": 0,
+        "callers_found": 30,
+        "callers_nobarrier_errors": 0,
+        "callers_nobarrier_found": 30,
+        "callers_nobarrier_samples": 30,
+        "callers_samples": 30,
+        "context_errors": 0,
+        "context_found": 30,
+        "context_nobarrier_errors": 0,
+        "context_nobarrier_found": 30,
+        "context_nobarrier_samples": 30,
+        "context_samples": 30,
+        "impact_errors": 0,
+        "impact_found": 30,
+        "impact_nobarrier_errors": 0,
+        "impact_nobarrier_found": 30,
+        "impact_nobarrier_samples": 30,
+        "impact_samples": 30,
+        "nobarrier": "the same queries with the freshness barrier skipped",
+        "search_errors": 0,
+        "search_found": 30,
+        "search_nobarrier_errors": 0,
+        "search_nobarrier_found": 30,
+        "search_nobarrier_samples": 30,
+        "search_samples": 30,
+        "similar_errors": 0,
+        "similar_found": 30,
+        "similar_nobarrier_errors": 0,
+        "similar_nobarrier_found": 30,
+        "similar_nobarrier_samples": 30,
+        "similar_samples": 30,
+        "symbol_errors": 0,
+        "symbol_found": 30,
+        "symbol_nobarrier_errors": 0,
+        "symbol_nobarrier_found": 30,
+        "symbol_nobarrier_samples": 30,
+        "symbol_samples": 30,
+        "unused_errors": 0,
+        "unused_found": 3,
+        "unused_nobarrier_errors": 0,
+        "unused_nobarrier_found": 3,
+        "unused_nobarrier_samples": 3,
+        "unused_samples": 3
+      }
+    },
+    {
+      "corpus": "self",
+      "scenario": "concurrency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 13.970292,
+        "n16_p95_ms": 19.24325,
+        "n16_throughput_qps": 1117.4751299815773,
+        "n1_p50_ms": 6.376875,
+        "n1_p95_ms": 12.333917,
+        "n1_throughput_qps": 133.0630338016153,
+        "n4_p50_ms": 12.120292,
+        "n4_p95_ms": 17.908458,
+        "n4_throughput_qps": 313.557627693793,
+        "n8_p50_ms": 12.982334,
+        "n8_p95_ms": 18.639625,
+        "n8_throughput_qps": 594.2198248784116
+      },
+      "info": {
+        "n16_edits_applied": 0,
+        "n16_errors": 0,
+        "n16_queries": 16814,
+        "n1_edits_applied": 0,
+        "n1_errors": 0,
+        "n1_queries": 1997,
+        "n4_edits_applied": 0,
+        "n4_errors": 0,
+        "n4_queries": 4717,
+        "n8_edits_applied": 0,
+        "n8_errors": 0,
+        "n8_queries": 8926,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            13.909584,
+            14.019917
+          ],
+          "n16_p95_ms": [
+            19.221375,
+            19.254917
+          ],
+          "n16_throughput_qps": [
+            1114.578200254345,
+            1121.297377350722
+          ],
+          "n1_p50_ms": [
+            6.363625000000001,
+            6.405916
+          ],
+          "n1_p95_ms": [
+            12.274084,
+            12.448333
+          ],
+          "n1_throughput_qps": [
+            132.4580414055746,
+            133.49435035512272
+          ],
+          "n4_p50_ms": [
+            12.111958,
+            12.152875
+          ],
+          "n4_p95_ms": [
+            17.869833,
+            17.910417000000002
+          ],
+          "n4_throughput_qps": [
+            313.16817497151084,
+            315.33455301876
+          ],
+          "n8_p50_ms": [
+            12.937625,
+            13.000167
+          ],
+          "n8_p95_ms": [
+            18.530292,
+            18.649416
+          ],
+          "n8_throughput_qps": [
+            591.1016861210297,
+            595.7794018358799
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "self",
+      "scenario": "incremental_1_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 23.464709
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 0,
+        "facts_changed": 0,
+        "files_changed_in_run": 1,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 1,
+        "owners_resolved": 1,
+        "phases_ms": {
+          "analyze": 2,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 7,
+          "persist": 1,
+          "plan": 0,
+          "resolve": 1,
+          "scip_dangling": 0,
+          "similarity": 1,
+          "symbols": 0
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "self",
+      "scenario": "incremental_10_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 49.712542
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 0,
+        "facts_changed": 0,
+        "files_changed_in_run": 10,
+        "files_mismatch": false,
+        "files_touched": 10,
+        "files_updated": 10,
+        "owners_resolved": 10,
+        "phases_ms": {
+          "analyze": 10,
+          "dependents": 0,
+          "encode": 2,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 6,
+          "persist": 8,
+          "plan": 0,
+          "resolve": 3,
+          "scip_dangling": 0,
+          "similarity": 7,
+          "symbols": 1
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "self",
+      "scenario": "incremental_100_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 220.518375
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 56,
+        "entities_changed": 15,
+        "facts_changed": 71,
+        "files_changed_in_run": 100,
+        "files_mismatch": false,
+        "files_touched": 100,
+        "files_updated": 100,
+        "owners_resolved": 126,
+        "phases_ms": {
+          "analyze": 29,
+          "dependents": 1,
+          "encode": 11,
+          "existence": 1,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 2,
+          "manifests": 0,
+          "passes": 6,
+          "persist": 45,
+          "plan": 0,
+          "resolve": 18,
+          "scip_dangling": 0,
+          "similarity": 75,
+          "symbols": 12
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "self",
+      "scenario": "incremental_1000_files",
+      "outcome": {
+        "status": "skipped",
+        "reason": "only 172 editable files in this corpus"
+      },
+      "metrics": {},
+      "info": {}
+    },
+    {
+      "corpus": "self",
+      "scenario": "rename_symbol",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 903.853459
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 34146,
+        "entities_changed": 5753,
+        "facts_changed": 39899,
+        "files_changed_in_run": 318,
+        "files_mismatch": false,
+        "files_touched": 318,
+        "files_updated": 318,
+        "owners_resolved": 339,
+        "phases_ms": {
+          "analyze": 77,
+          "dependents": 7,
+          "encode": 26,
+          "existence": 4,
+          "lineage": 0,
+          "lineage_inputs": 1,
+          "load": 1,
+          "manifests": 0,
+          "passes": 6,
+          "persist": 398,
+          "plan": 0,
+          "resolve": 47,
+          "scip_dangling": 0,
+          "similarity": 231,
+          "symbols": 35
+        },
+        "renames_detected": 3,
+        "replacements": 1512,
+        "symbol": "collect"
+      }
+    },
+    {
+      "corpus": "self",
+      "scenario": "file_move",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 233.766709
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 227,
+        "entities_changed": 58,
+        "facts_changed": 285,
+        "files_changed_in_run": 2,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 2,
+        "moved": "code-atlas/crates/atlas-query/src/freshness.rs",
+        "owners_resolved": 337,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 10,
+          "encode": 13,
+          "existence": 4,
+          "lineage": 1,
+          "lineage_inputs": 1,
+          "load": 23,
+          "manifests": 0,
+          "passes": 6,
+          "persist": 78,
+          "plan": 1,
+          "resolve": 45,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 28
+      }
+    },
+    {
+      "corpus": "self",
+      "scenario": "branch_switch",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 147.67070800000002
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 64,
+        "entities_changed": 105,
+        "facts_changed": 169,
+        "files_changed_in_run": 51,
+        "files_mismatch": false,
+        "files_touched": 51,
+        "files_updated": 51,
+        "owners_resolved": 51,
+        "phases_ms": {
+          "analyze": 17,
+          "dependents": 0,
+          "encode": 5,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 6,
+          "persist": 39,
+          "plan": 0,
+          "resolve": 9,
+          "scip_dangling": 0,
+          "similarity": 42,
+          "symbols": 7
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "self",
+      "scenario": "delete_directory",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 322.68904100000003
+      },
+      "info": {
+        "degraded": false,
+        "directory": "code-atlas/crates/atlas-eval",
+        "edges_changed": 8295,
+        "entities_changed": 2232,
+        "facts_changed": 10527,
+        "files_changed_in_run": 45,
+        "files_mismatch": false,
+        "files_touched": 45,
+        "files_updated": 45,
+        "owners_resolved": 519,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 5,
+          "encode": 12,
+          "existence": 4,
+          "lineage": 0,
+          "lineage_inputs": 1,
+          "load": 27,
+          "manifests": 0,
+          "passes": 5,
+          "persist": 128,
+          "plan": 1,
+          "resolve": 45,
+          "scip_dangling": 1,
+          "similarity": 14,
+          "symbols": 5
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "self",
+      "scenario": "concurrency_with_edits",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 15.034584,
+        "n16_p95_ms": 40.858708,
+        "n16_throughput_qps": 774.6407665710707,
+        "n1_p50_ms": 6.763166999999999,
+        "n1_p95_ms": 19.545875,
+        "n1_throughput_qps": 114.85491047615126,
+        "n4_p50_ms": 12.674542,
+        "n4_p95_ms": 28.687125,
+        "n4_throughput_qps": 259.94336829855405,
+        "n8_p50_ms": 13.853666,
+        "n8_p95_ms": 34.065625000000004,
+        "n8_throughput_qps": 450.02398229865616
+      },
+      "info": {
+        "n16_edits_applied": 141,
+        "n16_errors": 0,
+        "n16_queries": 11555,
+        "n1_edits_applied": 141,
+        "n1_errors": 0,
+        "n1_queries": 1696,
+        "n4_edits_applied": 141,
+        "n4_errors": 0,
+        "n4_queries": 3925,
+        "n8_edits_applied": 141,
+        "n8_errors": 0,
+        "n8_queries": 6768,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            14.9255,
+            15.232917
+          ],
+          "n16_p95_ms": [
+            38.93875,
+            54.089792
+          ],
+          "n16_throughput_qps": [
+            728.8514339127203,
+            798.775616003904
+          ],
+          "n1_p50_ms": [
+            6.662292,
+            7.090208
+          ],
+          "n1_p95_ms": [
+            19.504584,
+            20.472208
+          ],
+          "n1_throughput_qps": [
+            108.68633311566931,
+            115.03041399760188
+          ],
+          "n4_p50_ms": [
+            12.626458,
+            12.708583
+          ],
+          "n4_p95_ms": [
+            28.467833,
+            29.256167
+          ],
+          "n4_throughput_qps": [
+            257.19929602369774,
+            265.8717597450537
+          ],
+          "n8_p50_ms": [
+            13.790208,
+            13.938792
+          ],
+          "n8_p95_ms": [
+            33.254042,
+            34.080791999999995
+          ],
+          "n8_throughput_qps": [
+            446.3164054936562,
+            451.4426878291034
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "self",
+      "scenario": "workload",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {},
+      "info": {
+        "editable_files": 172,
+        "targets": 30
+      }
+    },
+    {
+      "corpus": "self",
+      "scenario": "session_process",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 125.39,
+        "cpu_total_s": 258.02,
+        "cpu_user_s": 132.63,
+        "cpu_utilisation": 2.0343767247496647,
+        "peak_rss_bytes": 1239924736.0,
+        "process_wall_s": 126.83
+      },
+      "info": {}
+    },
+    {
+      "corpus": "fixtures-acme",
+      "scenario": "cold_index",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 0.06,
+        "cpu_total_s": 0.13,
+        "cpu_user_s": 0.07,
+        "cpu_utilisation": 4.333333333333334,
+        "db_bytes": 1771416.0,
+        "files_per_s": 3173.087912014037,
+        "index_ms": 18.593875,
+        "loc_per_s": 60234.88917721562,
+        "open_ms": 3.949542,
+        "peak_rss_bytes": 35602432.0,
+        "persist_similarity_ms": 0.255,
+        "phase_analyze_ms": 3.0,
+        "phase_dependents_ms": 0.0,
+        "phase_encode_ms": 1.0,
+        "phase_existence_ms": 0.0,
+        "phase_finish_ms": 0.0,
+        "phase_lineage_inputs_ms": 0.0,
+        "phase_lineage_ms": 0.0,
+        "phase_load_ms": 0.0,
+        "phase_manifests_ms": 0.0,
+        "phase_passes_ms": 2.0,
+        "phase_persist_ms": 5.0,
+        "phase_plan_ms": 0.0,
+        "phase_resolve_ms": 1.0,
+        "phase_scip_dangling_ms": 0.0,
+        "phase_similarity_ms": 1.0,
+        "phase_symbols_ms": 0.0,
+        "process_wall_s": 0.03,
+        "similarity_blob_bytes": 83121.0
+      },
+      "info": {
+        "counts": {
+          "artifact_bytes": 143601,
+          "artifact_encode_us": 624,
+          "artifacts_loaded": 0,
+          "dangling_detector_edges_dropped": 1,
+          "detector_targets_checked": 1,
+          "edges_added": 850,
+          "edges_changed": 0,
+          "edges_removed": 0,
+          "entities_added": 347,
+          "entities_changed": 0,
+          "entities_removed": 0,
+          "files_added": 66,
+          "files_analyzed": 59,
+          "files_deleted": 0,
+          "files_modified": 0,
+          "files_repackaged": 0,
+          "files_restamped": 0,
+          "files_skipped": 0,
+          "graphs_changed": 0,
+          "owners_resolved": 59,
+          "persist_batches": 1,
+          "renames_detected": 0,
+          "similarity_documents": 228,
+          "unresolvable_detector_edges_dropped": 0,
+          "unresolved_added": 469,
+          "unresolved_removed": 0,
+          "wanted_target_owners": 0
+        },
+        "files_analyzed": 59,
+        "loc": 1120,
+        "parse_failed": 0,
+        "parse_ok": 59,
+        "parse_partial": 0,
+        "parse_samples": [],
+        "repeats": 3,
+        "run_outcome": "ok",
+        "spread": {
+          "cpu_sys_s": [
+            0.06,
+            0.06
+          ],
+          "cpu_total_s": [
+            0.12,
+            0.13
+          ],
+          "cpu_user_s": [
+            0.06,
+            0.07
+          ],
+          "cpu_utilisation": [
+            4.0,
+            4.333333333333334
+          ],
+          "db_bytes": [
+            1771416.0,
+            1771416.0
+          ],
+          "files_per_s": [
+            2978.983122596365,
+            3211.088290614158
+          ],
+          "index_ms": [
+            18.373833,
+            19.805416
+          ],
+          "loc_per_s": [
+            56550.18808996489,
+            60956.25229640435
+          ],
+          "open_ms": [
+            3.853833,
+            3.952875
+          ],
+          "peak_rss_bytes": [
+            35291136.0,
+            35667968.0
+          ],
+          "persist_similarity_ms": [
+            0.253,
+            0.255666
+          ],
+          "phase_analyze_ms": [
+            3.0,
+            4.0
+          ],
+          "phase_dependents_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_encode_ms": [
+            1.0,
+            2.0
+          ],
+          "phase_existence_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_finish_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_lineage_inputs_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_lineage_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_load_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_manifests_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_passes_ms": [
+            2.0,
+            2.0
+          ],
+          "phase_persist_ms": [
+            5.0,
+            5.0
+          ],
+          "phase_plan_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_resolve_ms": [
+            0.0,
+            1.0
+          ],
+          "phase_scip_dangling_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_similarity_ms": [
+            1.0,
+            1.0
+          ],
+          "phase_symbols_ms": [
+            0.0,
+            0.0
+          ],
+          "process_wall_s": [
+            0.03,
+            0.03
+          ],
+          "similarity_blob_bytes": [
+            83121.0,
+            83121.0
+          ]
+        }
+      }
+    },
+    {
+      "corpus": "fixtures-acme",
+      "scenario": "warm_startup",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "first_barrier_ms": 0.6683330000000001,
+        "open_ms": 8.253916
+      },
+      "info": {
+        "first_barrier_fresh": true,
+        "first_barrier_ran_index": false,
+        "readers": 14
+      }
+    },
+    {
+      "corpus": "fixtures-acme",
+      "scenario": "no_change_barrier",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "barrier_max_ms": 0.628166,
+        "barrier_p50_ms": 0.448458,
+        "barrier_p95_ms": 0.6081669999999999
+      },
+      "info": {
+        "iterations": 50,
+        "unexpected_index_runs": 0
+      }
+    },
+    {
+      "corpus": "fixtures-acme",
+      "scenario": "query_latency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "api_max_ms": 1.871458,
+        "api_nobarrier_max_ms": 1.326208,
+        "api_nobarrier_p50_ms": 0.296,
+        "api_p50_ms": 0.917625,
+        "callers_max_ms": 0.684584,
+        "callers_nobarrier_max_ms": 0.08875,
+        "callers_nobarrier_p50_ms": 0.029875,
+        "callers_nobarrier_p95_ms": 0.078625,
+        "callers_p50_ms": 0.487333,
+        "callers_p95_ms": 0.666708,
+        "context_max_ms": 2.266333,
+        "context_nobarrier_max_ms": 1.591959,
+        "context_nobarrier_p50_ms": 0.586875,
+        "context_nobarrier_p95_ms": 1.575708,
+        "context_p50_ms": 1.220417,
+        "context_p95_ms": 2.1500410000000003,
+        "impact_max_ms": 0.921417,
+        "impact_nobarrier_max_ms": 0.4105,
+        "impact_nobarrier_p50_ms": 0.077417,
+        "impact_nobarrier_p95_ms": 0.308791,
+        "impact_p50_ms": 0.639458,
+        "impact_p95_ms": 0.902541,
+        "search_max_ms": 1.123917,
+        "search_nobarrier_max_ms": 0.271667,
+        "search_nobarrier_p50_ms": 0.099625,
+        "search_nobarrier_p95_ms": 0.264333,
+        "search_p50_ms": 0.6570830000000001,
+        "search_p95_ms": 0.944167,
+        "similar_max_ms": 1.234833,
+        "similar_nobarrier_max_ms": 0.668125,
+        "similar_nobarrier_p50_ms": 0.28037500000000004,
+        "similar_nobarrier_p95_ms": 0.530708,
+        "similar_p50_ms": 0.7315419999999999,
+        "similar_p95_ms": 1.188083,
+        "symbol_max_ms": 0.7309169999999999,
+        "symbol_nobarrier_max_ms": 0.100375,
+        "symbol_nobarrier_p50_ms": 0.040791999999999995,
+        "symbol_nobarrier_p95_ms": 0.077834,
+        "symbol_p50_ms": 0.580292,
+        "symbol_p95_ms": 0.699125,
+        "unused_max_ms": 3.099917,
+        "unused_nobarrier_max_ms": 2.314708,
+        "unused_nobarrier_p50_ms": 1.552709,
+        "unused_p50_ms": 2.107583
+      },
+      "info": {
+        "api_errors": 0,
+        "api_found": 3,
+        "api_nobarrier_errors": 0,
+        "api_nobarrier_found": 3,
+        "api_nobarrier_samples": 3,
+        "api_samples": 3,
+        "callers_errors": 0,
+        "callers_found": 30,
+        "callers_nobarrier_errors": 0,
+        "callers_nobarrier_found": 30,
+        "callers_nobarrier_samples": 30,
+        "callers_samples": 30,
+        "context_errors": 0,
+        "context_found": 30,
+        "context_nobarrier_errors": 0,
+        "context_nobarrier_found": 30,
+        "context_nobarrier_samples": 30,
+        "context_samples": 30,
+        "impact_errors": 0,
+        "impact_found": 30,
+        "impact_nobarrier_errors": 0,
+        "impact_nobarrier_found": 30,
+        "impact_nobarrier_samples": 30,
+        "impact_samples": 30,
+        "nobarrier": "the same queries with the freshness barrier skipped",
+        "search_errors": 0,
+        "search_found": 30,
+        "search_nobarrier_errors": 0,
+        "search_nobarrier_found": 30,
+        "search_nobarrier_samples": 30,
+        "search_samples": 30,
+        "similar_errors": 0,
+        "similar_found": 30,
+        "similar_nobarrier_errors": 0,
+        "similar_nobarrier_found": 30,
+        "similar_nobarrier_samples": 30,
+        "similar_samples": 30,
+        "symbol_errors": 0,
+        "symbol_found": 30,
+        "symbol_nobarrier_errors": 0,
+        "symbol_nobarrier_found": 30,
+        "symbol_nobarrier_samples": 30,
+        "symbol_samples": 30,
+        "unused_errors": 0,
+        "unused_found": 3,
+        "unused_nobarrier_errors": 0,
+        "unused_nobarrier_found": 3,
+        "unused_nobarrier_samples": 3,
+        "unused_samples": 3
+      }
+    },
+    {
+      "corpus": "fixtures-acme",
+      "scenario": "concurrency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 1.347666,
+        "n16_p95_ms": 2.4835830000000003,
+        "n16_throughput_qps": 11060.87676561697,
+        "n1_p50_ms": 0.582042,
+        "n1_p95_ms": 1.650375,
+        "n1_throughput_qps": 1433.0897836443016,
+        "n4_p50_ms": 1.150375,
+        "n4_p95_ms": 2.2091659999999997,
+        "n4_throughput_qps": 3229.5582867684193,
+        "n8_p50_ms": 1.232583,
+        "n8_p95_ms": 2.3385,
+        "n8_throughput_qps": 6021.507362114228
+      },
+      "info": {
+        "n16_edits_applied": 0,
+        "n16_errors": 0,
+        "n16_queries": 166213,
+        "n1_edits_applied": 0,
+        "n1_errors": 0,
+        "n1_queries": 21497,
+        "n4_edits_applied": 0,
+        "n4_errors": 0,
+        "n4_queries": 48466,
+        "n8_edits_applied": 0,
+        "n8_errors": 0,
+        "n8_queries": 90326,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            1.346375,
+            1.349583
+          ],
+          "n16_p95_ms": [
+            2.438917,
+            2.4878750000000003
+          ],
+          "n16_throughput_qps": [
+            11035.389611460823,
+            11135.016209967926
+          ],
+          "n1_p50_ms": [
+            0.575083,
+            0.5827910000000001
+          ],
+          "n1_p95_ms": [
+            1.648583,
+            1.651916
+          ],
+          "n1_throughput_qps": [
+            1431.9893079086337,
+            1433.9833130759343
+          ],
+          "n4_p50_ms": [
+            1.148125,
+            1.1507500000000002
+          ],
+          "n4_p95_ms": [
+            2.205708,
+            2.215791
+          ],
+          "n4_throughput_qps": [
+            3225.6637063132503,
+            3236.3282242531095
+          ],
+          "n8_p50_ms": [
+            1.231583,
+            1.234916
+          ],
+          "n8_p95_ms": [
+            2.326625,
+            2.345875
+          ],
+          "n8_throughput_qps": [
+            6005.006438572823,
+            6034.628383972175
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "fixtures-acme",
+      "scenario": "incremental_1_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 3.931333
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 0,
+        "facts_changed": 0,
+        "files_changed_in_run": 1,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 1,
+        "owners_resolved": 1,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 2,
+          "persist": 0,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "fixtures-acme",
+      "scenario": "incremental_10_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 5.268208
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 1,
+        "facts_changed": 1,
+        "files_changed_in_run": 10,
+        "files_mismatch": false,
+        "files_touched": 10,
+        "files_updated": 10,
+        "owners_resolved": 10,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 0,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "fixtures-acme",
+      "scenario": "incremental_100_files",
+      "outcome": {
+        "status": "skipped",
+        "reason": "only 11 editable files in this corpus"
+      },
+      "metrics": {},
+      "info": {}
+    },
+    {
+      "corpus": "fixtures-acme",
+      "scenario": "incremental_1000_files",
+      "outcome": {
+        "status": "skipped",
+        "reason": "only 11 editable files in this corpus"
+      },
+      "metrics": {},
+      "info": {}
+    },
+    {
+      "corpus": "fixtures-acme",
+      "scenario": "rename_symbol",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 4.598083
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 31,
+        "entities_changed": 13,
+        "facts_changed": 44,
+        "files_changed_in_run": 4,
+        "files_mismatch": false,
+        "files_touched": 4,
+        "files_updated": 4,
+        "owners_resolved": 4,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 0,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 4,
+        "replacements": 10,
+        "symbol": "toCents"
+      }
+    },
+    {
+      "corpus": "fixtures-acme",
+      "scenario": "file_move",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 7.278583
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 84,
+        "entities_changed": 35,
+        "facts_changed": 119,
+        "files_changed_in_run": 2,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 2,
+        "moved": "acme-api/src/users/users.controller.ts",
+        "owners_resolved": 34,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 1,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 7
+      }
+    },
+    {
+      "corpus": "fixtures-acme",
+      "scenario": "branch_switch",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 3.914625
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 3,
+        "entities_changed": 6,
+        "facts_changed": 9,
+        "files_changed_in_run": 3,
+        "files_mismatch": false,
+        "files_touched": 3,
+        "files_updated": 3,
+        "owners_resolved": 3,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 0,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "fixtures-acme",
+      "scenario": "delete_directory",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 6.582625
+      },
+      "info": {
+        "degraded": false,
+        "directory": "acme-api/src/orders",
+        "edges_changed": 114,
+        "entities_changed": 43,
+        "facts_changed": 157,
+        "files_changed_in_run": 5,
+        "files_mismatch": false,
+        "files_touched": 5,
+        "files_updated": 5,
+        "owners_resolved": 33,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 1,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "fixtures-acme",
+      "scenario": "concurrency_with_edits",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 1.499,
+        "n16_p95_ms": 2.449042,
+        "n16_throughput_qps": 9957.410131799748,
+        "n1_p50_ms": 0.664416,
+        "n1_p95_ms": 1.461,
+        "n1_throughput_qps": 1295.0678274496388,
+        "n4_p50_ms": 1.298542,
+        "n4_p95_ms": 2.196708,
+        "n4_throughput_qps": 2872.248237277663,
+        "n8_p50_ms": 1.388459,
+        "n8_p95_ms": 2.356542,
+        "n8_throughput_qps": 5330.2229264297575
+      },
+      "info": {
+        "n16_edits_applied": 141,
+        "n16_errors": 0,
+        "n16_queries": 149370,
+        "n1_edits_applied": 141,
+        "n1_errors": 0,
+        "n1_queries": 19372,
+        "n4_edits_applied": 141,
+        "n4_errors": 0,
+        "n4_queries": 43100,
+        "n8_edits_applied": 141,
+        "n8_errors": 0,
+        "n8_queries": 79999,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            1.498375,
+            1.501208
+          ],
+          "n16_p95_ms": [
+            2.448625,
+            2.465792
+          ],
+          "n16_throughput_qps": [
+            9942.59115837424,
+            9960.764628489367
+          ],
+          "n1_p50_ms": [
+            0.664,
+            0.665334
+          ],
+          "n1_p95_ms": [
+            1.449958,
+            1.477166
+          ],
+          "n1_throughput_qps": [
+            1283.6760502944653,
+            1295.2101869471028
+          ],
+          "n4_p50_ms": [
+            1.294333,
+            1.299208
+          ],
+          "n4_p95_ms": [
+            2.195625,
+            2.202584
+          ],
+          "n4_throughput_qps": [
+            2871.0666275972585,
+            2874.4713301750035
+          ],
+          "n8_p50_ms": [
+            1.388291,
+            1.38875
+          ],
+          "n8_p95_ms": [
+            2.346333,
+            2.360083
+          ],
+          "n8_throughput_qps": [
+            5324.791114364795,
+            5340.876664284507
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "fixtures-acme",
+      "scenario": "workload",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {},
+      "info": {
+        "editable_files": 11,
+        "targets": 30
+      }
+    },
+    {
+      "corpus": "fixtures-acme",
+      "scenario": "session_process",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 386.11,
+        "cpu_total_s": 630.15,
+        "cpu_user_s": 244.04,
+        "cpu_utilisation": 5.197542065324975,
+        "peak_rss_bytes": 65241088.0,
+        "process_wall_s": 121.24
+      },
+      "info": {}
+    },
+    {
+      "corpus": "fixtures-globex",
+      "scenario": "cold_index",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 0.01,
+        "cpu_total_s": 0.02,
+        "cpu_user_s": 0.01,
+        "cpu_utilisation": 2.0,
+        "db_bytes": 654896.0,
+        "files_per_s": 2615.257674800554,
+        "index_ms": 4.588458,
+        "loc_per_s": 36831.54558677447,
+        "open_ms": 3.4255,
+        "peak_rss_bytes": 23969792.0,
+        "persist_similarity_ms": 0.083625,
+        "phase_analyze_ms": 0.0,
+        "phase_dependents_ms": 0.0,
+        "phase_encode_ms": 0.0,
+        "phase_existence_ms": 0.0,
+        "phase_finish_ms": 0.0,
+        "phase_lineage_inputs_ms": 0.0,
+        "phase_lineage_ms": 0.0,
+        "phase_load_ms": 0.0,
+        "phase_manifests_ms": 0.0,
+        "phase_passes_ms": 0.0,
+        "phase_persist_ms": 1.0,
+        "phase_plan_ms": 0.0,
+        "phase_resolve_ms": 0.0,
+        "phase_scip_dangling_ms": 0.0,
+        "phase_similarity_ms": 0.0,
+        "phase_symbols_ms": 0.0,
+        "process_wall_s": 0.01,
+        "similarity_blob_bytes": 13383.0
+      },
+      "info": {
+        "counts": {
+          "artifact_bytes": 24465,
+          "artifact_encode_us": 334,
+          "artifacts_loaded": 0,
+          "dangling_detector_edges_dropped": 0,
+          "detector_targets_checked": 0,
+          "edges_added": 141,
+          "edges_changed": 0,
+          "edges_removed": 0,
+          "entities_added": 79,
+          "entities_changed": 0,
+          "entities_removed": 0,
+          "files_added": 15,
+          "files_analyzed": 12,
+          "files_deleted": 0,
+          "files_modified": 0,
+          "files_repackaged": 0,
+          "files_restamped": 0,
+          "files_skipped": 0,
+          "graphs_changed": 0,
+          "owners_resolved": 12,
+          "persist_batches": 1,
+          "renames_detected": 0,
+          "similarity_documents": 43,
+          "unresolvable_detector_edges_dropped": 0,
+          "unresolved_added": 62,
+          "unresolved_removed": 0,
+          "wanted_target_owners": 0
+        },
+        "files_analyzed": 12,
+        "loc": 169,
+        "parse_failed": 0,
+        "parse_ok": 12,
+        "parse_partial": 0,
+        "parse_samples": [],
+        "repeats": 3,
+        "run_outcome": "ok",
+        "spread": {
+          "cpu_sys_s": [
+            0.01,
+            0.01
+          ],
+          "cpu_total_s": [
+            0.02,
+            0.02
+          ],
+          "cpu_user_s": [
+            0.01,
+            0.01
+          ],
+          "cpu_utilisation": [
+            2.0,
+            2.0
+          ],
+          "db_bytes": [
+            654896.0,
+            654896.0
+          ],
+          "files_per_s": [
+            2435.146963148515,
+            2775.5554059839587
+          ],
+          "index_ms": [
+            4.323459,
+            4.927834
+          ],
+          "loc_per_s": [
+            34294.986397674926,
+            39089.071967607415
+          ],
+          "open_ms": [
+            3.20925,
+            3.769916
+          ],
+          "peak_rss_bytes": [
+            23855104.0,
+            24018944.0
+          ],
+          "persist_similarity_ms": [
+            0.082291,
+            0.08791700000000001
+          ],
+          "phase_analyze_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_dependents_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_encode_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_existence_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_finish_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_lineage_inputs_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_lineage_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_load_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_manifests_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_passes_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_persist_ms": [
+            1.0,
+            1.0
+          ],
+          "phase_plan_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_resolve_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_scip_dangling_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_similarity_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_symbols_ms": [
+            0.0,
+            0.0
+          ],
+          "process_wall_s": [
+            0.01,
+            0.01
+          ],
+          "similarity_blob_bytes": [
+            13383.0,
+            13383.0
+          ]
+        }
+      }
+    },
+    {
+      "corpus": "fixtures-globex",
+      "scenario": "warm_startup",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "first_barrier_ms": 0.5034580000000001,
+        "open_ms": 4.594458
+      },
+      "info": {
+        "first_barrier_fresh": true,
+        "first_barrier_ran_index": false,
+        "readers": 14
+      }
+    },
+    {
+      "corpus": "fixtures-globex",
+      "scenario": "no_change_barrier",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "barrier_max_ms": 0.396458,
+        "barrier_p50_ms": 0.278792,
+        "barrier_p95_ms": 0.330166
+      },
+      "info": {
+        "iterations": 50,
+        "unexpected_index_runs": 0
+      }
+    },
+    {
+      "corpus": "fixtures-globex",
+      "scenario": "query_latency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "api_max_ms": 0.602875,
+        "api_nobarrier_max_ms": 0.277292,
+        "api_nobarrier_p50_ms": 0.24025,
+        "api_p50_ms": 0.5523750000000001,
+        "callers_max_ms": 0.352875,
+        "callers_nobarrier_max_ms": 0.064,
+        "callers_nobarrier_p50_ms": 0.027666,
+        "callers_p50_ms": 0.304459,
+        "context_max_ms": 0.864959,
+        "context_nobarrier_max_ms": 0.576667,
+        "context_nobarrier_p50_ms": 0.386709,
+        "context_p50_ms": 0.672458,
+        "impact_max_ms": 0.449083,
+        "impact_nobarrier_max_ms": 0.158542,
+        "impact_nobarrier_p50_ms": 0.08174999999999999,
+        "impact_p50_ms": 0.357792,
+        "search_max_ms": 0.516208,
+        "search_nobarrier_max_ms": 0.215583,
+        "search_nobarrier_p50_ms": 0.067125,
+        "search_p50_ms": 0.34658300000000003,
+        "similar_max_ms": 0.4743750000000001,
+        "similar_nobarrier_max_ms": 0.193708,
+        "similar_nobarrier_p50_ms": 0.08337499999999999,
+        "similar_p50_ms": 0.367709,
+        "symbol_max_ms": 0.345708,
+        "symbol_nobarrier_max_ms": 0.051625,
+        "symbol_nobarrier_p50_ms": 0.033917,
+        "symbol_p50_ms": 0.31470800000000004,
+        "unused_max_ms": 0.979583,
+        "unused_nobarrier_max_ms": 0.659292,
+        "unused_nobarrier_p50_ms": 0.601833,
+        "unused_p50_ms": 0.949042
+      },
+      "info": {
+        "api_errors": 0,
+        "api_found": 3,
+        "api_nobarrier_errors": 0,
+        "api_nobarrier_found": 3,
+        "api_nobarrier_samples": 3,
+        "api_samples": 3,
+        "callers_errors": 0,
+        "callers_found": 14,
+        "callers_nobarrier_errors": 0,
+        "callers_nobarrier_found": 14,
+        "callers_nobarrier_samples": 14,
+        "callers_samples": 14,
+        "context_errors": 0,
+        "context_found": 14,
+        "context_nobarrier_errors": 0,
+        "context_nobarrier_found": 14,
+        "context_nobarrier_samples": 14,
+        "context_samples": 14,
+        "impact_errors": 0,
+        "impact_found": 14,
+        "impact_nobarrier_errors": 0,
+        "impact_nobarrier_found": 14,
+        "impact_nobarrier_samples": 14,
+        "impact_samples": 14,
+        "nobarrier": "the same queries with the freshness barrier skipped",
+        "search_errors": 0,
+        "search_found": 14,
+        "search_nobarrier_errors": 0,
+        "search_nobarrier_found": 14,
+        "search_nobarrier_samples": 14,
+        "search_samples": 14,
+        "similar_errors": 0,
+        "similar_found": 14,
+        "similar_nobarrier_errors": 0,
+        "similar_nobarrier_found": 14,
+        "similar_nobarrier_samples": 14,
+        "similar_samples": 14,
+        "symbol_errors": 0,
+        "symbol_found": 14,
+        "symbol_nobarrier_errors": 0,
+        "symbol_nobarrier_found": 14,
+        "symbol_nobarrier_samples": 14,
+        "symbol_samples": 14,
+        "unused_errors": 0,
+        "unused_found": 3,
+        "unused_nobarrier_errors": 0,
+        "unused_nobarrier_found": 3,
+        "unused_nobarrier_samples": 3,
+        "unused_samples": 3
+      }
+    },
+    {
+      "corpus": "fixtures-globex",
+      "scenario": "concurrency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 0.810625,
+        "n16_p95_ms": 1.183459,
+        "n16_throughput_qps": 19185.055387255503,
+        "n1_p50_ms": 0.302375,
+        "n1_p95_ms": 0.660083,
+        "n1_throughput_qps": 2823.961194254853,
+        "n4_p50_ms": 0.5670000000000001,
+        "n4_p95_ms": 0.893791,
+        "n4_throughput_qps": 6739.778932311204,
+        "n8_p50_ms": 0.73025,
+        "n8_p95_ms": 1.08475,
+        "n8_throughput_qps": 10606.807554958868
+      },
+      "info": {
+        "n16_edits_applied": 0,
+        "n16_errors": 0,
+        "n16_queries": 287483,
+        "n1_edits_applied": 0,
+        "n1_errors": 0,
+        "n1_queries": 42347,
+        "n4_edits_applied": 0,
+        "n4_errors": 0,
+        "n4_queries": 101183,
+        "n8_edits_applied": 0,
+        "n8_errors": 0,
+        "n8_queries": 159199,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            0.8099580000000001,
+            0.813292
+          ],
+          "n16_p95_ms": [
+            1.182167,
+            1.19125
+          ],
+          "n16_throughput_qps": [
+            19092.765211538444,
+            19207.53616247701
+          ],
+          "n1_p50_ms": [
+            0.302209,
+            0.303042
+          ],
+          "n1_p95_ms": [
+            0.6593330000000001,
+            0.660833
+          ],
+          "n1_throughput_qps": [
+            2817.785284761301,
+            2827.20744342456
+          ],
+          "n4_p50_ms": [
+            0.5647920000000001,
+            0.5672090000000001
+          ],
+          "n4_p95_ms": [
+            0.891208,
+            0.896209
+          ],
+          "n4_throughput_qps": [
+            6730.675191100224,
+            6763.467007002775
+          ],
+          "n8_p50_ms": [
+            0.72975,
+            0.73175
+          ],
+          "n8_p95_ms": [
+            1.076875,
+            1.085417
+          ],
+          "n8_throughput_qps": [
+            10605.276201437777,
+            10623.246454702112
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "fixtures-globex",
+      "scenario": "incremental_1_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 1.907416
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 1,
+        "facts_changed": 1,
+        "files_changed_in_run": 1,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 1,
+        "owners_resolved": 1,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 0,
+          "persist": 0,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "fixtures-globex",
+      "scenario": "incremental_10_files",
+      "outcome": {
+        "status": "skipped",
+        "reason": "only 5 editable files in this corpus"
+      },
+      "metrics": {},
+      "info": {}
+    },
+    {
+      "corpus": "fixtures-globex",
+      "scenario": "incremental_100_files",
+      "outcome": {
+        "status": "skipped",
+        "reason": "only 5 editable files in this corpus"
+      },
+      "metrics": {},
+      "info": {}
+    },
+    {
+      "corpus": "fixtures-globex",
+      "scenario": "incremental_1000_files",
+      "outcome": {
+        "status": "skipped",
+        "reason": "only 5 editable files in this corpus"
+      },
+      "metrics": {},
+      "info": {}
+    },
+    {
+      "corpus": "fixtures-globex",
+      "scenario": "rename_symbol",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 2.52675
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 41,
+        "entities_changed": 18,
+        "facts_changed": 59,
+        "files_changed_in_run": 3,
+        "files_mismatch": false,
+        "files_touched": 3,
+        "files_updated": 3,
+        "owners_resolved": 3,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 0,
+          "persist": 0,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 1,
+        "replacements": 6,
+        "symbol": "requireGlobexKey"
+      }
+    },
+    {
+      "corpus": "fixtures-globex",
+      "scenario": "file_move",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 2.88375
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 36,
+        "entities_changed": 21,
+        "facts_changed": 57,
+        "files_changed_in_run": 2,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 2,
+        "moved": "globex-api/src/services/orders.service.ts",
+        "owners_resolved": 9,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 0,
+          "persist": 0,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "fixtures-globex",
+      "scenario": "branch_switch",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 1.263584
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 1,
+        "entities_changed": 3,
+        "facts_changed": 4,
+        "files_changed_in_run": 1,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 1,
+        "owners_resolved": 1,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 0,
+          "persist": 0,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "fixtures-globex",
+      "scenario": "delete_directory",
+      "outcome": {
+        "status": "skipped",
+        "reason": "no directory holds between 3 source files and 10% of the corpus"
+      },
+      "metrics": {},
+      "info": {}
+    },
+    {
+      "corpus": "fixtures-globex",
+      "scenario": "concurrency_with_edits",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 0.985958,
+        "n16_p95_ms": 1.297625,
+        "n16_throughput_qps": 15900.68794853073,
+        "n1_p50_ms": 0.393542,
+        "n1_p95_ms": 0.764417,
+        "n1_throughput_qps": 2202.3753211578114,
+        "n4_p50_ms": 0.85325,
+        "n4_p95_ms": 1.160084,
+        "n4_throughput_qps": 4585.60555327819,
+        "n8_p50_ms": 0.902292,
+        "n8_p95_ms": 1.213916,
+        "n8_throughput_qps": 8650.789848588045
+      },
+      "info": {
+        "n16_edits_applied": 138,
+        "n16_errors": 0,
+        "n16_queries": 238459,
+        "n1_edits_applied": 141,
+        "n1_errors": 0,
+        "n1_queries": 33047,
+        "n4_edits_applied": 141,
+        "n4_errors": 0,
+        "n4_queries": 68766,
+        "n8_edits_applied": 139,
+        "n8_errors": 0,
+        "n8_queries": 129657,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            0.98325,
+            0.986667
+          ],
+          "n16_p95_ms": [
+            1.296292,
+            1.297792
+          ],
+          "n16_throughput_qps": [
+            15869.676794532144,
+            15910.291070570634
+          ],
+          "n1_p50_ms": [
+            0.393167,
+            0.395333
+          ],
+          "n1_p95_ms": [
+            0.7592500000000001,
+            0.764584
+          ],
+          "n1_throughput_qps": [
+            2199.4770122837995,
+            2206.9716702421515
+          ],
+          "n4_p50_ms": [
+            0.851958,
+            0.854167
+          ],
+          "n4_p95_ms": [
+            1.157875,
+            1.167
+          ],
+          "n4_throughput_qps": [
+            4577.148099681903,
+            4588.440957154663
+          ],
+          "n8_p50_ms": [
+            0.900166,
+            0.906167
+          ],
+          "n8_p95_ms": [
+            1.212709,
+            1.220792
+          ],
+          "n8_throughput_qps": [
+            8607.740118859225,
+            8666.737979082394
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "fixtures-globex",
+      "scenario": "workload",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {},
+      "info": {
+        "editable_files": 5,
+        "targets": 14
+      }
+    },
+    {
+      "corpus": "fixtures-globex",
+      "scenario": "session_process",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 224.96,
+        "cpu_total_s": 408.38,
+        "cpu_user_s": 183.42,
+        "cpu_utilisation": 3.3839907192575405,
+        "peak_rss_bytes": 47071232.0,
+        "process_wall_s": 120.68
+      },
+      "info": {}
+    },
+    {
+      "corpus": "synth-10k",
+      "scenario": "cold_index",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 0.08,
+        "cpu_total_s": 0.3,
+        "cpu_user_s": 0.23,
+        "cpu_utilisation": 4.142857142857142,
+        "db_bytes": 8521032.0,
+        "files_per_s": 1252.569240554007,
+        "index_ms": 54.288416,
+        "loc_per_s": 195750.78410834455,
+        "open_ms": 3.493042,
+        "peak_rss_bytes": 62357504.0,
+        "persist_similarity_ms": 6.263625,
+        "phase_analyze_ms": 9.0,
+        "phase_dependents_ms": 0.0,
+        "phase_encode_ms": 5.0,
+        "phase_existence_ms": 0.0,
+        "phase_finish_ms": 0.0,
+        "phase_lineage_inputs_ms": 0.0,
+        "phase_lineage_ms": 0.0,
+        "phase_load_ms": 0.0,
+        "phase_manifests_ms": 0.0,
+        "phase_passes_ms": 2.0,
+        "phase_persist_ms": 21.0,
+        "phase_plan_ms": 0.0,
+        "phase_resolve_ms": 2.0,
+        "phase_scip_dangling_ms": 0.0,
+        "phase_similarity_ms": 8.0,
+        "phase_symbols_ms": 2.0,
+        "process_wall_s": 0.07,
+        "similarity_blob_bytes": 521551.0
+      },
+      "info": {
+        "counts": {
+          "artifact_bytes": 447908,
+          "artifact_encode_us": 1102,
+          "artifacts_loaded": 0,
+          "dangling_detector_edges_dropped": 0,
+          "detector_targets_checked": 0,
+          "edges_added": 3603,
+          "edges_changed": 0,
+          "edges_removed": 0,
+          "entities_added": 978,
+          "entities_changed": 0,
+          "entities_removed": 0,
+          "files_added": 71,
+          "files_analyzed": 68,
+          "files_deleted": 0,
+          "files_modified": 0,
+          "files_repackaged": 0,
+          "files_restamped": 0,
+          "files_skipped": 0,
+          "graphs_changed": 0,
+          "owners_resolved": 68,
+          "persist_batches": 1,
+          "renames_detected": 0,
+          "similarity_documents": 873,
+          "unresolvable_detector_edges_dropped": 0,
+          "unresolved_added": 3563,
+          "unresolved_removed": 0,
+          "wanted_target_owners": 0
+        },
+        "files_analyzed": 68,
+        "loc": 10627,
+        "parse_failed": 0,
+        "parse_ok": 68,
+        "parse_partial": 0,
+        "parse_samples": [],
+        "repeats": 3,
+        "run_outcome": "ok",
+        "spread": {
+          "cpu_sys_s": [
+            0.05,
+            0.08
+          ],
+          "cpu_total_s": [
+            0.29,
+            0.31
+          ],
+          "cpu_user_s": [
+            0.22,
+            0.24
+          ],
+          "cpu_utilisation": [
+            3.875,
+            4.285714285714286
+          ],
+          "db_bytes": [
+            8521032.0,
+            8521032.0
+          ],
+          "files_per_s": [
+            1223.914930568836,
+            1267.3345979717392
+          ],
+          "index_ms": [
+            53.655916999999995,
+            55.559417
+          ],
+          "loc_per_s": [
+            191272.70539933853,
+            198058.30548008345
+          ],
+          "open_ms": [
+            3.421334,
+            3.575375
+          ],
+          "peak_rss_bytes": [
+            60702720.0,
+            62439424.0
+          ],
+          "persist_similarity_ms": [
+            6.221291,
+            17.44325
+          ],
+          "phase_analyze_ms": [
+            8.0,
+            9.0
+          ],
+          "phase_dependents_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_encode_ms": [
+            5.0,
+            6.0
+          ],
+          "phase_existence_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_finish_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_lineage_inputs_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_lineage_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_load_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_manifests_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_passes_ms": [
+            2.0,
+            2.0
+          ],
+          "phase_persist_ms": [
+            21.0,
+            21.0
+          ],
+          "phase_plan_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_resolve_ms": [
+            2.0,
+            3.0
+          ],
+          "phase_scip_dangling_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_similarity_ms": [
+            8.0,
+            8.0
+          ],
+          "phase_symbols_ms": [
+            2.0,
+            2.0
+          ],
+          "process_wall_s": [
+            0.07,
+            0.08
+          ],
+          "similarity_blob_bytes": [
+            521551.0,
+            521551.0
+          ]
+        }
+      }
+    },
+    {
+      "corpus": "synth-10k",
+      "scenario": "warm_startup",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "first_barrier_ms": 1.877708,
+        "open_ms": 18.453833
+      },
+      "info": {
+        "first_barrier_fresh": true,
+        "first_barrier_ran_index": false,
+        "readers": 14
+      }
+    },
+    {
+      "corpus": "synth-10k",
+      "scenario": "no_change_barrier",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "barrier_max_ms": 2.129584,
+        "barrier_p50_ms": 1.876083,
+        "barrier_p95_ms": 2.034291
+      },
+      "info": {
+        "iterations": 50,
+        "unexpected_index_runs": 0
+      }
+    },
+    {
+      "corpus": "synth-10k",
+      "scenario": "query_latency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "api_max_ms": 3.093417,
+        "api_nobarrier_max_ms": 1.044542,
+        "api_nobarrier_p50_ms": 0.98775,
+        "api_p50_ms": 2.9697500000000003,
+        "callers_max_ms": 3.253125,
+        "callers_nobarrier_max_ms": 1.2422920000000002,
+        "callers_nobarrier_p50_ms": 0.041792,
+        "callers_nobarrier_p95_ms": 1.193584,
+        "callers_p50_ms": 2.01525,
+        "callers_p95_ms": 3.221583,
+        "context_max_ms": 6.696959,
+        "context_nobarrier_max_ms": 4.812583,
+        "context_nobarrier_p50_ms": 3.0365409999999997,
+        "context_nobarrier_p95_ms": 4.495375,
+        "context_p50_ms": 5.017167000000001,
+        "context_p95_ms": 6.622917,
+        "impact_max_ms": 6.998833,
+        "impact_nobarrier_max_ms": 5.061084,
+        "impact_nobarrier_p50_ms": 0.2765,
+        "impact_nobarrier_p95_ms": 4.097499999999999,
+        "impact_p50_ms": 2.300125,
+        "impact_p95_ms": 6.274916,
+        "search_max_ms": 2.421958,
+        "search_nobarrier_max_ms": 0.5740419999999999,
+        "search_nobarrier_p50_ms": 0.30979199999999996,
+        "search_nobarrier_p95_ms": 0.484959,
+        "search_p50_ms": 2.17925,
+        "search_p95_ms": 2.400125,
+        "similar_max_ms": 4.3474580000000005,
+        "similar_nobarrier_max_ms": 2.247333,
+        "similar_nobarrier_p50_ms": 0.951583,
+        "similar_nobarrier_p95_ms": 1.974833,
+        "similar_p50_ms": 2.957291,
+        "similar_p95_ms": 3.972959,
+        "symbol_max_ms": 3.5149999999999997,
+        "symbol_nobarrier_max_ms": 1.366042,
+        "symbol_nobarrier_p50_ms": 0.062,
+        "symbol_nobarrier_p95_ms": 1.361625,
+        "symbol_p50_ms": 2.025542,
+        "symbol_p95_ms": 3.305708,
+        "unused_max_ms": 16.624084,
+        "unused_nobarrier_max_ms": 14.445708,
+        "unused_nobarrier_p50_ms": 13.907,
+        "unused_p50_ms": 16.534042
+      },
+      "info": {
+        "api_errors": 0,
+        "api_found": 3,
+        "api_nobarrier_errors": 0,
+        "api_nobarrier_found": 3,
+        "api_nobarrier_samples": 3,
+        "api_samples": 3,
+        "callers_errors": 0,
+        "callers_found": 30,
+        "callers_nobarrier_errors": 0,
+        "callers_nobarrier_found": 30,
+        "callers_nobarrier_samples": 30,
+        "callers_samples": 30,
+        "context_errors": 0,
+        "context_found": 30,
+        "context_nobarrier_errors": 0,
+        "context_nobarrier_found": 30,
+        "context_nobarrier_samples": 30,
+        "context_samples": 30,
+        "impact_errors": 0,
+        "impact_found": 30,
+        "impact_nobarrier_errors": 0,
+        "impact_nobarrier_found": 30,
+        "impact_nobarrier_samples": 30,
+        "impact_samples": 30,
+        "nobarrier": "the same queries with the freshness barrier skipped",
+        "search_errors": 0,
+        "search_found": 30,
+        "search_nobarrier_errors": 0,
+        "search_nobarrier_found": 30,
+        "search_nobarrier_samples": 30,
+        "search_samples": 30,
+        "similar_errors": 0,
+        "similar_found": 30,
+        "similar_nobarrier_errors": 0,
+        "similar_nobarrier_found": 30,
+        "similar_nobarrier_samples": 30,
+        "similar_samples": 30,
+        "symbol_errors": 0,
+        "symbol_found": 30,
+        "symbol_nobarrier_errors": 0,
+        "symbol_nobarrier_found": 30,
+        "symbol_nobarrier_samples": 30,
+        "symbol_samples": 30,
+        "unused_errors": 0,
+        "unused_found": 3,
+        "unused_nobarrier_errors": 0,
+        "unused_nobarrier_found": 3,
+        "unused_nobarrier_samples": 3,
+        "unused_samples": 3
+      }
+    },
+    {
+      "corpus": "synth-10k",
+      "scenario": "concurrency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 1.415291,
+        "n16_p95_ms": 5.15775,
+        "n16_throughput_qps": 8255.785363022322,
+        "n1_p50_ms": 0.7205,
+        "n1_p95_ms": 3.757792,
+        "n1_throughput_qps": 854.552280433377,
+        "n4_p50_ms": 0.964041,
+        "n4_p95_ms": 4.402208,
+        "n4_throughput_qps": 2682.0529366837313,
+        "n8_p50_ms": 1.154209,
+        "n8_p95_ms": 4.818333,
+        "n8_throughput_qps": 4710.889441132352
+      },
+      "info": {
+        "n16_edits_applied": 0,
+        "n16_errors": 0,
+        "n16_queries": 123241,
+        "n1_edits_applied": 0,
+        "n1_errors": 0,
+        "n1_queries": 12442,
+        "n4_edits_applied": 0,
+        "n4_errors": 0,
+        "n4_queries": 40192,
+        "n8_edits_applied": 0,
+        "n8_errors": 0,
+        "n8_queries": 70704,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            1.4125839999999998,
+            1.443584
+          ],
+          "n16_p95_ms": [
+            5.139792,
+            5.240333
+          ],
+          "n16_throughput_qps": [
+            8114.896625239097,
+            8259.724101655765
+          ],
+          "n1_p50_ms": [
+            0.720333,
+            0.735709
+          ],
+          "n1_p95_ms": [
+            3.748417,
+            4.18175
+          ],
+          "n1_throughput_qps": [
+            777.8457143025681,
+            855.3585708255612
+          ],
+          "n4_p50_ms": [
+            0.960458,
+            0.967959
+          ],
+          "n4_p95_ms": [
+            4.361375,
+            4.428833
+          ],
+          "n4_throughput_qps": [
+            2666.676087922299,
+            2686.385456120886
+          ],
+          "n8_p50_ms": [
+            1.148209,
+            1.155541
+          ],
+          "n8_p95_ms": [
+            4.781083000000001,
+            4.84425
+          ],
+          "n8_throughput_qps": [
+            4690.58480384353,
+            4730.314654571197
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "synth-10k",
+      "scenario": "incremental_1_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 5.225625
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 0,
+        "facts_changed": 0,
+        "files_changed_in_run": 1,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 1,
+        "owners_resolved": 1,
+        "phases_ms": {
+          "analyze": 1,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 0,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-10k",
+      "scenario": "incremental_10_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 11.298083
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 0,
+        "facts_changed": 0,
+        "files_changed_in_run": 10,
+        "files_mismatch": false,
+        "files_touched": 10,
+        "files_updated": 10,
+        "owners_resolved": 10,
+        "phases_ms": {
+          "analyze": 3,
+          "dependents": 0,
+          "encode": 1,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 0,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 1,
+          "symbols": 0
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-10k",
+      "scenario": "incremental_100_files",
+      "outcome": {
+        "status": "skipped",
+        "reason": "only 49 editable files in this corpus"
+      },
+      "metrics": {},
+      "info": {}
+    },
+    {
+      "corpus": "synth-10k",
+      "scenario": "incremental_1000_files",
+      "outcome": {
+        "status": "skipped",
+        "reason": "only 49 editable files in this corpus"
+      },
+      "metrics": {},
+      "info": {}
+    },
+    {
+      "corpus": "synth-10k",
+      "scenario": "rename_symbol",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 27.840375
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 1774,
+        "entities_changed": 406,
+        "facts_changed": 2180,
+        "files_changed_in_run": 27,
+        "files_mismatch": false,
+        "files_touched": 27,
+        "files_updated": 27,
+        "owners_resolved": 27,
+        "phases_ms": {
+          "analyze": 4,
+          "dependents": 0,
+          "encode": 2,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 10,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 4,
+          "symbols": 1
+        },
+        "renames_detected": 2,
+        "replacements": 205,
+        "symbol": "validateInvoice1"
+      }
+    },
+    {
+      "corpus": "synth-10k",
+      "scenario": "file_move",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 19.358875
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 146,
+        "entities_changed": 30,
+        "facts_changed": 176,
+        "files_changed_in_run": 2,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 2,
+        "moved": "repo-0/web/src/g0/m2.ts",
+        "owners_resolved": 60,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 0,
+          "encode": 4,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 1,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 3,
+          "plan": 0,
+          "resolve": 2,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 14
+      }
+    },
+    {
+      "corpus": "synth-10k",
+      "scenario": "branch_switch",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 17.528042
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 13,
+        "entities_changed": 26,
+        "facts_changed": 39,
+        "files_changed_in_run": 13,
+        "files_mismatch": false,
+        "files_touched": 13,
+        "files_updated": 13,
+        "owners_resolved": 13,
+        "phases_ms": {
+          "analyze": 2,
+          "dependents": 0,
+          "encode": 1,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 5,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 2,
+          "symbols": 1
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-10k",
+      "scenario": "delete_directory",
+      "outcome": {
+        "status": "skipped",
+        "reason": "no directory holds between 3 source files and 10% of the corpus"
+      },
+      "metrics": {},
+      "info": {}
+    },
+    {
+      "corpus": "synth-10k",
+      "scenario": "concurrency_with_edits",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 2.204958,
+        "n16_p95_ms": 6.489083,
+        "n16_throughput_qps": 5656.060927949994,
+        "n1_p50_ms": 1.181,
+        "n1_p95_ms": 4.881833,
+        "n1_throughput_qps": 590.6874249003627,
+        "n4_p50_ms": 1.876666,
+        "n4_p95_ms": 5.804459,
+        "n4_throughput_qps": 1669.4408067784666,
+        "n8_p50_ms": 2.023,
+        "n8_p95_ms": 6.148625,
+        "n8_throughput_qps": 3078.6901971166344
+      },
+      "info": {
+        "n16_edits_applied": 140,
+        "n16_errors": 0,
+        "n16_queries": 84620,
+        "n1_edits_applied": 139,
+        "n1_errors": 0,
+        "n1_queries": 8535,
+        "n4_edits_applied": 139,
+        "n4_errors": 0,
+        "n4_queries": 25059,
+        "n8_edits_applied": 139,
+        "n8_errors": 0,
+        "n8_queries": 46274,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            2.196791,
+            2.206292
+          ],
+          "n16_p95_ms": [
+            6.472834000000001,
+            6.57075
+          ],
+          "n16_throughput_qps": [
+            5592.659723583362,
+            5659.032411024007
+          ],
+          "n1_p50_ms": [
+            1.178208,
+            1.400167
+          ],
+          "n1_p95_ms": [
+            4.867833999999999,
+            5.014209
+          ],
+          "n1_throughput_qps": [
+            525.1551824164843,
+            590.780520074236
+          ],
+          "n4_p50_ms": [
+            1.870875,
+            1.893
+          ],
+          "n4_p95_ms": [
+            5.789708,
+            5.814875
+          ],
+          "n4_throughput_qps": [
+            1666.6756347689789,
+            1671.6271884012394
+          ],
+          "n8_p50_ms": [
+            2.018834,
+            2.025041
+          ],
+          "n8_p95_ms": [
+            6.128166,
+            6.159083
+          ],
+          "n8_throughput_qps": [
+            3078.0170459425503,
+            3090.9992611054618
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "synth-10k",
+      "scenario": "workload",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {},
+      "info": {
+        "editable_files": 49,
+        "targets": 30
+      }
+    },
+    {
+      "corpus": "synth-10k",
+      "scenario": "session_process",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 296.12,
+        "cpu_total_s": 688.12,
+        "cpu_user_s": 392.0,
+        "cpu_utilisation": 5.654696359602268,
+        "peak_rss_bytes": 127188992.0,
+        "process_wall_s": 121.69
+      },
+      "info": {}
+    },
+    {
+      "corpus": "synth-100k",
+      "scenario": "cold_index",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 0.56,
+        "cpu_total_s": 2.02,
+        "cpu_user_s": 1.46,
+        "cpu_utilisation": 3.3064516129032255,
+        "db_bytes": 41175712.0,
+        "files_per_s": 1114.5828103349454,
+        "index_ms": 523.0656660000001,
+        "loc_per_s": 192126.92885867984,
+        "open_ms": 6.072375,
+        "peak_rss_bytes": 314245120.0,
+        "persist_similarity_ms": 24.549667,
+        "phase_analyze_ms": 59.0,
+        "phase_checkpoint_ms": 54.0,
+        "phase_dependents_ms": 3.0,
+        "phase_encode_ms": 20.0,
+        "phase_existence_ms": 3.0,
+        "phase_finish_ms": 0.0,
+        "phase_lineage_inputs_ms": 4.0,
+        "phase_lineage_ms": 0.0,
+        "phase_load_ms": 0.0,
+        "phase_manifests_ms": 0.0,
+        "phase_passes_ms": 10.0,
+        "phase_persist_ms": 192.0,
+        "phase_plan_ms": 0.0,
+        "phase_reindex_ms": 41.0,
+        "phase_resolve_ms": 18.0,
+        "phase_scip_dangling_ms": 0.0,
+        "phase_similarity_ms": 69.0,
+        "phase_symbols_ms": 20.0,
+        "process_wall_s": 0.62,
+        "similarity_blob_bytes": 4609899.0
+      },
+      "info": {
+        "counts": {
+          "artifact_bytes": 4190431,
+          "artifact_encode_us": 7100,
+          "artifacts_loaded": 0,
+          "dangling_detector_edges_dropped": 0,
+          "detector_targets_checked": 0,
+          "edges_added": 38370,
+          "edges_changed": 0,
+          "edges_removed": 0,
+          "entities_added": 8670,
+          "entities_changed": 0,
+          "entities_removed": 0,
+          "files_added": 586,
+          "files_analyzed": 583,
+          "files_deleted": 0,
+          "files_modified": 0,
+          "files_repackaged": 0,
+          "files_restamped": 0,
+          "files_skipped": 0,
+          "graphs_changed": 0,
+          "indexes_deferred": 1,
+          "owners_resolved": 583,
+          "persist_batches": 3,
+          "renames_detected": 0,
+          "similarity_documents": 7889,
+          "unresolvable_detector_edges_dropped": 0,
+          "unresolved_added": 31552,
+          "unresolved_removed": 0,
+          "wanted_target_owners": 0
+        },
+        "files_analyzed": 583,
+        "loc": 100495,
+        "parse_failed": 0,
+        "parse_ok": 583,
+        "parse_partial": 0,
+        "parse_samples": [],
+        "repeats": 3,
+        "run_outcome": "ok",
+        "spread": {
+          "cpu_sys_s": [
+            0.54,
+            0.57
+          ],
+          "cpu_total_s": [
+            1.99,
+            2.05
+          ],
+          "cpu_user_s": [
+            1.45,
+            1.48
+          ],
+          "cpu_utilisation": [
+            3.2580645161290325,
+            3.5535714285714284
+          ],
+          "db_bytes": [
+            41175712.0,
+            41175712.0
+          ],
+          "files_per_s": [
+            1062.182785624458,
+            1200.3492962920338
+          ],
+          "index_ms": [
+            485.691958,
+            548.8697500000001
+          ],
+          "loc_per_s": [
+            183094.4408942194,
+            206910.98204265512
+          ],
+          "open_ms": [
+            5.9639999999999995,
+            6.204833
+          ],
+          "peak_rss_bytes": [
+            310067200.0,
+            314654720.0
+          ],
+          "persist_similarity_ms": [
+            24.196084,
+            51.473333
+          ],
+          "phase_analyze_ms": [
+            54.0,
+            59.0
+          ],
+          "phase_checkpoint_ms": [
+            45.0,
+            58.0
+          ],
+          "phase_dependents_ms": [
+            3.0,
+            3.0
+          ],
+          "phase_encode_ms": [
+            20.0,
+            20.0
+          ],
+          "phase_existence_ms": [
+            3.0,
+            3.0
+          ],
+          "phase_finish_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_lineage_inputs_ms": [
+            3.0,
+            4.0
+          ],
+          "phase_lineage_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_load_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_manifests_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_passes_ms": [
+            10.0,
+            10.0
+          ],
+          "phase_persist_ms": [
+            188.0,
+            232.0
+          ],
+          "phase_plan_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_reindex_ms": [
+            35.0,
+            52.0
+          ],
+          "phase_resolve_ms": [
+            17.0,
+            18.0
+          ],
+          "phase_scip_dangling_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_similarity_ms": [
+            69.0,
+            69.0
+          ],
+          "phase_symbols_ms": [
+            20.0,
+            20.0
+          ],
+          "process_wall_s": [
+            0.56,
+            0.62
+          ],
+          "similarity_blob_bytes": [
+            4609899.0,
+            4609899.0
+          ]
+        }
+      }
+    },
+    {
+      "corpus": "synth-100k",
+      "scenario": "warm_startup",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "first_barrier_ms": 10.560167,
+        "open_ms": 121.847166
+      },
+      "info": {
+        "first_barrier_fresh": true,
+        "first_barrier_ran_index": false,
+        "readers": 14
+      }
+    },
+    {
+      "corpus": "synth-100k",
+      "scenario": "no_change_barrier",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "barrier_max_ms": 6.745125,
+        "barrier_p50_ms": 1.477542,
+        "barrier_p95_ms": 2.56375
+      },
+      "info": {
+        "iterations": 50,
+        "unexpected_index_runs": 0
+      }
+    },
+    {
+      "corpus": "synth-100k",
+      "scenario": "query_latency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "api_max_ms": 6.157208,
+        "api_nobarrier_max_ms": 4.355959,
+        "api_nobarrier_p50_ms": 3.249208,
+        "api_p50_ms": 5.771458,
+        "callers_max_ms": 8.159875000000001,
+        "callers_nobarrier_max_ms": 6.749084,
+        "callers_nobarrier_p50_ms": 0.032042,
+        "callers_nobarrier_p95_ms": 6.312416000000001,
+        "callers_p50_ms": 1.492042,
+        "callers_p95_ms": 7.878665999999999,
+        "context_max_ms": 20.026042,
+        "context_nobarrier_max_ms": 18.037166,
+        "context_nobarrier_p50_ms": 11.071708,
+        "context_nobarrier_p95_ms": 17.223042,
+        "context_p50_ms": 12.904709,
+        "context_p95_ms": 19.046208,
+        "impact_max_ms": 40.032167,
+        "impact_nobarrier_max_ms": 37.002875,
+        "impact_nobarrier_p50_ms": 0.193333,
+        "impact_nobarrier_p95_ms": 34.079916000000004,
+        "impact_p50_ms": 1.7080419999999998,
+        "impact_p95_ms": 36.390875,
+        "search_max_ms": 3.096417,
+        "search_nobarrier_max_ms": 1.606667,
+        "search_nobarrier_p50_ms": 0.785833,
+        "search_nobarrier_p95_ms": 1.540292,
+        "search_p50_ms": 2.2735,
+        "search_p95_ms": 3.067541,
+        "similar_max_ms": 11.546708,
+        "similar_nobarrier_max_ms": 9.919917,
+        "similar_nobarrier_p50_ms": 1.820166,
+        "similar_nobarrier_p95_ms": 8.770708,
+        "similar_p50_ms": 3.369416,
+        "similar_p95_ms": 10.576042,
+        "symbol_max_ms": 9.381208,
+        "symbol_nobarrier_max_ms": 7.264875,
+        "symbol_nobarrier_p50_ms": 0.053041000000000005,
+        "symbol_nobarrier_p95_ms": 6.8925410000000005,
+        "symbol_p50_ms": 1.523208,
+        "symbol_p95_ms": 8.842291000000001,
+        "unused_max_ms": 86.35879100000001,
+        "unused_nobarrier_max_ms": 81.12304200000001,
+        "unused_nobarrier_p50_ms": 80.109167,
+        "unused_p50_ms": 82.022209
+      },
+      "info": {
+        "api_errors": 0,
+        "api_found": 3,
+        "api_nobarrier_errors": 0,
+        "api_nobarrier_found": 3,
+        "api_nobarrier_samples": 3,
+        "api_samples": 3,
+        "callers_errors": 0,
+        "callers_found": 30,
+        "callers_nobarrier_errors": 0,
+        "callers_nobarrier_found": 30,
+        "callers_nobarrier_samples": 30,
+        "callers_samples": 30,
+        "context_errors": 0,
+        "context_found": 30,
+        "context_nobarrier_errors": 0,
+        "context_nobarrier_found": 30,
+        "context_nobarrier_samples": 30,
+        "context_samples": 30,
+        "impact_errors": 0,
+        "impact_found": 30,
+        "impact_nobarrier_errors": 0,
+        "impact_nobarrier_found": 30,
+        "impact_nobarrier_samples": 30,
+        "impact_samples": 30,
+        "nobarrier": "the same queries with the freshness barrier skipped",
+        "search_errors": 0,
+        "search_found": 30,
+        "search_nobarrier_errors": 0,
+        "search_nobarrier_found": 30,
+        "search_nobarrier_samples": 30,
+        "search_samples": 30,
+        "similar_errors": 0,
+        "similar_found": 30,
+        "similar_nobarrier_errors": 0,
+        "similar_nobarrier_found": 30,
+        "similar_nobarrier_samples": 30,
+        "similar_samples": 30,
+        "symbol_errors": 0,
+        "symbol_found": 30,
+        "symbol_nobarrier_errors": 0,
+        "symbol_nobarrier_found": 30,
+        "symbol_nobarrier_samples": 30,
+        "symbol_samples": 30,
+        "unused_errors": 0,
+        "unused_found": 3,
+        "unused_nobarrier_errors": 0,
+        "unused_nobarrier_found": 3,
+        "unused_nobarrier_samples": 3,
+        "unused_samples": 3
+      }
+    },
+    {
+      "corpus": "synth-100k",
+      "scenario": "concurrency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 5.291042,
+        "n16_p95_ms": 24.3295,
+        "n16_throughput_qps": 1957.5954934004176,
+        "n1_p50_ms": 2.321,
+        "n1_p95_ms": 17.890249999999998,
+        "n1_throughput_qps": 210.15791238942268,
+        "n4_p50_ms": 3.280292,
+        "n4_p95_ms": 20.769917,
+        "n4_throughput_qps": 659.3896849998598,
+        "n8_p50_ms": 4.135167,
+        "n8_p95_ms": 21.7665,
+        "n8_throughput_qps": 1160.9872344425282
+      },
+      "info": {
+        "n16_edits_applied": 0,
+        "n16_errors": 0,
+        "n16_queries": 29529,
+        "n1_edits_applied": 0,
+        "n1_errors": 0,
+        "n1_queries": 3145,
+        "n4_edits_applied": 0,
+        "n4_errors": 0,
+        "n4_queries": 9915,
+        "n8_edits_applied": 0,
+        "n8_errors": 0,
+        "n8_queries": 17468,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            5.26,
+            5.291542
+          ],
+          "n16_p95_ms": [
+            24.29525,
+            24.368583
+          ],
+          "n16_throughput_qps": [
+            1956.1523052017944,
+            1959.0633331002275
+          ],
+          "n1_p50_ms": [
+            2.306709,
+            2.329542
+          ],
+          "n1_p95_ms": [
+            17.7745,
+            17.914666999999998
+          ],
+          "n1_throughput_qps": [
+            208.3375439044082,
+            210.23422333512403
+          ],
+          "n4_p50_ms": [
+            3.2607920000000004,
+            3.329458
+          ],
+          "n4_p95_ms": [
+            20.732709,
+            20.792375
+          ],
+          "n4_throughput_qps": [
+            653.6724561338372,
+            660.9269839345893
+          ],
+          "n8_p50_ms": [
+            4.133666,
+            4.144666
+          ],
+          "n8_p95_ms": [
+            21.735416,
+            21.935542
+          ],
+          "n8_throughput_qps": [
+            1154.54110842927,
+            1165.2217144318963
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "synth-100k",
+      "scenario": "incremental_1_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 14.652375
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 0,
+        "facts_changed": 0,
+        "files_changed_in_run": 1,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 1,
+        "owners_resolved": 1,
+        "phases_ms": {
+          "analyze": 1,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 9,
+          "persist": 0,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-100k",
+      "scenario": "incremental_10_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 19.589292
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 0,
+        "facts_changed": 0,
+        "files_changed_in_run": 10,
+        "files_mismatch": false,
+        "files_touched": 10,
+        "files_updated": 10,
+        "owners_resolved": 10,
+        "phases_ms": {
+          "analyze": 1,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 8,
+          "persist": 1,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 2,
+          "symbols": 1
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-100k",
+      "scenario": "incremental_100_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 82.85712500000001
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 0,
+        "facts_changed": 0,
+        "files_changed_in_run": 100,
+        "files_mismatch": false,
+        "files_touched": 100,
+        "files_updated": 100,
+        "owners_resolved": 100,
+        "phases_ms": {
+          "analyze": 11,
+          "dependents": 0,
+          "encode": 6,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 8,
+          "persist": 12,
+          "plan": 0,
+          "resolve": 3,
+          "scip_dangling": 0,
+          "similarity": 24,
+          "symbols": 6
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-100k",
+      "scenario": "incremental_1000_files",
+      "outcome": {
+        "status": "skipped",
+        "reason": "only 447 editable files in this corpus"
+      },
+      "metrics": {},
+      "info": {}
+    },
+    {
+      "corpus": "synth-100k",
+      "scenario": "rename_symbol",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 242.197833
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 18237,
+        "entities_changed": 3433,
+        "facts_changed": 21670,
+        "files_changed_in_run": 215,
+        "files_mismatch": false,
+        "files_touched": 215,
+        "files_updated": 215,
+        "owners_resolved": 235,
+        "phases_ms": {
+          "analyze": 19,
+          "dependents": 1,
+          "encode": 5,
+          "existence": 1,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 8,
+          "persist": 136,
+          "plan": 0,
+          "resolve": 4,
+          "scip_dangling": 0,
+          "similarity": 40,
+          "symbols": 13
+        },
+        "renames_detected": 2,
+        "replacements": 951,
+        "symbol": "validateInvoice1"
+      }
+    },
+    {
+      "corpus": "synth-100k",
+      "scenario": "file_move",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 111.803583
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 188,
+        "entities_changed": 40,
+        "facts_changed": 228,
+        "files_changed_in_run": 2,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 2,
+        "moved": "repo-1/src/g10/m4.ts",
+        "owners_resolved": 529,
+        "phases_ms": {
+          "analyze": 1,
+          "dependents": 2,
+          "encode": 6,
+          "existence": 2,
+          "lineage": 1,
+          "lineage_inputs": 0,
+          "load": 14,
+          "manifests": 0,
+          "passes": 8,
+          "persist": 26,
+          "plan": 0,
+          "resolve": 14,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 19
+      }
+    },
+    {
+      "corpus": "synth-100k",
+      "scenario": "branch_switch",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 126.088625
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 134,
+        "entities_changed": 268,
+        "facts_changed": 402,
+        "files_changed_in_run": 134,
+        "files_mismatch": false,
+        "files_touched": 134,
+        "files_updated": 134,
+        "owners_resolved": 134,
+        "phases_ms": {
+          "analyze": 14,
+          "dependents": 0,
+          "encode": 4,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 8,
+          "persist": 38,
+          "plan": 0,
+          "resolve": 4,
+          "scip_dangling": 0,
+          "similarity": 33,
+          "symbols": 9
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-100k",
+      "scenario": "delete_directory",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 163.043416
+      },
+      "info": {
+        "degraded": false,
+        "directory": "repo-1/src/g0",
+        "edges_changed": 6221,
+        "entities_changed": 154,
+        "facts_changed": 6375,
+        "files_changed_in_run": 12,
+        "files_mismatch": false,
+        "files_touched": 12,
+        "files_updated": 12,
+        "owners_resolved": 543,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 2,
+          "encode": 6,
+          "existence": 2,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 14,
+          "manifests": 0,
+          "passes": 8,
+          "persist": 69,
+          "plan": 0,
+          "resolve": 15,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-100k",
+      "scenario": "concurrency_with_edits",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 5.3801250000000005,
+        "n16_p95_ms": 61.787292,
+        "n16_throughput_qps": 1277.3462925740205,
+        "n1_p50_ms": 2.232791,
+        "n1_p95_ms": 15.55025,
+        "n1_throughput_qps": 227.7329800969145,
+        "n4_p50_ms": 4.125083,
+        "n4_p95_ms": 19.01525,
+        "n4_throughput_qps": 582.6858636770878,
+        "n8_p50_ms": 4.7110829999999995,
+        "n8_p95_ms": 23.008750000000003,
+        "n8_throughput_qps": 950.2988982634424
+      },
+      "info": {
+        "n16_edits_applied": 141,
+        "n16_errors": 0,
+        "n16_queries": 19165,
+        "n1_edits_applied": 141,
+        "n1_errors": 0,
+        "n1_queries": 3203,
+        "n4_edits_applied": 141,
+        "n4_errors": 0,
+        "n4_queries": 8748,
+        "n8_edits_applied": 141,
+        "n8_errors": 0,
+        "n8_queries": 14181,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            5.371625,
+            5.422042
+          ],
+          "n16_p95_ms": [
+            61.21775,
+            62.875417000000006
+          ],
+          "n16_throughput_qps": [
+            1216.226700511201,
+            1315.6173169225688
+          ],
+          "n1_p50_ms": [
+            2.2148329999999996,
+            2.8165
+          ],
+          "n1_p95_ms": [
+            15.339125,
+            17.722082999999998
+          ],
+          "n1_throughput_qps": [
+            182.53823046273615,
+            229.55447553689672
+          ],
+          "n4_p50_ms": [
+            4.080542,
+            4.1315
+          ],
+          "n4_p95_ms": [
+            18.837375,
+            19.086542
+          ],
+          "n4_throughput_qps": [
+            576.1242464040083,
+            587.1086984509096
+          ],
+          "n8_p50_ms": [
+            4.6846250000000005,
+            4.7110829999999995
+          ],
+          "n8_p95_ms": [
+            22.443541,
+            24.528792
+          ],
+          "n8_throughput_qps": [
+            929.8748210467996,
+            951.0444516044856
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "synth-100k",
+      "scenario": "workload",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {},
+      "info": {
+        "editable_files": 447,
+        "targets": 30
+      }
+    },
+    {
+      "corpus": "synth-100k",
+      "scenario": "session_process",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 207.18,
+        "cpu_total_s": 611.36,
+        "cpu_user_s": 404.18,
+        "cpu_utilisation": 4.897540655291197,
+        "peak_rss_bytes": 1077624832.0,
+        "process_wall_s": 124.83
+      },
+      "info": {}
+    },
+    {
+      "corpus": "synth-100k-5-repos",
+      "scenario": "cold_index",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 0.52,
+        "cpu_total_s": 2.0300000000000002,
+        "cpu_user_s": 1.51,
+        "cpu_utilisation": 3.625,
+        "db_bytes": 43084640.0,
+        "files_per_s": 1213.5980034159486,
+        "index_ms": 482.037708,
+        "loc_per_s": 209879.8461634043,
+        "open_ms": 6.743833,
+        "peak_rss_bytes": 326385664.0,
+        "persist_similarity_ms": 17.867542,
+        "phase_analyze_ms": 59.0,
+        "phase_checkpoint_ms": 34.0,
+        "phase_dependents_ms": 3.0,
+        "phase_encode_ms": 21.0,
+        "phase_existence_ms": 3.0,
+        "phase_finish_ms": 0.0,
+        "phase_lineage_inputs_ms": 4.0,
+        "phase_lineage_ms": 0.0,
+        "phase_load_ms": 0.0,
+        "phase_manifests_ms": 0.0,
+        "phase_passes_ms": 14.0,
+        "phase_persist_ms": 179.0,
+        "phase_plan_ms": 0.0,
+        "phase_reindex_ms": 35.0,
+        "phase_resolve_ms": 19.0,
+        "phase_scip_dangling_ms": 0.0,
+        "phase_similarity_ms": 73.0,
+        "phase_symbols_ms": 19.0,
+        "process_wall_s": 0.55,
+        "similarity_blob_bytes": 4671013.0
+      },
+      "info": {
+        "counts": {
+          "artifact_bytes": 4478793,
+          "artifact_encode_us": 7845,
+          "artifacts_loaded": 0,
+          "dangling_detector_edges_dropped": 0,
+          "detector_targets_checked": 0,
+          "edges_added": 37072,
+          "edges_changed": 0,
+          "edges_removed": 0,
+          "entities_added": 8974,
+          "entities_changed": 0,
+          "entities_removed": 0,
+          "files_added": 592,
+          "files_analyzed": 585,
+          "files_deleted": 0,
+          "files_modified": 0,
+          "files_repackaged": 0,
+          "files_restamped": 0,
+          "files_skipped": 0,
+          "graphs_changed": 0,
+          "indexes_deferred": 1,
+          "owners_resolved": 585,
+          "persist_batches": 4,
+          "renames_detected": 0,
+          "similarity_documents": 8144,
+          "unresolvable_detector_edges_dropped": 0,
+          "unresolved_added": 38701,
+          "unresolved_removed": 0,
+          "wanted_target_owners": 0
+        },
+        "files_analyzed": 585,
+        "loc": 101170,
+        "parse_failed": 0,
+        "parse_ok": 585,
+        "parse_partial": 0,
+        "parse_samples": [],
+        "repeats": 3,
+        "run_outcome": "ok",
+        "spread": {
+          "cpu_sys_s": [
+            0.26,
+            0.53
+          ],
+          "cpu_total_s": [
+            1.77,
+            2.05
+          ],
+          "cpu_user_s": [
+            1.51,
+            1.52
+          ],
+          "cpu_utilisation": [
+            3.339622641509434,
+            3.7272727272727266
+          ],
+          "db_bytes": [
+            43084640.0,
+            43084640.0
+          ],
+          "files_per_s": [
+            1181.6595338801967,
+            1214.4988315452067
+          ],
+          "index_ms": [
+            481.680167,
+            495.066458
+          ],
+          "loc_per_s": [
+            204356.40178232396,
+            210035.63553406592
+          ],
+          "open_ms": [
+            6.1205,
+            6.787
+          ],
+          "peak_rss_bytes": [
+            322879488.0,
+            326647808.0
+          ],
+          "persist_similarity_ms": [
+            17.428208,
+            19.254458
+          ],
+          "phase_analyze_ms": [
+            57.0,
+            59.0
+          ],
+          "phase_checkpoint_ms": [
+            32.0,
+            49.0
+          ],
+          "phase_dependents_ms": [
+            3.0,
+            3.0
+          ],
+          "phase_encode_ms": [
+            20.0,
+            21.0
+          ],
+          "phase_existence_ms": [
+            3.0,
+            3.0
+          ],
+          "phase_finish_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_lineage_inputs_ms": [
+            3.0,
+            4.0
+          ],
+          "phase_lineage_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_load_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_manifests_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_passes_ms": [
+            14.0,
+            15.0
+          ],
+          "phase_persist_ms": [
+            179.0,
+            183.0
+          ],
+          "phase_plan_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_reindex_ms": [
+            35.0,
+            35.0
+          ],
+          "phase_resolve_ms": [
+            18.0,
+            19.0
+          ],
+          "phase_scip_dangling_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_similarity_ms": [
+            73.0,
+            74.0
+          ],
+          "phase_symbols_ms": [
+            19.0,
+            20.0
+          ],
+          "process_wall_s": [
+            0.53,
+            0.56
+          ],
+          "similarity_blob_bytes": [
+            4671013.0,
+            4671013.0
+          ]
+        }
+      }
+    },
+    {
+      "corpus": "synth-100k-5-repos",
+      "scenario": "warm_startup",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "first_barrier_ms": 10.298584,
+        "open_ms": 123.615583
+      },
+      "info": {
+        "first_barrier_fresh": true,
+        "first_barrier_ran_index": false,
+        "readers": 14
+      }
+    },
+    {
+      "corpus": "synth-100k-5-repos",
+      "scenario": "no_change_barrier",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "barrier_max_ms": 11.056166,
+        "barrier_p50_ms": 1.367667,
+        "barrier_p95_ms": 10.4105
+      },
+      "info": {
+        "iterations": 50,
+        "unexpected_index_runs": 0
+      }
+    },
+    {
+      "corpus": "synth-100k-5-repos",
+      "scenario": "query_latency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "api_max_ms": 5.348583,
+        "api_nobarrier_max_ms": 3.725167,
+        "api_nobarrier_p50_ms": 3.6555,
+        "api_p50_ms": 5.276000000000001,
+        "callers_max_ms": 4.957459,
+        "callers_nobarrier_max_ms": 3.499,
+        "callers_nobarrier_p50_ms": 0.060667,
+        "callers_nobarrier_p95_ms": 3.437833,
+        "callers_p50_ms": 1.398542,
+        "callers_p95_ms": 4.837916,
+        "context_max_ms": 13.99675,
+        "context_nobarrier_max_ms": 12.408042,
+        "context_nobarrier_p50_ms": 6.0297909999999995,
+        "context_nobarrier_p95_ms": 11.66,
+        "context_p50_ms": 7.321542,
+        "context_p95_ms": 13.050625,
+        "impact_max_ms": 31.426708,
+        "impact_nobarrier_max_ms": 29.540084,
+        "impact_nobarrier_p50_ms": 0.25645799999999996,
+        "impact_nobarrier_p95_ms": 27.313875000000003,
+        "impact_p50_ms": 1.5447499999999998,
+        "impact_p95_ms": 29.935625,
+        "search_max_ms": 2.950042,
+        "search_nobarrier_max_ms": 1.500417,
+        "search_nobarrier_p50_ms": 0.703292,
+        "search_nobarrier_p95_ms": 1.045292,
+        "search_p50_ms": 1.9385,
+        "search_p95_ms": 2.531583,
+        "similar_max_ms": 11.52175,
+        "similar_nobarrier_max_ms": 10.2075,
+        "similar_nobarrier_p50_ms": 2.374583,
+        "similar_nobarrier_p95_ms": 9.80725,
+        "similar_p50_ms": 3.990375,
+        "similar_p95_ms": 11.237958,
+        "symbol_max_ms": 5.532457999999999,
+        "symbol_nobarrier_max_ms": 3.788917,
+        "symbol_nobarrier_p50_ms": 0.075125,
+        "symbol_nobarrier_p95_ms": 3.781333,
+        "symbol_p50_ms": 1.410833,
+        "symbol_p95_ms": 5.5156659999999995,
+        "unused_max_ms": 59.96062499999999,
+        "unused_nobarrier_max_ms": 59.074,
+        "unused_nobarrier_p50_ms": 55.023166,
+        "unused_p50_ms": 56.8955
+      },
+      "info": {
+        "api_errors": 0,
+        "api_found": 3,
+        "api_nobarrier_errors": 0,
+        "api_nobarrier_found": 3,
+        "api_nobarrier_samples": 3,
+        "api_samples": 3,
+        "callers_errors": 0,
+        "callers_found": 30,
+        "callers_nobarrier_errors": 0,
+        "callers_nobarrier_found": 30,
+        "callers_nobarrier_samples": 30,
+        "callers_samples": 30,
+        "context_errors": 0,
+        "context_found": 30,
+        "context_nobarrier_errors": 0,
+        "context_nobarrier_found": 30,
+        "context_nobarrier_samples": 30,
+        "context_samples": 30,
+        "impact_errors": 0,
+        "impact_found": 30,
+        "impact_nobarrier_errors": 0,
+        "impact_nobarrier_found": 30,
+        "impact_nobarrier_samples": 30,
+        "impact_samples": 30,
+        "nobarrier": "the same queries with the freshness barrier skipped",
+        "search_errors": 0,
+        "search_found": 30,
+        "search_nobarrier_errors": 0,
+        "search_nobarrier_found": 30,
+        "search_nobarrier_samples": 30,
+        "search_samples": 30,
+        "similar_errors": 0,
+        "similar_found": 30,
+        "similar_nobarrier_errors": 0,
+        "similar_nobarrier_found": 30,
+        "similar_nobarrier_samples": 30,
+        "similar_samples": 30,
+        "symbol_errors": 0,
+        "symbol_found": 30,
+        "symbol_nobarrier_errors": 0,
+        "symbol_nobarrier_found": 30,
+        "symbol_nobarrier_samples": 30,
+        "symbol_samples": 30,
+        "unused_errors": 0,
+        "unused_found": 3,
+        "unused_nobarrier_errors": 0,
+        "unused_nobarrier_found": 3,
+        "unused_nobarrier_samples": 3,
+        "unused_samples": 3
+      }
+    },
+    {
+      "corpus": "synth-100k-5-repos",
+      "scenario": "concurrency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 4.518875,
+        "n16_p95_ms": 17.837958,
+        "n16_throughput_qps": 2399.394885867869,
+        "n1_p50_ms": 2.0037499999999997,
+        "n1_p95_ms": 12.895541,
+        "n1_throughput_qps": 264.34019303132663,
+        "n4_p50_ms": 2.923084,
+        "n4_p95_ms": 14.722709,
+        "n4_throughput_qps": 806.7757344651135,
+        "n8_p50_ms": 3.249333,
+        "n8_p95_ms": 15.93625,
+        "n8_throughput_qps": 1471.0009812150129
+      },
+      "info": {
+        "n16_edits_applied": 0,
+        "n16_errors": 0,
+        "n16_queries": 36139,
+        "n1_edits_applied": 0,
+        "n1_errors": 0,
+        "n1_queries": 3967,
+        "n4_edits_applied": 0,
+        "n4_errors": 0,
+        "n4_queries": 12145,
+        "n8_edits_applied": 0,
+        "n8_errors": 0,
+        "n8_queries": 22145,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            4.512375,
+            4.5573749999999995
+          ],
+          "n16_p95_ms": [
+            17.697582999999998,
+            17.856041
+          ],
+          "n16_throughput_qps": [
+            2398.315948295561,
+            2404.928310097098
+          ],
+          "n1_p50_ms": [
+            1.995625,
+            2.010875
+          ],
+          "n1_p95_ms": [
+            12.872458,
+            12.902167
+          ],
+          "n1_throughput_qps": [
+            263.7614175149561,
+            264.6126740727071
+          ],
+          "n4_p50_ms": [
+            2.919542,
+            2.9385000000000003
+          ],
+          "n4_p95_ms": [
+            14.643208,
+            15.103458
+          ],
+          "n4_throughput_qps": [
+            801.0983640138187,
+            808.8430390828512
+          ],
+          "n8_p50_ms": [
+            3.2285,
+            3.256625
+          ],
+          "n8_p95_ms": [
+            15.717542000000002,
+            16.036084
+          ],
+          "n8_throughput_qps": [
+            1458.015403869073,
+            1482.5033284349363
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "synth-100k-5-repos",
+      "scenario": "incremental_1_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 17.757333
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 0,
+        "facts_changed": 0,
+        "files_changed_in_run": 1,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 1,
+        "owners_resolved": 1,
+        "phases_ms": {
+          "analyze": 1,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 12,
+          "persist": 0,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-100k-5-repos",
+      "scenario": "incremental_10_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 23.683875
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 0,
+        "facts_changed": 0,
+        "files_changed_in_run": 10,
+        "files_mismatch": false,
+        "files_touched": 10,
+        "files_updated": 10,
+        "owners_resolved": 10,
+        "phases_ms": {
+          "analyze": 2,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 11,
+          "persist": 1,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 2,
+          "symbols": 1
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-100k-5-repos",
+      "scenario": "incremental_100_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 87.962708
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 4,
+        "entities_changed": 0,
+        "facts_changed": 4,
+        "files_changed_in_run": 100,
+        "files_mismatch": false,
+        "files_touched": 100,
+        "files_updated": 100,
+        "owners_resolved": 100,
+        "phases_ms": {
+          "analyze": 11,
+          "dependents": 0,
+          "encode": 4,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 12,
+          "persist": 13,
+          "plan": 0,
+          "resolve": 3,
+          "scip_dangling": 0,
+          "similarity": 26,
+          "symbols": 7
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-100k-5-repos",
+      "scenario": "incremental_1000_files",
+      "outcome": {
+        "status": "skipped",
+        "reason": "only 443 editable files in this corpus"
+      },
+      "metrics": {},
+      "info": {}
+    },
+    {
+      "corpus": "synth-100k-5-repos",
+      "scenario": "rename_symbol",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 129.48325
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 7696,
+        "entities_changed": 1594,
+        "facts_changed": 9290,
+        "files_changed_in_run": 102,
+        "files_mismatch": false,
+        "files_touched": 102,
+        "files_updated": 102,
+        "owners_resolved": 131,
+        "phases_ms": {
+          "analyze": 9,
+          "dependents": 0,
+          "encode": 2,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 1,
+          "manifests": 0,
+          "passes": 11,
+          "persist": 64,
+          "plan": 0,
+          "resolve": 2,
+          "scip_dangling": 0,
+          "similarity": 22,
+          "symbols": 5
+        },
+        "renames_detected": 2,
+        "replacements": 527,
+        "symbol": "validateInvoice1"
+      }
+    },
+    {
+      "corpus": "synth-100k-5-repos",
+      "scenario": "file_move",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 63.52895899999999
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 59,
+        "entities_changed": 20,
+        "facts_changed": 79,
+        "files_changed_in_run": 2,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 2,
+        "moved": "repo-2/src/g4/routes.rs",
+        "owners_resolved": 239,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 1,
+          "encode": 4,
+          "existence": 1,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 8,
+          "manifests": 0,
+          "passes": 11,
+          "persist": 15,
+          "plan": 0,
+          "resolve": 9,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 3
+      }
+    },
+    {
+      "corpus": "synth-100k-5-repos",
+      "scenario": "branch_switch",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 135.00320900000003
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 135,
+        "entities_changed": 264,
+        "facts_changed": 399,
+        "files_changed_in_run": 132,
+        "files_mismatch": false,
+        "files_touched": 132,
+        "files_updated": 132,
+        "owners_resolved": 132,
+        "phases_ms": {
+          "analyze": 16,
+          "dependents": 0,
+          "encode": 4,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 11,
+          "persist": 38,
+          "plan": 0,
+          "resolve": 5,
+          "scip_dangling": 0,
+          "similarity": 37,
+          "symbols": 9
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-100k-5-repos",
+      "scenario": "delete_directory",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 158.28266599999998
+      },
+      "info": {
+        "degraded": false,
+        "directory": "repo-1/src/g0",
+        "edges_changed": 3457,
+        "entities_changed": 157,
+        "facts_changed": 3614,
+        "files_changed_in_run": 12,
+        "files_mismatch": false,
+        "files_touched": 12,
+        "files_updated": 12,
+        "owners_resolved": 536,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 2,
+          "encode": 7,
+          "existence": 2,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 15,
+          "manifests": 0,
+          "passes": 12,
+          "persist": 52,
+          "plan": 0,
+          "resolve": 16,
+          "scip_dangling": 0,
+          "similarity": 1,
+          "symbols": 0
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-100k-5-repos",
+      "scenario": "concurrency_with_edits",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 5.554209,
+        "n16_p95_ms": 66.57787499999999,
+        "n16_throughput_qps": 1118.3037019754877,
+        "n1_p50_ms": 2.2733749999999997,
+        "n1_p95_ms": 17.988459,
+        "n1_throughput_qps": 220.1892314839359,
+        "n4_p50_ms": 3.558792,
+        "n4_p95_ms": 21.904167,
+        "n4_throughput_qps": 562.1048689088178,
+        "n8_p50_ms": 3.9095,
+        "n8_p95_ms": 27.380292,
+        "n8_throughput_qps": 964.10792590767
+      },
+      "info": {
+        "n16_edits_applied": 141,
+        "n16_errors": 0,
+        "n16_queries": 17319,
+        "n1_edits_applied": 141,
+        "n1_errors": 0,
+        "n1_queries": 3122,
+        "n4_edits_applied": 141,
+        "n4_errors": 0,
+        "n4_queries": 8587,
+        "n8_edits_applied": 141,
+        "n8_errors": 0,
+        "n8_queries": 14810,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            5.48475,
+            5.574791
+          ],
+          "n16_p95_ms": [
+            64.740542,
+            67.360709
+          ],
+          "n16_throughput_qps": [
+            1110.695244108224,
+            1215.2981894131965
+          ],
+          "n1_p50_ms": [
+            2.23125,
+            3.107084
+          ],
+          "n1_p95_ms": [
+            17.978417,
+            19.399958
+          ],
+          "n1_throughput_qps": [
+            179.83015793273313,
+            223.52838324038228
+          ],
+          "n4_p50_ms": [
+            3.5391250000000003,
+            3.586167
+          ],
+          "n4_p95_ms": [
+            21.028208,
+            22.320875
+          ],
+          "n4_throughput_qps": [
+            559.3320394357288,
+            586.9022693762804
+          ],
+          "n8_p50_ms": [
+            3.898792,
+            3.917291
+          ],
+          "n8_p95_ms": [
+            23.412791,
+            28.006541
+          ],
+          "n8_throughput_qps": [
+            934.4115267031268,
+            1054.3136470634588
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "synth-100k-5-repos",
+      "scenario": "workload",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {},
+      "info": {
+        "editable_files": 443,
+        "targets": 30
+      }
+    },
+    {
+      "corpus": "synth-100k-5-repos",
+      "scenario": "session_process",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 380.03,
+        "cpu_total_s": 826.0999999999999,
+        "cpu_user_s": 446.07,
+        "cpu_utilisation": 6.654583534718865,
+        "peak_rss_bytes": 1016627200.0,
+        "process_wall_s": 124.14
+      },
+      "info": {}
+    },
+    {
+      "corpus": "synth-multi-project",
+      "scenario": "multi_project",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 0.51,
+        "cpu_total_s": 2.26,
+        "cpu_user_s": 1.75,
+        "cpu_utilisation": 3.5312499999999996,
+        "peak_rss_bytes": 131334144.0,
+        "process_wall_s": 0.64,
+        "project_0_db_bytes": 17598944.0,
+        "project_0_index_ms": 166.439625,
+        "project_1_db_bytes": 18001528.0,
+        "project_1_index_ms": 152.038708,
+        "project_2_db_bytes": 17935800.0,
+        "project_2_index_ms": 162.999417,
+        "total_ms": 526.667667
+      },
+      "info": {
+        "cross_talk_violations": 0,
+        "distinct_databases": 3,
+        "files_per_project": [
+          188,
+          185,
+          191
+        ],
+        "projects": 3,
+        "repeats": 1,
+        "spread": {
+          "cpu_sys_s": [
+            0.51,
+            0.51
+          ],
+          "cpu_total_s": [
+            2.26,
+            2.26
+          ],
+          "cpu_user_s": [
+            1.75,
+            1.75
+          ],
+          "cpu_utilisation": [
+            3.5312499999999996,
+            3.5312499999999996
+          ],
+          "peak_rss_bytes": [
+            131334144.0,
+            131334144.0
+          ],
+          "process_wall_s": [
+            0.64,
+            0.64
+          ],
+          "project_0_db_bytes": [
+            17598944.0,
+            17598944.0
+          ],
+          "project_0_index_ms": [
+            166.439625,
+            166.439625
+          ],
+          "project_1_db_bytes": [
+            18001528.0,
+            18001528.0
+          ],
+          "project_1_index_ms": [
+            152.038708,
+            152.038708
+          ],
+          "project_2_db_bytes": [
+            17935800.0,
+            17935800.0
+          ],
+          "project_2_index_ms": [
+            162.999417,
+            162.999417
+          ],
+          "total_ms": [
+            526.667667,
+            526.667667
+          ]
+        }
+      }
+    },
+    {
+      "corpus": "ripgrep",
+      "scenario": "cold_index",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 0.13,
+        "cpu_total_s": 0.99,
+        "cpu_user_s": 0.87,
+        "cpu_utilisation": 2.857142857142857,
+        "db_bytes": 30623152.0,
+        "files_per_s": 341.4484687305745,
+        "index_ms": 322.156958,
+        "loc_per_s": 175026.4850712925,
+        "open_ms": 5.645625,
+        "peak_rss_bytes": 218005504.0,
+        "persist_similarity_ms": 5.798167,
+        "phase_analyze_ms": 48.0,
+        "phase_dependents_ms": 19.0,
+        "phase_encode_ms": 20.0,
+        "phase_existence_ms": 1.0,
+        "phase_finish_ms": 0.0,
+        "phase_lineage_inputs_ms": 1.0,
+        "phase_lineage_ms": 0.0,
+        "phase_load_ms": 0.0,
+        "phase_manifests_ms": 0.0,
+        "phase_passes_ms": 1.0,
+        "phase_persist_ms": 151.0,
+        "phase_plan_ms": 0.0,
+        "phase_resolve_ms": 21.0,
+        "phase_scip_dangling_ms": 0.0,
+        "phase_similarity_ms": 41.0,
+        "phase_symbols_ms": 9.0,
+        "process_wall_s": 0.35,
+        "similarity_blob_bytes": 2268936.0
+      },
+      "info": {
+        "counts": {
+          "artifact_bytes": 2606011,
+          "artifact_encode_us": 7066,
+          "artifacts_loaded": 0,
+          "dangling_detector_edges_dropped": 0,
+          "detector_targets_checked": 0,
+          "edges_added": 20158,
+          "edges_changed": 0,
+          "edges_removed": 0,
+          "entities_added": 4786,
+          "entities_changed": 0,
+          "entities_removed": 0,
+          "files_added": 122,
+          "files_analyzed": 110,
+          "files_deleted": 0,
+          "files_modified": 0,
+          "files_repackaged": 0,
+          "files_restamped": 0,
+          "files_skipped": 0,
+          "graphs_changed": 0,
+          "owners_resolved": 110,
+          "persist_batches": 2,
+          "renames_detected": 0,
+          "similarity_documents": 4645,
+          "unresolvable_detector_edges_dropped": 0,
+          "unresolved_added": 17776,
+          "unresolved_removed": 0,
+          "wanted_target_owners": 0
+        },
+        "files_analyzed": 110,
+        "loc": 56386,
+        "parse_failed": 0,
+        "parse_ok": 110,
+        "parse_partial": 0,
+        "parse_samples": [],
+        "repeats": 3,
+        "run_outcome": "ok",
+        "spread": {
+          "cpu_sys_s": [
+            0.1,
+            0.14
+          ],
+          "cpu_total_s": [
+            0.97,
+            1.0
+          ],
+          "cpu_user_s": [
+            0.85,
+            0.87
+          ],
+          "cpu_utilisation": [
+            2.8285714285714287,
+            2.939393939393939
+          ],
+          "db_bytes": [
+            30549208.0,
+            30623152.0
+          ],
+          "files_per_s": [
+            339.1968567133,
+            353.3827635719477
+          ],
+          "index_ms": [
+            311.27720800000003,
+            324.295458
+          ],
+          "loc_per_s": [
+            173872.30875123758,
+            181144.0046069804
+          ],
+          "open_ms": [
+            5.553125,
+            5.715125
+          ],
+          "peak_rss_bytes": [
+            209223680.0,
+            218038272.0
+          ],
+          "persist_similarity_ms": [
+            5.786417,
+            6.019834
+          ],
+          "phase_analyze_ms": [
+            47.0,
+            49.0
+          ],
+          "phase_dependents_ms": [
+            19.0,
+            19.0
+          ],
+          "phase_encode_ms": [
+            19.0,
+            21.0
+          ],
+          "phase_existence_ms": [
+            1.0,
+            1.0
+          ],
+          "phase_finish_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_lineage_inputs_ms": [
+            1.0,
+            1.0
+          ],
+          "phase_lineage_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_load_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_manifests_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_passes_ms": [
+            1.0,
+            2.0
+          ],
+          "phase_persist_ms": [
+            140.0,
+            153.0
+          ],
+          "phase_plan_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_resolve_ms": [
+            21.0,
+            21.0
+          ],
+          "phase_scip_dangling_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_similarity_ms": [
+            41.0,
+            41.0
+          ],
+          "phase_symbols_ms": [
+            9.0,
+            9.0
+          ],
+          "process_wall_s": [
+            0.33,
+            0.35
+          ],
+          "similarity_blob_bytes": [
+            2268936.0,
+            2268936.0
+          ]
+        }
+      }
+    },
+    {
+      "corpus": "ripgrep",
+      "scenario": "warm_startup",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "first_barrier_ms": 8.989083,
+        "open_ms": 77.78254199999999
+      },
+      "info": {
+        "first_barrier_fresh": true,
+        "first_barrier_ran_index": false,
+        "readers": 14
+      }
+    },
+    {
+      "corpus": "ripgrep",
+      "scenario": "no_change_barrier",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "barrier_max_ms": 4.287666,
+        "barrier_p50_ms": 4.021291,
+        "barrier_p95_ms": 4.189875
+      },
+      "info": {
+        "iterations": 50,
+        "unexpected_index_runs": 0
+      }
+    },
+    {
+      "corpus": "ripgrep",
+      "scenario": "query_latency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "api_max_ms": 2.486375,
+        "api_nobarrier_max_ms": 0.041792,
+        "api_nobarrier_p50_ms": 0.031583,
+        "api_p50_ms": 1.959,
+        "callers_max_ms": 4.8292090000000005,
+        "callers_nobarrier_max_ms": 0.583959,
+        "callers_nobarrier_p50_ms": 0.105583,
+        "callers_nobarrier_p95_ms": 0.481459,
+        "callers_p50_ms": 4.2060830000000005,
+        "callers_p95_ms": 4.6504579999999995,
+        "context_max_ms": 16.038332999999998,
+        "context_nobarrier_max_ms": 14.100708,
+        "context_nobarrier_p50_ms": 5.251917,
+        "context_nobarrier_p95_ms": 13.872208,
+        "context_p50_ms": 7.345834,
+        "context_p95_ms": 15.889125,
+        "impact_max_ms": 7.893291,
+        "impact_nobarrier_max_ms": 3.481125,
+        "impact_nobarrier_p50_ms": 0.699542,
+        "impact_nobarrier_p95_ms": 3.387125,
+        "impact_p50_ms": 4.886749999999999,
+        "impact_p95_ms": 7.82125,
+        "search_max_ms": 4.698542,
+        "search_nobarrier_max_ms": 0.369959,
+        "search_nobarrier_p50_ms": 0.272791,
+        "search_nobarrier_p95_ms": 0.35975,
+        "search_p50_ms": 4.175958,
+        "search_p95_ms": 4.622083,
+        "similar_max_ms": 3.44675,
+        "similar_nobarrier_max_ms": 1.612541,
+        "similar_nobarrier_p50_ms": 0.5722919999999999,
+        "similar_nobarrier_p95_ms": 1.505792,
+        "similar_p50_ms": 2.31225,
+        "similar_p95_ms": 3.331166,
+        "symbol_max_ms": 4.845167,
+        "symbol_nobarrier_max_ms": 0.533375,
+        "symbol_nobarrier_p50_ms": 0.064083,
+        "symbol_nobarrier_p95_ms": 0.468083,
+        "symbol_p50_ms": 4.20775,
+        "symbol_p95_ms": 4.701834,
+        "unused_max_ms": 72.590333,
+        "unused_nobarrier_max_ms": 71.60137499999999,
+        "unused_nobarrier_p50_ms": 70.519875,
+        "unused_p50_ms": 71.354583
+      },
+      "info": {
+        "api_errors": 0,
+        "api_found": 3,
+        "api_nobarrier_errors": 0,
+        "api_nobarrier_found": 3,
+        "api_nobarrier_samples": 3,
+        "api_samples": 3,
+        "callers_errors": 0,
+        "callers_found": 30,
+        "callers_nobarrier_errors": 0,
+        "callers_nobarrier_found": 30,
+        "callers_nobarrier_samples": 30,
+        "callers_samples": 30,
+        "context_errors": 0,
+        "context_found": 30,
+        "context_nobarrier_errors": 0,
+        "context_nobarrier_found": 30,
+        "context_nobarrier_samples": 30,
+        "context_samples": 30,
+        "impact_errors": 0,
+        "impact_found": 30,
+        "impact_nobarrier_errors": 0,
+        "impact_nobarrier_found": 30,
+        "impact_nobarrier_samples": 30,
+        "impact_samples": 30,
+        "nobarrier": "the same queries with the freshness barrier skipped",
+        "search_errors": 0,
+        "search_found": 30,
+        "search_nobarrier_errors": 0,
+        "search_nobarrier_found": 30,
+        "search_nobarrier_samples": 30,
+        "search_samples": 30,
+        "similar_errors": 0,
+        "similar_found": 30,
+        "similar_nobarrier_errors": 0,
+        "similar_nobarrier_found": 30,
+        "similar_nobarrier_samples": 30,
+        "similar_samples": 30,
+        "symbol_errors": 0,
+        "symbol_found": 30,
+        "symbol_nobarrier_errors": 0,
+        "symbol_nobarrier_found": 30,
+        "symbol_nobarrier_samples": 30,
+        "symbol_samples": 30,
+        "unused_errors": 0,
+        "unused_found": 3,
+        "unused_nobarrier_errors": 0,
+        "unused_nobarrier_found": 3,
+        "unused_nobarrier_samples": 3,
+        "unused_samples": 3
+      }
+    },
+    {
+      "corpus": "ripgrep",
+      "scenario": "concurrency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 4.190959,
+        "n16_p95_ms": 10.822875,
+        "n16_throughput_qps": 3226.736554891307,
+        "n1_p50_ms": 1.924791,
+        "n1_p95_ms": 8.356,
+        "n1_throughput_qps": 357.3785781562196,
+        "n4_p50_ms": 3.523583,
+        "n4_p95_ms": 9.862125,
+        "n4_throughput_qps": 940.8453945318306,
+        "n8_p50_ms": 3.807125,
+        "n8_p95_ms": 10.284083,
+        "n8_throughput_qps": 1748.718723511931
+      },
+      "info": {
+        "n16_edits_applied": 0,
+        "n16_errors": 0,
+        "n16_queries": 48499,
+        "n1_edits_applied": 0,
+        "n1_errors": 0,
+        "n1_queries": 5368,
+        "n4_edits_applied": 0,
+        "n4_errors": 0,
+        "n4_queries": 14143,
+        "n8_edits_applied": 0,
+        "n8_errors": 0,
+        "n8_queries": 26232,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            4.188083000000001,
+            4.193167
+          ],
+          "n16_p95_ms": [
+            10.820958,
+            10.823833
+          ],
+          "n16_throughput_qps": [
+            3226.3502105418634,
+            3229.720298491437
+          ],
+          "n1_p50_ms": [
+            1.921166,
+            1.925166
+          ],
+          "n1_p95_ms": [
+            8.226209,
+            8.393374999999999
+          ],
+          "n1_throughput_qps": [
+            356.94828711690394,
+            359.11244536927444
+          ],
+          "n4_p50_ms": [
+            3.523291,
+            3.525792
+          ],
+          "n4_p95_ms": [
+            9.798667,
+            9.871791
+          ],
+          "n4_throughput_qps": [
+            940.5463745870228,
+            942.8687937644704
+          ],
+          "n8_p50_ms": [
+            3.79625,
+            3.823875
+          ],
+          "n8_p95_ms": [
+            10.215166,
+            10.540834
+          ],
+          "n8_throughput_qps": [
+            1733.9811664160393,
+            1753.4564543586876
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "ripgrep",
+      "scenario": "incremental_1_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 5.440792
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 1,
+        "facts_changed": 1,
+        "files_changed_in_run": 1,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 1,
+        "owners_resolved": 1,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 0,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "ripgrep",
+      "scenario": "incremental_10_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 42.574834
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 3,
+        "facts_changed": 3,
+        "files_changed_in_run": 10,
+        "files_mismatch": false,
+        "files_touched": 10,
+        "files_updated": 10,
+        "owners_resolved": 10,
+        "phases_ms": {
+          "analyze": 12,
+          "dependents": 0,
+          "encode": 5,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 2,
+          "plan": 0,
+          "resolve": 5,
+          "scip_dangling": 0,
+          "similarity": 9,
+          "symbols": 2
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "ripgrep",
+      "scenario": "incremental_100_files",
+      "outcome": {
+        "status": "skipped",
+        "reason": "only 36 editable files in this corpus"
+      },
+      "metrics": {},
+      "info": {}
+    },
+    {
+      "corpus": "ripgrep",
+      "scenario": "incremental_1000_files",
+      "outcome": {
+        "status": "skipped",
+        "reason": "only 36 editable files in this corpus"
+      },
+      "metrics": {},
+      "info": {}
+    },
+    {
+      "corpus": "ripgrep",
+      "scenario": "rename_symbol",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 260.87154200000003
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 12291,
+        "entities_changed": 2831,
+        "facts_changed": 15122,
+        "files_changed_in_run": 44,
+        "files_mismatch": false,
+        "files_touched": 44,
+        "files_updated": 44,
+        "owners_resolved": 65,
+        "phases_ms": {
+          "analyze": 36,
+          "dependents": 0,
+          "encode": 19,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 1,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 116,
+          "plan": 0,
+          "resolve": 22,
+          "scip_dangling": 0,
+          "similarity": 41,
+          "symbols": 10
+        },
+        "renames_detected": 3,
+        "replacements": 428,
+        "symbol": "search"
+      }
+    },
+    {
+      "corpus": "ripgrep",
+      "scenario": "file_move",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 80.351542
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 89,
+        "entities_changed": 34,
+        "facts_changed": 123,
+        "files_changed_in_run": 2,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 2,
+        "moved": "ripgrep/crates/matcher/src/interpolate.rs",
+        "owners_resolved": 72,
+        "phases_ms": {
+          "analyze": 2,
+          "dependents": 40,
+          "encode": 4,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 5,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 8,
+          "plan": 0,
+          "resolve": 8,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 16
+      }
+    },
+    {
+      "corpus": "ripgrep",
+      "scenario": "branch_switch",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 41.578792
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 10,
+        "entities_changed": 23,
+        "facts_changed": 33,
+        "files_changed_in_run": 10,
+        "files_mismatch": false,
+        "files_touched": 10,
+        "files_updated": 10,
+        "owners_resolved": 10,
+        "phases_ms": {
+          "analyze": 10,
+          "dependents": 0,
+          "encode": 4,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 3,
+          "plan": 0,
+          "resolve": 5,
+          "scip_dangling": 0,
+          "similarity": 9,
+          "symbols": 2
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "ripgrep",
+      "scenario": "delete_directory",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 110.394875
+      },
+      "info": {
+        "degraded": false,
+        "directory": "ripgrep/crates/searcher",
+        "edges_changed": 2602,
+        "entities_changed": 504,
+        "facts_changed": 3106,
+        "files_changed_in_run": 11,
+        "files_mismatch": false,
+        "files_touched": 11,
+        "files_updated": 11,
+        "owners_resolved": 99,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 1,
+          "encode": 10,
+          "existence": 1,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 10,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 54,
+          "plan": 0,
+          "resolve": 18,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 1
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "ripgrep",
+      "scenario": "concurrency_with_edits",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 5.0937079999999995,
+        "n16_p95_ms": 23.810667,
+        "n16_throughput_qps": 2099.339339992382,
+        "n1_p50_ms": 2.3689169999999997,
+        "n1_p95_ms": 10.560458,
+        "n1_throughput_qps": 270.9671565045075,
+        "n4_p50_ms": 4.401333999999999,
+        "n4_p95_ms": 14.988541,
+        "n4_throughput_qps": 670.6225098648456,
+        "n8_p50_ms": 4.689083,
+        "n8_p95_ms": 19.046667,
+        "n8_throughput_qps": 1209.4708302696877
+      },
+      "info": {
+        "n16_edits_applied": 141,
+        "n16_errors": 0,
+        "n16_queries": 31596,
+        "n1_edits_applied": 141,
+        "n1_errors": 0,
+        "n1_queries": 4011,
+        "n4_edits_applied": 141,
+        "n4_errors": 0,
+        "n4_queries": 10058,
+        "n8_edits_applied": 141,
+        "n8_errors": 0,
+        "n8_queries": 18092,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            5.086541,
+            5.1047080000000005
+          ],
+          "n16_p95_ms": [
+            22.80575,
+            23.983208
+          ],
+          "n16_throughput_qps": [
+            2076.979916028855,
+            2103.1734033161315
+          ],
+          "n1_p50_ms": [
+            2.338667,
+            2.553084
+          ],
+          "n1_p95_ms": [
+            10.500792,
+            11.128042
+          ],
+          "n1_throughput_qps": [
+            258.7495891113014,
+            272.36383689155673
+          ],
+          "n4_p50_ms": [
+            4.3942499999999995,
+            4.411041
+          ],
+          "n4_p95_ms": [
+            14.826334,
+            15.649792
+          ],
+          "n4_throughput_qps": [
+            662.4870279758147,
+            671.8269309368775
+          ],
+          "n8_p50_ms": [
+            4.6853750000000005,
+            4.700041000000001
+          ],
+          "n8_p95_ms": [
+            18.8295,
+            19.675625
+          ],
+          "n8_throughput_qps": [
+            1182.8575395820003,
+            1211.4039738490303
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "ripgrep",
+      "scenario": "workload",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {},
+      "info": {
+        "editable_files": 36,
+        "targets": 30
+      }
+    },
+    {
+      "corpus": "ripgrep",
+      "scenario": "session_process",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 162.77,
+        "cpu_total_s": 402.78,
+        "cpu_user_s": 240.01,
+        "cpu_utilisation": 3.2626974483596594,
+        "peak_rss_bytes": 496549888.0,
+        "process_wall_s": 123.45
+      },
+      "info": {}
+    },
+    {
+      "corpus": "hono",
+      "scenario": "cold_index",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 0.4,
+        "cpu_total_s": 1.6800000000000002,
+        "cpu_user_s": 1.28,
+        "cpu_utilisation": 3.428571428571429,
+        "db_bytes": 36801072.0,
+        "files_per_s": 1069.090148002393,
+        "index_ms": 420.918667,
+        "loc_per_s": 218426.9960163111,
+        "open_ms": 9.991833,
+        "peak_rss_bytes": 289341440.0,
+        "persist_similarity_ms": 20.509041,
+        "phase_analyze_ms": 66.0,
+        "phase_checkpoint_ms": 26.0,
+        "phase_dependents_ms": 18.0,
+        "phase_encode_ms": 20.0,
+        "phase_existence_ms": 3.0,
+        "phase_finish_ms": 0.0,
+        "phase_lineage_inputs_ms": 3.0,
+        "phase_lineage_ms": 0.0,
+        "phase_load_ms": 0.0,
+        "phase_manifests_ms": 0.0,
+        "phase_passes_ms": 2.0,
+        "phase_persist_ms": 125.0,
+        "phase_plan_ms": 1.0,
+        "phase_reindex_ms": 25.0,
+        "phase_resolve_ms": 16.0,
+        "phase_scip_dangling_ms": 0.0,
+        "phase_similarity_ms": 84.0,
+        "phase_symbols_ms": 14.0,
+        "process_wall_s": 0.49,
+        "similarity_blob_bytes": 5306315.0
+      },
+      "info": {
+        "counts": {
+          "artifact_bytes": 4045027,
+          "artifact_encode_us": 7179,
+          "artifacts_loaded": 0,
+          "dangling_detector_edges_dropped": 87,
+          "detector_targets_checked": 34,
+          "edges_added": 22798,
+          "edges_changed": 0,
+          "edges_removed": 0,
+          "entities_added": 7663,
+          "entities_changed": 0,
+          "entities_removed": 0,
+          "files_added": 486,
+          "files_analyzed": 450,
+          "files_deleted": 0,
+          "files_modified": 0,
+          "files_repackaged": 0,
+          "files_restamped": 0,
+          "files_skipped": 0,
+          "graphs_changed": 0,
+          "indexes_deferred": 1,
+          "owners_resolved": 450,
+          "persist_batches": 3,
+          "renames_detected": 0,
+          "similarity_documents": 7180,
+          "unresolvable_detector_edges_dropped": 0,
+          "unresolved_added": 30179,
+          "unresolved_removed": 0,
+          "wanted_target_owners": 0
+        },
+        "files_analyzed": 450,
+        "loc": 91940,
+        "parse_failed": 0,
+        "parse_ok": 442,
+        "parse_partial": 8,
+        "parse_samples": [
+          "partial: hono/src/context.ts",
+          "partial: hono/src/helper/factory/index.ts",
+          "partial: hono/src/helper/ssg/middleware.ts",
+          "partial: hono/src/jsx/dom/index.ts",
+          "partial: hono/src/jsx/hooks/index.ts"
+        ],
+        "repeats": 3,
+        "run_outcome": "ok",
+        "spread": {
+          "cpu_sys_s": [
+            0.21,
+            0.43
+          ],
+          "cpu_total_s": [
+            1.49,
+            1.76
+          ],
+          "cpu_user_s": [
+            1.28,
+            1.33
+          ],
+          "cpu_utilisation": [
+            3.170212765957447,
+            3.52
+          ],
+          "db_bytes": [
+            36801072.0,
+            36801072.0
+          ],
+          "files_per_s": [
+            1053.296920125398,
+            1082.845936556735
+          ],
+          "index_ms": [
+            415.571583,
+            427.229959
+          ],
+          "loc_per_s": [
+            215200.2640807313,
+            221237.45646005828
+          ],
+          "open_ms": [
+            9.904125,
+            14.478083
+          ],
+          "peak_rss_bytes": [
+            286359552.0,
+            290619392.0
+          ],
+          "persist_similarity_ms": [
+            20.455834,
+            24.331667000000003
+          ],
+          "phase_analyze_ms": [
+            65.0,
+            67.0
+          ],
+          "phase_checkpoint_ms": [
+            25.0,
+            35.0
+          ],
+          "phase_dependents_ms": [
+            18.0,
+            18.0
+          ],
+          "phase_encode_ms": [
+            19.0,
+            20.0
+          ],
+          "phase_existence_ms": [
+            3.0,
+            3.0
+          ],
+          "phase_finish_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_lineage_inputs_ms": [
+            3.0,
+            3.0
+          ],
+          "phase_lineage_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_load_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_manifests_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_passes_ms": [
+            2.0,
+            2.0
+          ],
+          "phase_persist_ms": [
+            123.0,
+            128.0
+          ],
+          "phase_plan_ms": [
+            1.0,
+            1.0
+          ],
+          "phase_reindex_ms": [
+            25.0,
+            25.0
+          ],
+          "phase_resolve_ms": [
+            15.0,
+            16.0
+          ],
+          "phase_scip_dangling_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_similarity_ms": [
+            84.0,
+            85.0
+          ],
+          "phase_symbols_ms": [
+            14.0,
+            14.0
+          ],
+          "process_wall_s": [
+            0.47,
+            0.5
+          ],
+          "similarity_blob_bytes": [
+            5306315.0,
+            5306315.0
+          ]
+        }
+      }
+    },
+    {
+      "corpus": "hono",
+      "scenario": "warm_startup",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "first_barrier_ms": 13.563584,
+        "open_ms": 125.822625
+      },
+      "info": {
+        "first_barrier_fresh": true,
+        "first_barrier_ran_index": false,
+        "readers": 14
+      }
+    },
+    {
+      "corpus": "hono",
+      "scenario": "no_change_barrier",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "barrier_max_ms": 13.348292,
+        "barrier_p50_ms": 4.4026250000000005,
+        "barrier_p95_ms": 12.868542
+      },
+      "info": {
+        "iterations": 50,
+        "unexpected_index_runs": 0
+      }
+    },
+    {
+      "corpus": "hono",
+      "scenario": "query_latency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "api_max_ms": 5.415083,
+        "api_nobarrier_max_ms": 0.219667,
+        "api_nobarrier_p50_ms": 0.213084,
+        "api_p50_ms": 4.517,
+        "callers_max_ms": 7.334875,
+        "callers_nobarrier_max_ms": 2.714,
+        "callers_nobarrier_p50_ms": 0.085208,
+        "callers_nobarrier_p95_ms": 0.909292,
+        "callers_p50_ms": 4.132416,
+        "callers_p95_ms": 5.424834,
+        "context_max_ms": 35.524833,
+        "context_nobarrier_max_ms": 29.063458,
+        "context_nobarrier_p50_ms": 1.562167,
+        "context_nobarrier_p95_ms": 28.68975,
+        "context_p50_ms": 5.805667,
+        "context_p95_ms": 33.986333,
+        "impact_max_ms": 7.138458,
+        "impact_nobarrier_max_ms": 2.9673339999999997,
+        "impact_nobarrier_p50_ms": 0.416125,
+        "impact_nobarrier_p95_ms": 2.35775,
+        "impact_p50_ms": 4.490167,
+        "impact_p95_ms": 6.569041,
+        "search_max_ms": 4.387582999999999,
+        "search_nobarrier_max_ms": 0.3045,
+        "search_nobarrier_p50_ms": 0.240166,
+        "search_nobarrier_p95_ms": 0.278833,
+        "search_p50_ms": 4.23925,
+        "search_p95_ms": 4.3755,
+        "similar_max_ms": 6.105209,
+        "similar_nobarrier_max_ms": 1.7717919999999998,
+        "similar_nobarrier_p50_ms": 0.752083,
+        "similar_nobarrier_p95_ms": 1.638667,
+        "similar_p50_ms": 4.850416,
+        "similar_p95_ms": 5.804458,
+        "symbol_max_ms": 5.0465420000000005,
+        "symbol_nobarrier_max_ms": 0.90975,
+        "symbol_nobarrier_p50_ms": 0.077833,
+        "symbol_nobarrier_p95_ms": 0.347542,
+        "symbol_p50_ms": 4.119125,
+        "symbol_p95_ms": 4.479625,
+        "unused_max_ms": 92.951042,
+        "unused_nobarrier_max_ms": 87.706,
+        "unused_nobarrier_p50_ms": 87.3745,
+        "unused_p50_ms": 91.945833
+      },
+      "info": {
+        "api_errors": 0,
+        "api_found": 3,
+        "api_nobarrier_errors": 0,
+        "api_nobarrier_found": 3,
+        "api_nobarrier_samples": 3,
+        "api_samples": 3,
+        "callers_errors": 0,
+        "callers_found": 30,
+        "callers_nobarrier_errors": 0,
+        "callers_nobarrier_found": 30,
+        "callers_nobarrier_samples": 30,
+        "callers_samples": 30,
+        "context_errors": 0,
+        "context_found": 30,
+        "context_nobarrier_errors": 0,
+        "context_nobarrier_found": 30,
+        "context_nobarrier_samples": 30,
+        "context_samples": 30,
+        "impact_errors": 0,
+        "impact_found": 30,
+        "impact_nobarrier_errors": 0,
+        "impact_nobarrier_found": 30,
+        "impact_nobarrier_samples": 30,
+        "impact_samples": 30,
+        "nobarrier": "the same queries with the freshness barrier skipped",
+        "search_errors": 0,
+        "search_found": 30,
+        "search_nobarrier_errors": 0,
+        "search_nobarrier_found": 30,
+        "search_nobarrier_samples": 30,
+        "search_samples": 30,
+        "similar_errors": 0,
+        "similar_found": 30,
+        "similar_nobarrier_errors": 0,
+        "similar_nobarrier_found": 30,
+        "similar_nobarrier_samples": 30,
+        "similar_samples": 30,
+        "symbol_errors": 0,
+        "symbol_found": 30,
+        "symbol_nobarrier_errors": 0,
+        "symbol_nobarrier_found": 30,
+        "symbol_nobarrier_samples": 30,
+        "symbol_samples": 30,
+        "unused_errors": 0,
+        "unused_found": 3,
+        "unused_nobarrier_errors": 0,
+        "unused_nobarrier_found": 3,
+        "unused_nobarrier_samples": 3,
+        "unused_samples": 3
+      }
+    },
+    {
+      "corpus": "hono",
+      "scenario": "concurrency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 9.084791,
+        "n16_p95_ms": 11.049083,
+        "n16_throughput_qps": 1695.275606359179,
+        "n1_p50_ms": 4.260166,
+        "n1_p95_ms": 6.908625,
+        "n1_throughput_qps": 207.22924828014837,
+        "n4_p50_ms": 8.024917,
+        "n4_p95_ms": 10.192959,
+        "n4_throughput_qps": 473.3660766480017,
+        "n8_p50_ms": 8.580957999999999,
+        "n8_p95_ms": 10.871,
+        "n8_throughput_qps": 890.5745463810624
+      },
+      "info": {
+        "n16_edits_applied": 0,
+        "n16_errors": 0,
+        "n16_queries": 25505,
+        "n1_edits_applied": 0,
+        "n1_errors": 0,
+        "n1_queries": 3108,
+        "n4_edits_applied": 0,
+        "n4_errors": 0,
+        "n4_queries": 7117,
+        "n8_edits_applied": 0,
+        "n8_errors": 0,
+        "n8_queries": 13367,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            9.080917,
+            9.103458
+          ],
+          "n16_p95_ms": [
+            11.036791,
+            11.127166
+          ],
+          "n16_throughput_qps": [
+            1691.2253205812922,
+            1695.286720028015
+          ],
+          "n1_p50_ms": [
+            4.250625,
+            4.281625
+          ],
+          "n1_p95_ms": [
+            6.877208,
+            6.910958
+          ],
+          "n1_throughput_qps": [
+            206.51335901363535,
+            207.5593148872856
+          ],
+          "n4_p50_ms": [
+            8.024750000000001,
+            8.047584
+          ],
+          "n4_p95_ms": [
+            10.149667,
+            10.242334
+          ],
+          "n4_throughput_qps": [
+            471.60712909413786,
+            474.2737841088278
+          ],
+          "n8_p50_ms": [
+            8.5785,
+            8.629
+          ],
+          "n8_p95_ms": [
+            10.799833,
+            10.882542
+          ],
+          "n8_throughput_qps": [
+            886.4175091792656,
+            891.1478894853682
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "hono",
+      "scenario": "incremental_1_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 8.571959
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 0,
+        "facts_changed": 0,
+        "files_changed_in_run": 1,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 1,
+        "owners_resolved": 1,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 0,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "hono",
+      "scenario": "incremental_10_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 16.119167
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 6,
+        "entities_changed": 4,
+        "facts_changed": 10,
+        "files_changed_in_run": 10,
+        "files_mismatch": false,
+        "files_touched": 10,
+        "files_updated": 10,
+        "owners_resolved": 10,
+        "phases_ms": {
+          "analyze": 3,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 1,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 1,
+          "symbols": 0
+        },
+        "renames_detected": 1
+      }
+    },
+    {
+      "corpus": "hono",
+      "scenario": "incremental_100_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 145.743708
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 184,
+        "entities_changed": 107,
+        "facts_changed": 291,
+        "files_changed_in_run": 100,
+        "files_mismatch": false,
+        "files_touched": 100,
+        "files_updated": 100,
+        "owners_resolved": 100,
+        "phases_ms": {
+          "analyze": 31,
+          "dependents": 0,
+          "encode": 10,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 1,
+          "load": 0,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 26,
+          "plan": 0,
+          "resolve": 6,
+          "scip_dangling": 0,
+          "similarity": 47,
+          "symbols": 6
+        },
+        "renames_detected": 6
+      }
+    },
+    {
+      "corpus": "hono",
+      "scenario": "incremental_1000_files",
+      "outcome": {
+        "status": "skipped",
+        "reason": "only 176 editable files in this corpus"
+      },
+      "metrics": {},
+      "info": {}
+    },
+    {
+      "corpus": "hono",
+      "scenario": "rename_symbol",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 273.36595800000003
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 6590,
+        "entities_changed": 1971,
+        "facts_changed": 8561,
+        "files_changed_in_run": 128,
+        "files_mismatch": false,
+        "files_touched": 128,
+        "files_updated": 128,
+        "owners_resolved": 188,
+        "phases_ms": {
+          "analyze": 37,
+          "dependents": 4,
+          "encode": 10,
+          "existence": 1,
+          "lineage": 5,
+          "lineage_inputs": 7,
+          "load": 2,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 115,
+          "plan": 0,
+          "resolve": 10,
+          "scip_dangling": 0,
+          "similarity": 51,
+          "symbols": 9
+        },
+        "renames_detected": 79,
+        "replacements": 912,
+        "symbol": "handler"
+      }
+    },
+    {
+      "corpus": "hono",
+      "scenario": "file_move",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 93.52825
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 109,
+        "entities_changed": 34,
+        "facts_changed": 143,
+        "files_changed_in_run": 2,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 2,
+        "moved": "hono/src/helper/proxy/index.test.ts",
+        "owners_resolved": 429,
+        "phases_ms": {
+          "analyze": 2,
+          "dependents": 2,
+          "encode": 7,
+          "existence": 2,
+          "lineage": 1,
+          "lineage_inputs": 1,
+          "load": 13,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 18,
+          "plan": 1,
+          "resolve": 13,
+          "scip_dangling": 0,
+          "similarity": 0,
+          "symbols": 0
+        },
+        "renames_detected": 16
+      }
+    },
+    {
+      "corpus": "hono",
+      "scenario": "branch_switch",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 115.354417
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 83,
+        "entities_changed": 127,
+        "facts_changed": 210,
+        "files_changed_in_run": 52,
+        "files_mismatch": false,
+        "files_touched": 52,
+        "files_updated": 52,
+        "owners_resolved": 53,
+        "phases_ms": {
+          "analyze": 23,
+          "dependents": 0,
+          "encode": 5,
+          "existence": 0,
+          "lineage": 1,
+          "lineage_inputs": 1,
+          "load": 0,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 23,
+          "plan": 0,
+          "resolve": 6,
+          "scip_dangling": 0,
+          "similarity": 31,
+          "symbols": 5
+        },
+        "renames_detected": 4
+      }
+    },
+    {
+      "corpus": "hono",
+      "scenario": "delete_directory",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 155.35679199999998
+      },
+      "info": {
+        "degraded": false,
+        "directory": "hono/src/utils",
+        "edges_changed": 2898,
+        "entities_changed": 767,
+        "facts_changed": 3665,
+        "files_changed_in_run": 45,
+        "files_mismatch": false,
+        "files_touched": 45,
+        "files_updated": 45,
+        "owners_resolved": 391,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 3,
+          "encode": 6,
+          "existence": 1,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 12,
+          "manifests": 0,
+          "passes": 1,
+          "persist": 70,
+          "plan": 1,
+          "resolve": 14,
+          "scip_dangling": 0,
+          "similarity": 1,
+          "symbols": 1
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "hono",
+      "scenario": "concurrency_with_edits",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 10.022125,
+        "n16_p95_ms": 42.391333,
+        "n16_throughput_qps": 1195.0584164867378,
+        "n1_p50_ms": 4.593208,
+        "n1_p95_ms": 8.906,
+        "n1_throughput_qps": 185.26100948382725,
+        "n4_p50_ms": 8.834625,
+        "n4_p95_ms": 16.412792,
+        "n4_throughput_qps": 386.9166572888982,
+        "n8_p50_ms": 9.454167,
+        "n8_p95_ms": 18.504583,
+        "n8_throughput_qps": 689.4913504669743
+      },
+      "info": {
+        "n16_edits_applied": 141,
+        "n16_errors": 0,
+        "n16_queries": 17880,
+        "n1_edits_applied": 141,
+        "n1_errors": 0,
+        "n1_queries": 2681,
+        "n4_edits_applied": 141,
+        "n4_errors": 0,
+        "n4_queries": 5864,
+        "n8_edits_applied": 141,
+        "n8_errors": 0,
+        "n8_queries": 10388,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            10.007416,
+            10.073458
+          ],
+          "n16_p95_ms": [
+            23.212709,
+            61.19775
+          ],
+          "n16_throughput_qps": [
+            1134.0764235982072,
+            1219.3425735902397
+          ],
+          "n1_p50_ms": [
+            4.578375,
+            4.784333
+          ],
+          "n1_p95_ms": [
+            8.901167,
+            10.891042
+          ],
+          "n1_throughput_qps": [
+            164.38803527987304,
+            186.0547397451039
+          ],
+          "n4_p50_ms": [
+            8.833834000000001,
+            8.860875
+          ],
+          "n4_p95_ms": [
+            16.088291,
+            16.434792
+          ],
+          "n4_throughput_qps": [
+            385.8027389197344,
+            398.63851764789297
+          ],
+          "n8_p50_ms": [
+            9.418167,
+            9.476333
+          ],
+          "n8_p95_ms": [
+            18.390958,
+            18.532167
+          ],
+          "n8_throughput_qps": [
+            686.7172616196805,
+            695.4391182780205
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "hono",
+      "scenario": "workload",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {},
+      "info": {
+        "editable_files": 176,
+        "targets": 30
+      }
+    },
+    {
+      "corpus": "hono",
+      "scenario": "session_process",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 128.82,
+        "cpu_total_s": 254.92,
+        "cpu_user_s": 126.1,
+        "cpu_utilisation": 2.055474923399452,
+        "peak_rss_bytes": 734986240.0,
+        "process_wall_s": 124.02
+      },
+      "info": {}
+    },
+    {
+      "corpus": "synth-1m",
+      "scenario": "cold_index",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 5.38,
+        "cpu_total_s": 19.31,
+        "cpu_user_s": 13.93,
+        "cpu_utilisation": 3.1521035598705502,
+        "db_bytes": 407213392.0,
+        "files_per_s": 984.0662499841249,
+        "index_ms": 5600.2327080000005,
+        "loc_per_s": 178794.8916068507,
+        "open_ms": 29.546417,
+        "peak_rss_bytes": 2368618496.0,
+        "persist_similarity_ms": 144.75712499999997,
+        "phase_analyze_ms": 515.0,
+        "phase_checkpoint_ms": 140.0,
+        "phase_dependents_ms": 29.0,
+        "phase_encode_ms": 154.0,
+        "phase_existence_ms": 40.0,
+        "phase_finish_ms": 0.0,
+        "phase_lineage_inputs_ms": 33.0,
+        "phase_lineage_ms": 1.0,
+        "phase_load_ms": 0.0,
+        "phase_manifests_ms": 0.0,
+        "phase_passes_ms": 85.0,
+        "phase_persist_ms": 3057.0,
+        "phase_plan_ms": 1.0,
+        "phase_reindex_ms": 407.0,
+        "phase_resolve_ms": 171.0,
+        "phase_scip_dangling_ms": 0.0,
+        "phase_similarity_ms": 679.0,
+        "phase_symbols_ms": 189.0,
+        "process_wall_s": 6.18,
+        "similarity_blob_bytes": 44910799.0
+      },
+      "info": {
+        "counts": {
+          "artifact_bytes": 41515454,
+          "artifact_encode_us": 67573,
+          "artifacts_loaded": 0,
+          "dangling_detector_edges_dropped": 0,
+          "detector_targets_checked": 0,
+          "edges_added": 396326,
+          "edges_changed": 0,
+          "edges_removed": 0,
+          "entities_added": 82929,
+          "entities_changed": 0,
+          "entities_removed": 0,
+          "files_added": 5514,
+          "files_analyzed": 5511,
+          "files_deleted": 0,
+          "files_modified": 0,
+          "files_repackaged": 0,
+          "files_restamped": 0,
+          "files_skipped": 0,
+          "graphs_changed": 0,
+          "indexes_deferred": 1,
+          "owners_resolved": 5511,
+          "persist_batches": 35,
+          "renames_detected": 0,
+          "similarity_documents": 75731,
+          "unresolvable_detector_edges_dropped": 0,
+          "unresolved_added": 308218,
+          "unresolved_removed": 0,
+          "wanted_target_owners": 0
+        },
+        "files_analyzed": 5511,
+        "loc": 1001293,
+        "parse_failed": 0,
+        "parse_ok": 5511,
+        "parse_partial": 0,
+        "parse_samples": [],
+        "repeats": 3,
+        "run_outcome": "ok",
+        "spread": {
+          "cpu_sys_s": [
+            2.74,
+            5.4
+          ],
+          "cpu_total_s": [
+            16.630000000000003,
+            19.48
+          ],
+          "cpu_user_s": [
+            13.89,
+            14.08
+          ],
+          "cpu_utilisation": [
+            2.618897637795276,
+            3.1552287581699345
+          ],
+          "db_bytes": [
+            407193008.0,
+            407221656.0
+          ],
+          "files_per_s": [
+            922.2386466493562,
+            1008.3342872423916
+          ],
+          "index_ms": [
+            5465.449375,
+            5975.676708
+          ],
+          "loc_per_s": [
+            167561.4409761339,
+            183204.1486982029
+          ],
+          "open_ms": [
+            28.946,
+            29.709
+          ],
+          "peak_rss_bytes": [
+            2350530560.0,
+            2392948736.0
+          ],
+          "persist_similarity_ms": [
+            138.459208,
+            215.64175
+          ],
+          "phase_analyze_ms": [
+            506.0,
+            536.0
+          ],
+          "phase_checkpoint_ms": [
+            129.0,
+            191.0
+          ],
+          "phase_dependents_ms": [
+            29.0,
+            30.0
+          ],
+          "phase_encode_ms": [
+            153.0,
+            165.0
+          ],
+          "phase_existence_ms": [
+            39.0,
+            46.0
+          ],
+          "phase_finish_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_lineage_inputs_ms": [
+            32.0,
+            34.0
+          ],
+          "phase_lineage_ms": [
+            1.0,
+            1.0
+          ],
+          "phase_load_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_manifests_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_passes_ms": [
+            82.0,
+            87.0
+          ],
+          "phase_persist_ms": [
+            2829.0,
+            3389.0
+          ],
+          "phase_plan_ms": [
+            1.0,
+            1.0
+          ],
+          "phase_reindex_ms": [
+            404.0,
+            417.0
+          ],
+          "phase_resolve_ms": [
+            169.0,
+            172.0
+          ],
+          "phase_scip_dangling_ms": [
+            0.0,
+            0.0
+          ],
+          "phase_similarity_ms": [
+            677.0,
+            681.0
+          ],
+          "phase_symbols_ms": [
+            189.0,
+            194.0
+          ],
+          "process_wall_s": [
+            6.12,
+            6.35
+          ],
+          "similarity_blob_bytes": [
+            44910799.0,
+            44910799.0
+          ]
+        }
+      }
+    },
+    {
+      "corpus": "synth-1m",
+      "scenario": "warm_startup",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "first_barrier_ms": 16.640042,
+        "open_ms": 1134.764292
+      },
+      "info": {
+        "first_barrier_fresh": true,
+        "first_barrier_ran_index": false,
+        "readers": 14
+      }
+    },
+    {
+      "corpus": "synth-1m",
+      "scenario": "no_change_barrier",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "barrier_max_ms": 14.693333,
+        "barrier_p50_ms": 12.418125,
+        "barrier_p95_ms": 14.476208000000002
+      },
+      "info": {
+        "iterations": 50,
+        "unexpected_index_runs": 0
+      }
+    },
+    {
+      "corpus": "synth-1m",
+      "scenario": "query_latency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "api_max_ms": 63.508333,
+        "api_nobarrier_max_ms": 49.122667,
+        "api_nobarrier_p50_ms": 37.241166,
+        "api_p50_ms": 53.423209,
+        "callers_max_ms": 46.854,
+        "callers_nobarrier_max_ms": 32.158167,
+        "callers_nobarrier_p50_ms": 0.101458,
+        "callers_nobarrier_p95_ms": 31.847042,
+        "callers_p50_ms": 14.533124999999998,
+        "callers_p95_ms": 46.435083,
+        "context_max_ms": 161.352,
+        "context_nobarrier_max_ms": 145.219042,
+        "context_nobarrier_p50_ms": 59.294417,
+        "context_nobarrier_p95_ms": 118.632625,
+        "context_p50_ms": 74.48575000000001,
+        "context_p95_ms": 135.719,
+        "impact_max_ms": 99.451709,
+        "impact_nobarrier_max_ms": 75.894459,
+        "impact_nobarrier_p50_ms": 1.292625,
+        "impact_nobarrier_p95_ms": 68.174792,
+        "impact_p50_ms": 16.127125,
+        "impact_p95_ms": 90.755875,
+        "search_max_ms": 24.599209,
+        "search_nobarrier_max_ms": 11.098542,
+        "search_nobarrier_p50_ms": 5.141208000000001,
+        "search_nobarrier_p95_ms": 7.716208,
+        "search_p50_ms": 19.299958,
+        "search_p95_ms": 23.228875,
+        "similar_max_ms": 80.187458,
+        "similar_nobarrier_max_ms": 65.988458,
+        "similar_nobarrier_p50_ms": 8.406084,
+        "similar_nobarrier_p95_ms": 60.105332999999995,
+        "similar_p50_ms": 21.910917,
+        "similar_p95_ms": 74.751708,
+        "symbol_max_ms": 66.534958,
+        "symbol_nobarrier_max_ms": 46.505625,
+        "symbol_nobarrier_p50_ms": 0.165875,
+        "symbol_nobarrier_p95_ms": 45.234834,
+        "symbol_p50_ms": 15.841500000000002,
+        "symbol_p95_ms": 65.19575,
+        "unused_max_ms": 1379.580292,
+        "unused_nobarrier_max_ms": 1360.399917,
+        "unused_nobarrier_p50_ms": 1055.217083,
+        "unused_p50_ms": 1084.70975
+      },
+      "info": {
+        "api_errors": 0,
+        "api_found": 3,
+        "api_nobarrier_errors": 0,
+        "api_nobarrier_found": 3,
+        "api_nobarrier_samples": 3,
+        "api_samples": 3,
+        "callers_errors": 0,
+        "callers_found": 30,
+        "callers_nobarrier_errors": 0,
+        "callers_nobarrier_found": 30,
+        "callers_nobarrier_samples": 30,
+        "callers_samples": 30,
+        "context_errors": 0,
+        "context_found": 30,
+        "context_nobarrier_errors": 0,
+        "context_nobarrier_found": 30,
+        "context_nobarrier_samples": 30,
+        "context_samples": 30,
+        "impact_errors": 0,
+        "impact_found": 30,
+        "impact_nobarrier_errors": 0,
+        "impact_nobarrier_found": 30,
+        "impact_nobarrier_samples": 30,
+        "impact_samples": 30,
+        "nobarrier": "the same queries with the freshness barrier skipped",
+        "search_errors": 0,
+        "search_found": 30,
+        "search_nobarrier_errors": 0,
+        "search_nobarrier_found": 30,
+        "search_nobarrier_samples": 30,
+        "search_samples": 30,
+        "similar_errors": 0,
+        "similar_found": 30,
+        "similar_nobarrier_errors": 0,
+        "similar_nobarrier_found": 30,
+        "similar_nobarrier_samples": 30,
+        "similar_samples": 30,
+        "symbol_errors": 0,
+        "symbol_found": 30,
+        "symbol_nobarrier_errors": 0,
+        "symbol_nobarrier_found": 30,
+        "symbol_nobarrier_samples": 30,
+        "symbol_samples": 30,
+        "unused_errors": 0,
+        "unused_found": 3,
+        "unused_nobarrier_errors": 0,
+        "unused_nobarrier_found": 3,
+        "unused_nobarrier_samples": 3,
+        "unused_samples": 3
+      }
+    },
+    {
+      "corpus": "synth-1m",
+      "scenario": "concurrency",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 45.010915999999995,
+        "n16_p95_ms": 187.936,
+        "n16_throughput_qps": 225.35109909550957,
+        "n1_p50_ms": 17.797417,
+        "n1_p95_ms": 93.093959,
+        "n1_throughput_qps": 33.33972261500514,
+        "n4_p50_ms": 30.229875,
+        "n4_p95_ms": 111.011458,
+        "n4_throughput_qps": 89.35127025717873,
+        "n8_p50_ms": 36.372333,
+        "n8_p95_ms": 131.992791,
+        "n8_throughput_qps": 150.0346365955884
+      },
+      "info": {
+        "n16_edits_applied": 0,
+        "n16_errors": 0,
+        "n16_queries": 3427,
+        "n1_edits_applied": 0,
+        "n1_errors": 0,
+        "n1_queries": 502,
+        "n4_edits_applied": 0,
+        "n4_errors": 0,
+        "n4_queries": 1363,
+        "n8_edits_applied": 0,
+        "n8_errors": 0,
+        "n8_queries": 2291,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            44.735209,
+            45.1045
+          ],
+          "n16_p95_ms": [
+            186.464375,
+            192.104959
+          ],
+          "n16_throughput_qps": [
+            223.47802177573308,
+            226.041878542163
+          ],
+          "n1_p50_ms": [
+            17.649125,
+            17.808292
+          ],
+          "n1_p95_ms": [
+            92.973709,
+            93.523542
+          ],
+          "n1_throughput_qps": [
+            33.143760937594,
+            33.39571366015172
+          ],
+          "n4_p50_ms": [
+            30.062375,
+            30.434875
+          ],
+          "n4_p95_ms": [
+            108.61125,
+            111.389834
+          ],
+          "n4_throughput_qps": [
+            89.11019779168997,
+            90.08439125571604
+          ],
+          "n8_p50_ms": [
+            36.299583000000005,
+            36.821458
+          ],
+          "n8_p95_ms": [
+            129.070417,
+            133.69975
+          ],
+          "n8_throughput_qps": [
+            149.27776973342984,
+            150.05001462570291
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "synth-1m",
+      "scenario": "incremental_1_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 116.913667
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 0,
+        "facts_changed": 0,
+        "files_changed_in_run": 1,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 1,
+        "owners_resolved": 1,
+        "phases_ms": {
+          "analyze": 1,
+          "dependents": 0,
+          "encode": 0,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 89,
+          "persist": 2,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 1,
+          "symbols": 6
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-1m",
+      "scenario": "incremental_10_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 125.202125
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 0,
+        "facts_changed": 0,
+        "files_changed_in_run": 10,
+        "files_mismatch": false,
+        "files_touched": 10,
+        "files_updated": 10,
+        "owners_resolved": 10,
+        "phases_ms": {
+          "analyze": 3,
+          "dependents": 0,
+          "encode": 1,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 79,
+          "persist": 7,
+          "plan": 0,
+          "resolve": 0,
+          "scip_dangling": 0,
+          "similarity": 9,
+          "symbols": 7
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-1m",
+      "scenario": "incremental_100_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 260.80875
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 0,
+        "facts_changed": 0,
+        "files_changed_in_run": 100,
+        "files_mismatch": false,
+        "files_touched": 100,
+        "files_updated": 100,
+        "owners_resolved": 100,
+        "phases_ms": {
+          "analyze": 12,
+          "dependents": 0,
+          "encode": 5,
+          "existence": 0,
+          "lineage": 0,
+          "lineage_inputs": 0,
+          "load": 0,
+          "manifests": 0,
+          "passes": 80,
+          "persist": 37,
+          "plan": 0,
+          "resolve": 4,
+          "scip_dangling": 0,
+          "similarity": 83,
+          "symbols": 14
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-1m",
+      "scenario": "incremental_1000_files",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 1435.668458
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 0,
+        "entities_changed": 0,
+        "facts_changed": 0,
+        "files_changed_in_run": 1000,
+        "files_mismatch": false,
+        "files_touched": 1000,
+        "files_updated": 1000,
+        "owners_resolved": 1000,
+        "phases_ms": {
+          "analyze": 102,
+          "dependents": 5,
+          "encode": 29,
+          "existence": 6,
+          "lineage": 0,
+          "lineage_inputs": 1,
+          "load": 0,
+          "manifests": 0,
+          "passes": 80,
+          "persist": 155,
+          "plan": 0,
+          "resolve": 38,
+          "scip_dangling": 0,
+          "similarity": 824,
+          "symbols": 78
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-1m",
+      "scenario": "rename_symbol",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 2954.103334
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 158277,
+        "entities_changed": 26963,
+        "facts_changed": 185240,
+        "files_changed_in_run": 1630,
+        "files_mismatch": false,
+        "files_touched": 1630,
+        "files_updated": 1630,
+        "owners_resolved": 2052,
+        "phases_ms": {
+          "analyze": 147,
+          "dependents": 9,
+          "encode": 33,
+          "existence": 11,
+          "lineage": 8,
+          "lineage_inputs": 3,
+          "load": 11,
+          "manifests": 0,
+          "passes": 89,
+          "persist": 1452,
+          "plan": 0,
+          "resolve": 45,
+          "scip_dangling": 0,
+          "similarity": 902,
+          "symbols": 149
+        },
+        "renames_detected": 2,
+        "replacements": 5010,
+        "symbol": "validateInvoice1"
+      }
+    },
+    {
+      "corpus": "synth-1m",
+      "scenario": "file_move",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 417.016375
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 38,
+        "entities_changed": 12,
+        "facts_changed": 50,
+        "files_changed_in_run": 2,
+        "files_mismatch": false,
+        "files_touched": 1,
+        "files_updated": 2,
+        "moved": "repo-1/src/g122/routes.ts",
+        "owners_resolved": 3092,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 12,
+          "encode": 20,
+          "existence": 13,
+          "lineage": 0,
+          "lineage_inputs": 3,
+          "load": 64,
+          "manifests": 0,
+          "passes": 79,
+          "persist": 105,
+          "plan": 0,
+          "resolve": 52,
+          "scip_dangling": 0,
+          "similarity": 2,
+          "symbols": 1
+        },
+        "renames_detected": 1
+      }
+    },
+    {
+      "corpus": "synth-1m",
+      "scenario": "branch_switch",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 1978.661875
+      },
+      "info": {
+        "degraded": false,
+        "edges_changed": 1275,
+        "entities_changed": 2550,
+        "facts_changed": 3825,
+        "files_changed_in_run": 1275,
+        "files_mismatch": false,
+        "files_touched": 1275,
+        "files_updated": 1275,
+        "owners_resolved": 1275,
+        "phases_ms": {
+          "analyze": 128,
+          "dependents": 7,
+          "encode": 36,
+          "existence": 6,
+          "lineage": 0,
+          "lineage_inputs": 2,
+          "load": 0,
+          "manifests": 0,
+          "passes": 79,
+          "persist": 319,
+          "plan": 0,
+          "resolve": 47,
+          "scip_dangling": 0,
+          "similarity": 1046,
+          "symbols": 100
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-1m",
+      "scenario": "delete_directory",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "latency_ms": 1902.125625
+      },
+      "info": {
+        "degraded": false,
+        "directory": "repo-1/src/g0",
+        "edges_changed": 32165,
+        "entities_changed": 154,
+        "facts_changed": 32319,
+        "files_changed_in_run": 12,
+        "files_mismatch": false,
+        "files_touched": 12,
+        "files_updated": 12,
+        "owners_resolved": 5252,
+        "phases_ms": {
+          "analyze": 0,
+          "dependents": 28,
+          "encode": 60,
+          "existence": 27,
+          "lineage": 0,
+          "lineage_inputs": 6,
+          "load": 158,
+          "manifests": 0,
+          "passes": 80,
+          "persist": 1072,
+          "plan": 0,
+          "resolve": 171,
+          "scip_dangling": 0,
+          "similarity": 7,
+          "symbols": 5
+        },
+        "renames_detected": 0
+      }
+    },
+    {
+      "corpus": "synth-1m",
+      "scenario": "concurrency_with_edits",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "n16_p50_ms": 632.3922090000001,
+        "n16_p95_ms": 703.804625,
+        "n16_throughput_qps": 26.264746984941144,
+        "n1_p50_ms": 114.623834,
+        "n1_p95_ms": 158.851958,
+        "n1_throughput_qps": 8.23259068014871,
+        "n4_p50_ms": 225.986334,
+        "n4_p95_ms": 973.9235,
+        "n4_throughput_qps": 10.35641322711818,
+        "n8_p50_ms": 255.050458,
+        "n8_p95_ms": 690.905917,
+        "n8_throughput_qps": 17.437581490450164
+      },
+      "info": {
+        "n16_edits_applied": 150,
+        "n16_errors": 0,
+        "n16_queries": 426,
+        "n1_edits_applied": 143,
+        "n1_errors": 0,
+        "n1_queries": 126,
+        "n4_edits_applied": 159,
+        "n4_errors": 0,
+        "n4_queries": 179,
+        "n8_edits_applied": 159,
+        "n8_errors": 0,
+        "n8_queries": 304,
+        "repeats": 3,
+        "spread": {
+          "n16_p50_ms": [
+            632.3452910000001,
+            633.83325
+          ],
+          "n16_p95_ms": [
+            701.063666,
+            705.558625
+          ],
+          "n16_throughput_qps": [
+            26.168515392022854,
+            26.344912417080774
+          ],
+          "n1_p50_ms": [
+            114.488625,
+            114.920083
+          ],
+          "n1_p95_ms": [
+            155.255541,
+            158.981875
+          ],
+          "n1_throughput_qps": [
+            8.231172141926976,
+            8.249753564245431
+          ],
+          "n4_p50_ms": [
+            222.214666,
+            226.078
+          ],
+          "n4_p95_ms": [
+            971.024083,
+            1038.3067079999998
+          ],
+          "n4_throughput_qps": [
+            10.296871533236422,
+            10.824931073054088
+          ],
+          "n8_p50_ms": [
+            235.723208,
+            255.95866699999996
+          ],
+          "n8_p95_ms": [
+            689.837291,
+            994.641375
+          ],
+          "n8_throughput_qps": [
+            17.432633489545296,
+            18.49124654446491
+          ]
+        },
+        "window_s": 5.0
+      }
+    },
+    {
+      "corpus": "synth-1m",
+      "scenario": "workload",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {},
+      "info": {
+        "editable_files": 4251,
+        "targets": 30
+      }
+    },
+    {
+      "corpus": "synth-1m",
+      "scenario": "session_process",
+      "outcome": {
+        "status": "ok"
+      },
+      "metrics": {
+        "cpu_sys_s": 172.2,
+        "cpu_total_s": 437.59,
+        "cpu_user_s": 265.39,
+        "cpu_utilisation": 2.773242917802142,
+        "peak_rss_bytes": 4534501376.0,
+        "process_wall_s": 157.79
+      },
+      "info": {}
+    }
+  ],
+  "profile": {
+    "tool": null,
+    "path": null,
+    "note": "profiling was not requested; the per-phase timings from the run ledger are the profile"
+  },
+  "total_seconds": 1177.765889375,
+  "comparison": null
+}
