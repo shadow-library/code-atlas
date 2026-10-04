@@ -155,7 +155,6 @@ fn should_skip_enrichment_when_the_llm_is_unavailable_and_leave_queries_untouche
 }
 
 #[test]
-#[ignore = "BUG: an enrich run whose provider is unavailable is recorded as status ok with no skipped marker (plan 1.6: recorded as `skipped` in the run)"]
 fn should_record_skipped_semantic_tasks_in_the_enrich_run() {
   let (sandbox, root) = indexed_acme();
   let api_repo = root.join("acme-api");
@@ -241,7 +240,6 @@ fn should_index_a_hostile_repo_partially_with_an_accurate_status() {
 }
 
 #[test]
-#[ignore = "BUG: a file over max_file_bytes is dropped silently; neither `index` nor `status` nor query caveats mention it"]
 fn should_report_an_oversized_file_as_skipped() {
   let Hostile { sandbox, repo, .. } = hostile_repo();
 
@@ -255,13 +253,12 @@ fn should_report_an_oversized_file_as_skipped() {
 }
 
 #[test]
-#[ignore = "BUG: `status` prints the SCIP state with Rust debug formatting (`Some(NeverRun)`)"]
 fn should_render_the_scip_state_in_status_without_debug_formatting() {
   let (sandbox, root) = indexed_acme();
 
   let status = sandbox.run(&root.join("acme-api"), &["status"]).ok();
 
-  let line = status.stdout.lines().find(|line| line.starts_with("scip ")).unwrap();
+  let line = status.stdout.lines().find(|line| line.starts_with("scip")).unwrap();
   assert!(!line.contains("Some(") && !line.contains("NeverRun"), "{line}");
 }
 

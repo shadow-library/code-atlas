@@ -24,8 +24,8 @@ use crate::report::{FailedFile, RunOutcomeKind, RunSummary};
 use crate::scan::{RepoScan, ScanOutcome, ScannedRepo, is_code_file, is_manifest};
 use crate::similarity::{replace_symbols, symbol_docs};
 use crate::state::{
-  DIRTY_BLOB, EngineMeta, EngineState, FACTS_VERSION, FileState, META_BLOB, META_BLOB_VERSION, RepoHealth, RepoMeta, ScipMeta, count_inferred_stale, read_known_repos, symbols_of,
-  write_known_repos,
+  DIRTY_BLOB, EngineMeta, EngineState, FACTS_VERSION, FileState, META_BLOB, META_BLOB_VERSION, RepoHealth, RepoMeta, ScipMeta, all_skipped, count_inferred_stale, read_known_repos,
+  symbols_of, write_known_repos, write_skipped,
 };
 
 const MAX_RESOLVE_ROUNDS: usize = 4;
@@ -358,6 +358,7 @@ impl<'a, 'e> Pipeline<'a, 'e> {
             self.graph_changed.insert(repo.clone());
           }
           repo_state.health = RepoHealth::Missing { reason };
+          repo_state.skipped.clear();
           self.plans.insert(
             repo,
             RepoPlan {
@@ -371,8 +372,14 @@ impl<'a, 'e> Pipeline<'a, 'e> {
           );
         }
         ScanOutcome::Scanned(scanned) => {
-          let ScannedRepo { files, changes, walk_errors } = *scanned;
+          let ScannedRepo {
+            files,
+            changes,
+            walk_errors,
+            skipped,
+          } = *scanned;
           repo_state.health = RepoHealth::Present;
+          repo_state.skipped = skipped;
           ledger.failed.extend(walk_errors.into_iter().map(|error| FailedFile {
             repo: repo.clone(),
             path: None,
@@ -536,7 +543,7 @@ impl<'a, 'e> Pipeline<'a, 'e> {
       recontexted.insert(key, Arc::new(artifact));
     }
     let relocations = self.state.table.refresh();
-    let full = self.mode == IndexMode::Full || self.state.pending.force_full_resolve || !self.graph_changed.is_empty();
+    let full = self.mode == IndexMode::Full || self.state.pending.force_full_resolve || !self.graph_changed.is_empty() || !self.purged.is_empty();
     let mut resolve: BTreeSet<FileKey> = match full {
       true => self.state.files.keys().cloned().chain(analyzed.keys().cloned()).collect(),
       false => {
@@ -1142,6 +1149,8 @@ impl<'a, 'e> Pipeline<'a, 'e> {
         },
       );
     }
+    let skipped = all_skipped(&self.state.repos);
+    ledger.add("files_skipped", skipped.len() as u64);
     ledger.add("similarity_documents", crate::similarity::read_lock(self.similarity).len() as u64);
     let meta_bytes = serde_json::to_vec(&meta).map_err(|error| EngineError::codec("engine meta", error))?;
     let change_set = json!({
@@ -1149,6 +1158,7 @@ impl<'a, 'e> Pipeline<'a, 'e> {
       "deleted": capped(self.deleted.iter().map(key_label)),
       "moved": capped(self.moved.iter().map(|(from, to)| format!("{} -> {}", key_label(from), key_label(to)))),
       "graphs_changed": capped(self.graph_changed.iter().map(RepoName::to_string)),
+      "skipped": capped(skipped.iter().map(|file| format!("{}:{}", file.repo, file.path))),
     });
     let outcome = match ledger.outcome() {
       RunOutcomeKind::Ok => RunOutcome::Ok,
@@ -1166,6 +1176,7 @@ impl<'a, 'e> Pipeline<'a, 'e> {
       tx.resume_run(run)?;
       tx.put_blob(META_BLOB, META_BLOB_VERSION, &meta_bytes)?;
       write_known_repos(tx, &configured)?;
+      write_skipped(tx, &skipped)?;
       if converged == Convergence::Converged {
         tx.delete_blob(DIRTY_BLOB)?;
       }

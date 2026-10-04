@@ -13,11 +13,13 @@ use crate::error::{EngineError, EngineResult};
 use crate::lock::{Contention, IndexLock};
 use crate::options::{EngineOptions, IndexMode};
 use crate::passes::is_reserved_pass_name;
-use crate::report::{FailedFile, FreshnessHeader, FreshnessReport, RunOutcomeKind, RunSummary, ScanKind, ScipLag};
+use crate::report::{FailedFile, FreshnessHeader, FreshnessReport, RunOutcomeKind, RunSummary, ScanKind, ScipLag, SkippedSummary};
 use crate::run::{RunEnv, execute, key_label};
 use crate::scan::{RepoScan, ScanOutcome, scan_repo};
 use crate::similarity::{SIMILARITY_BLOB, SIMILARITY_BLOB_VERSION, encode_persisted};
-use crate::state::{DIRTY_BLOB, EngineMeta, EngineState, RepoHealth, ScipMeta, load_state, project_fingerprint, read_project_fingerprint, write_project_fingerprint};
+use crate::state::{
+  DIRTY_BLOB, EngineMeta, EngineState, RepoHealth, ScipMeta, all_skipped, load_state, project_fingerprint, read_project_fingerprint, write_project_fingerprint, write_skipped,
+};
 use crate::watch::WatchSignals;
 
 const INTERRUPTED_RUN_SCAN: usize = 100;
@@ -322,6 +324,7 @@ impl Engine {
       scip,
       stale_inferred_facts: state.stale_inferred,
       files_failed_analysis: state.files.values().filter(|file| file.failure.is_some()).count() as u64,
+      skipped: SkippedSummary::of(state.repos.values().flat_map(|repo| &repo.skipped)),
     }
   }
 
@@ -436,15 +439,27 @@ impl Engine {
         repo.stamps.insert(path, stamp);
       }
     }
+    let mut skipped_changed = false;
     for scan in scans {
       let Some(repo) = state.repos.get_mut(&scan.repo) else { continue };
       match &scan.outcome {
-        ScanOutcome::Scanned(_) => {
+        ScanOutcome::Scanned(scanned) => {
           repo.health = RepoHealth::Present;
           repo.scan_started_ns = Some(scan.started_ns);
+          if repo.skipped != scanned.skipped {
+            repo.skipped = scanned.skipped.clone();
+            skipped_changed = true;
+          }
         }
-        ScanOutcome::Missing { reason } => repo.health = RepoHealth::Missing { reason: reason.clone() },
+        ScanOutcome::Missing { reason } => {
+          repo.health = RepoHealth::Missing { reason: reason.clone() };
+          skipped_changed |= !std::mem::take(&mut repo.skipped).is_empty();
+        }
       }
+    }
+    if skipped_changed {
+      let skipped = all_skipped(&state.repos);
+      self.store.write(|tx| write_skipped(tx, &skipped))?;
     }
     Ok(())
   }

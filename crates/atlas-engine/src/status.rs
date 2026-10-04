@@ -7,7 +7,7 @@ use atlas_store::{FreshnessPolicy, InferredQuery, OwnedFacts};
 use crate::engine::{Engine, lock_inner};
 use crate::error::EngineResult;
 use crate::passes::{PASS_LINEAGE, PASS_REPOS, PASS_STRUCTURE};
-use crate::report::{FailedFile, IndexStatus, InferredCounts, LlmSpend, ScanKind, ScipCoverage};
+use crate::report::{FailedFile, IndexStatus, InferredCounts, LlmSpend, ScanKind, ScipCoverage, SkippedSummary};
 
 const STATUS_RUNS: usize = 10;
 const SPEND_RUNS: usize = 1_000;
@@ -51,7 +51,7 @@ impl FactTally {
 
 impl Engine {
   pub fn status(&self) -> EngineResult<IndexStatus> {
-    let (scip_meta, header, dangling, missing) = {
+    let (scip_meta, header, dangling, missing, skipped) = {
       let inner = lock_inner(&self.inner);
       let state = &inner.state;
       let dangling = state.files.values().map(|file| file.dangling).sum::<u64>();
@@ -72,6 +72,7 @@ impl Engine {
         self.header(state, None, 0, std::time::Duration::ZERO, ScanKind::StatScan),
         dangling,
         missing,
+        SkippedSummary::of(state.repos.values().flat_map(|repo| &repo.skipped)),
       )
     };
     let passes: Vec<String> = [PASS_REPOS, PASS_STRUCTURE, atlas_link::PASS_NAME, PASS_LINEAGE]
@@ -153,6 +154,7 @@ impl Engine {
         llm,
         dangling_detector_edges_dropped: dangling,
         repos_missing: missing,
+        skipped,
       })
     })
   }

@@ -31,18 +31,28 @@ fn assert_equivalent(seed: u64, step: usize, description: &str, project: &atlas_
   std::fs::remove_dir_all(&home).unwrap();
 }
 
+fn seed_or(name: &str, fallback: u64) -> u64 {
+  let Ok(raw) = std::env::var(name) else { return fallback };
+  let text = raw.trim().replace('_', "");
+  let parsed = match text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")) {
+    Some(hex) => u64::from_str_radix(hex, 16),
+    None => text.parse(),
+  };
+  parsed.unwrap_or_else(|_| panic!("{name}={raw} is not a decimal or 0x-prefixed hex u64"))
+}
+
 fn env_or<T: std::str::FromStr>(name: &str, fallback: T) -> T {
   std::env::var(name).ok().and_then(|value| value.parse().ok()).unwrap_or(fallback)
 }
 
 #[test]
 fn should_match_a_full_index_after_every_randomized_edit_with_the_first_seed() {
-  run_sequence(env_or("ATLAS_EQUIVALENCE_SEED", SEEDS[0]), env_or("ATLAS_EQUIVALENCE_EDITS", EDITS));
+  run_sequence(seed_or("ATLAS_EQUIVALENCE_SEED", SEEDS[0]), env_or("ATLAS_EQUIVALENCE_EDITS", EDITS));
 }
 
 #[test]
 fn should_match_a_full_index_after_every_randomized_edit_with_the_second_seed() {
-  run_sequence(env_or("ATLAS_EQUIVALENCE_SEED_2", SEEDS[1]), env_or("ATLAS_EQUIVALENCE_EDITS", EDITS));
+  run_sequence(seed_or("ATLAS_EQUIVALENCE_SEED_2", SEEDS[1]), env_or("ATLAS_EQUIVALENCE_EDITS", EDITS));
 }
 
 fn run_sequence(seed: u64, edits: usize) {

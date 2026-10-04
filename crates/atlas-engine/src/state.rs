@@ -15,6 +15,8 @@ use crate::error::{EngineError, EngineResult};
 use crate::options::EngineOptions;
 use crate::owner::{OwnerDraft, SymbolEntry, build_owner};
 use crate::packages::{clone_graph, default_context, graph_fingerprint, package_context};
+use crate::report::SkippedFile;
+use crate::scan::skipped_files;
 use crate::similarity::{SIMILARITY_BLOB, decode_persisted, replace_symbols, symbol_docs};
 
 pub(crate) const META_BLOB: &str = "engine:meta";
@@ -26,6 +28,8 @@ pub(crate) const REPOS_BLOB: &str = "engine:repos";
 pub(crate) const REPOS_BLOB_VERSION: u32 = 1;
 pub(crate) const PROJECT_BLOB: &str = "engine:project";
 pub(crate) const PROJECT_BLOB_VERSION: u32 = 1;
+pub(crate) const SKIPPED_BLOB: &str = "engine:skipped";
+pub(crate) const SKIPPED_BLOB_VERSION: u32 = 1;
 pub(crate) const FACTS_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -89,6 +93,23 @@ pub(crate) fn write_project_fingerprint(tx: &mut WriteTx<'_>, fingerprint: &str)
   Ok(())
 }
 
+pub(crate) fn read_skipped(tx: &ReadTx<'_>) -> EngineResult<Option<Vec<SkippedFile>>> {
+  let Some(blob) = tx.blob(SKIPPED_BLOB)?.filter(|blob| blob.version == SKIPPED_BLOB_VERSION) else {
+    return Ok(None);
+  };
+  serde_json::from_slice(&blob.bytes).map(Some).map_err(|error| EngineError::codec("skipped files", error))
+}
+
+pub(crate) fn write_skipped(tx: &mut WriteTx<'_>, skipped: &[SkippedFile]) -> EngineResult<()> {
+  let bytes = serde_json::to_vec(skipped).map_err(|error| EngineError::codec("skipped files", error))?;
+  tx.put_blob(SKIPPED_BLOB, SKIPPED_BLOB_VERSION, &bytes)?;
+  Ok(())
+}
+
+pub(crate) fn all_skipped(repos: &BTreeMap<RepoName, RepoState>) -> Vec<SkippedFile> {
+  repos.values().flat_map(|repo| repo.skipped.iter().cloned()).collect()
+}
+
 pub(crate) fn read_known_repos(tx: &ReadTx<'_>) -> EngineResult<BTreeSet<RepoName>> {
   let Some(blob) = tx.blob(REPOS_BLOB)?.filter(|blob| blob.version == REPOS_BLOB_VERSION) else {
     return Ok(BTreeSet::new());
@@ -146,6 +167,7 @@ pub(crate) struct RepoState {
   pub graph: Option<PackageGraph>,
   pub scan_started_ns: Option<i64>,
   pub health: RepoHealth,
+  pub skipped: Vec<SkippedFile>,
 }
 
 #[derive(Debug, Clone)]
@@ -247,7 +269,7 @@ pub(crate) struct Loaded {
 
 pub(crate) fn load_state(store: &Store, project: &Project, toolchain: &Toolchain, options: &EngineOptions) -> EngineResult<Loaded> {
   let started = Instant::now();
-  let (meta, dirty, records, blobs, stale_inferred, similarity_blob, indexed, scip) = store.read(|tx| -> EngineResult<_> {
+  let (meta, dirty, records, blobs, stale_inferred, similarity_blob, indexed, scip, persisted_skipped) = store.read(|tx| -> EngineResult<_> {
     let meta = EngineMeta::read(tx)?;
     let indexed = indexed_repos(tx)?;
     let scip = ScipMeta::read(tx)?;
@@ -265,7 +287,17 @@ pub(crate) fn load_state(store: &Store, project: &Project, toolchain: &Toolchain
       }
       records.insert(repo.name.clone(), files);
     }
-    Ok((meta, dirty, records, blobs, count_inferred_stale(tx)?, tx.blob(SIMILARITY_BLOB)?, indexed, scip))
+    Ok((
+      meta,
+      dirty,
+      records,
+      blobs,
+      count_inferred_stale(tx)?,
+      tx.blob(SIMILARITY_BLOB)?,
+      indexed,
+      scip,
+      read_skipped(tx)?,
+    ))
   })?;
   let meta = meta.filter(EngineMeta::is_compatible);
   let loaded: Vec<LoadedFile> = blobs
@@ -297,9 +329,17 @@ pub(crate) fn load_state(store: &Store, project: &Project, toolchain: &Toolchain
       })
       .collect();
     let repo_meta = meta.as_ref().and_then(|meta| meta.repos.get(config.name.as_str()));
-    let (graph, health) = match discover(config, project.settings.max_file_bytes) {
-      Ok(discovered) => (Some(PackageGraph::load(&config.path, &discovered.files)), RepoHealth::Present),
-      Err(error) => (None, RepoHealth::Missing { reason: error.to_string() }),
+    let (graph, health, discovered_skips) = match discover(config, project.settings.max_file_bytes) {
+      Ok(discovered) => (
+        Some(PackageGraph::load(&config.path, &discovered.files)),
+        RepoHealth::Present,
+        skipped_files(&config.name, &discovered.skipped),
+      ),
+      Err(error) => (None, RepoHealth::Missing { reason: error.to_string() }, Vec::new()),
+    };
+    let skipped = match &persisted_skipped {
+      Some(persisted) => persisted.iter().filter(|file| file.repo == config.name).cloned().collect(),
+      None => discovered_skips,
     };
     let fingerprint = graph.as_ref().map(graph_fingerprint);
     if fingerprint.as_deref() != repo_meta.map(|meta| meta.graph_fingerprint.as_str()) && !stamps.is_empty() {
@@ -316,6 +356,7 @@ pub(crate) fn load_state(store: &Store, project: &Project, toolchain: &Toolchain
         graph,
         scan_started_ns: repo_meta.and_then(|meta| meta.scan_started_ns),
         health,
+        skipped,
       },
     );
   }

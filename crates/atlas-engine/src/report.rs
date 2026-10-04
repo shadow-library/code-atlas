@@ -1,14 +1,90 @@
 use std::collections::BTreeMap;
+use std::fmt;
 use std::time::Duration;
 
 use atlas_core::{RelPath, RepoName, RunId};
+use atlas_project::SkipReason;
 use atlas_store::IndexRun;
+use serde::{Deserialize, Serialize};
+
+pub const SKIPPED_SAMPLE: usize = 10;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FailedFile {
   pub repo: RepoName,
   pub path: Option<RelPath>,
   pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SkipCause {
+  TooLarge { size: u64, limit: u64 },
+  NonUtf8Path,
+  Symlink,
+  Unreadable { message: String },
+}
+
+fn human_bytes(bytes: u64) -> String {
+  const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
+  let mut value = bytes as f64;
+  let mut unit = 0;
+  while value >= 1024.0 && unit < UNITS.len() - 1 {
+    value /= 1024.0;
+    unit += 1;
+  }
+  match (value.fract() == 0.0, unit) {
+    (true, _) | (_, 0) => format!("{value:.0} {}", UNITS[unit]),
+    _ => format!("{value:.1} {}", UNITS[unit]),
+  }
+}
+
+impl fmt::Display for SkipCause {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      Self::TooLarge { size, limit } => write!(f, "{} > max_file_bytes {}", human_bytes(*size), human_bytes(*limit)),
+      Self::NonUtf8Path => f.write_str("path is not valid UTF-8"),
+      Self::Symlink => f.write_str("symlink"),
+      Self::Unreadable { message } => write!(f, "unreadable: {message}"),
+    }
+  }
+}
+
+impl From<&SkipReason> for SkipCause {
+  fn from(reason: &SkipReason) -> Self {
+    match reason {
+      SkipReason::TooLarge { size, limit } => Self::TooLarge { size: *size, limit: *limit },
+      SkipReason::NonUtf8Path => Self::NonUtf8Path,
+      SkipReason::Symlink => Self::Symlink,
+      SkipReason::Unreadable(message) => Self::Unreadable { message: message.clone() },
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct SkippedFile {
+  pub repo: RepoName,
+  pub path: RelPath,
+  pub cause: SkipCause,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SkippedSummary {
+  pub total: u64,
+  pub first: Vec<SkippedFile>,
+}
+
+impl SkippedSummary {
+  pub fn of<'a>(files: impl IntoIterator<Item = &'a SkippedFile>) -> Self {
+    let mut summary = Self::default();
+    for file in files {
+      summary.total += 1;
+      if summary.first.len() < SKIPPED_SAMPLE {
+        summary.first.push(file.clone());
+      }
+    }
+    summary
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +110,7 @@ pub struct FreshnessHeader {
   pub scip: ScipLag,
   pub stale_inferred_facts: u64,
   pub files_failed_analysis: u64,
+  pub skipped: SkippedSummary,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,4 +188,5 @@ pub struct IndexStatus {
   pub llm: LlmSpend,
   pub dangling_detector_edges_dropped: u64,
   pub repos_missing: Vec<FailedFile>,
+  pub skipped: SkippedSummary,
 }

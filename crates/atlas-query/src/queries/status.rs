@@ -48,6 +48,13 @@ impl RunView {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SkippedFileView {
+  pub repo: String,
+  pub path: String,
+  pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct StatusAnswer {
   pub project: String,
   pub repos: Vec<String>,
@@ -69,6 +76,8 @@ pub struct StatusAnswer {
   pub llm_output_tokens: u64,
   pub llm_cost_estimate_usd: f64,
   pub dangling_detector_edges_dropped: u64,
+  pub skipped_total: u64,
+  pub skipped_files: Vec<SkippedFileView>,
 }
 
 fn failed(file: &atlas_engine::FailedFile) -> FailedFileView {
@@ -109,6 +118,17 @@ impl QueryEngine {
       llm_output_tokens: status.llm.output_tokens,
       llm_cost_estimate_usd: status.llm.cost_estimate_usd,
       dangling_detector_edges_dropped: status.dangling_detector_edges_dropped,
+      skipped_total: status.skipped.total,
+      skipped_files: status
+        .skipped
+        .first
+        .iter()
+        .map(|file| SkippedFileView {
+          repo: file.repo.to_string(),
+          path: file.path.to_string(),
+          reason: file.cause.to_string(),
+        })
+        .collect(),
     };
     Ok(Response { freshness, answer })
   }

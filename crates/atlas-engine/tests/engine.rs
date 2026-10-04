@@ -602,7 +602,12 @@ fn should_skip_enrichment_without_affecting_freshness_when_the_llm_is_unavailabl
   let after = fresh(&engine);
   assert!(after.is_fresh());
   assert_eq!(after.header().run, None);
-  assert_eq!(engine.status().unwrap().inferred, atlas_engine::InferredCounts::default());
+  let status = engine.status().unwrap();
+  assert_eq!(status.inferred, atlas_engine::InferredCounts::default());
+  let run = status.runs.iter().find(|run| run.id == report.run).unwrap();
+  assert!(matches!(&run.status, RunStatus::Partial { reason } if reason.contains("unavailable")), "{:?}", run.status);
+  assert_eq!(run.report.counts["tasks_skipped_unavailable"], report.candidates);
+  assert_eq!(run.report.counts["tasks_skipped_budget"], 0);
 }
 
 struct PanickingPass;
@@ -694,4 +699,87 @@ fn should_reanalyze_files_whose_stored_artifact_is_outdated() {
   assert_eq!(run.report.counts["files_analyzed"], 1);
   assert_eq!(digest(&reopened), before);
   assert_eq!(fresh(&reopened).header().run, None);
+}
+
+fn tree_with_oversized_file(scratch: &Path) -> (atlas_project::Project, std::path::PathBuf) {
+  let mut project = acme_copy(&scratch.join("tree"));
+  project.settings.max_file_bytes = 1024 * 1024;
+  let big = scratch.join("tree/acme-api/big.ts");
+  (project, big)
+}
+
+fn write_oversized(path: &Path) {
+  fs::write(path, format!("export const blob = \"{}\";\n", "x".repeat(1_300_000))).unwrap();
+}
+
+#[test]
+fn should_report_oversized_files_in_the_run_ledger_status_and_freshness_header() {
+  let scratch = tempfile::tempdir().unwrap();
+  let (project, big) = tree_with_oversized_file(scratch.path());
+  write_oversized(&big);
+  let engine = open(&project, &scratch.path().join("home"));
+
+  let report = fresh(&engine);
+
+  let skipped = &report.header().skipped;
+  assert_eq!(skipped.total, 1);
+  assert_eq!(skipped.first.len(), 1);
+  assert_eq!(skipped.first[0].repo, repo("acme-api"));
+  assert_eq!(skipped.first[0].path, rel("big.ts"));
+  assert_eq!(skipped.first[0].cause.to_string(), "1.2 MB > max_file_bytes 1 MB");
+  let status = engine.status().unwrap();
+  assert_eq!(status.skipped, *skipped);
+  let latest = status.runs.iter().max_by_key(|run| run.id.0).unwrap();
+  assert_eq!(latest.report.counts["files_skipped"], 1);
+  assert!(named(&engine, "blob", "acme-api").is_empty());
+}
+
+#[test]
+fn should_persist_skipped_files_across_engine_restarts() {
+  let scratch = tempfile::tempdir().unwrap();
+  let (project, big) = tree_with_oversized_file(scratch.path());
+  write_oversized(&big);
+  let home = scratch.path().join("home");
+  let engine = open(&project, &home);
+  fresh(&engine);
+  drop(engine);
+
+  let reopened = open(&project, &home);
+
+  assert_eq!(reopened.status().unwrap().skipped.total, 1);
+  assert_eq!(reopened.status().unwrap().skipped.first[0].path, rel("big.ts"));
+}
+
+#[test]
+fn should_track_skipped_files_that_appear_and_disappear_without_a_new_index_run() {
+  let scratch = tempfile::tempdir().unwrap();
+  let (project, big) = tree_with_oversized_file(scratch.path());
+  let engine = open(&project, &scratch.path().join("home"));
+  assert_eq!(fresh(&engine).header().skipped.total, 0);
+  let runs = run_count(&engine);
+
+  write_oversized(&big);
+  let appeared = fresh(&engine);
+  assert_eq!(appeared.header().skipped.total, 1);
+  assert_eq!(engine.status().unwrap().skipped.total, 1);
+
+  fs::remove_file(&big).unwrap();
+  let gone = fresh(&engine);
+  assert_eq!(gone.header().skipped.total, 0);
+  assert_eq!(engine.status().unwrap().skipped.total, 0);
+  assert_eq!(run_count(&engine), runs);
+}
+
+#[test]
+fn should_cap_the_skipped_sample_but_count_every_skipped_file() {
+  let scratch = tempfile::tempdir().unwrap();
+  let (mut project, _) = tree_with_oversized_file(scratch.path());
+  project.settings.max_file_bytes = 64;
+  let engine = open(&project, &scratch.path().join("home"));
+
+  let report = fresh(&engine);
+
+  let skipped = &report.header().skipped;
+  assert!(skipped.total > atlas_engine::SKIPPED_SAMPLE as u64, "{}", skipped.total);
+  assert_eq!(skipped.first.len(), atlas_engine::SKIPPED_SAMPLE);
 }

@@ -58,6 +58,10 @@ impl WatchSignals {
     self.lock().state.clone()
   }
 
+  pub fn events(&self) -> u64 {
+    self.lock().events
+  }
+
   pub fn is_clean(&self, full_scan_interval: Duration) -> bool {
     let signals = self.lock();
     matches!(signals.state, WatchState::Healthy { dirty: false }) && signals.last_scan.is_some_and(|scanned| scanned.elapsed() < full_scan_interval)
@@ -134,6 +138,11 @@ pub struct WatchHandle {
 impl WatchHandle {
   pub fn state(&self) -> WatchState {
     self.signals.state()
+  }
+
+  #[doc(hidden)]
+  pub fn events_seen(&self) -> u64 {
+    self.signals.events()
   }
 
   #[doc(hidden)]
@@ -325,5 +334,22 @@ mod tests {
     signals.finish_scan(token);
     assert!(!signals.is_clean(Duration::from_secs(60)));
     assert_eq!(signals.state(), WatchState::Dead { reason: "gone".to_owned() });
+  }
+
+  #[test]
+  fn should_not_report_clean_when_an_event_arrives_during_a_scan() {
+    let signals = WatchSignals::default();
+    signals.activate();
+    let token = signals.begin_scan();
+    signals.finish_scan(token);
+    signals.mark_event();
+    let token = signals.begin_scan();
+    signals.mark_event();
+    signals.finish_scan(token);
+    assert!(!signals.is_clean(Duration::from_secs(60)));
+    assert_eq!(signals.state(), WatchState::Healthy { dirty: true });
+    let token = signals.begin_scan();
+    signals.finish_scan(token);
+    assert!(signals.is_clean(Duration::from_secs(60)));
   }
 }

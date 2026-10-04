@@ -1,14 +1,16 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use atlas_core::{Language, RelPath, RepoName};
-use atlas_project::{ChangeSet, DiscoveredFile, detect_changes, discover, is_manifest_name};
+use atlas_project::{ChangeSet, DiscoveredFile, SkipReason, detect_changes, discover, is_manifest_name};
 
+use crate::report::SkippedFile;
 use crate::state::RepoState;
 
 pub(crate) struct ScannedRepo {
   pub files: Vec<DiscoveredFile>,
   pub changes: ChangeSet,
   pub walk_errors: Vec<String>,
+  pub skipped: Vec<SkippedFile>,
 }
 
 pub(crate) enum ScanOutcome {
@@ -48,10 +50,22 @@ pub(crate) fn scan_repo(state: &RepoState, max_file_bytes: u64) -> RepoScan {
         files: result.files,
         changes,
         walk_errors: result.walk_errors,
+        skipped: skipped_files(&repo, &result.skipped),
       }))
     }
   };
   RepoScan { repo, started_ns, outcome }
+}
+
+pub(crate) fn skipped_files(repo: &RepoName, skipped: &[(RelPath, SkipReason)]) -> Vec<SkippedFile> {
+  skipped
+    .iter()
+    .map(|(path, reason)| SkippedFile {
+      repo: repo.clone(),
+      path: path.clone(),
+      cause: reason.into(),
+    })
+    .collect()
 }
 
 pub(crate) fn is_code_file(path: &RelPath) -> bool {

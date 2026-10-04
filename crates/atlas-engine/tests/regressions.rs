@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use atlas_core::{
   Availability, Certainty, Confidence, DetectInput, DetectedEdge, DetectedEntity, Detection, Detector, Diagnostic, EdgeKind, EntityKey, Evidence, FileFacts, NodeRef, Owner,
@@ -611,18 +611,43 @@ fn should_not_migrate_inferred_facts_between_unrelated_tiny_functions() {
   assert!(migrated.is_empty(), "isAdmin's security fact must not migrate onto isArchived: {migrated:#?}");
 }
 
-struct SleepPass {
-  armed: Arc<AtomicBool>,
+const WAIT_DEADLINE: Duration = Duration::from_secs(30);
+const EVENT_QUIET: Duration = Duration::from_millis(300);
+
+fn wait_until(what: &str, mut condition: impl FnMut() -> bool) {
+  let deadline = Instant::now() + WAIT_DEADLINE;
+  while !condition() {
+    assert!(Instant::now() < deadline, "timed out waiting for {what}");
+    thread::sleep(Duration::from_millis(10));
+  }
 }
 
-impl ProjectPass for SleepPass {
+fn wait_for_quiet_events(watch: &atlas_engine::WatchHandle) {
+  let mut last = (watch.events_seen(), Instant::now());
+  wait_until("the watcher to stop delivering events", || {
+    let seen = watch.events_seen();
+    if seen != last.0 {
+      last = (seen, Instant::now());
+    }
+    last.1.elapsed() >= EVENT_QUIET
+  });
+}
+
+struct GatePass {
+  armed: Arc<AtomicBool>,
+  entered: Arc<AtomicBool>,
+  release: Arc<AtomicBool>,
+}
+
+impl ProjectPass for GatePass {
   fn name(&self) -> &'static str {
-    "sleep-probe"
+    "gate-probe"
   }
 
   fn run(&self, _tx: &ReadTx<'_>, _context: &PassContext<'_>) -> Result<PassOutput, PassError> {
     if self.armed.load(Ordering::SeqCst) {
-      thread::sleep(Duration::from_millis(800));
+      self.entered.store(true, Ordering::SeqCst);
+      wait_until("the test to release the pass", || self.release.load(Ordering::SeqCst));
     }
     Ok(PassOutput::default())
   }
@@ -634,30 +659,41 @@ fn should_not_report_watcher_clean_while_events_are_queued() {
   let tree = scratch.path().join("tree");
   let project = acme_copy(&tree);
   let armed = Arc::new(AtomicBool::new(false));
+  let entered = Arc::new(AtomicBool::new(false));
+  let release = Arc::new(AtomicBool::new(false));
   let options = EngineOptions {
-    passes: vec![Arc::new(SleepPass { armed: Arc::clone(&armed) })],
+    passes: vec![Arc::new(GatePass {
+      armed: Arc::clone(&armed),
+      entered: Arc::clone(&entered),
+      release: Arc::clone(&release),
+    })],
     watch_debounce: Duration::from_millis(50),
     ..EngineOptions::default()
   };
   let engine = Arc::new(open_with(&project, &scratch.path().join("home"), options));
   fresh(&engine);
-  let _watch = engine.watch().unwrap();
-  thread::sleep(Duration::from_millis(300));
-  fresh(&engine);
+  let watch = engine.watch().unwrap();
   let mut stale = Vec::new();
   for attempt in 0..8 {
+    wait_for_quiet_events(&watch);
+    fresh(&engine);
+    entered.store(false, Ordering::SeqCst);
+    release.store(false, Ordering::SeqCst);
     armed.store(true, Ordering::SeqCst);
     let x = tree.join("acme-api/src/common/money.ts");
     let mut text = fs::read_to_string(&x).unwrap();
     text.push_str(&format!("\nexport const touchX{attempt} = {attempt};\n"));
     fs::write(&x, text).unwrap();
-    thread::sleep(Duration::from_millis(400));
+    wait_until("the watcher run to enter the gated pass", || entered.load(Ordering::SeqCst));
+    let before_y = watch.events_seen();
     let y = tree.join("acme-api/src/common/slug.ts");
     let mut text = fs::read_to_string(&y).unwrap();
     text.push_str(&format!("\nexport function watchProbe{attempt}() {{\n  return {attempt};\n}}\n"));
     fs::write(&y, text).unwrap();
-    thread::sleep(Duration::from_millis(100));
+    wait_until("the watcher to deliver the second edit while the run is in flight", || watch.events_seen() > before_y);
+    wait_for_quiet_events(&watch);
     armed.store(false, Ordering::SeqCst);
+    release.store(true, Ordering::SeqCst);
     fresh(&engine);
     let found = engine
       .store()
@@ -666,7 +702,6 @@ fn should_not_report_watcher_clean_while_events_are_queued() {
     if found.is_empty() {
       stale.push(attempt);
     }
-    thread::sleep(Duration::from_millis(1200));
   }
   assert!(stale.is_empty(), "stale watcher-clean answers on attempts {stale:?}");
 }
@@ -1219,4 +1254,33 @@ fn should_not_ingest_while_another_process_crashed_mid_run_during_the_indexer() 
   assert!(edges.is_empty(), "stale edges after ingest: {edges:#?}");
   fresh(&engine);
   assert!(engine.store().read(|tx| tx.owned_facts(&owner)).unwrap().edges.is_empty());
+}
+
+#[test]
+fn should_re_resolve_dependents_directly_when_a_repo_is_removed() {
+  for removed in ["acme-sdk", "acme-web", "acme-api"] {
+    let scratch = tempfile::tempdir().unwrap();
+    let tree = scratch.path().join("tree");
+    let project = acme_copy(&tree);
+    let home = scratch.path().join("home");
+    let engine = open(&project, &home);
+    fresh(&engine);
+    drop(engine);
+    let mut fewer = project.clone();
+    fewer.repos.retain(|repo| repo.name.as_str() != removed);
+    let reopened = open(&fewer, &home);
+
+    let summary = reopened.index(IndexMode::Incremental).unwrap();
+
+    assert_eq!(
+      summary.counts.get("safety_net_owners"),
+      None,
+      "removing {removed} relied on the safety net: {:?}",
+      summary.counts
+    );
+    assert!(
+      mismatch(&fewer, &reopened, scratch.path(), removed).is_none(),
+      "removing {removed} diverged from a full index"
+    );
+  }
 }

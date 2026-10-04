@@ -34,7 +34,13 @@ pub struct Freshness {
   pub scip: ScipState,
   pub stale_inferred_facts: u64,
   pub files_failed_analysis: u64,
+  #[serde(skip_serializing_if = "is_zero")]
+  pub skipped_files: u64,
   pub notes: Vec<String>,
+}
+
+fn is_zero(value: &u64) -> bool {
+  *value == 0
 }
 
 impl Freshness {
@@ -64,6 +70,7 @@ impl Freshness {
       },
       stale_inferred_facts: header.stale_inferred_facts,
       files_failed_analysis: header.files_failed_analysis,
+      skipped_files: header.skipped.total,
       notes: Vec::new(),
     }
   }

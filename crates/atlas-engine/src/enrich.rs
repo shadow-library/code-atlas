@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use atlas_core::{ContentHash, EntityId, RelPath, RepoName, RunId};
 use atlas_semantic::{
-  RevalidationReport, SemanticBudget, SemanticConfig, SemanticEngine, SemanticReport, SemanticTask, SimilarityPair, SourceRef, SymbolSnippet, TaskProviders,
-  providers_from_settings,
+  RevalidationReport, SemanticBudget, SemanticConfig, SemanticEngine, SemanticReport, SemanticRunStatus, SemanticTask, SimilarityPair, SkipReason, SourceRef, SymbolSnippet,
+  TaskOutcome, TaskProviders, providers_from_settings,
 };
 use atlas_store::{FreshnessPolicy, InferredQuery, RunOutcome, RunReport, StoredInferredFact};
 
@@ -20,6 +20,46 @@ pub struct EnrichReport {
   pub candidates_without_source: u64,
   pub similarity: SemanticReport,
   pub revalidation: RevalidationReport,
+}
+
+#[derive(Default)]
+struct SkipTally {
+  unavailable: u64,
+  budget: u64,
+}
+
+impl SkipTally {
+  fn of<'a>(reports: impl IntoIterator<Item = &'a SemanticReport>) -> Self {
+    let mut tally = Self::default();
+    for task in reports.into_iter().flat_map(|report| &report.tasks) {
+      match &task.outcome {
+        TaskOutcome::Skipped {
+          reason: SkipReason::ProviderUnavailable { .. },
+        } => tally.unavailable += 1,
+        TaskOutcome::Skipped {
+          reason: SkipReason::BudgetExhausted,
+        } => tally.budget += 1,
+        _ => {}
+      }
+    }
+    tally
+  }
+
+  fn outcome<'a>(&self, reports: impl IntoIterator<Item = &'a SemanticReport>) -> RunOutcome {
+    let unavailable = reports.into_iter().find_map(|report| match &report.status {
+      SemanticRunStatus::ProviderUnavailable { reason } => Some(reason.clone()),
+      _ => None,
+    });
+    match (unavailable, self.unavailable, self.budget) {
+      (Some(reason), unavailable, budget) => RunOutcome::Partial {
+        reason: format!("llm provider unavailable ({reason}); {unavailable} task(s) skipped, {budget} over budget"),
+      },
+      (None, 0, 0) => RunOutcome::Ok,
+      (None, unavailable, budget) => RunOutcome::Partial {
+        reason: format!("{unavailable} task(s) skipped as provider unavailable, {budget} skipped over budget"),
+      },
+    }
+  }
 }
 
 impl Engine {
@@ -58,19 +98,23 @@ impl Engine {
       |repo, path| current_hashes.get(&(repo.clone(), path.clone())).copied(),
       |fact| self.rebuild_similarity_task(fact),
     )?;
+    let skips = SkipTally::of([&similarity, &revalidation.rerun]);
     let counts = BTreeMap::from([
       ("candidates".to_owned(), candidates),
       ("provider_calls".to_owned(), u64::from(similarity.provider_calls + revalidation.rerun.provider_calls)),
       ("cache_hits".to_owned(), u64::from(similarity.cache_hits + revalidation.rerun.cache_hits)),
       ("revalidation_due".to_owned(), due.len() as u64),
+      ("tasks_skipped_unavailable".to_owned(), skips.unavailable),
+      ("tasks_skipped_budget".to_owned(), skips.budget),
     ]);
     let report = RunReport {
       phase_timings_ms: BTreeMap::new(),
       counts,
       change_set: serde_json::Value::Null,
     };
-    self.store.write(|tx| -> EngineResult<()> { Ok(tx.finish_run(run, RunOutcome::Ok, &report)?) })?;
-    tracing::info!(run = run.0, candidates, status = ?similarity.status, "semantic enrichment finished");
+    let outcome = skips.outcome([&similarity, &revalidation.rerun]);
+    self.store.write(|tx| -> EngineResult<()> { Ok(tx.finish_run(run, outcome, &report)?) })?;
+    tracing::info!(run = run.0, candidates, status = ?similarity.status, skipped_unavailable = skips.unavailable, skipped_budget = skips.budget, "semantic enrichment finished");
     Ok(EnrichReport {
       run,
       candidates,

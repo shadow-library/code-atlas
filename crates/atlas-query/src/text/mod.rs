@@ -67,6 +67,9 @@ fn render_freshness(freshness: &Freshness, out: &mut TextOut) {
   if freshness.files_failed_analysis > 0 {
     notes.push(format!("{} files failed analysis", freshness.files_failed_analysis));
   }
+  if freshness.skipped_files > 0 {
+    notes.push(format!("skipped {} files (see status)", freshness.skipped_files));
+  }
   if let ScipState::Behind { files } = freshness.scip {
     notes.push(format!("scip behind on {files} files"));
   }

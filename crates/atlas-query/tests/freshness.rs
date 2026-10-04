@@ -32,6 +32,23 @@ fn should_report_the_incremental_update_in_the_freshness_header_after_an_edit() 
 }
 
 #[test]
+fn should_note_skipped_files_in_the_freshness_header() {
+  let fixture = common::acme();
+  fs::write(fixture.repo_root("acme-api").join("src/huge.ts"), "x".repeat(1024 * 1024 + 1)).unwrap();
+
+  let response = fixture.query.callers(&TraverseRequest::new("UsersService.findOne")).unwrap();
+
+  assert_eq!(response.freshness.skipped_files, 1);
+  assert!(
+    first_line(&fixture.text(&response)).ends_with(" | skipped 1 files (see status)"),
+    "{}",
+    fixture.text(&response)
+  );
+  let clean = common::acme().query.callers(&TraverseRequest::new("UsersService.findOne")).unwrap();
+  assert_eq!(clean.freshness.skipped_files, 0);
+}
+
+#[test]
 fn should_mark_answers_degraded_and_name_the_failed_file_under_an_injected_failure() {
   let options = EngineOptions {
     fault_injection: FaultInjection::panic_when(|repo, path| repo.as_str() == "acme-api" && path.as_str() == "src/users/users.service.ts"),
