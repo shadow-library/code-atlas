@@ -2,3 +2,4 @@ scratch-pad
 .worktrees/
 /target/
 **/target/
+eval/runs/

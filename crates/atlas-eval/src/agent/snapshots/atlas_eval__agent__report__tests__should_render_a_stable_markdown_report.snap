@@ -1,0 +1,165 @@
+---
+source: crates/atlas-eval/src/agent/report.rs
+expression: render_markdown(&report)
+---
+# Agent A/B report
+
+## Environment
+
+| key | value |
+|---|---|
+| date | 2026-10-04 |
+| seed | 7 |
+| claude CLI | 2.1.289 (Claude Code) |
+| session model | claude-haiku-4-5-20251001 |
+| judge model | claude-sonnet-5-5 |
+| claude config | user |
+| code-atlas commit | 9b1fc2d |
+| code-atlas version | unknown |
+| preamble version | 1 |
+| repo override | none |
+| spent (reported) | $2.00 |
+
+## Aggregates (mean of per-task means over 1 paired tasks)
+
+Only tasks with scored, uncontaminated runs in both conditions are aggregated (0 contaminated runs excluded). Times (`first_edit_ms`, `session_ms`, `wall_ms`) exclude Code Atlas indexing, which is reported separately as `atlas_index_ms`.
+
+### Correctness
+
+| metric | baseline (1 tasks) | atlas (1 tasks) |
+|---|---|---|
+| hidden_tests_pass | 1 | 0.5 |
+| regressions | 0 | 0 |
+| judge_correctness | 4.5 | 4 |
+| judge_completeness | 4.5 | 4 |
+
+### Reuse and blast radius
+
+| metric | baseline (1 tasks) | atlas (1 tasks) |
+|---|---|---|
+| must_change_coverage | 1 | 1 |
+| must_consider_coverage | 0 | 0 |
+| judge_architectural_consistency | 4.5 | 4 |
+| judge_appropriate_reuse | 4.5 | 4 |
+| judge_blast_radius_handling | 4.5 | 4 |
+
+### Tokens and context
+
+| metric | baseline (1 tasks) | atlas (1 tasks) |
+|---|---|---|
+| total_tokens | 110000 | 85000 |
+| input_tokens | 11000 | 8500 |
+| output_tokens | 11000 | 8500 |
+| cache_read_tokens | 77000 | 59500 |
+| cache_creation_tokens | 11000 | 8500 |
+| cost_usd | 0.5 | 0.5 |
+| num_turns | 12 | 12 |
+| tool_calls | 20 | 20 |
+| search_calls | 4 | 4 |
+| files_read | 7 | 2.5 |
+| irrelevant_files_read | 1 | 1 |
+| relevant_files_missed | 0 | 0 |
+| bytes_read | 1000 | 1000 |
+| lines_read | 50 | 50 |
+| unparsed_bash_reads | 0 | 0 |
+| atlas_calls | 0 | 0 |
+| atlas_bytes | 0 | 0 |
+| information_density | 0.25 | 0.25 |
+| first_edit_ms | 20000 | 20000 |
+| session_ms | 50000 | 50000 |
+| wall_ms | 60000 | 60000 |
+| atlas_index_ms | – | 1200 |
+
+## Per task
+
+### t00-smoke
+
+- baseline: 2 runs: completed 2, max_turns 0, reported_error 0, timed_out 0, no_result 0, setup_failed 0; contaminated 0; estimated costs 0
+- atlas: 3 runs: completed 1, max_turns 1, reported_error 0, timed_out 0, no_result 0, setup_failed 1; contaminated 0; estimated costs 0
+
+| metric | baseline | atlas |
+|---|---|---|
+| hidden_tests_pass | 1 (1–1, n=2) | 0.5 (0–1, n=2 of 3) |
+| regressions | 0 (0–0, n=2) | 0 (0–0, n=2 of 3) |
+| judge_correctness | 4.5 (4–5, n=2) | 4 (3–5, n=2 of 3) |
+| judge_completeness | 4.5 (4–5, n=2) | 4 (3–5, n=2 of 3) |
+| must_change_coverage | 1 (1–1, n=2) | 1 (1–1, n=2 of 3) |
+| must_consider_coverage | 0 (0–0, n=2) | 0 (0–0, n=2 of 3) |
+| judge_architectural_consistency | 4.5 (4–5, n=2) | 4 (3–5, n=2 of 3) |
+| judge_appropriate_reuse | 4.5 (4–5, n=2) | 4 (3–5, n=2 of 3) |
+| judge_blast_radius_handling | 4.5 (4–5, n=2) | 4 (3–5, n=2 of 3) |
+| total_tokens | 110000 (100000–120000, n=2) | 85000 (80000–90000, n=2 of 3) |
+| input_tokens | 11000 (10000–12000, n=2) | 8500 (8000–9000, n=2 of 3) |
+| output_tokens | 11000 (10000–12000, n=2) | 8500 (8000–9000, n=2 of 3) |
+| cache_read_tokens | 77000 (70000–84000, n=2) | 59500 (56000–63000, n=2 of 3) |
+| cache_creation_tokens | 11000 (10000–12000, n=2) | 8500 (8000–9000, n=2 of 3) |
+| cost_usd | 0.5 (0.5–0.5, n=2) | 0.5 (0.5–0.5, n=2 of 3) |
+| num_turns | 12 (12–12, n=2) | 12 (12–12, n=2 of 3) |
+| tool_calls | 20 (20–20, n=2) | 20 (20–20, n=2 of 3) |
+| search_calls | 4 (4–4, n=2) | 4 (4–4, n=2 of 3) |
+| files_read | 7 (6–8, n=2) | 2.5 (2–3, n=2 of 3) |
+| irrelevant_files_read | 1 (1–1, n=2) | 1 (1–1, n=2 of 3) |
+| relevant_files_missed | 0 (0–0, n=2) | 0 (0–0, n=2 of 3) |
+| bytes_read | 1000 (1000–1000, n=2) | 1000 (1000–1000, n=2 of 3) |
+| lines_read | 50 (50–50, n=2) | 50 (50–50, n=2 of 3) |
+| unparsed_bash_reads | 0 (0–0, n=2) | 0 (0–0, n=2 of 3) |
+| atlas_calls | 0 (0–0, n=2) | 0 (0–0, n=2 of 3) |
+| atlas_bytes | 0 (0–0, n=2) | 0 (0–0, n=2 of 3) |
+| information_density | 0.25 (0.25–0.25, n=2) | 0.25 (0.25–0.25, n=2 of 3) |
+| first_edit_ms | 20000 (20000–20000, n=2) | 20000 (20000–20000, n=2 of 3) |
+| session_ms | 50000 (50000–50000, n=2) | 50000 (50000–50000, n=2 of 3) |
+| wall_ms | 60000 (60000–60000, n=2) | 60000 (60000–60000, n=2 of 3) |
+| atlas_index_ms | – | 1200 (1200–1200, n=2 of 3) |
+
+### t01-unpaired
+
+- baseline: 1 runs: completed 1, max_turns 0, reported_error 0, timed_out 0, no_result 0, setup_failed 0; contaminated 0; estimated costs 0
+- atlas: 1 runs: completed 0, max_turns 0, reported_error 0, timed_out 0, no_result 0, setup_failed 1; contaminated 0; estimated costs 0
+
+| metric | baseline | atlas |
+|---|---|---|
+| hidden_tests_pass | 1 | – |
+| regressions | 0 | – |
+| judge_correctness | 5 | – |
+| judge_completeness | 5 | – |
+| must_change_coverage | 1 | – |
+| must_consider_coverage | 0 | – |
+| judge_architectural_consistency | 5 | – |
+| judge_appropriate_reuse | 5 | – |
+| judge_blast_radius_handling | 5 | – |
+| total_tokens | 10 | – |
+| input_tokens | 1 | – |
+| output_tokens | 1 | – |
+| cache_read_tokens | 7 | – |
+| cache_creation_tokens | 1 | – |
+| cost_usd | 0.5 | – |
+| num_turns | 12 | – |
+| tool_calls | 20 | – |
+| search_calls | 4 | – |
+| files_read | 1 | – |
+| irrelevant_files_read | 1 | – |
+| relevant_files_missed | 0 | – |
+| bytes_read | 1000 | – |
+| lines_read | 50 | – |
+| unparsed_bash_reads | 0 | – |
+| atlas_calls | 0 | – |
+| atlas_bytes | 0 | – |
+| information_density | 0.25 | – |
+| first_edit_ms | 20000 | – |
+| session_ms | 50000 | – |
+| wall_ms | 60000 | – |
+
+## Negative results
+
+- **t00-smoke** `hidden_tests_pass`: baseline 1 vs atlas 0.5 — transcripts: t00-smoke.baseline.r0/transcript.jsonl, t00-smoke.baseline.r1/transcript.jsonl, t00-smoke.atlas.r0/transcript.jsonl, t00-smoke.atlas.r1/transcript.jsonl
+- **t00-smoke** `judge_correctness`: baseline 4.5 vs atlas 4 — transcripts: t00-smoke.baseline.r0/transcript.jsonl, t00-smoke.baseline.r1/transcript.jsonl, t00-smoke.atlas.r0/transcript.jsonl, t00-smoke.atlas.r1/transcript.jsonl
+- **t00-smoke** `judge_completeness`: baseline 4.5 vs atlas 4 — transcripts: t00-smoke.baseline.r0/transcript.jsonl, t00-smoke.baseline.r1/transcript.jsonl, t00-smoke.atlas.r0/transcript.jsonl, t00-smoke.atlas.r1/transcript.jsonl
+- **t00-smoke** `max_turns_rate`: baseline 0 vs atlas 0.333 — transcripts: t00-smoke.baseline.r0/transcript.jsonl, t00-smoke.baseline.r1/transcript.jsonl, t00-smoke.atlas.r0/transcript.jsonl, t00-smoke.atlas.r1/transcript.jsonl
+
+### Setup failures caused by Code Atlas (excluded from the statistics)
+
+- `t00-smoke.atlas.r2` (atlas) stage `atlas-index`: index crashed
+
+### Setup failures caused by the harness or environment (excluded from the statistics)
+
+- `t01-unpaired.atlas.r0` (atlas) stage `materialize`: disk full

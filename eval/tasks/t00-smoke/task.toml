@@ -1,0 +1,25 @@
+id = "t00-smoke"
+title = "Smoke: soft-delete timestamp on the users entity"
+repo = { fixture = "acme" }
+base_commit = "e5209b4c5c99df0e0e5cdab2bd885b0821b91927"
+prompt = """
+In acme-api, add a nullable `deletedAt` timestamp to the `User` entity, stored in a database column named `deleted_at` \
+(use TypeORM's soft-delete column decorator). Make sure `UsersService.findOne` returns it as part of the user it responds with. \
+Keep the change minimal and do not touch the other packages.
+"""
+category = ["smoke"]
+timeout_minutes = 5
+max_turns = 30
+atlas_repos = ["acme-api", "acme-sdk", "acme-web", "acme-billing"]
+
+[validation]
+hidden_tests = ["hidden/acme-api/test/deleted-at.check.mjs"]
+commands = ["node --test --test-reporter=tap acme-api/test/deleted-at.check.mjs"]
+regression = ["git diff --quiet eval-base -- acme-sdk acme-web acme-billing"]
+
+[ground_truth]
+relevant_files = ["acme-api/src/users/user.entity.ts", "acme-api/src/users/users.service.ts"]
+must_change = ["acme-api/src/users/user.entity.ts"]
+must_consider = ["acme-api/src/users/users.service.ts", "acme-api/src/users/users.controller.ts"]
+reuse_targets = []
+forbidden_duplicates = ["UsersService.findOne"]
