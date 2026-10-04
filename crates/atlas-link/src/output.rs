@@ -9,7 +9,6 @@ use crate::facts::sort_evidence;
 use crate::pass::LinkOutput;
 
 const PRODUCER: &str = "atlas-link";
-const PRODUCER_VERSION: u32 = 1;
 const ABSENCE_CONFIDENCE: f32 = 0.5;
 const RULE_DERIVED: &str = "link-derived";
 
@@ -79,7 +78,7 @@ pub(crate) fn evidence(repo: &RepoName, path: &RelPath, span: Span, content_hash
     path: path.clone(),
     span,
     content_hash,
-    producer: Producer::new(PRODUCER, PRODUCER_VERSION),
+    producer: Producer::new(PRODUCER, crate::LINK_VERSION),
     note,
   }
 }

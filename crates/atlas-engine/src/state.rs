@@ -15,6 +15,7 @@ use crate::error::{EngineError, EngineResult};
 use crate::options::EngineOptions;
 use crate::owner::{OwnerDraft, SymbolEntry, build_owner};
 use crate::packages::{clone_graph, default_context, graph_fingerprint, package_context};
+use crate::passes::pass_versions;
 use crate::report::SkippedFile;
 use crate::scan::skipped_files;
 use crate::similarity::{SIMILARITY_BLOB, decode_persisted, replace_symbols, symbol_docs};
@@ -53,6 +54,8 @@ pub(crate) struct EngineMeta {
   pub artifact_version: u32,
   pub generation: Option<i64>,
   pub repos: BTreeMap<String, RepoMeta>,
+  #[serde(default)]
+  pub pass_versions: BTreeMap<String, u32>,
 }
 
 impl ScipMeta {
@@ -193,11 +196,12 @@ pub(crate) struct Pending {
   pub force_full_resolve: bool,
   pub reanalyze: BTreeSet<FileKey>,
   pub purge_repos: BTreeSet<RepoName>,
+  pub rerun_passes: bool,
 }
 
 impl Pending {
   pub fn is_empty(&self) -> bool {
-    !self.force_full_resolve && self.reanalyze.is_empty() && self.purge_repos.is_empty()
+    !self.force_full_resolve && !self.rerun_passes && self.reanalyze.is_empty() && self.purge_repos.is_empty()
   }
 }
 
@@ -310,6 +314,7 @@ pub(crate) fn load_state(store: &Store, project: &Project, toolchain: &Toolchain
     .collect();
   let mut pending = Pending {
     force_full_resolve: meta.is_none(),
+    rerun_passes: meta.as_ref().is_some_and(|meta| meta.pass_versions != pass_versions(&options.passes)),
     ..Pending::default()
   };
   let mut table = ProjectSymbolTable::new();

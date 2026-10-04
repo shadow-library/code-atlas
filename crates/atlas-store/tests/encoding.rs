@@ -710,3 +710,26 @@ fn should_reject_a_core_serde_row_stored_under_another_id() {
 
   assert!(matches!(read_back, Err(atlas_store::StoreError::Corrupt { what: "edge", .. })), "{read_back:?}");
 }
+
+#[test]
+fn should_reject_a_core_serde_entity_row_whose_kind_does_not_match_its_key() {
+  let dir = tempfile::tempdir().unwrap();
+  let path = dir.path().join("atlas.db");
+  let store = Store::open(&path).unwrap();
+  let (owner, owned) = owner_b();
+  replace(&store, &owner, &owned);
+  let mut mislabelled = owned.entities[0].clone();
+  mislabelled.kind = atlas_core::EntityKind::Test;
+  assert_ne!(owned.entities[0].kind, mislabelled.kind);
+  Connection::open(&path)
+    .unwrap()
+    .execute(
+      "UPDATE entity_owners SET data = ?2 WHERE entity_id = ?1",
+      params![mislabelled.id.as_i64(), serde_json::to_string(&mislabelled).unwrap()],
+    )
+    .unwrap();
+
+  let read_back = store.read(|tx| tx.owned_facts(&owner));
+
+  assert!(matches!(read_back, Err(atlas_store::StoreError::Corrupt { what: "entity", .. })), "{read_back:?}");
+}

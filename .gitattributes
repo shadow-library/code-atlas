@@ -1,0 +1,2 @@
+fixtures/** -text
+crates/*/tests/pin-corpus/** -text

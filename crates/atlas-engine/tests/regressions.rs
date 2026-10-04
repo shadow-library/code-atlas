@@ -393,6 +393,11 @@ fn should_match_a_full_index_after_batches_of_ten_edits() {
   multi_sequence(0xA11C_E003, 15, 10);
 }
 
+#[test]
+fn should_match_a_full_index_after_batches_of_five_edits() {
+  multi_sequence(0xA11C_E004, 15, 5);
+}
+
 type Edit = Box<dyn Fn(&Path)>;
 
 fn edit(path: &'static str, from: &'static str, to: &'static str) -> Edit {

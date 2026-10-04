@@ -21,7 +21,7 @@ use crate::manifests::manifest_owner_facts;
 use crate::options::{EngineOptions, IndexMode};
 use crate::owner::{FinalOwner, OwnerDraft, build_owner};
 use crate::packages::{clone_graph, default_context, graph_fingerprint, package_context, same_graph};
-use crate::passes::{LinkPass, PASS_LINEAGE, PASS_REPOS, PassContext, PassError, PassOutput, ProjectPass, StructurePass, repos_pass};
+use crate::passes::{PASS_LINEAGE, PASS_REPOS, PassContext, PassError, PassOutput, pass_versions, project_passes, repos_pass};
 use crate::report::{FailedFile, RunOutcomeKind, RunSummary};
 use crate::scan::{RepoScan, ScanOutcome, ScannedRepo, is_code_file, is_manifest};
 use crate::similarity::{replace_symbols, symbol_docs};
@@ -33,6 +33,7 @@ use crate::state::{
 const MAX_RESOLVE_ROUNDS: usize = 4;
 const MAX_CHANGE_SET_ENTRIES: usize = 1_000;
 const BULK_MIN_WRITES: usize = 256;
+const SCIP_OWNER_PREFIX: &str = "scip:";
 
 pub(crate) struct RunEnv<'a> {
   pub store: &'a Store,
@@ -117,6 +118,9 @@ enum Write {
     stamp: FileStamp,
   },
   DeleteRecord {
+    key: FileKey,
+  },
+  DropScip {
     key: FileKey,
   },
 }
@@ -352,6 +356,7 @@ impl<'a, 'e> Pipeline<'a, 'e> {
     self.env.options.fault_injection.crash_point();
     let follow_up = ledger.time("dependents", |ledger| self.follow_up(&resolve, &processed, ledger))?;
     processed.extend(follow_up);
+    ledger.time("scip_dangling", |ledger| self.drop_dangling_scip(ledger))?;
     ledger.time("similarity", |_| self.update_similarity(&processed, &artifacts, &analyzed_keys))?;
     self.update_file_states(&processed, &artifacts, &contexts);
     let renames = ledger.time("lineage", |_| self.lineage(lineage_inputs))?;
@@ -1023,6 +1028,21 @@ impl<'a, 'e> Pipeline<'a, 'e> {
     })
   }
 
+  fn drop_dangling_scip(&mut self, ledger: &mut Ledger) -> EngineResult<()> {
+    let collected: Vec<EntityId> = self.events.collected().into_iter().collect();
+    if collected.is_empty() {
+      return Ok(());
+    }
+    let owners = self.env.store.read(|tx| tx.owners_referencing(&collected))?;
+    let writes: Vec<Write> = owners.iter().filter_map(scip_owner_file).map(|key| Write::DropScip { key }).collect();
+    if writes.is_empty() {
+      return Ok(());
+    }
+    tracing::info!(owners = writes.len(), "dropping SCIP facts that reference removed entities");
+    ledger.add("scip_owners_dangling", writes.len() as u64);
+    self.persist(writes, ledger)
+  }
+
   fn stage_wanted(&mut self, item: &Processed) {
     let Some(mut file) = self.state.files.get(&item.key).cloned() else { return };
     file.wanted = item.wanted.clone();
@@ -1152,9 +1172,7 @@ impl<'a, 'e> Pipeline<'a, 'e> {
       graphs: &graphs,
       manifest_hashes: &manifest_hashes,
     };
-    let builtin: [Arc<dyn ProjectPass>; 2] = [Arc::new(StructurePass), Arc::new(LinkPass)];
-    let passes: Vec<Arc<dyn ProjectPass>> = builtin.into_iter().chain(self.env.options.passes.iter().cloned()).collect();
-    for pass in passes {
+    for pass in project_passes(&self.env.options.passes) {
       let name = pass.name();
       let span = tracing::info_span!("project_pass", pass = name);
       let _entered = span.enter();
@@ -1187,6 +1205,7 @@ impl<'a, 'e> Pipeline<'a, 'e> {
       artifact_version: ARTIFACT_VERSION,
       generation: Some(self.run.0),
       repos: BTreeMap::new(),
+      pass_versions: pass_versions(&self.env.options.passes),
     };
     for (repo, plan) in &self.plans {
       meta.repos.insert(
@@ -1298,8 +1317,19 @@ fn apply_write(tx: &mut WriteTx<'_>, write: Write, deltas: &mut Vec<FactDelta>, 
     Write::DeleteRecord { key } => {
       tx.delete_file(&key.0, &key.1)?;
     }
+    Write::DropScip { key } => {
+      deltas.push(tx.remove_owner(&scip_owner(&key))?);
+      scip_dropped.insert(key);
+    }
   }
   Ok(())
+}
+
+fn scip_owner_file(owner: &Owner) -> Option<FileKey> {
+  let Owner::Project { pass } = owner else { return None };
+  let (repo, path) = pass.strip_prefix(SCIP_OWNER_PREFIX)?.split_once(':')?;
+  let key = (RepoName::new(repo).ok()?, RelPath::new(path).ok()?);
+  (ScipFacts::owner_pass(&key.0, &key.1) == *pass).then_some(key)
 }
 
 fn prepare_owners(owners: Vec<(Owner, OwnedFacts)>) -> EngineResult<Vec<Write>> {

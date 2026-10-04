@@ -30,6 +30,8 @@ The store keeps one assertion per owner and key, so each annotation entity has o
 
 The merged entity keeps the strongest certainty across owners, so only the per-attr source certainty from `entity_with_sources` drops.
 
+`uses_auth` never comes from test code: `atlas_core::is_test_code`, or a Rust item inside a module entity that carries `ATTR_TEST` (`#[cfg(test)] mod fixtures`). Any change to this pass's output bumps `LINK_VERSION` and its pin in `atlas-engine/tests/version_pin.rs`.
+
 Tests assert the `[[auth]]` summary through `entity()` and the rest through the pass's own facts.
 
 ## Base-URL evidence

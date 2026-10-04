@@ -7,7 +7,7 @@ use tree_sitter::{ParseOptions, ParseState, Parser, Tree};
 use crate::extract::Extractor;
 
 pub const ANALYZER_NAME: &str = "atlas-lang-rust";
-pub const ANALYZER_VERSION: u32 = 1;
+pub const ANALYZER_VERSION: u32 = 2;
 pub const DEFAULT_MAX_SOURCE_BYTES: usize = 2 * 1024 * 1024;
 
 thread_local! {

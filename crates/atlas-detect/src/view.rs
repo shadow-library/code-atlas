@@ -2,6 +2,7 @@ use std::cell::OnceCell;
 
 use atlas_core::{
   ArgSummary, DetectInput, EntityKey, EntityKind, FileFacts, ImportBinding, ImportFact, LanguageFamily, LocalSymbolId, NodeRef, ParamFact, RepoName, Span, SymbolFact, UseBinding,
+  is_test_path,
 };
 
 use crate::lex::{Token, TokenKind, lex};
@@ -305,15 +306,7 @@ impl<'a> FileView<'a> {
   }
 
   pub fn is_test_context(&self, scope: Option<LocalSymbolId>) -> bool {
-    let path = self.facts.file.path.as_str();
-    let file_name = path.rsplit('/').next().unwrap_or(path);
-    let test_file = path.starts_with("tests/")
-      || path.contains("/tests/")
-      || path.contains("__tests__/")
-      || file_name.contains(".spec.")
-      || file_name.contains(".test.")
-      || file_name.ends_with("_test.rs");
-    if test_file {
+    if is_test_path(self.facts.file.path.as_str()) {
       return true;
     }
     let mut current = scope.and_then(|local| self.symbol(local));

@@ -399,7 +399,7 @@ module_decls: []
 diagnostics: []
 analyzer:
   name: atlas-lang-rust
-  version: 1
+  version: 2
 impls:
   - self_type:
       segments:

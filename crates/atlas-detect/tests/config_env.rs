@@ -138,6 +138,15 @@ fn should_mark_env_reads_inside_test_code() {
     in_test("svc", "src/users.spec.ts", "describe('x', () => { process.env.SPEC; });\n"),
     [("env:svc:SPEC".to_owned(), true)]
   );
+  assert_eq!(in_test("svc", "test/app.e2e-spec.ts", "process.env.E2E;\n"), [("env:svc:E2E".to_owned(), true)]);
+  assert_eq!(
+    in_test("svc", "src/test/setup.ts", "export const url = process.env.SETUP_URL;\n"),
+    [("env:svc:SETUP_URL".to_owned(), true)]
+  );
+  assert_eq!(
+    in_test("svc", "src/testing/helpers.ts", "export const url = process.env.HELPER_URL;\n"),
+    [("env:svc:HELPER_URL".to_owned(), false)]
+  );
   let rust = "pub fn load() { std::env::var(\"PROD\"); }\n#[cfg(test)]\nmod tests {\n  fn helper() { std::env::var(\"HELPER\"); }\n  #[test]\n  fn reads() { std::env::var(\"CASE\"); }\n}\n";
   assert_eq!(
     in_test("svc", "src/lib.rs", rust),

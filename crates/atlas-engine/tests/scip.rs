@@ -309,3 +309,109 @@ fn should_verify_a_cross_crate_call_in_a_cargo_workspace_with_real_rust_analyzer
   assert_eq!(cross.certainty, Certainty::CompilerVerified);
   assert!(!root.join("target").exists());
 }
+
+struct BytesScip {
+  output: PathBuf,
+  bytes: Vec<u8>,
+}
+
+impl ScipIndexer for BytesScip {
+  fn id(&self) -> &'static str {
+    "bytes-scip"
+  }
+
+  fn availability(&self) -> Availability {
+    Availability::Available
+  }
+
+  fn index(&self, _request: &ScipRequest) -> ScipRun {
+    fs::write(&self.output, &self.bytes).unwrap();
+    ScipRun {
+      indexer: "bytes-scip".to_owned(),
+      version: Some("1".to_owned()),
+      duration: Duration::ZERO,
+      output_path: Some(self.output.clone()),
+      outcome: ScipOutcome::Ok,
+      cache: CacheStatus::Miss,
+      degradations: Vec::new(),
+      warnings: Vec::new(),
+    }
+  }
+}
+
+fn ts_document(path: &str, occurrences: Vec<Occurrence>) -> Document {
+  let mut document = Document::new();
+  document.relative_path = path.to_owned();
+  document.position_encoding = EnumOrUnknown::new(PositionEncoding::UTF16CodeUnitOffsetFromLineStart);
+  document.occurrences = occurrences;
+  document
+}
+
+fn dynamic_call_index_bytes() -> Vec<u8> {
+  let load = "scip-typescript npm demo 1.0.0 src/y.ts`load().";
+  let run = "scip-typescript npm demo 1.0.0 src/x.ts`run().";
+  let mut tool = ToolInfo::new();
+  tool.name = "scip-typescript".to_owned();
+  let mut metadata = Metadata::new();
+  metadata.tool_info = Some(tool).into();
+  let mut index = Index::new();
+  index.metadata = Some(metadata).into();
+  index.documents = vec![
+    ts_document("src/y.ts", vec![occurrence(load, vec![0, 16, 20], true)]),
+    ts_document("src/x.ts", vec![occurrence(run, vec![0, 16, 19], true), occurrence(load, vec![1, 16, 23], false)]),
+  ];
+  index.write_to_bytes().unwrap()
+}
+
+#[test]
+fn should_drop_scip_edges_into_an_entity_that_vanished_from_another_file() {
+  let scratch = tempfile::tempdir().unwrap();
+  let root = scratch.path().join("demo");
+  fs::create_dir_all(root.join("src")).unwrap();
+  fs::write(root.join("package.json"), "{ \"name\": \"demo\" }\n").unwrap();
+  fs::write(root.join("src/y.ts"), "export function load(n: number) {\n  return n;\n}\n").unwrap();
+  fs::write(root.join("src/x.ts"), "export function run(target: any) {\n  return target.compute(1);\n}\n").unwrap();
+  let project = project("demo", vec![repo_config("demo", &root)]);
+  let engine = open(&project, &scratch.path().join("home"));
+  fresh(&engine);
+  let demo = RepoName::new("demo").unwrap();
+  let x = RelPath::new("src/x.ts").unwrap();
+  let load = engine
+    .store()
+    .read(|tx| tx.entities_by_name("load", &atlas_store::EntityFilter::default()))
+    .unwrap()
+    .into_iter()
+    .find(|entity| entity.path.as_ref().is_some_and(|path| path.as_str() == "src/y.ts"))
+    .unwrap()
+    .id;
+  let x_owner = Owner::File {
+    repo: demo.clone(),
+    path: x.clone(),
+  };
+  let resolved = engine.store().read(|tx| tx.owned_facts(&x_owner)).unwrap();
+  assert!(resolved.edges.iter().all(|edge| edge.to != load), "the resolver must not link the dynamic call itself");
+  let indexer = BytesScip {
+    output: scratch.path().join("index.scip"),
+    bytes: dynamic_call_index_bytes(),
+  };
+  engine.scip(&ScipIndexers { cargo: None, npm: Some(&indexer) }).unwrap();
+  let scip_owner = Owner::Project {
+    pass: ScipFacts::owner_pass(&demo, &x),
+  };
+  let verified = engine.store().read(|tx| tx.owned_facts(&scip_owner)).unwrap();
+  assert_eq!(
+    verified.edges.iter().map(|edge| (edge.to, edge.certainty.clone())).collect::<Vec<_>>(),
+    vec![(load, Certainty::CompilerVerified)]
+  );
+
+  fs::write(root.join("src/y.ts"), "export function fetchValue(n: number) {\n  return n;\n}\n").unwrap();
+  let after = fresh(&engine);
+
+  assert!(after.header().run.is_some());
+  assert!(engine.store().read(|tx| tx.owned_facts(&scip_owner)).unwrap().is_empty());
+  assert_eq!(engine.store().read(|tx| tx.edge_count_to(load)).unwrap(), 0);
+  assert_eq!(after.header().scip, ScipLag::Behind { files: 2 });
+  let reference = open(&project, &scratch.path().join("reference"));
+  fresh(&reference);
+  assert_eq!(common::digest(&engine), common::digest(&reference));
+}

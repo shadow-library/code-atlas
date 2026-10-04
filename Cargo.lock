@@ -229,6 +229,7 @@ version = "0.1.0"
 dependencies = [
  "atlas-core",
  "insta",
+ "serde_json",
  "thiserror 2.0.21",
  "tracing",
  "tree-sitter",
@@ -241,6 +242,7 @@ version = "0.1.0"
 dependencies = [
  "atlas-core",
  "insta",
+ "serde_json",
  "thiserror 2.0.21",
  "tracing",
  "tree-sitter",

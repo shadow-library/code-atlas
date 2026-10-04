@@ -6,7 +6,7 @@ use crate::grammar::{Grammar, parse};
 use crate::syntax::{snippet, span_of, text};
 
 pub const ANALYZER_NAME: &str = "atlas-lang-ts";
-pub const ANALYZER_VERSION: u32 = 1;
+pub const ANALYZER_VERSION: u32 = 2;
 pub const MAX_SOURCE_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Debug, Default, Clone, Copy)]

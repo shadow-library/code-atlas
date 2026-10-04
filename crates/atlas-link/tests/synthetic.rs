@@ -1,7 +1,7 @@
 mod common;
 
 use atlas_core::{Certainty, CertaintyClass, EdgeKind, EntityId, EntityKey, EntityKind, HttpMethod, Owner, RepoName};
-use common::{Indexed, index_tree, pass_facts, write_tree};
+use common::{Indexed, fixtures_root, index_tree, pass_facts, write_tree};
 use serde_json::json;
 
 const SHOP_API: &[(&str, &str)] = &[
@@ -317,4 +317,77 @@ fn should_source_guard_classification_attrs_as_heuristic_while_the_endpoint_stay
       assert_eq!(certainty.confidence().map(|confidence| confidence.value()), Some(0.5), "{route} {attr}");
     }
   }
+}
+
+fn me_fetch(name: &str, prefix: &str) -> String {
+  format!(
+    "import {{ getToken }} from '{prefix}api/session';\nimport {{ API_URL }} from '{prefix}config';\n\nexport function {name}() {{\n  const token = getToken();\n  return fetch(`${{API_URL}}/users/me`, {{ headers: {{ Authorization: `Bearer ${{token}}` }} }});\n}}\n"
+  )
+}
+
+#[test]
+fn should_not_derive_auth_usage_from_test_code_in_root_test_dirs_or_e2e_specs() {
+  let scratch = tempfile::tempdir().unwrap();
+  let indexed = index_tree(scratch.path(), "acme", &fixtures_root().join("acme"), &["acme-api", "acme-sdk", "acme-web", "acme-billing"]);
+  let web = scratch.path().join("tree/acme");
+  let files = [
+    ("acme-web/test/me.e2e-spec.ts".to_owned(), me_fetch("rootTestProbe", "../src/")),
+    ("acme-web/src/hooks/me.e2e-spec.ts".to_owned(), me_fetch("e2eSpecProbe", "../")),
+    ("acme-web/src/hooks/meProbe.ts".to_owned(), me_fetch("productionProbe", "../")),
+  ];
+  let files: Vec<(&str, &str)> = files.iter().map(|(path, content)| (path.as_str(), content.as_str())).collect();
+  write_tree(&web, &files);
+  assert!(indexed.engine.ensure_fresh().unwrap().is_fresh());
+  let facts = pass_facts(&indexed.engine);
+
+  let users: Vec<String> = indexed
+    .engine
+    .store()
+    .read(|tx| -> Result<Vec<String>, atlas_store::StoreError> {
+      let mut names = Vec::new();
+      for edge in facts.edges.iter().filter(|edge| edge.kind == EdgeKind::UsesAuth) {
+        if let Some(entity) = tx.entity(edge.from)?.filter(|entity| entity.name.ends_with("Probe")) {
+          names.push(entity.name);
+        }
+      }
+      Ok(names)
+    })
+    .unwrap();
+
+  assert_eq!(users, vec!["productionProbe".to_owned()]);
+}
+
+fn order_probe(module: &str, attribute: &str, name: &str) -> String {
+  format!(
+    "\n{attribute}mod {module} {{\n  pub async fn {name}(http: &reqwest::Client, base_url: &str, api_key: &str) -> reqwest::Result<reqwest::Response> {{\n    let url = format!(\"{{}}/orders/{{}}\", base_url, \"o-1\");\n    http.get(url).header(\"x-api-key\", api_key).send().await\n  }}\n}}\n"
+  )
+}
+
+#[test]
+fn should_not_derive_auth_usage_from_rust_items_inside_a_cfg_test_module_of_any_name() {
+  let scratch = tempfile::tempdir().unwrap();
+  let indexed = index_tree(scratch.path(), "acme", &fixtures_root().join("acme"), &["acme-api", "acme-sdk", "acme-web", "acme-billing"]);
+  let client = scratch.path().join("tree/acme/acme-billing/src/acme_client.rs");
+  let mut source = std::fs::read_to_string(&client).unwrap();
+  source.push_str(&order_probe("fixtures", "#[cfg(test)]\n", "fixture_probe"));
+  source.push_str(&order_probe("probes", "", "production_probe"));
+  std::fs::write(&client, source).unwrap();
+  assert!(indexed.engine.ensure_fresh().unwrap().is_fresh());
+  let facts = pass_facts(&indexed.engine);
+
+  let users: Vec<String> = indexed
+    .engine
+    .store()
+    .read(|tx| -> Result<Vec<String>, atlas_store::StoreError> {
+      let mut names = Vec::new();
+      for edge in facts.edges.iter().filter(|edge| edge.kind == EdgeKind::UsesAuth) {
+        if let Some(entity) = tx.entity(edge.from)?.filter(|entity| entity.name.ends_with("_probe")) {
+          names.push(entity.name);
+        }
+      }
+      Ok(names)
+    })
+    .unwrap();
+
+  assert_eq!(users, vec!["production_probe".to_owned()]);
 }

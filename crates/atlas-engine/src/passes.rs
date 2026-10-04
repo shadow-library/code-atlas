@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::Arc;
 
 use atlas_core::{Certainty, Confidence, Edge, EdgeKind, Entity, EntityId, EntityKey, RelPath, RepoName, UnresolvedReason};
 use atlas_project::{PackageGraph, PackageInfo, Project, parse_jsonc};
@@ -13,6 +14,7 @@ use crate::packages::package_key;
 pub const PASS_REPOS: &str = "repos";
 pub const PASS_STRUCTURE: &str = "structure";
 pub const PASS_LINEAGE: &str = "lineage";
+pub const STRUCTURE_VERSION: u32 = 1;
 const RESERVED_PREFIX: &str = "scip:";
 
 pub(crate) fn is_reserved_pass_name(name: &str) -> bool {
@@ -43,6 +45,10 @@ pub struct PassOutput {
 pub trait ProjectPass: Send + Sync {
   fn name(&self) -> &'static str;
 
+  fn version(&self) -> u32 {
+    1
+  }
+
   fn run(&self, tx: &ReadTx<'_>, context: &PassContext<'_>) -> Result<PassOutput, PassError>;
 }
 
@@ -50,6 +56,15 @@ impl fmt::Debug for dyn ProjectPass {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(f, "ProjectPass({})", self.name())
   }
+}
+
+pub(crate) fn project_passes(extra: &[Arc<dyn ProjectPass>]) -> Vec<Arc<dyn ProjectPass>> {
+  let builtin: [Arc<dyn ProjectPass>; 2] = [Arc::new(StructurePass), Arc::new(LinkPass)];
+  builtin.into_iter().chain(extra.iter().cloned()).collect()
+}
+
+pub(crate) fn pass_versions(extra: &[Arc<dyn ProjectPass>]) -> BTreeMap<String, u32> {
+  project_passes(extra).iter().map(|pass| (pass.name().to_owned(), pass.version())).collect()
 }
 
 impl PassOutput {
@@ -92,6 +107,10 @@ pub(crate) struct StructurePass;
 impl ProjectPass for StructurePass {
   fn name(&self) -> &'static str {
     PASS_STRUCTURE
+  }
+
+  fn version(&self) -> u32 {
+    STRUCTURE_VERSION
   }
 
   fn run(&self, tx: &ReadTx<'_>, context: &PassContext<'_>) -> Result<PassOutput, PassError> {
@@ -150,6 +169,10 @@ pub(crate) struct LinkPass;
 impl ProjectPass for LinkPass {
   fn name(&self) -> &'static str {
     atlas_link::PASS_NAME
+  }
+
+  fn version(&self) -> u32 {
+    atlas_link::LINK_VERSION
   }
 
   fn run(&self, tx: &ReadTx<'_>, context: &PassContext<'_>) -> Result<PassOutput, PassError> {

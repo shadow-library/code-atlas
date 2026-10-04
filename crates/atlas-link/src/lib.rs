@@ -12,6 +12,7 @@ mod route;
 
 pub use error::{LinkError, LinkResult};
 
+pub const LINK_VERSION: u32 = 2;
 pub const ATTR_CLIENT_CALL: &str = "client_call";
 pub const ATTR_COMPOSED_FROM: &str = "composed_from";
 pub use pass::{LinkOutput, PASS_NAME, link};

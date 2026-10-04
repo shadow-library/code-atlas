@@ -312,6 +312,9 @@ pub(crate) fn decode_entity(id: i64, data: &str, scope: &OwnerScope<'_>) -> Stor
     Err(compact) => {
       let entity: Entity = legacy_row("entity", data, compact)?;
       check_legacy_id("entity", id, entity.id.as_i64())?;
+      if !entity.is_consistent() {
+        return Err(StoreError::corrupt("entity", format!("{} does not match its key {}", entity.id, entity.key)));
+      }
       return Ok(entity);
     }
   };

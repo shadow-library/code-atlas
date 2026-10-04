@@ -9,7 +9,7 @@ use crate::view::FileView;
 
 pub struct ConfigEnvDetector;
 
-detector!(ConfigEnvDetector, "config-env", 1);
+detector!(ConfigEnvDetector, "config-env", 2);
 
 const RUST_ENV_FUNCTIONS: [&[&str]; 4] = [&["std", "env", "var"], &["std", "env", "var_os"], &["dotenvy", "var"], &["dotenv", "var"]];
 const CONFIG_GETTERS: [&str; 2] = ["get", "getOrThrow"];

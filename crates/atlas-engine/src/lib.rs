@@ -31,7 +31,7 @@ pub use enrich::{
 };
 pub use error::{EngineError, EngineResult};
 pub use options::{EngineOptions, FaultInjection, IndexMode};
-pub use passes::{PASS_LINEAGE, PASS_REPOS, PASS_STRUCTURE, PassContext, PassError, PassOutput, ProjectPass};
+pub use passes::{PASS_LINEAGE, PASS_REPOS, PASS_STRUCTURE, PassContext, PassError, PassOutput, ProjectPass, STRUCTURE_VERSION};
 pub use report::*;
 pub use scip::{ScipIndexers, ScipPackageOutcome, ScipPackageReport, ScipReport};
 pub use watch::{WatchHandle, WatchState};

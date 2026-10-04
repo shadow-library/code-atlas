@@ -6,7 +6,7 @@ use atlas_engine::{Engine, FreshnessReport};
 use common::edits::Tree;
 use common::{SplitMix, acme_copy, digest, fact_diff, fresh, import_lineage, open};
 
-const SEEDS: [u64; 2] = [0x00C0_DE47_1A55_0001, 0x5EED_0000_0000_0002];
+const SEEDS: [u64; 3] = [0x00C0_DE47_1A55_0001, 0x5EED_0000_0000_0002, 0x5EED_0000_0000_0003];
 const EDITS: usize = 60;
 const REOPEN_EVERY: usize = 15;
 
@@ -53,6 +53,11 @@ fn should_match_a_full_index_after_every_randomized_edit_with_the_first_seed() {
 #[test]
 fn should_match_a_full_index_after_every_randomized_edit_with_the_second_seed() {
   run_sequence(seed_or("ATLAS_EQUIVALENCE_SEED_2", SEEDS[1]), env_or("ATLAS_EQUIVALENCE_EDITS", EDITS));
+}
+
+#[test]
+fn should_match_a_full_index_after_every_randomized_edit_with_the_third_seed() {
+  run_sequence(seed_or("ATLAS_EQUIVALENCE_SEED_3", SEEDS[2]), env_or("ATLAS_EQUIVALENCE_EDITS", EDITS));
 }
 
 fn run_sequence(seed: u64, edits: usize) {

@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use atlas_core::{ATTR_TEST, Certainty, Edge, EdgeKind, Entity, EntityId, EntityKey, EntityKind, Evidence, RepoName, SymbolKey};
+use atlas_core::{ATTR_TEST, Certainty, Edge, EdgeKind, Entity, EntityId, EntityKey, EntityKind, Evidence, LanguageFamily, RepoName, SymbolKey, is_test_code};
 use serde_json::{Value, json};
 
 use crate::compose::{Routes, entity_evidence};
@@ -24,7 +24,6 @@ const RULE_COMPOSITE: &str = "composite-guard-auth";
 const RULE_CLIENT: &str = "client-auth-hint";
 const RULE_OPTION: &str = "sdk-auth-option";
 const AUTHORIZATION_GUARD_MARKERS: [&str; 7] = ["permission", "role", "polic", "abilit", "acl", "authoriz", "claim"];
-const TEST_PATH_MARKERS: [&str; 5] = [".test.", ".spec.", "__tests__/", "/tests/", "/test/"];
 
 #[derive(Default)]
 struct SchemeDetail {
@@ -448,6 +447,9 @@ fn direct_usages(facts: &Facts<'_, '_>, site: &Site, auth: &EndpointAuth, usages
     Some(helper) => (helper, "helper", HELPER_HINT_CONFIDENCE),
     None => (&site.caller, "header", DIRECT_HINT_CONFIDENCE),
   };
+  if in_test_code(facts, from)? {
+    return Ok(());
+  }
   let mut evidence = vec![relabel(&site.evidence, Some("request".to_owned()))];
   if let Some(helper) = &helper {
     evidence.extend(entity_evidence(facts, helper, Some("auth header helper".to_owned()))?);
@@ -499,6 +501,9 @@ fn option_usages(facts: &Facts<'_, '_>, clients: &ClientLinks, auth: &EndpointAu
         (false, false) => continue,
       };
       let Some(from) = facts.entity(option.from)? else { continue };
+      if in_test_code(facts, &from)? {
+        continue;
+      }
       let evidence: Vec<Evidence> = option.evidence.iter().map(|evidence| relabel(evidence, Some(format!("auth option {kind}")))).collect();
       for (endpoint, share) in &shares {
         for scheme in auth.schemes_of_kind(*endpoint, kind) {
@@ -521,20 +526,37 @@ fn option_usages(facts: &Facts<'_, '_>, clients: &ClientLinks, auth: &EndpointAu
   Ok(())
 }
 
-fn is_test_code(entity: &Entity) -> bool {
-  if matches!(entity.kind, EntityKind::Test | EntityKind::TestSuite) || entity.attrs.contains_key(ATTR_TEST) {
-    return true;
+fn in_test_code(facts: &Facts<'_, '_>, entity: &Entity) -> LinkResult<bool> {
+  if is_test_code(entity) {
+    return Ok(true);
   }
-  entity.path.as_ref().is_some_and(|path| {
-    let path = path.as_str();
-    TEST_PATH_MARKERS.iter().any(|marker| path.contains(marker)) || path.starts_with("tests/")
-  })
+  let Some(key) = entity.key.as_symbol().filter(|key| key.family() == LanguageFamily::Rust) else {
+    return Ok(false);
+  };
+  let modules = key.module_path();
+  for depth in 1..=modules.len() {
+    let Ok(module) = SymbolKey::new(
+      LanguageFamily::Rust,
+      key.repo().clone(),
+      key.package(),
+      modules[..depth].to_vec(),
+      Vec::new(),
+      EntityKind::Module,
+      0,
+    ) else {
+      continue;
+    };
+    if facts
+      .entity(EntityId::of(&EntityKey::Symbol(module)))?
+      .is_some_and(|module| module.attrs.contains_key(ATTR_TEST))
+    {
+      return Ok(true);
+    }
+  }
+  Ok(false)
 }
 
 fn record(usages: &mut BTreeMap<(EntityId, EntityId), Usage>, scheme: EntityId, source: UsageSource<'_>) {
-  if is_test_code(source.from) {
-    return;
-  }
   let usage = usages.entry((source.from.id, scheme)).or_default();
   usage.repo = source.from.repo.clone();
   usage.confidence = usage.confidence.max(rounded(source.confidence));

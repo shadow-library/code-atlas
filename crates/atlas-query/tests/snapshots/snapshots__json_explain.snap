@@ -172,7 +172,7 @@ expression: output
               "path": "src/orders/orders.controller.ts",
               "line": 13
             },
-            "producer": "atlas-lang-ts@1",
+            "producer": "atlas-lang-ts@2",
             "note": null,
             "excerpt": {
               "state": "text",
@@ -202,7 +202,7 @@ expression: output
               "path": "src/orders/orders.controller.ts",
               "line": 13
             },
-            "producer": "atlas-lang-ts@1",
+            "producer": "atlas-lang-ts@2",
             "note": null,
             "excerpt": {
               "state": "text",
