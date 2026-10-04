@@ -23,7 +23,7 @@
       ],
       "files": 65,
       "entities_indexed": 325,
-      "edges_indexed": 828,
+      "edges_indexed": 842,
       "index_degraded": null,
       "entities": {
         "by_kind": {
@@ -785,7 +785,7 @@
       ],
       "files": 14,
       "entities_indexed": 63,
-      "edges_indexed": 126,
+      "edges_indexed": 128,
       "index_degraded": null,
       "entities": {
         "by_kind": {
@@ -3634,7 +3634,7 @@
       ],
       "files": 2,
       "entities_indexed": 22,
-      "edges_indexed": 56,
+      "edges_indexed": 59,
       "index_degraded": null,
       "entities": {
         "by_kind": {
@@ -3694,8 +3694,8 @@
         "calls": {
           "recall": {
             "expected": 6,
-            "found": 4,
-            "wrong_certainty": 2,
+            "found": 6,
+            "wrong_certainty": 0,
             "wrong_detail": 0,
             "missing": 0,
             "unbound": 0
@@ -3734,8 +3734,8 @@
       },
       "edges": {
         "expected": 8,
-        "found": 6,
-        "wrong_certainty": 2,
+        "found": 8,
+        "wrong_certainty": 0,
         "wrong_detail": 0,
         "missing": 0,
         "unbound": 0
@@ -3874,15 +3874,15 @@
       "calibration": {
         "by_class": {
           "heuristic": {
-            "judged": 10,
+            "judged": 8,
             "correct": 8,
             "overclaimed": 0,
-            "underclaimed": 2,
+            "underclaimed": 0,
             "false_edges": 0
           },
           "resolved": {
-            "judged": 6,
-            "correct": 6,
+            "judged": 8,
+            "correct": 8,
             "overclaimed": 0,
             "underclaimed": 0,
             "false_edges": 0
@@ -3904,10 +3904,10 @@
             "false_edges": 0
           },
           {
-            "judged": 2,
+            "judged": 0,
             "correct": 0,
             "overclaimed": 0,
-            "underclaimed": 2,
+            "underclaimed": 0,
             "false_edges": 0
           },
           {
@@ -3920,20 +3920,7 @@
         ]
       },
       "binding_errors": [],
-      "findings": [
-        {
-          "section": "edge",
-          "kind": "calls",
-          "label": "calls: { repo=trait-dispatch-rust, path=src/lib.rs, symbol=read_generic } -> { repo=trait-dispatch-rust, path=src/lib.rs, symbol=Store::get }",
-          "outcome": "wrong certainty: [heuristic 0.70]"
-        },
-        {
-          "section": "edge",
-          "kind": "calls",
-          "label": "calls: { repo=trait-dispatch-rust, path=src/lib.rs, symbol=write_boxed } -> { repo=trait-dispatch-rust, path=src/lib.rs, symbol=Store::put }",
-          "outcome": "wrong certainty: [heuristic 0.70]"
-        }
-      ]
+      "findings": []
     }
   ],
   "totals": {
@@ -4099,8 +4086,8 @@
       "calls": {
         "recall": {
           "expected": 32,
-          "found": 30,
-          "wrong_certainty": 2,
+          "found": 32,
+          "wrong_certainty": 0,
           "wrong_detail": 0,
           "missing": 0,
           "unbound": 0
@@ -4459,8 +4446,8 @@
     },
     "edges": {
       "expected": 98,
-      "found": 96,
-      "wrong_certainty": 2,
+      "found": 98,
+      "wrong_certainty": 0,
       "wrong_detail": 0,
       "missing": 0,
       "unbound": 0
@@ -4593,15 +4580,15 @@
   "calibration": {
     "by_class": {
       "heuristic": {
-        "judged": 48,
+        "judged": 46,
         "correct": 46,
         "overclaimed": 0,
-        "underclaimed": 2,
+        "underclaimed": 0,
         "false_edges": 0
       },
       "resolved": {
-        "judged": 41,
-        "correct": 41,
+        "judged": 43,
+        "correct": 43,
         "overclaimed": 0,
         "underclaimed": 0,
         "false_edges": 0
@@ -4630,10 +4617,10 @@
         "false_edges": 0
       },
       {
-        "judged": 15,
+        "judged": 13,
         "correct": 13,
         "overclaimed": 0,
-        "underclaimed": 2,
+        "underclaimed": 0,
         "false_edges": 0
       },
       {
@@ -4817,17 +4804,17 @@
           },
           "references": {
             "all": {
-              "agreed": 121,
+              "agreed": 135,
               "agreed_respanned": 9,
               "ours_only": 4,
               "ours_only_cross_package": 7,
               "ours_only_file_level": 5,
-              "scip_only": 116,
+              "scip_only": 102,
               "conflicting": 2,
               "scip_conflicting": 2
             },
             "resolved": {
-              "agreed": 121,
+              "agreed": 134,
               "agreed_respanned": 9,
               "ours_only": 2,
               "ours_only_cross_package": 0,
@@ -4837,7 +4824,7 @@
               "scip_conflicting": 0
             },
             "heuristic": {
-              "agreed": 0,
+              "agreed": 1,
               "agreed_respanned": 0,
               "ours_only": 2,
               "ours_only_cross_package": 7,
@@ -5008,12 +4995,12 @@
           },
           "references": {
             "all": {
-              "agreed": 12,
+              "agreed": 14,
               "agreed_respanned": 0,
               "ours_only": 0,
               "ours_only_cross_package": 0,
               "ours_only_file_level": 5,
-              "scip_only": 12,
+              "scip_only": 10,
               "conflicting": 0,
               "scip_conflicting": 0
             },
@@ -5028,7 +5015,7 @@
               "scip_conflicting": 0
             },
             "heuristic": {
-              "agreed": 0,
+              "agreed": 2,
               "agreed_respanned": 0,
               "ours_only": 0,
               "ours_only_cross_package": 0,
@@ -5714,7 +5701,7 @@
               "scip_conflicting": 0
             },
             "resolved": {
-              "agreed": 5,
+              "agreed": 7,
               "agreed_respanned": 0,
               "ours_only": 0,
               "ours_only_cross_package": 0,
@@ -5724,7 +5711,7 @@
               "scip_conflicting": 0
             },
             "heuristic": {
-              "agreed": 2,
+              "agreed": 0,
               "agreed_respanned": 0,
               "ours_only": 8,
               "ours_only_cross_package": 0,
@@ -5830,17 +5817,17 @@
           },
           "references": {
             "all": {
-              "agreed": 5,
+              "agreed": 8,
               "agreed_respanned": 0,
               "ours_only": 0,
               "ours_only_cross_package": 0,
               "ours_only_file_level": 3,
-              "scip_only": 4,
+              "scip_only": 1,
               "conflicting": 0,
               "scip_conflicting": 0
             },
             "resolved": {
-              "agreed": 5,
+              "agreed": 8,
               "agreed_respanned": 0,
               "ours_only": 0,
               "ours_only_cross_package": 0,
@@ -5880,27 +5867,34 @@
             "repo": "code-atlas",
             "root": "",
             "indexer": "rust-analyzer",
-            "files": 350,
-            "outcome": "indexed 350 files, 44193 edges ingested, 0 files without usable facts"
+            "files": 443,
+            "outcome": "indexed 442 files, 56639 edges ingested, 0 files without usable facts"
+          },
+          {
+            "repo": "code-atlas",
+            "root": "crates/atlas-resolve/tests/pin-corpus/app",
+            "indexer": "scip-typescript",
+            "files": 1,
+            "outcome": "indexed 1 files, 1 edges ingested, 0 files without usable facts"
           }
         ],
-        "files_covered": 350,
+        "files_covered": 443,
         "per_kind": {
           "calls": {
             "all": {
-              "agreed": 15423,
-              "agreed_respanned": 0,
-              "ours_only": 378,
-              "ours_only_cross_package": 431,
+              "agreed": 20263,
+              "agreed_respanned": 2,
+              "ours_only": 751,
+              "ours_only_cross_package": 717,
               "ours_only_file_level": 0,
-              "scip_only": 1242,
+              "scip_only": 2243,
               "conflicting": 5,
               "scip_conflicting": 4
             },
             "resolved": {
-              "agreed": 13135,
-              "agreed_respanned": 0,
-              "ours_only": 123,
+              "agreed": 17051,
+              "agreed_respanned": 2,
+              "ours_only": 320,
               "ours_only_cross_package": 0,
               "ours_only_file_level": 0,
               "scip_only": 0,
@@ -5908,10 +5902,10 @@
               "scip_conflicting": 0
             },
             "heuristic": {
-              "agreed": 2288,
+              "agreed": 3212,
               "agreed_respanned": 0,
-              "ours_only": 255,
-              "ours_only_cross_package": 431,
+              "ours_only": 431,
+              "ours_only_cross_package": 717,
               "ours_only_file_level": 0,
               "scip_only": 0,
               "conflicting": 5,
@@ -5930,20 +5924,20 @@
           },
           "implements": {
             "all": {
-              "agreed": 39,
+              "agreed": 41,
               "agreed_respanned": 0,
-              "ours_only": 39,
-              "ours_only_cross_package": 53,
+              "ours_only": 43,
+              "ours_only_cross_package": 64,
               "ours_only_file_level": 0,
               "scip_only": 0,
               "conflicting": 0,
               "scip_conflicting": 0
             },
             "resolved": {
-              "agreed": 39,
+              "agreed": 41,
               "agreed_respanned": 0,
-              "ours_only": 39,
-              "ours_only_cross_package": 53,
+              "ours_only": 43,
+              "ours_only_cross_package": 64,
               "ours_only_file_level": 0,
               "scip_only": 0,
               "conflicting": 0,
@@ -5972,20 +5966,20 @@
           },
           "instantiates": {
             "all": {
-              "agreed": 2913,
+              "agreed": 3447,
               "agreed_respanned": 0,
-              "ours_only": 172,
-              "ours_only_cross_package": 0,
+              "ours_only": 213,
+              "ours_only_cross_package": 1,
               "ours_only_file_level": 0,
-              "scip_only": 19,
+              "scip_only": 21,
               "conflicting": 0,
               "scip_conflicting": 0
             },
             "resolved": {
-              "agreed": 2908,
+              "agreed": 3442,
               "agreed_respanned": 0,
-              "ours_only": 172,
-              "ours_only_cross_package": 0,
+              "ours_only": 213,
+              "ours_only_cross_package": 1,
               "ours_only_file_level": 0,
               "scip_only": 0,
               "conflicting": 0,
@@ -6014,30 +6008,30 @@
           },
           "references": {
             "all": {
-              "agreed": 10669,
-              "agreed_respanned": 0,
-              "ours_only": 381,
-              "ours_only_cross_package": 98,
-              "ours_only_file_level": 484,
-              "scip_only": 30426,
+              "agreed": 23390,
+              "agreed_respanned": 1,
+              "ours_only": 476,
+              "ours_only_cross_package": 151,
+              "ours_only_file_level": 583,
+              "scip_only": 28124,
               "conflicting": 1,
               "scip_conflicting": 1
             },
             "resolved": {
-              "agreed": 10644,
+              "agreed": 20777,
               "agreed_respanned": 0,
-              "ours_only": 381,
-              "ours_only_cross_package": 98,
-              "ours_only_file_level": 484,
+              "ours_only": 466,
+              "ours_only_cross_package": 140,
+              "ours_only_file_level": 583,
               "scip_only": 0,
               "conflicting": 1,
               "scip_conflicting": 0
             },
             "heuristic": {
-              "agreed": 25,
-              "agreed_respanned": 0,
-              "ours_only": 0,
-              "ours_only_cross_package": 0,
+              "agreed": 2613,
+              "agreed_respanned": 1,
+              "ours_only": 10,
+              "ours_only_cross_package": 11,
               "ours_only_file_level": 0,
               "scip_only": 0,
               "conflicting": 0,
@@ -6061,19 +6055,19 @@
     "per_kind": {
       "calls": {
         "all": {
-          "agreed": 15516,
-          "agreed_respanned": 58,
-          "ours_only": 393,
-          "ours_only_cross_package": 432,
+          "agreed": 20356,
+          "agreed_respanned": 60,
+          "ours_only": 766,
+          "ours_only_cross_package": 718,
           "ours_only_file_level": 5,
-          "scip_only": 1243,
+          "scip_only": 2244,
           "conflicting": 7,
           "scip_conflicting": 4
         },
         "resolved": {
-          "agreed": 13225,
-          "agreed_respanned": 58,
-          "ours_only": 123,
+          "agreed": 17143,
+          "agreed_respanned": 60,
+          "ours_only": 320,
           "ours_only_cross_package": 0,
           "ours_only_file_level": 5,
           "scip_only": 0,
@@ -6081,10 +6075,10 @@
           "scip_conflicting": 0
         },
         "heuristic": {
-          "agreed": 2291,
+          "agreed": 3213,
           "agreed_respanned": 0,
-          "ours_only": 270,
-          "ours_only_cross_package": 432,
+          "ours_only": 446,
+          "ours_only_cross_package": 718,
           "ours_only_file_level": 0,
           "scip_only": 0,
           "conflicting": 7,
@@ -6103,20 +6097,20 @@
       },
       "implements": {
         "all": {
-          "agreed": 44,
+          "agreed": 46,
           "agreed_respanned": 0,
-          "ours_only": 48,
-          "ours_only_cross_package": 53,
+          "ours_only": 52,
+          "ours_only_cross_package": 64,
           "ours_only_file_level": 0,
           "scip_only": 0,
           "conflicting": 0,
           "scip_conflicting": 0
         },
         "resolved": {
-          "agreed": 44,
+          "agreed": 46,
           "agreed_respanned": 0,
-          "ours_only": 48,
-          "ours_only_cross_package": 53,
+          "ours_only": 52,
+          "ours_only_cross_package": 64,
           "ours_only_file_level": 0,
           "scip_only": 0,
           "conflicting": 0,
@@ -6145,20 +6139,20 @@
       },
       "instantiates": {
         "all": {
-          "agreed": 2924,
+          "agreed": 3458,
           "agreed_respanned": 2,
-          "ours_only": 175,
-          "ours_only_cross_package": 0,
+          "ours_only": 216,
+          "ours_only_cross_package": 1,
           "ours_only_file_level": 0,
-          "scip_only": 19,
+          "scip_only": 21,
           "conflicting": 2,
           "scip_conflicting": 4
         },
         "resolved": {
-          "agreed": 2919,
+          "agreed": 3453,
           "agreed_respanned": 2,
-          "ours_only": 175,
-          "ours_only_cross_package": 0,
+          "ours_only": 216,
+          "ours_only_cross_package": 1,
           "ours_only_file_level": 0,
           "scip_only": 0,
           "conflicting": 2,
@@ -6187,30 +6181,30 @@
       },
       "references": {
         "all": {
-          "agreed": 10809,
-          "agreed_respanned": 9,
-          "ours_only": 386,
-          "ours_only_cross_package": 105,
-          "ours_only_file_level": 504,
-          "scip_only": 30559,
+          "agreed": 23549,
+          "agreed_respanned": 10,
+          "ours_only": 481,
+          "ours_only_cross_package": 158,
+          "ours_only_file_level": 603,
+          "scip_only": 28238,
           "conflicting": 3,
           "scip_conflicting": 3
         },
         "resolved": {
-          "agreed": 10784,
+          "agreed": 20933,
           "agreed_respanned": 9,
-          "ours_only": 384,
-          "ours_only_cross_package": 98,
-          "ours_only_file_level": 504,
+          "ours_only": 469,
+          "ours_only_cross_package": 140,
+          "ours_only_file_level": 603,
           "scip_only": 0,
           "conflicting": 1,
           "scip_conflicting": 0
         },
         "heuristic": {
-          "agreed": 25,
-          "agreed_respanned": 0,
-          "ours_only": 2,
-          "ours_only_cross_package": 7,
+          "agreed": 2616,
+          "agreed_respanned": 1,
+          "ours_only": 12,
+          "ours_only_cross_package": 18,
           "ours_only_file_level": 0,
           "scip_only": 0,
           "conflicting": 2,
@@ -6230,30 +6224,30 @@
     },
     "site_kinds": {
       "all": {
-        "agreed": 29249,
-        "agreed_respanned": 69,
-        "ours_only": 954,
-        "ours_only_cross_package": 537,
-        "ours_only_file_level": 509,
-        "scip_only": 31821,
+        "agreed": 47363,
+        "agreed_respanned": 72,
+        "ours_only": 1463,
+        "ours_only_cross_package": 877,
+        "ours_only_file_level": 608,
+        "scip_only": 30503,
         "conflicting": 12,
         "scip_conflicting": 11
       },
       "resolved": {
-        "agreed": 26928,
-        "agreed_respanned": 69,
-        "ours_only": 682,
-        "ours_only_cross_package": 98,
-        "ours_only_file_level": 509,
+        "agreed": 41529,
+        "agreed_respanned": 71,
+        "ours_only": 1005,
+        "ours_only_cross_package": 141,
+        "ours_only_file_level": 608,
         "scip_only": 0,
         "conflicting": 3,
         "scip_conflicting": 0
       },
       "heuristic": {
-        "agreed": 2321,
-        "agreed_respanned": 0,
-        "ours_only": 272,
-        "ours_only_cross_package": 439,
+        "agreed": 5834,
+        "agreed_respanned": 1,
+        "ours_only": 458,
+        "ours_only_cross_package": 736,
         "ours_only_file_level": 0,
         "scip_only": 0,
         "conflicting": 9,
@@ -6273,19 +6267,19 @@
     "heuristic_buckets": [
       {
         "label": "[0.0, 0.4)",
-        "agreed": 425,
+        "agreed": 668,
         "conflicting": 5,
-        "unconfirmed": 265
+        "unconfirmed": 431
       },
       {
         "label": "[0.4, 0.6)",
-        "agreed": 1884,
+        "agreed": 5155,
         "conflicting": 0,
-        "unconfirmed": 5
+        "unconfirmed": 25
       },
       {
         "label": "[0.6, 0.8)",
-        "agreed": 12,
+        "agreed": 11,
         "conflicting": 2,
         "unconfirmed": 2
       },
@@ -6420,8 +6414,8 @@
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-scip/src/typescript.rs:136",
-        "enclosing": "rust:code-atlas:atlas-scip:typescript::ScipTypescript::<ScipIndexer>::index#method",
+        "location": "code-atlas:crates/atlas-scip/src/typescript.rs:141",
+        "enclosing": "rust:code-atlas:atlas-scip:typescript::ScipTypescript::<ScipIndexer>::index_with_cancel#method",
         "edge_kind": "references",
         "ours": [
           "rust:code-atlas:atlas-scip:typescript::classify_failure#function [resolved]"
@@ -6445,128 +6439,128 @@
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-core/src/provenance.rs:243",
-        "enclosing": "rust:code-atlas:atlas-core:provenance::Producer::new#method",
+        "location": "code-atlas:crates/atlas-cli/tests/e2e_support/mod.rs:262",
+        "enclosing": "rust:code-atlas:atlas-cli/test/e2e_adversarial:e2e_support::Found::of#method",
         "edge_kind": "instantiates",
         "ours": [
-          "rust:code-atlas:atlas-core:provenance::Producer#struct [resolved]"
+          "rust:code-atlas:atlas-cli/test/e2e_adversarial:e2e_support::Found#struct [resolved]"
         ],
         "scip": []
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-engine/tests/engine.rs:362",
-        "enclosing": "rust:code-atlas:atlas-engine/test/engine:::should_refresh_after_the_watch_debounce_and_rescan_after_a_watcher_error#test",
+        "location": "code-atlas:crates/atlas-engine/src/enrich.rs:335",
+        "enclosing": "rust:code-atlas:atlas-engine:enrich::Engine::enrich#method",
+        "edge_kind": "references",
+        "ours": [
+          "rust:code-atlas:atlas-engine:enrich/sources::Sources#struct [resolved]"
+        ],
+        "scip": []
+      },
+      {
+        "target": "workspace",
+        "location": "code-atlas:crates/atlas-engine/tests/auto_scip.rs:341",
+        "enclosing": "rust:code-atlas:atlas-engine/test/auto_scip:::should_skip_a_failing_package_until_its_inputs_change#test",
         "edge_kind": "calls",
         "ours": [
-          "rust:code-atlas:atlas-engine/test/engine:::named#function [resolved]"
+          "rust:code-atlas:atlas-engine/test/auto_scip:::wait_until#function [resolved]"
         ],
         "scip": []
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-engine/tests/scip.rs:63",
-        "enclosing": "rust:code-atlas:atlas-engine/test/scip:::index_bytes#function",
+        "location": "code-atlas:crates/atlas-engine/tests/regressions.rs:171",
+        "enclosing": "rust:code-atlas:atlas-engine/test/regressions:::should_re_resolve_a_file_whose_detector_key_target_another_file_emits#test",
         "edge_kind": "calls",
         "ours": [
-          "rust:code-atlas:atlas-engine/test/scip:::occurrence#function [resolved]"
+          "rust:code-atlas:atlas-engine/test/regressions:::named#function [resolved]"
         ],
         "scip": []
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-eval/src/agent/transcript.rs:161",
-        "enclosing": "rust:code-atlas:atlas-eval:agent/transcript::Transcript::turn_usage_total#method",
+        "location": "code-atlas:crates/atlas-eval/src/agent/bash.rs:293",
+        "enclosing": "rust:code-atlas:atlas-eval:agent/bash/tests::should_extract_sed_print_targets_but_not_edits#test",
         "edge_kind": "references",
         "ours": [
-          "rust:code-atlas:atlas-eval:agent/transcript::TokenUsage#struct [resolved]"
+          "rust:code-atlas:atlas-eval:agent/bash::BashAnalysis#struct [resolved]"
         ],
         "scip": []
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-eval/src/quality/metrics.rs:345",
-        "enclosing": "rust:code-atlas:atlas-eval:quality/metrics/tests::should_sum_recall_tallies#test",
+        "location": "code-atlas:crates/atlas-eval/src/quality/evaluate/unresolved.rs:18",
+        "enclosing": "rust:code-atlas:atlas-eval:quality/evaluate/unresolved::evaluate#function",
         "edge_kind": "references",
         "ours": [
-          "rust:code-atlas:atlas-eval:quality/metrics::Recall#struct [resolved]"
+          "rust:code-atlas:atlas-eval:quality/evaluate::UnresolvedScore#struct [resolved]"
         ],
         "scip": []
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-lang-rust/src/extract.rs:100",
-        "enclosing": "rust:code-atlas:atlas-lang-rust:extract::Extractor::new#method",
+        "location": "code-atlas:crates/atlas-lang-rust/src/macros.rs:193",
+        "enclosing": "rust:code-atlas:atlas-lang-rust:macros::ParsedMacro::parse#method",
         "edge_kind": "instantiates",
         "ours": [
-          "rust:code-atlas:atlas-lang-rust:extract::Extractor#struct [resolved]"
+          "rust:code-atlas:atlas-lang-rust:macros::ParsedMacro#struct [resolved]"
         ],
         "scip": []
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-mcp/src/session.rs:32",
-        "enclosing": "rust:code-atlas:atlas-mcp:session::Session::open#method",
+        "location": "code-atlas:crates/atlas-project/src/manifest/types.rs:21",
+        "enclosing": "rust:code-atlas:atlas-project:manifest/types::RepoDir::of_file#method",
         "edge_kind": "instantiates",
         "ours": [
-          "rust:code-atlas:atlas-mcp:session::Session#struct [resolved]"
+          "rust:code-atlas:atlas-project:manifest/types::RepoDir#struct [resolved]"
         ],
         "scip": []
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-query/src/model.rs:118",
-        "enclosing": "rust:code-atlas:atlas-query:model::CertaintyTag::inferred#method",
+        "location": "code-atlas:crates/atlas-query/src/queries/textual.rs:266",
+        "enclosing": "rust:code-atlas:atlas-query:queries/textual::Matcher::new#method",
         "edge_kind": "instantiates",
         "ours": [
-          "rust:code-atlas:atlas-query:model::CertaintyTag#struct [resolved]"
+          "rust:code-atlas:atlas-query:queries/textual::Matcher#struct [resolved]"
         ],
         "scip": []
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-query/src/text/impact.rs:44",
-        "enclosing": "rust:code-atlas:atlas-query:text/impact::ImpactAnswer::<RenderText>::render_text#method",
+        "location": "code-atlas:crates/atlas-query/tests/search_ranking.rs:19",
+        "enclosing": "rust:code-atlas:atlas-query/test/search_ranking:::should_not_treat_a_single_token_name_hit_as_an_exact_match_for_a_multi_word_query#test",
         "edge_kind": "references",
         "ours": [
-          "rust:code-atlas:atlas-query:text::TextOut#struct [resolved]"
+          "rust:code-atlas:atlas-query/test/search_ranking:::SOURCE#constant [resolved]"
         ],
         "scip": []
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-resolve/tests/acme.rs:111",
-        "enclosing": "rust:code-atlas:atlas-resolve/test/acme:::should_resolve_decorators_and_guard_references#test",
+        "location": "code-atlas:crates/atlas-resolve/src/rust.rs:1441",
+        "enclosing": "rust:code-atlas:atlas-resolve:rust::Resolver::rust_use_targets#method",
         "edge_kind": "references",
         "ours": [
-          "rust:code-atlas:atlas-resolve/test/acme:::RESOLVED#constant [resolved]"
+          "rust:code-atlas:atlas-resolve:engine::Guard#struct [resolved]"
         ],
         "scip": []
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-resolve/tests/adversarial.rs:69",
-        "enclosing": "rust:code-atlas:atlas-resolve/test/adversarial:trait_dispatch::should_derive_implements_edges_from_impl_blocks#test",
+        "location": "code-atlas:crates/atlas-resolve/tests/adversarial.rs:239",
+        "enclosing": "rust:code-atlas:atlas-resolve/test/adversarial:dynamic::should_resolve_the_static_namespace_call#test",
         "edge_kind": "references",
         "ours": [
-          "rust:code-atlas:atlas-resolve/test/adversarial:::STRUCTURAL#constant [resolved]"
+          "rust:code-atlas:atlas-resolve/test/adversarial:::RESOLVED#constant [resolved]"
         ],
         "scip": []
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-resolve/tests/review_regressions.rs:239",
-        "enclosing": "rust:code-atlas:atlas-resolve/test/review_regressions:::should_keep_ts_value_and_type_namespaces_apart_in_either_declaration_order#test",
-        "edge_kind": "calls",
-        "ours": [
-          "rust:code-atlas:atlas-resolve/test/review_regressions:::app#function [resolved]"
-        ],
-        "scip": []
-      },
-      {
-        "target": "workspace",
-        "location": "code-atlas:crates/atlas-resolve/tests/review_regressions.rs:481",
-        "enclosing": "rust:code-atlas:atlas-resolve/test/review_regressions:::should_resolve_mutual_glob_and_star_webs_quickly#test",
+        "location": "code-atlas:crates/atlas-resolve/tests/review_regressions.rs:251",
+        "enclosing": "rust:code-atlas:atlas-resolve/test/review_regressions:::should_separate_static_and_instance_ts_members#test",
         "edge_kind": "references",
         "ours": [
           "rust:code-atlas:atlas-resolve/test/review_regressions:::RESOLVED#constant [resolved]"
@@ -6575,8 +6569,18 @@
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-resolve/tests/rust_rules.rs:126",
-        "enclosing": "rust:code-atlas:atlas-resolve/test/rust_rules:::should_resolve_self_paths_fields_and_deref_wrappers#test",
+        "location": "code-atlas:crates/atlas-resolve/tests/review_regressions.rs:735",
+        "enclosing": "rust:code-atlas:atlas-resolve/test/review_regressions:::should_weaken_a_glob_of_a_fn_local_module_that_shares_a_module_level_name#test",
+        "edge_kind": "references",
+        "ours": [
+          "rust:code-atlas:atlas-resolve/test/review_regressions:::AUTHORITATIVE#constant [resolved]"
+        ],
+        "scip": []
+      },
+      {
+        "target": "workspace",
+        "location": "code-atlas:crates/atlas-resolve/tests/rust_rules.rs:438",
+        "enclosing": "rust:code-atlas:atlas-resolve/test/rust_rules:::should_resolve_field_accesses_on_typed_receivers_to_field_symbols#test",
         "edge_kind": "references",
         "ours": [
           "rust:code-atlas:atlas-resolve/test/rust_rules:::RESOLVED#constant [resolved]"
@@ -6585,8 +6589,8 @@
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-resolve/tests/ts_rules.rs:165",
-        "enclosing": "rust:code-atlas:atlas-resolve/test/ts_rules:::should_resolve_members_through_this_fields_extends_super_and_constructors#test",
+        "location": "code-atlas:crates/atlas-resolve/tests/ts_rules.rs:315",
+        "enclosing": "rust:code-atlas:atlas-resolve/test/ts_rules:::should_keep_the_class_edge_when_a_static_comes_from_an_external_base#test",
         "edge_kind": "calls",
         "ours": [
           "rust:code-atlas:atlas-resolve/test/ts_rules:::app#function [resolved]"
@@ -6595,46 +6599,36 @@
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-resolve/tests/ts_rules.rs:351",
-        "enclosing": "rust:code-atlas:atlas-resolve/test/ts_rules:::should_reference_class_fields_read_through_this_including_inherited_ones#test",
+        "location": "code-atlas:crates/atlas-scip/tests/scip_typescript.rs:62",
+        "enclosing": "rust:code-atlas:atlas-scip/test/scip_typescript:::should_resolve_the_alias_chain_reference_to_the_original_definition#test",
+        "edge_kind": "references",
+        "ours": [
+          "rust:code-atlas:atlas-scip/test/scip_typescript:::REPO#constant [resolved]"
+        ],
+        "scip": []
+      },
+      {
+        "target": "workspace",
+        "location": "code-atlas:crates/atlas-store/src/store.rs:411",
+        "enclosing": "rust:code-atlas:atlas-store:store::run_write#function",
+        "edge_kind": "references",
+        "ours": [
+          "rust:code-atlas:atlas-store:error::StoreError#enum [resolved]"
+        ],
+        "scip": []
+      },
+      {
+        "target": "workspace",
+        "location": "code-atlas:crates/atlas-store/tests/encoding.rs:697",
+        "enclosing": "rust:code-atlas:atlas-store/test/encoding:::should_reject_a_core_serde_row_stored_under_another_id#test",
         "edge_kind": "calls",
         "ours": [
-          "rust:code-atlas:atlas-resolve/test/ts_rules:::app#function [resolved]"
-        ],
-        "scip": []
-      },
-      {
-        "target": "workspace",
-        "location": "code-atlas:crates/atlas-scip/tests/rust_analyzer.rs:64",
-        "enclosing": "rust:code-atlas:atlas-scip/test/rust_analyzer:::analyze_fixture#function",
-        "edge_kind": "references",
-        "ours": [
-          "rust:code-atlas:atlas-scip/test/rust_analyzer:::REPO#constant [resolved]"
-        ],
-        "scip": []
-      },
-      {
-        "target": "workspace",
-        "location": "code-atlas:crates/atlas-similarity/src/structural.rs:134",
-        "enclosing": "rust:code-atlas:atlas-similarity:structural::StructuralStore::new#method",
-        "edge_kind": "instantiates",
-        "ours": [
-          "rust:code-atlas:atlas-similarity:structural::StructuralStore#struct [resolved]"
-        ],
-        "scip": []
-      },
-      {
-        "target": "workspace",
-        "location": "code-atlas:crates/atlas-store/tests/inferred.rs:58",
-        "enclosing": "rust:code-atlas:atlas-store/test/inferred:::should_store_inferred_facts_with_their_subjects_and_evidence#test",
-        "edge_kind": "references",
-        "ours": [
-          "rust:code-atlas:atlas-store:inferred::InferredQuery#struct [resolved]"
+          "rust:code-atlas:atlas-store/test/encoding:::owner_b#function [resolved]"
         ],
         "scip": []
       }
     ],
-    "unconfirmed_total": 682,
+    "unconfirmed_total": 1005,
     "scip_only_sample": [
       {
         "target": "acme",
@@ -6648,128 +6642,108 @@
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-detect/src/detectors/axum.rs:202",
-        "enclosing": "rust:code-atlas:atlas-detect:detectors/axum::AxumEndpointDetector::emit_attribute_routes#method",
+        "location": "code-atlas:crates/atlas-cli/src/cli.rs:338",
+        "enclosing": "rust:code-atlas:atlas-cli/bin/atlas-cli:cli::ImpactArgs::filter#field",
         "edge_kind": "references",
         "ours": [],
         "scip": [
-          "rust:code-atlas:atlas-core:facts::SymbolFact::kind#field"
+          "rust:code-atlas:atlas-cli/bin/atlas-cli:cli::TargetFilterArgs#struct"
         ]
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-detect/src/view.rs:168",
-        "enclosing": "rust:code-atlas:atlas-detect:view::FileView::rust_use#method",
+        "location": "code-atlas:crates/atlas-core/src/facts.rs:590",
+        "enclosing": "rust:code-atlas:atlas-core:facts::ImplFact::scope#field",
         "edge_kind": "references",
         "ours": [],
         "scip": [
-          "rust:code-atlas:atlas-core:facts::UseBinding#enum"
+          "rust:code-atlas:atlas-core:facts::LocalSymbolId#struct"
         ]
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-engine/src/run.rs:1224",
-        "enclosing": "rust:code-atlas:atlas-engine:run::apply_write#function",
+        "location": "code-atlas:crates/atlas-detect/src/detectors/express.rs:149",
+        "enclosing": "rust:code-atlas:atlas-detect:detectors/express::ExpressEndpointDetector::emit_registration#method",
         "edge_kind": "references",
         "ours": [],
         "scip": [
-          "rust:code-atlas:atlas-engine:run::FileUpdate::record#field"
+          "rust:code-atlas:atlas-core:facts::ReferenceFact::from#field"
         ]
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-engine/tests/engine.rs:535",
-        "enclosing": "rust:code-atlas:atlas-engine/test/engine:::should_report_status_and_run_ledger#test",
+        "location": "code-atlas:crates/atlas-engine/src/enrich.rs:450",
+        "enclosing": "rust:code-atlas:atlas-engine:enrich::Engine::settle_link_facts#method",
         "edge_kind": "references",
         "ours": [],
         "scip": [
-          "rust:code-atlas:atlas-engine:report::IndexStatus::files_by_language#field"
+          "rust:code-atlas:atlas-store:inferred::FreshnessPolicy#enum"
         ]
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-eval/src/agent/report.rs:152",
+        "location": "code-atlas:crates/atlas-engine/src/run.rs:69",
+        "enclosing": "rust:code-atlas:atlas-engine:run::Ledger::record_delta#method",
+        "edge_kind": "references",
+        "ours": [],
+        "scip": [
+          "rust:code-atlas:atlas-store:facts::FactDelta#struct"
+        ]
+      },
+      {
+        "target": "workspace",
+        "location": "code-atlas:crates/atlas-engine/tests/enrich.rs:59",
+        "enclosing": "rust:code-atlas:atlas-engine/test/enrich:::budget#function",
+        "edge_kind": "references",
+        "ours": [],
+        "scip": [
+          "rust:code-atlas:atlas-engine:enrich::EnrichOptions::summaries#field"
+        ]
+      },
+      {
+        "target": "workspace",
+        "location": "code-atlas:crates/atlas-eval/src/agent/report.rs:165",
         "enclosing": "rust:code-atlas:atlas-eval:agent/report::METRICS#constant",
         "edge_kind": "references",
         "ours": [],
         "scip": [
-          "rust:code-atlas:atlas-eval:agent/report::Better#enum"
+          "rust:code-atlas:atlas-eval:agent/transcript::TokenUsage::input#field"
         ]
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-eval/src/agent/workspace.rs:418",
-        "enclosing": "rust:code-atlas:atlas-eval:agent/workspace/tests::should_copy_an_override_directory_without_git_or_build_output#test",
+        "location": "code-atlas:crates/atlas-eval/src/quality/evaluate/context.rs:31",
+        "enclosing": "rust:code-atlas:atlas-eval:quality/evaluate/context::Ctx::missing#field",
         "edge_kind": "references",
         "ours": [],
         "scip": [
-          "rust:code-atlas:atlas-eval:agent/workspace::TreeSource#enum"
+          "rust:code-atlas:atlas-eval:quality/truth::Selector#struct"
         ]
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-eval/src/quality/metrics.rs:411",
-        "enclosing": "rust:code-atlas:atlas-eval:quality/metrics/tests::should_separate_true_relation_from_correct_claim#test",
+        "location": "code-atlas:crates/atlas-eval/src/quality/report.rs:218",
+        "enclosing": "rust:code-atlas:atlas-eval:quality/report::oracle_metrics#function",
         "edge_kind": "references",
         "ours": [],
         "scip": [
-          "rust:code-atlas:atlas-eval:quality/metrics::ClassCalibration::correct#field"
+          "rust:code-atlas:atlas-eval:quality/oracle::ClassSplit::all#field"
         ]
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-eval/src/quality/selector.rs:105",
-        "enclosing": "rust:code-atlas:atlas-eval:quality/selector::matches#function",
-        "edge_kind": "calls",
-        "ours": [],
-        "scip": [
-          "rust:code-atlas:atlas-core:ids::RelPath::as_str#method"
-        ]
-      },
-      {
-        "target": "workspace",
-        "location": "code-atlas:crates/atlas-lang-rust/tests/references.rs:85",
-        "enclosing": "rust:code-atlas:atlas-lang-rust/test/references:::should_emit_a_method_call_for_every_link_of_a_call_chain#test",
+        "location": "code-atlas:crates/atlas-lang-rust/tests/robustness.rs:98",
+        "enclosing": "rust:code-atlas:atlas-lang-rust/test/robustness:::should_never_panic_and_always_satisfy_invariants_on_mutated_sources#test",
         "edge_kind": "references",
         "ours": [],
         "scip": [
-          "rust:code-atlas:atlas-core:facts::RefKind#enum"
+          "rust:code-atlas:atlas-core:traits::AnalysisInput::source#field"
         ]
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-lang-ts/tests/symbols.rs:131",
-        "enclosing": "rust:code-atlas:atlas-lang-ts/test/symbols:::should_extract_functions_generators_and_function_valued_variables#test",
-        "edge_kind": "references",
-        "ours": [],
-        "scip": [
-          "rust:code-atlas:atlas-core:facts::SymbolFact::visibility#field"
-        ]
-      },
-      {
-        "target": "workspace",
-        "location": "code-atlas:crates/atlas-mcp/src/server.rs:80",
-        "enclosing": "rust:code-atlas:atlas-mcp:server::AtlasServer::run#method",
-        "edge_kind": "calls",
-        "ours": [],
-        "scip": [
-          "rust:code-atlas:atlas-engine:engine::Engine::ensure_fresh#method"
-        ]
-      },
-      {
-        "target": "workspace",
-        "location": "code-atlas:crates/atlas-project/src/registry.rs:665",
-        "enclosing": "rust:code-atlas:atlas-project:registry/tests::should_reject_duplicates_in_a_hand_edited_file#test",
-        "edge_kind": "references",
-        "ours": [],
-        "scip": [
-          "rust:code-atlas:atlas-project:error::ProjectError::RegistryParse#variant"
-        ]
-      },
-      {
-        "target": "workspace",
-        "location": "code-atlas:crates/atlas-query/src/queries/explain.rs:200",
-        "enclosing": "rust:code-atlas:atlas-query:queries/explain::explain_edge#function",
+        "location": "code-atlas:crates/atlas-link/src/auth.rs:518",
+        "enclosing": "rust:code-atlas:atlas-link:auth::option_usages#function",
         "edge_kind": "references",
         "ours": [],
         "scip": [
@@ -6778,185 +6752,212 @@
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-query/src/text/api.rs:103",
-        "enclosing": "rust:code-atlas:atlas-query:text/api::ApiAnswer::<RenderText>::render_text#method",
-        "edge_kind": "references",
+        "location": "code-atlas:crates/atlas-project/src/manifest/json.rs:231",
+        "enclosing": "rust:code-atlas:atlas-project:manifest/json/tests::should_strip_line_and_block_comments#test",
+        "edge_kind": "calls",
         "ours": [],
         "scip": [
-          "rust:code-atlas:atlas-query:queries/api::SchemeUsage::supported#field"
+          "rust:code-atlas:atlas-project:manifest/json::Json::get#method"
         ]
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-resolve/src/output.rs:304",
-        "enclosing": "rust:code-atlas:atlas-resolve:output::Emitter::evidence#method",
+        "location": "code-atlas:crates/atlas-query/src/queries/context.rs:1104",
+        "enclosing": "rust:code-atlas:atlas-query:queries/context::route_seeds#function",
         "edge_kind": "references",
         "ours": [],
         "scip": [
-          "rust:code-atlas:atlas-resolve:engine::Resolver::surface#field"
+          "rust:code-atlas:atlas-query:queries/context::Node::named#field"
         ]
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-resolve/src/table.rs:674",
-        "enclosing": "rust:code-atlas:atlas-resolve:table::ProjectSymbolTable::unindex_modules#method",
+        "location": "code-atlas:crates/atlas-query/src/queries/status.rs:144",
+        "enclosing": "rust:code-atlas:atlas-query:queries/status::QueryEngine::status#method",
         "edge_kind": "references",
         "ours": [],
         "scip": [
-          "rust:code-atlas:atlas-resolve:table::ProjectSymbolTable::modules#field"
+          "rust:code-atlas:atlas-query:queries/status::StatusAnswer::dangling_detector_edges_dropped#field"
         ]
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-scip/src/ingest.rs:388",
-        "enclosing": "rust:code-atlas:atlas-scip:ingest::Ingestor::report_unmapped_definitions#method",
+        "location": "code-atlas:crates/atlas-query/tests/inferred_links.rs:214",
+        "enclosing": "rust:code-atlas:atlas-query/test/inferred_links:::should_drop_an_inferred_link_at_query_time_once_a_deterministic_link_exists#test",
         "edge_kind": "references",
         "ours": [],
         "scip": [
-          "rust:code-atlas:atlas-scip:ingest::DocumentView::file#field"
+          "rust:code-atlas:atlas-query:queries/api::Related::entity#field"
         ]
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-semantic/src/provider/unavailable.rs:24",
-        "enclosing": "rust:code-atlas:atlas-semantic:provider/unavailable::UnavailableProvider::<LlmProvider>::availability#method",
+        "location": "code-atlas:crates/atlas-resolve/src/surface.rs:365",
+        "enclosing": "rust:code-atlas:atlas-resolve:surface::is_scope_item#function",
         "edge_kind": "references",
         "ours": [],
         "scip": [
-          "rust:code-atlas:atlas-core:traits::Availability#enum"
+          "rust:code-atlas:atlas-resolve:surface::SymSurface#struct"
         ]
       },
       {
         "target": "workspace",
-        "location": "code-atlas:crates/atlas-similarity/src/tests.rs:570",
-        "enclosing": "rust:code-atlas:atlas-similarity:tests::should_sample_oversized_buckets_and_report_it#test",
+        "location": "code-atlas:crates/atlas-scip/src/indexer.rs:515",
+        "enclosing": "rust:code-atlas:atlas-scip:indexer/tests::should_never_prune_the_entry_it_just_published#test",
         "edge_kind": "references",
         "ours": [],
         "scip": [
-          "rust:code-atlas:atlas-similarity:structural::StructuralCluster::min_pair_jaccard#field"
+          "rust:code-atlas:atlas-scip:indexer::ScipRequest::cache_dir#field"
+        ]
+      },
+      {
+        "target": "workspace",
+        "location": "code-atlas:crates/atlas-semantic/src/task/similarity.rs:139",
+        "enclosing": "rust:code-atlas:atlas-semantic:task/similarity::SimilarityPair::render#method",
+        "edge_kind": "references",
+        "ours": [],
+        "scip": [
+          "rust:code-atlas:atlas-semantic:task::RenderedPrompt::template_version#field"
+        ]
+      },
+      {
+        "target": "workspace",
+        "location": "code-atlas:crates/atlas-store/src/facts.rs:797",
+        "enclosing": "rust:code-atlas:atlas-store:facts::ReadTx::owned_facts#method",
+        "edge_kind": "references",
+        "ours": [],
+        "scip": [
+          "rust:code-atlas:atlas-store:facts::OwnedFacts::edges#field"
         ]
       }
     ],
-    "scip_only_total": 31821,
+    "scip_only_total": 30503,
     "indexes": [
       {
         "target": "acme",
         "repo": "acme-api",
         "root": "",
         "indexer": "scip-typescript",
-        "blake3": "2d58df426d07f16c660460de93417e5e4dff0d1607aa1214070099a24119acf7"
+        "blake3": "17b16d40084dbfc3cdc9607d94aa6a346df4098d803cc2689ba05a00455fabd6"
       },
       {
         "target": "acme",
         "repo": "acme-sdk",
         "root": "",
         "indexer": "scip-typescript",
-        "blake3": "70a333159b2e8f08c395bb0371a5a3b2656074d58b77a83d26c9e2e2cff9b4ce"
+        "blake3": "ca15255bac307401539c6397cd6d4c0c695902cd1af67b3eb8e457474c6e1814"
       },
       {
         "target": "acme",
         "repo": "acme-web",
         "root": "",
         "indexer": "scip-typescript",
-        "blake3": "f1b820dbba806b0183398e5766bc60c9715dfc765e4d3ee18a8adc3894a44932"
+        "blake3": "80c62b9b57866c8ded4ab1d4561a5288f54b1d8bf65c23224fbdd82dffc904b3"
       },
       {
         "target": "acme",
         "repo": "acme-billing",
         "root": "",
         "indexer": "rust-analyzer",
-        "blake3": "ed73e02025df137ba6d7116bc2d3ac3a926218a6807bcd81c3b146c64d636263"
+        "blake3": "0a32989b736fc474752bcca6fb1ec25b89181a64476e449391d88b2ac4cb229e"
       },
       {
         "target": "globex",
         "repo": "globex-api",
         "root": "",
         "indexer": "scip-typescript",
-        "blake3": "68e5a9da62f726645ba7a229af621f027e036f5fa9d9837f2084d5620bfe4798"
+        "blake3": "8bbf8d70dc105ea4262774439a01887baa942843946ac0d9192dd9f57cea43ff"
       },
       {
         "target": "globex",
         "repo": "globex-worker",
         "root": "",
         "indexer": "rust-analyzer",
-        "blake3": "f80a0f73f1a16f378573eaecbf1efc7b8eaa3a141c4f32600f7546c0fba89040"
+        "blake3": "fbf85aa465ddc3777ea11a76fa38e8d483a77f75f7228c3b3358c6efb225cd7c"
       },
       {
         "target": "adversarial/computed-routes-ts",
         "repo": "computed-routes-ts",
         "root": "",
         "indexer": "scip-typescript",
-        "blake3": "1856b7dee85529d142887032bfa87d8108bd66cc15cb2b0c5fff824329e9f8a7"
+        "blake3": "f797f003cf77fcee89a4810c351c702f51c66e5ed74d4580f93ca2c1208583e1"
       },
       {
         "target": "adversarial/duplicate-names-rust",
         "repo": "duplicate-names-rust",
         "root": "",
         "indexer": "rust-analyzer",
-        "blake3": "513b346ce77b4edb19e690c561324d1c786f84271f348f6c2c37af73980a0cdd"
+        "blake3": "3b8644354b955981808d413bc477285f6ed57e6e452ea6c9b294da8f1c279b7c"
       },
       {
         "target": "adversarial/dynamic-ts",
         "repo": "dynamic-ts",
         "root": "",
         "indexer": "scip-typescript",
-        "blake3": "f6e36f2e2f17dcedbb620d9a50832859599aa111d0f5f12be03dd5f6a34fb860"
+        "blake3": "3165f9cc0c56414a0e3edec72961bf2b3b99d85febbcb74f27d6fbb7424e0d07"
       },
       {
         "target": "adversarial/generated-code",
         "repo": "generated-code",
         "root": "rust",
         "indexer": "rust-analyzer",
-        "blake3": "29c35b517510e83c34bb1b1bc96cc453e3638d87bfe28f872f987f79593dd6fd"
+        "blake3": "97d2cd41ce76b84ab56cef906c2a06f68f0aa4893b2068992f2ec4e22590cc9c"
       },
       {
         "target": "adversarial/generated-code",
         "repo": "generated-code",
         "root": "",
         "indexer": "scip-typescript",
-        "blake3": "aa069c2f3ff932c757dd9abe8cb498cf12c78dc701e8eb5a20296ffa46fb9690"
+        "blake3": "fe99033261bbb19e90425ca08a34eed28744024d04fa2747b38df4dc771ebcf3"
       },
       {
         "target": "adversarial/macro-heavy-rust",
         "repo": "macro-heavy-rust",
         "root": "",
         "indexer": "rust-analyzer",
-        "blake3": "5a3dbbe27b7f92b9246ec1c6ca58d3a3df593b2dbbf902f11e1e6a66d917ab07"
+        "blake3": "f2adf5e2b2fb211d0b0a88d77ef8baf56940b5bfd3982164ea0feeda16cf539f"
       },
       {
         "target": "adversarial/reexport-chain-ts",
         "repo": "reexport-chain-ts",
         "root": "",
         "indexer": "scip-typescript",
-        "blake3": "04eac349a2ad474db0154d39d10d417e79c2c524a928bf2faf4246121c078623"
+        "blake3": "1ce54e70442ef67c3fa4ac87d3fd6ed2b952054252db58b65e3fb4810a842dd3"
       },
       {
         "target": "adversarial/shadowing-ts",
         "repo": "shadowing-ts",
         "root": "",
         "indexer": "scip-typescript",
-        "blake3": "f28df5ee40dc2bc239f6c71bd58b9dc17e249b472a400ccfefdcf5ae1a902428"
+        "blake3": "8c8f8997c37d71659a6b335c9806bb72d140314ad0904a3c859ab4444ab75ba8"
       },
       {
         "target": "adversarial/similar-not-equivalent",
         "repo": "similar-not-equivalent",
         "root": "",
         "indexer": "scip-typescript",
-        "blake3": "f4d8629f1a84123e01f20c7c6f0832158814b1fd450afe6d4c97ea4bcada6a7c"
+        "blake3": "8f605aa258bd933ca9a33ecf37506596e2e87bf28251b428baa6212529e40a58"
       },
       {
         "target": "adversarial/trait-dispatch-rust",
         "repo": "trait-dispatch-rust",
         "root": "",
         "indexer": "rust-analyzer",
-        "blake3": "e1d0b7543749298991b6c598a3dff4fc6afb7e68611e822561f412fa5216c6aa"
+        "blake3": "8aa9c77a26f8beb9183fb7a7324e478b5ac8a1ab93ac0403c471f9418bc4240d"
       },
       {
         "target": "workspace",
         "repo": "code-atlas",
         "root": "",
         "indexer": "rust-analyzer",
-        "blake3": "e6c8685c60a97dd953aed8f6b057bfe9bad0bbbe5ae93dc054ea43e391727c0e"
+        "blake3": "af5681e4b9ff87faa49bf221b23afb8dd4e0240388cba93e9d346b102f21242e"
+      },
+      {
+        "target": "workspace",
+        "repo": "code-atlas",
+        "root": "crates/atlas-resolve/tests/pin-corpus/app",
+        "indexer": "scip-typescript",
+        "blake3": "0d4a71ddfc3c45034252af711adc1fd77c4bbec790719023e4bcbcc4bdd13b1b"
       }
     ]
   },
@@ -7000,7 +7001,7 @@
           {
             "name": "incremental index equals a full index (digest)",
             "passed": true,
-            "detail": "digest 0e1afe473897a377c243f7dbe35211ce177ac2dc86eb56c8e7c47f3e43ce2832"
+            "detail": "digest 9b4287a1fe34c9bdf7a8f406c988ef2e43be9187d72c40778a68ee6e40b27ddb"
           },
           {
             "name": "no stale deterministic fact survives",
@@ -7068,7 +7069,7 @@
           {
             "name": "incremental index equals a full index (digest)",
             "passed": true,
-            "detail": "digest 529bec31c28883151bad329945c0b97b8ac09c2c7494f545e531f56f1f82bf8f"
+            "detail": "digest f0c9c3a527a6521aa81b118ec7f578349a12f5efada3192b167307f8d9643385"
           },
           {
             "name": "no stale deterministic fact survives",
@@ -7126,7 +7127,7 @@
           {
             "name": "incremental index equals a full index (digest)",
             "passed": true,
-            "detail": "digest 1f4e9064d51efd6f375e0b30a01543a0f25355ec4b61b6ff9c6af4c36adea626"
+            "detail": "digest 06def942be7ba2f93dbe6732f712541b6c038224a4c1c3f0b3764460ef94b68b"
           },
           {
             "name": "no stale deterministic fact survives",
@@ -7184,7 +7185,7 @@
           {
             "name": "incremental index equals a full index (digest)",
             "passed": true,
-            "detail": "digest 842691288e8f10a15ada30cb727d8f314bd74c69b4bd1f95819ee7c3e257da94"
+            "detail": "digest 8371472e5a3386db6235348de8250f3f2a5322c3f1717154f57f79089953a722"
           },
           {
             "name": "no stale deterministic fact survives",
@@ -7247,7 +7248,7 @@
           {
             "name": "incremental index equals a full index (digest)",
             "passed": true,
-            "detail": "digest 7d28d5a71cb99d4a65bc8f4c81d4394926bafbbde028250034debf50268ce83a"
+            "detail": "digest db58e56e56a21d9792ae5b89ca8d692eadfd9dc67aaf70b9e5303d308cc72af8"
           },
           {
             "name": "no stale deterministic fact survives",
@@ -7295,7 +7296,7 @@
           {
             "name": "incremental index equals a full index (digest)",
             "passed": true,
-            "detail": "digest 13de31319a688f0f4c7168283f368dba951e1ae5c92e8b8f5cc339ba71758d9f"
+            "detail": "digest fa8d0b2de8c0f7984e45418760b32acfbd784eda4cf9b86567c9108655f1d575"
           },
           {
             "name": "no stale deterministic fact survives",
@@ -7372,7 +7373,48 @@
         }
       }
     ],
-    "skipped": [],
+    "skipped": [
+      {
+        "id": "t01-cwd-relative-targets",
+        "reason": "only `repo = { fixture = \"...\" }` tasks can be indexed by the quality evaluation"
+      },
+      {
+        "id": "t02-typed-degraded-cause",
+        "reason": "only `repo = { fixture = \"...\" }` tasks can be indexed by the quality evaluation"
+      },
+      {
+        "id": "t03-nested-router-links",
+        "reason": "only `repo = { fixture = \"...\" }` tasks can be indexed by the quality evaluation"
+      },
+      {
+        "id": "t04-detector-import-gates",
+        "reason": "only `repo = { fixture = \"...\" }` tasks can be indexed by the quality evaluation"
+      },
+      {
+        "id": "t05-mcp-dependency-tools",
+        "reason": "only `repo = { fixture = \"...\" }` tasks can be indexed by the quality evaluation"
+      },
+      {
+        "id": "t06-repo-file-size-limit",
+        "reason": "only `repo = { fixture = \"...\" }` tasks can be indexed by the quality evaluation"
+      },
+      {
+        "id": "t07-static-precompressed-quality",
+        "reason": "only `repo = { fixture = \"...\" }` tasks can be indexed by the quality evaluation"
+      },
+      {
+        "id": "t08-cookie-samesite-default",
+        "reason": "only `repo = { fixture = \"...\" }` tasks can be indexed by the quality evaluation"
+      },
+      {
+        "id": "t09-lambda-text-content-types",
+        "reason": "only `repo = { fixture = \"...\" }` tasks can be indexed by the quality evaluation"
+      },
+      {
+        "id": "t10-auth-challenge-quoting",
+        "reason": "only `repo = { fixture = \"...\" }` tasks can be indexed by the quality evaluation"
+      }
+    ],
     "aggregate": {
       "must_read_files": {
         "tasks": 1,
@@ -7408,27 +7450,27 @@
   },
   "metrics": {
     "calibration/heuristic/correct": {
-      "value": 0.9583333333333334,
+      "value": 1.0,
       "numerator": 46,
-      "denominator": 48,
+      "denominator": 46,
       "better": "higher"
     },
     "calibration/heuristic/true_relation": {
       "value": 1.0,
-      "numerator": 48,
-      "denominator": 48,
+      "numerator": 46,
+      "denominator": 46,
       "better": "higher"
     },
     "calibration/resolved/correct": {
       "value": 1.0,
-      "numerator": 41,
-      "denominator": 41,
+      "numerator": 43,
+      "denominator": 43,
       "better": "higher"
     },
     "calibration/resolved/true_relation": {
       "value": 1.0,
-      "numerator": 41,
-      "denominator": 41,
+      "numerator": 43,
+      "denominator": 43,
       "better": "higher"
     },
     "calibration/syntactic/correct": {
@@ -8716,14 +8758,14 @@
       "better": "lower"
     },
     "fixture/adversarial/trait-dispatch-rust/edge/calls/recall": {
-      "value": 0.6666666666666666,
-      "numerator": 4,
+      "value": 1.0,
+      "numerator": 6,
       "denominator": 6,
       "better": "higher"
     },
     "fixture/adversarial/trait-dispatch-rust/edge/calls/recall_all": {
-      "value": 0.6666666666666666,
-      "numerator": 4,
+      "value": 1.0,
+      "numerator": 6,
       "denominator": 6,
       "better": "higher"
     },
@@ -8740,14 +8782,14 @@
       "better": "higher"
     },
     "fixture/adversarial/trait-dispatch-rust/edges/recall": {
-      "value": 0.75,
-      "numerator": 6,
+      "value": 1.0,
+      "numerator": 8,
       "denominator": 8,
       "better": "higher"
     },
     "fixture/adversarial/trait-dispatch-rust/edges/recall_all": {
-      "value": 0.75,
-      "numerator": 6,
+      "value": 1.0,
+      "numerator": 8,
       "denominator": 8,
       "better": "higher"
     },
@@ -8926,21 +8968,21 @@
       "better": "lower"
     },
     "oracle/calls/all/precision_all_in": {
-      "value": 0.9488167308750688,
-      "numerator": 15516,
-      "denominator": 16353,
+      "value": 0.9315394471901886,
+      "numerator": 20356,
+      "denominator": 21852,
       "better": "higher"
     },
     "oracle/calls/all/precision_confirmable": {
-      "value": 0.9748680573008294,
-      "numerator": 15516,
-      "denominator": 15916,
+      "value": 0.9634152113209333,
+      "numerator": 20356,
+      "denominator": 21129,
       "better": "higher"
     },
     "oracle/calls/all/recall": {
-      "value": 0.925609974348267,
-      "numerator": 15516,
-      "denominator": 16763,
+      "value": 0.9005485754733675,
+      "numerator": 20356,
+      "denominator": 22604,
       "better": "higher"
     },
     "oracle/calls/heuristic/conflicting": {
@@ -8950,21 +8992,21 @@
       "better": "lower"
     },
     "oracle/calls/heuristic/precision_all_in": {
-      "value": 0.7636666666666667,
-      "numerator": 2291,
-      "denominator": 3000,
+      "value": 0.7328923357664233,
+      "numerator": 3213,
+      "denominator": 4384,
       "better": "higher"
     },
     "oracle/calls/heuristic/precision_confirmable": {
-      "value": 0.8921339563862928,
-      "numerator": 2291,
-      "denominator": 2568,
+      "value": 0.8764320785597381,
+      "numerator": 3213,
+      "denominator": 3666,
       "better": "higher"
     },
     "oracle/calls/heuristic/recall": {
-      "value": 0.13667004712760245,
-      "numerator": 2291,
-      "denominator": 16763,
+      "value": 0.1421429835427358,
+      "numerator": 3213,
+      "denominator": 22604,
       "better": "higher"
     },
     "oracle/calls/resolved/conflicting": {
@@ -8974,21 +9016,21 @@
       "better": "lower"
     },
     "oracle/calls/resolved/precision_all_in": {
-      "value": 0.9904141391447615,
-      "numerator": 13225,
-      "denominator": 13353,
+      "value": 0.9813945500343485,
+      "numerator": 17143,
+      "denominator": 17468,
       "better": "higher"
     },
     "oracle/calls/resolved/precision_confirmable": {
-      "value": 0.990785136350015,
-      "numerator": 13225,
-      "denominator": 13348,
+      "value": 0.9816755425757315,
+      "numerator": 17143,
+      "denominator": 17463,
       "better": "higher"
     },
     "oracle/calls/resolved/recall": {
-      "value": 0.7889399272206645,
-      "numerator": 13225,
-      "denominator": 16763,
+      "value": 0.7584055919306317,
+      "numerator": 17143,
+      "denominator": 22604,
       "better": "higher"
     },
     "oracle/implements/all/conflicting": {
@@ -8998,27 +9040,27 @@
       "better": "lower"
     },
     "oracle/implements/all/precision_all_in": {
-      "value": 0.30344827586206896,
-      "numerator": 44,
-      "denominator": 145,
+      "value": 0.2839506172839506,
+      "numerator": 46,
+      "denominator": 162,
       "better": "higher"
     },
     "oracle/implements/all/precision_confirmable": {
-      "value": 0.4782608695652174,
-      "numerator": 44,
-      "denominator": 92,
+      "value": 0.46938775510204084,
+      "numerator": 46,
+      "denominator": 98,
       "better": "higher"
     },
     "oracle/implements/all/recall": {
       "value": 1.0,
-      "numerator": 44,
-      "denominator": 44,
+      "numerator": 46,
+      "denominator": 46,
       "better": "higher"
     },
     "oracle/implements/heuristic/recall": {
       "value": 0.0,
       "numerator": 0,
-      "denominator": 44,
+      "denominator": 46,
       "better": "higher"
     },
     "oracle/implements/resolved/conflicting": {
@@ -9028,21 +9070,21 @@
       "better": "lower"
     },
     "oracle/implements/resolved/precision_all_in": {
-      "value": 0.30344827586206896,
-      "numerator": 44,
-      "denominator": 145,
+      "value": 0.2839506172839506,
+      "numerator": 46,
+      "denominator": 162,
       "better": "higher"
     },
     "oracle/implements/resolved/precision_confirmable": {
-      "value": 0.4782608695652174,
-      "numerator": 44,
-      "denominator": 92,
+      "value": 0.46938775510204084,
+      "numerator": 46,
+      "denominator": 98,
       "better": "higher"
     },
     "oracle/implements/resolved/recall": {
       "value": 1.0,
-      "numerator": 44,
-      "denominator": 44,
+      "numerator": 46,
+      "denominator": 46,
       "better": "higher"
     },
     "oracle/instantiates/all/conflicting": {
@@ -9052,21 +9094,21 @@
       "better": "lower"
     },
     "oracle/instantiates/all/precision_all_in": {
-      "value": 0.9429216381812319,
-      "numerator": 2924,
-      "denominator": 3101,
+      "value": 0.9404405765569758,
+      "numerator": 3458,
+      "denominator": 3677,
       "better": "higher"
     },
     "oracle/instantiates/all/precision_confirmable": {
-      "value": 0.9429216381812319,
-      "numerator": 2924,
-      "denominator": 3101,
+      "value": 0.94069640914037,
+      "numerator": 3458,
+      "denominator": 3676,
       "better": "higher"
     },
     "oracle/instantiates/all/recall": {
-      "value": 0.992195453003054,
-      "numerator": 2924,
-      "denominator": 2947,
+      "value": 0.9928222796439851,
+      "numerator": 3458,
+      "denominator": 3483,
       "better": "higher"
     },
     "oracle/instantiates/heuristic/conflicting": {
@@ -9088,9 +9130,9 @@
       "better": "higher"
     },
     "oracle/instantiates/heuristic/recall": {
-      "value": 0.0016966406515100101,
+      "value": 0.001435544071202986,
       "numerator": 5,
-      "denominator": 2947,
+      "denominator": 3483,
       "better": "higher"
     },
     "oracle/instantiates/resolved/conflicting": {
@@ -9100,21 +9142,21 @@
       "better": "lower"
     },
     "oracle/instantiates/resolved/precision_all_in": {
-      "value": 0.9428294573643411,
-      "numerator": 2919,
-      "denominator": 3096,
+      "value": 0.940359477124183,
+      "numerator": 3453,
+      "denominator": 3672,
       "better": "higher"
     },
     "oracle/instantiates/resolved/precision_confirmable": {
-      "value": 0.9428294573643411,
-      "numerator": 2919,
-      "denominator": 3096,
+      "value": 0.9406156360664669,
+      "numerator": 3453,
+      "denominator": 3671,
       "better": "higher"
     },
     "oracle/instantiates/resolved/recall": {
-      "value": 0.9904988123515439,
-      "numerator": 2919,
-      "denominator": 2947,
+      "value": 0.9913867355727821,
+      "numerator": 3453,
+      "denominator": 3483,
       "better": "higher"
     },
     "oracle/references/all/conflicting": {
@@ -9124,21 +9166,21 @@
       "better": "lower"
     },
     "oracle/references/all/precision_all_in": {
-      "value": 0.9154738714322013,
-      "numerator": 10809,
-      "denominator": 11807,
+      "value": 0.9497862386061143,
+      "numerator": 23549,
+      "denominator": 24794,
       "better": "higher"
     },
     "oracle/references/all/precision_confirmable": {
-      "value": 0.9652616538667619,
-      "numerator": 10809,
-      "denominator": 11198,
+      "value": 0.9798610244247493,
+      "numerator": 23549,
+      "denominator": 24033,
       "better": "higher"
     },
     "oracle/references/all/recall": {
-      "value": 0.2612699717193203,
-      "numerator": 10809,
-      "denominator": 41371,
+      "value": 0.45470167986097704,
+      "numerator": 23549,
+      "denominator": 51790,
       "better": "higher"
     },
     "oracle/references/heuristic/conflicting": {
@@ -9148,21 +9190,21 @@
       "better": "lower"
     },
     "oracle/references/heuristic/precision_all_in": {
-      "value": 0.6944444444444444,
-      "numerator": 25,
-      "denominator": 36,
+      "value": 0.9879154078549849,
+      "numerator": 2616,
+      "denominator": 2648,
       "better": "higher"
     },
     "oracle/references/heuristic/precision_confirmable": {
-      "value": 0.8620689655172413,
-      "numerator": 25,
-      "denominator": 29,
+      "value": 0.9946768060836502,
+      "numerator": 2616,
+      "denominator": 2630,
       "better": "higher"
     },
     "oracle/references/heuristic/recall": {
-      "value": 0.0006042880278455923,
-      "numerator": 25,
-      "denominator": 41371,
+      "value": 0.05051168179185171,
+      "numerator": 2616,
+      "denominator": 51790,
       "better": "higher"
     },
     "oracle/references/resolved/conflicting": {
@@ -9172,21 +9214,21 @@
       "better": "lower"
     },
     "oracle/references/resolved/precision_all_in": {
-      "value": 0.9161498598249936,
-      "numerator": 10784,
-      "denominator": 11771,
+      "value": 0.9452271290526506,
+      "numerator": 20933,
+      "denominator": 22146,
       "better": "higher"
     },
     "oracle/references/resolved/precision_confirmable": {
-      "value": 0.9655295908317665,
-      "numerator": 10784,
-      "denominator": 11169,
+      "value": 0.9780404616175302,
+      "numerator": 20933,
+      "denominator": 21403,
       "better": "higher"
     },
     "oracle/references/resolved/recall": {
-      "value": 0.2606656836914747,
-      "numerator": 10784,
-      "denominator": 41371,
+      "value": 0.4041899980691253,
+      "numerator": 20933,
+      "denominator": 51790,
       "better": "higher"
     },
     "oracle/site_kinds/all/conflicting": {
@@ -9196,21 +9238,21 @@
       "better": "lower"
     },
     "oracle/site_kinds/all/precision_all_in": {
-      "value": 0.935638655193372,
-      "numerator": 29249,
-      "denominator": 31261,
+      "value": 0.9411799773463426,
+      "numerator": 47363,
+      "denominator": 50323,
       "better": "higher"
     },
     "oracle/site_kinds/all/precision_confirmable": {
-      "value": 0.9680291246069833,
-      "numerator": 29249,
-      "denominator": 30215,
+      "value": 0.9697981080306319,
+      "numerator": 47363,
+      "denominator": 48838,
       "better": "higher"
     },
     "oracle/site_kinds/all/recall": {
-      "value": 0.4788559453839983,
-      "numerator": 29249,
-      "denominator": 61081,
+      "value": 0.6081769970594656,
+      "numerator": 47363,
+      "denominator": 77877,
       "better": "higher"
     },
     "oracle/site_kinds/heuristic/conflicting": {
@@ -9220,21 +9262,21 @@
       "better": "lower"
     },
     "oracle/site_kinds/heuristic/precision_all_in": {
-      "value": 0.7632357777047024,
-      "numerator": 2321,
-      "denominator": 3041,
+      "value": 0.8290464686656246,
+      "numerator": 5834,
+      "denominator": 7037,
       "better": "higher"
     },
     "oracle/site_kinds/heuristic/precision_confirmable": {
-      "value": 0.8920061491160646,
-      "numerator": 2321,
-      "denominator": 2602,
+      "value": 0.9258847801936201,
+      "numerator": 5834,
+      "denominator": 6301,
       "better": "higher"
     },
     "oracle/site_kinds/heuristic/recall": {
-      "value": 0.037998723007154435,
-      "numerator": 2321,
-      "denominator": 61081,
+      "value": 0.07491300383938775,
+      "numerator": 5834,
+      "denominator": 77877,
       "better": "higher"
     },
     "oracle/site_kinds/resolved/conflicting": {
@@ -9244,21 +9286,21 @@
       "better": "lower"
     },
     "oracle/site_kinds/resolved/precision_all_in": {
-      "value": 0.9542168674698795,
-      "numerator": 26928,
-      "denominator": 28220,
+      "value": 0.9594095088481264,
+      "numerator": 41529,
+      "denominator": 43286,
       "better": "higher"
     },
     "oracle/site_kinds/resolved/precision_confirmable": {
-      "value": 0.9751928439503132,
-      "numerator": 26928,
-      "denominator": 27613,
+      "value": 0.97630298328514,
+      "numerator": 41529,
+      "denominator": 42537,
       "better": "higher"
     },
     "oracle/site_kinds/resolved/recall": {
-      "value": 0.4408572223768439,
-      "numerator": 26928,
-      "denominator": 61081,
+      "value": 0.5332639932200778,
+      "numerator": 41529,
+      "denominator": 77877,
       "better": "higher"
     },
     "refactor/change_route_literal": {
@@ -9376,14 +9418,14 @@
       "better": "lower"
     },
     "total/edge/calls/recall": {
-      "value": 0.9375,
-      "numerator": 30,
+      "value": 1.0,
+      "numerator": 32,
       "denominator": 32,
       "better": "higher"
     },
     "total/edge/calls/recall_all": {
-      "value": 0.9375,
-      "numerator": 30,
+      "value": 1.0,
+      "numerator": 32,
       "denominator": 32,
       "better": "higher"
     },
@@ -9628,14 +9670,14 @@
       "better": "higher"
     },
     "total/edges/recall": {
-      "value": 0.9795918367346939,
-      "numerator": 96,
+      "value": 1.0,
+      "numerator": 98,
       "denominator": 98,
       "better": "higher"
     },
     "total/edges/recall_all": {
-      "value": 0.9795918367346939,
-      "numerator": 96,
+      "value": 1.0,
+      "numerator": 98,
       "denominator": 98,
       "better": "higher"
     },
