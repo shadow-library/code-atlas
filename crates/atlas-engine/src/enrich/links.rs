@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use atlas_core::{Edge, EdgeKind, Entity, EntityKey, EntityKind, Evidence, HttpMethod};
+use atlas_core::{Certainty, Edge, EdgeKind, Entity, EntityKey, EntityKind, Evidence, HttpMethod};
 use atlas_link::ATTR_COMPOSED_FROM;
 use atlas_semantic::{LINK_CANDIDATES_PAYLOAD, MAX_LINK_CANDIDATES};
 use atlas_store::{EdgeFilter, EntityFilter, ReadTx, StoreResult, StoredInferredFact};
@@ -55,43 +55,64 @@ fn same_site(left: &Evidence, right: &Evidence) -> bool {
   left.repo == right.repo && left.path == right.path && left.span.start_byte <= right.span.end_byte && right.span.start_byte <= left.span.end_byte
 }
 
-pub fn client_call_site_linked(tx: &ReadTx<'_>, call: &Entity, request: &Edge, site: Option<&Evidence>) -> StoreResult<bool> {
-  if !tx.edges_from(call.id, &kind_filter(EdgeKind::CallsEndpoint))?.is_empty() {
-    return Ok(true);
+fn site_links(tx: &ReadTx<'_>, call: &Entity, request: &Edge, site: Option<&Evidence>) -> StoreResult<Vec<Edge>> {
+  let own = tx.edges_from(call.id, &kind_filter(EdgeKind::CallsEndpoint))?;
+  if !own.is_empty() {
+    return Ok(own);
   }
   let links = tx.edges_from(request.from, &kind_filter(EdgeKind::CallsEndpoint))?;
   let (call_key, call_id) = (call.key.to_string(), call.id.to_string());
-  for link in &links {
-    let names_call = link.attrs.values().any(|value| value.as_str().is_some_and(|text| text == call_key || text == call_id));
-    let shares_site = site.is_some_and(|site| link.evidence.iter().any(|evidence| same_site(evidence, site)));
-    if names_call || shares_site {
-      return Ok(true);
-    }
+  let attributed: Vec<Edge> = links
+    .iter()
+    .filter(|link| {
+      let names_call = link.attrs.values().any(|value| value.as_str().is_some_and(|text| text == call_key || text == call_id));
+      let shares_site = site.is_some_and(|site| link.evidence.iter().any(|evidence| same_site(evidence, site)));
+      names_call || shares_site
+    })
+    .cloned()
+    .collect();
+  if !attributed.is_empty() {
+    return Ok(attributed);
   }
   let unattributable = links.iter().all(|link| link.evidence.is_empty());
   let only_request = tx.edges_from(request.from, &kind_filter(EdgeKind::MakesRequest))?.len() == 1;
-  Ok(!links.is_empty() && unattributable && only_request)
+  Ok(match unattributable && only_request {
+    true => links,
+    false => Vec::new(),
+  })
+}
+
+pub fn client_call_site_linked(tx: &ReadTx<'_>, call: &Entity, request: &Edge, site: Option<&Evidence>) -> StoreResult<bool> {
+  Ok(!site_links(tx, call, request, site)?.is_empty())
 }
 
 pub fn client_call_flagged_unmatched(call: &Entity) -> bool {
   call.attrs.get(ATTR_UNMATCHED).and_then(serde_json::Value::as_bool).unwrap_or(false)
 }
 
-pub fn client_call_linked(tx: &ReadTx<'_>, call: &Entity) -> StoreResult<bool> {
+fn client_call_links(tx: &ReadTx<'_>, call: &Entity) -> StoreResult<Vec<Edge>> {
   if client_call_flagged_unmatched(call) {
-    return Ok(false);
+    return Ok(Vec::new());
   }
+  let mut links: Vec<Edge> = Vec::new();
   for request in tx.edges_to(call.id, &kind_filter(EdgeKind::MakesRequest))? {
-    if request.evidence.is_empty() && client_call_site_linked(tx, call, &request, None)? {
-      return Ok(true);
-    }
-    for site in &request.evidence {
-      if client_call_site_linked(tx, call, &request, Some(site))? {
-        return Ok(true);
+    let sites: Vec<Option<&Evidence>> = match request.evidence.is_empty() {
+      true => vec![None],
+      false => request.evidence.iter().map(Some).collect(),
+    };
+    for site in sites {
+      for link in site_links(tx, call, &request, site)? {
+        if !links.iter().any(|known| known.id == link.id) {
+          links.push(link);
+        }
       }
     }
   }
-  Ok(false)
+  Ok(links)
+}
+
+pub fn client_call_linked(tx: &ReadTx<'_>, call: &Entity) -> StoreResult<bool> {
+  Ok(!client_call_links(tx, call)?.is_empty())
 }
 
 fn representative_site(tx: &ReadTx<'_>, call: &Entity) -> EngineResult<Option<CallSite>> {
@@ -264,10 +285,23 @@ pub(super) fn plan(tx: &ReadTx<'_>) -> EngineResult<LinkPlan> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Agreement {
+  SameEndpoint,
+  DifferentEndpoint,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum LinkFactState {
   Current,
   CandidatesChanged,
-  Settled,
+  Vanished,
+  Superseded { agreement: Agreement, link: Certainty },
+}
+
+impl LinkFactState {
+  pub fn is_settled(&self) -> bool {
+    matches!(self, Self::Vanished | Self::Superseded { .. })
+  }
 }
 
 fn recorded_candidates(fact: &StoredInferredFact) -> Option<BTreeSet<String>> {
@@ -276,15 +310,26 @@ fn recorded_candidates(fact: &StoredInferredFact) -> Option<BTreeSet<String>> {
 }
 
 pub fn link_fact_state(tx: &ReadTx<'_>, context: &LinkContext, fact: &StoredInferredFact) -> StoreResult<LinkFactState> {
-  let [call, endpoint] = fact.subjects[..] else { return Ok(LinkFactState::Settled) };
+  let [call, endpoint] = fact.subjects[..] else { return Ok(LinkFactState::Vanished) };
   let (Some(call), Some(_)) = (tx.entity(call)?, tx.entity(endpoint)?) else {
-    return Ok(LinkFactState::Settled);
+    return Ok(LinkFactState::Vanished);
   };
   let EntityKey::ClientCall { method, target, .. } = &call.key else {
-    return Ok(LinkFactState::Settled);
+    return Ok(LinkFactState::Vanished);
   };
-  if client_call_linked(tx, &call)? {
-    return Ok(LinkFactState::Settled);
+  let links = client_call_links(tx, &call)?;
+  let strongest = |links: &mut dyn Iterator<Item = &Edge>| links.map(|link| &link.certainty).max_by(|a, b| a.cmp_strength(b)).cloned();
+  if let Some(link) = strongest(&mut links.iter().filter(|link| link.to == endpoint)) {
+    return Ok(LinkFactState::Superseded {
+      agreement: Agreement::SameEndpoint,
+      link,
+    });
+  }
+  if let Some(link) = strongest(&mut links.iter()) {
+    return Ok(LinkFactState::Superseded {
+      agreement: Agreement::DifferentEndpoint,
+      link,
+    });
   }
   let current: BTreeSet<String> = ranked(&context.endpoints, *method, target)
     .iter()

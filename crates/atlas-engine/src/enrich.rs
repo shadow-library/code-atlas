@@ -17,8 +17,8 @@ use atlas_semantic::{
 use atlas_store::{FreshnessPolicy, InferredFactId, InferredQuery, RunOutcome, RunReport, StoredInferredFact};
 
 pub use links::{
-  CallSite, EndpointChoice, LinkCandidate, LinkContext, LinkFactState, LinkPlan, client_call_flagged_unmatched, client_call_linked, client_call_site_linked, link_fact_state,
-  superseded_fragment_keys,
+  Agreement, CallSite, EndpointChoice, LinkCandidate, LinkContext, LinkFactState, LinkPlan, client_call_flagged_unmatched, client_call_linked, client_call_site_linked,
+  link_fact_state, superseded_fragment_keys,
 };
 pub use pairs::{NameSignal, PairCandidate, PairSignal};
 pub use signature::SignatureMatch;
@@ -457,7 +457,7 @@ impl Engine {
         .map(|fact| Ok((fact.id, fact.freshness.is_current(), links::link_fact_state(tx, &context, fact)?)))
         .collect()
     })?;
-    let obsolete: Vec<InferredFactId> = states.iter().filter(|(_, _, state)| *state == LinkFactState::Settled).map(|(id, ..)| *id).collect();
+    let obsolete: Vec<InferredFactId> = states.iter().filter(|(_, _, state)| state.is_settled()).map(|(id, ..)| *id).collect();
     let outdated: Vec<InferredFactId> = states
       .iter()
       .filter(|(_, current, state)| *current && *state == LinkFactState::CandidatesChanged)

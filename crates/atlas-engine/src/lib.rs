@@ -25,9 +25,9 @@ pub use artifact::artifact_file_facts;
 pub use auto_scip::{AutoScipOptions, AutoScipOutcome, AutoScipRun, AutoScipSetting, AutoScipStatus, ScipBackoff};
 pub use engine::Engine;
 pub use enrich::{
-  CallSite, EndpointChoice, EnrichOptions, EnrichPhase, EnrichPlan, EnrichReport, LEXICAL_SHARE, LINK_SHARE, LinkCandidate, LinkContext, LinkFactState, LinkPlan, NameSignal,
-  PairCandidate, PairSignal, PhaseReport, RevalidationPhase, SUMMARY_SHARE, SignatureMatch, SummaryCandidate, TaskCounts, client_call_flagged_unmatched, client_call_linked,
-  client_call_site_linked, link_fact_state, superseded_fragment_keys,
+  Agreement, CallSite, EndpointChoice, EnrichOptions, EnrichPhase, EnrichPlan, EnrichReport, LEXICAL_SHARE, LINK_SHARE, LinkCandidate, LinkContext, LinkFactState, LinkPlan,
+  NameSignal, PairCandidate, PairSignal, PhaseReport, RevalidationPhase, SUMMARY_SHARE, SignatureMatch, SummaryCandidate, TaskCounts, client_call_flagged_unmatched,
+  client_call_linked, client_call_site_linked, link_fact_state, superseded_fragment_keys,
 };
 pub use error::{EngineError, EngineResult};
 pub use options::{EngineOptions, FaultInjection, IndexMode};

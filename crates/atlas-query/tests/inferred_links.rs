@@ -3,10 +3,11 @@ mod common;
 use std::fs;
 use std::sync::Arc;
 
-use atlas_core::EntityKind;
+use atlas_core::{Certainty, Confidence, EntityId, EntityKey, EntityKind, HttpMethod};
 use atlas_engine::{EngineOptions, EnrichOptions};
 use atlas_query::{ApiAnswer, ApiRequest, Caveat, EndpointView, ExplainAnswer, ExplainRequest, ImpactRequest, Targeted, UnusedRequest};
 use atlas_semantic::{FakeProvider, FakeStep, SemanticBudget, TaskProviders};
+use atlas_store::{EntityFilter, NewInferredFact};
 use common::{ACME_REPOS, Fixture, fixture_with};
 
 const USERS_INDEX: usize = 1;
@@ -47,6 +48,38 @@ fn linked_acme_to(index: usize, route: &str) -> Fixture {
 
 fn users_endpoint(answer: &ApiAnswer) -> &EndpointView {
   answer.endpoints.items.iter().find(|view| view.method == "GET" && view.route == "/users/{id}").unwrap()
+}
+
+fn explained_links(fixture: &Fixture, target: &str) -> Vec<(String, Option<String>)> {
+  let explained = fixture.query.explain(&ExplainRequest::new(target)).unwrap();
+  let Targeted::Found(ExplainAnswer::Entity { inferred, .. }) = &explained.answer else {
+    panic!("{:?}", explained.answer)
+  };
+  let mut links: Vec<(String, Option<String>)> = inferred
+    .iter()
+    .filter(|fact| fact.relation == "calls_endpoint")
+    .map(|fact| (fact.certainty.tag.clone(), fact.certainty.freshness.clone()))
+    .collect();
+  links.sort();
+  links
+}
+
+fn insert_link(fixture: &Fixture, call: EntityId, endpoint: EntityId) {
+  let fact = NewInferredFact {
+    subjects: vec![call, endpoint],
+    relation: "calls_endpoint".to_owned(),
+    payload: serde_json::json!({ "rationale": "planted by the test" }),
+    certainty: Certainty::Inferred {
+      confidence: Confidence::new(0.7).unwrap(),
+      provider: "fake".to_owned(),
+      model: "fake-model".to_owned(),
+      rationale: "planted by the test".to_owned(),
+    },
+    evidence: Vec::new(),
+    created_run: None,
+    llm_call: None,
+  };
+  fixture.query.engine().store().write(|tx| tx.insert_inferred_fact(&fact)).unwrap();
 }
 
 fn add_api_file(fixture: &Fixture, name: &str, source: &str) {
@@ -149,6 +182,13 @@ fn should_hide_an_inferred_link_once_a_new_endpoint_enters_the_candidate_set() {
     "{:?}",
     response.answer.caveats
   );
+  assert_eq!(
+    explained_links(&fixture, "GET /users/{id}"),
+    [(
+      "[inferred 0.80 needs-revalidation]".to_owned(),
+      Some("needs revalidation: candidate endpoints changed since the model chose".to_owned())
+    )]
+  );
 
   let options = EnrichOptions {
     budget: SemanticBudget {
@@ -178,6 +218,60 @@ fn should_drop_an_inferred_link_at_query_time_once_a_deterministic_link_exists()
   assert!(!response.answer.caveats.iter().any(|caveat| matches!(caveat, Caveat::InferredHidden { .. })));
   let facts = fixture.query.engine().store().read(|tx| tx.inferred_facts(&Default::default())).unwrap();
   assert_eq!(facts.len(), 1);
+  assert_eq!(
+    explained_links(&fixture, "GET /users/{id}"),
+    [(
+      "[inferred 0.80 stale]".to_owned(),
+      Some("stale: superseded by a static-analysis link for this call to a different endpoint [heuristic 0.72]".to_owned())
+    )]
+  );
+}
+
+#[test]
+fn should_explain_a_link_that_agrees_with_a_deterministic_one_or_lost_its_subject() {
+  let fixture = linked_acme();
+  let (linked_call, users) = fixture
+    .query
+    .engine()
+    .store()
+    .read(|tx| -> atlas_engine::EngineResult<_> {
+      let calls = tx.entities_by_kind(&EntityKind::ApiClientCall, &EntityFilter::default())?;
+      let mut linked = Vec::new();
+      for call in calls {
+        let EntityKey::ClientCall {
+          method: HttpMethod::Get, target, ..
+        } = &call.key
+        else {
+          continue;
+        };
+        if target.ends_with("/users/{}") && atlas_engine::client_call_linked(tx, &call)? {
+          linked.push(call.id);
+        }
+      }
+      let endpoints = tx.entities_by_kind(&EntityKind::ApiEndpoint, &EntityFilter::default())?;
+      let users = endpoints
+        .iter()
+        .find(|endpoint| matches!(&endpoint.key, EntityKey::Endpoint { method: HttpMethod::Get, route, .. } if route == "/users/{id}"))
+        .map(|endpoint| endpoint.id);
+      Ok((linked[0], users.unwrap()))
+    })
+    .unwrap();
+  insert_link(&fixture, linked_call, users);
+  insert_link(&fixture, EntityId::from_raw(42), users);
+
+  assert_eq!(
+    explained_links(&fixture, "GET /users/{id}"),
+    [
+      ("[inferred 0.70 stale]".to_owned(), Some("stale: client call or endpoint no longer exists".to_owned())),
+      (
+        "[inferred 0.70 stale]".to_owned(),
+        Some("stale: superseded by a static-analysis link for this call, which agrees [heuristic 0.77]".to_owned())
+      ),
+      ("[inferred 0.80]".to_owned(), None),
+    ]
+  );
+  let response = fixture.query.api(&ApiRequest::default()).unwrap();
+  assert_eq!(users_endpoint(&response.answer).inferred_consumers.len(), 1);
 }
 
 #[test]

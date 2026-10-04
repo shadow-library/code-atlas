@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use atlas_core::{Edge, Entity, EntityId, EntityKind, Freshness};
-use atlas_engine::{LinkContext, LinkFactState, link_fact_state};
+use atlas_engine::{Agreement, LinkContext, LinkFactState, link_fact_state};
 use atlas_semantic::{RELATION_CALLS_ENDPOINT, inferred_edge};
 use atlas_store::{FreshnessPolicy, InferredFactId, InferredQuery, StoredInferredFact};
 
@@ -11,7 +11,7 @@ use crate::model::{Caveat, CertaintyTag, Hop};
 use crate::policy::InferredAdmission;
 
 const CANDIDATES_CHANGED: &str = "candidate endpoints changed since the model chose";
-const SETTLED: &str = "deterministic analysis now settles this call";
+const VANISHED: &str = "client call or endpoint no longer exists";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LinkEnd {
@@ -48,7 +48,7 @@ pub(crate) struct LinkScan {
 impl LinkScan {
   fn state(&mut self, graph: &Graph<'_, '_>, fact: &StoredInferredFact) -> QueryResult<LinkFactState> {
     if let Some(state) = self.states.get(&fact.id) {
-      return Ok(*state);
+      return Ok(state.clone());
     }
     let context = match self.context.take() {
       Some(context) => context,
@@ -57,22 +57,33 @@ impl LinkScan {
     let state = link_fact_state(graph.tx(), &context, fact);
     self.context = Some(context);
     let state = state?;
-    self.states.insert(fact.id, state);
+    self.states.insert(fact.id, state.clone());
     Ok(state)
   }
 
   pub(crate) fn explained_freshness(&mut self, graph: &Graph<'_, '_>, fact: &StoredInferredFact) -> QueryResult<Freshness> {
-    Ok(self.effective_freshness(graph, fact)?.unwrap_or_else(|| Freshness::Stale { reason: SETTLED.to_owned() }))
+    let settled = |reason: &str| Freshness::Stale { reason: reason.to_owned() };
+    Ok(match self.state(graph, fact)? {
+      LinkFactState::Vanished => settled(VANISHED),
+      LinkFactState::Superseded { agreement, link } => {
+        let outcome = match agreement {
+          Agreement::SameEndpoint => ", which agrees",
+          Agreement::DifferentEndpoint => " to a different endpoint",
+        };
+        settled(&format!("superseded by a static-analysis link for this call{outcome} {}", CertaintyTag::of(&link).tag))
+      }
+      LinkFactState::CandidatesChanged if fact.freshness.is_current() => Freshness::NeedsRevalidation {
+        reason: CANDIDATES_CHANGED.to_owned(),
+      },
+      LinkFactState::CandidatesChanged | LinkFactState::Current => fact.freshness.clone(),
+    })
   }
 
   fn effective_freshness(&mut self, graph: &Graph<'_, '_>, fact: &StoredInferredFact) -> QueryResult<Option<Freshness>> {
-    Ok(match self.state(graph, fact)? {
-      LinkFactState::Settled => None,
-      LinkFactState::CandidatesChanged if fact.freshness.is_current() => Some(Freshness::NeedsRevalidation {
-        reason: CANDIDATES_CHANGED.to_owned(),
-      }),
-      LinkFactState::CandidatesChanged | LinkFactState::Current => Some(fact.freshness.clone()),
-    })
+    if self.state(graph, fact)?.is_settled() {
+      return Ok(None);
+    }
+    self.explained_freshness(graph, fact).map(Some)
   }
 
   pub(crate) fn inferred_hidden(&self) -> Option<Caveat> {
