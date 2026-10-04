@@ -186,6 +186,7 @@ pub struct ProjectSymbolTable {
   pub(crate) modules: HashMap<ModuleId, ModuleEntry>,
   pub(crate) methods_by_name: HashMap<String, Vec<SymRef>>,
   pub(crate) macros_by_name: HashMap<String, Vec<SymRef>>,
+  pub(crate) rust_fields_by_name: HashMap<String, Vec<SymRef>>,
   pub(crate) rust_impls_by_trait: HashMap<String, Vec<(FileIdx, u32)>>,
   pub(crate) rust_impls_by_self: HashMap<String, Vec<(FileIdx, u32)>>,
   pub(crate) ts_implementers: HashMap<String, Vec<SymRef>>,
@@ -478,11 +479,13 @@ impl ProjectSymbolTable {
   }
 
   fn attach(&mut self, index: FileIdx, surface: FileSurface) {
+    let is_rust = surface.family == LanguageFamily::Rust;
     for (local, symbol) in surface.symbols.iter().enumerate() {
       let reference = SymRef { file: index, local: local as u32 };
       match symbol.kind {
         EntityKind::Method => self.methods_by_name.entry(symbol.name.clone()).or_default().push(reference),
         EntityKind::Macro => self.macros_by_name.entry(symbol.name.clone()).or_default().push(reference),
+        EntityKind::Field if is_rust => self.rust_fields_by_name.entry(symbol.name.clone()).or_default().push(reference),
         EntityKind::Class => {
           for implemented in &symbol.implements {
             if let Some(name) = implemented.last() {
@@ -507,7 +510,6 @@ impl ProjectSymbolTable {
         self.rust_impls_by_self.entry(name.to_owned()).or_default().push(entry);
       }
     }
-    let is_rust = surface.family == LanguageFamily::Rust;
     self.files[index.0 as usize] = Some(surface);
     match self.assign_package(index) {
       Some(package) if is_rust => {
@@ -548,6 +550,7 @@ impl ProjectSymbolTable {
       match kind {
         EntityKind::Method => retain_other_files(self.methods_by_name.get_mut(name), index, |reference| reference.file),
         EntityKind::Macro => retain_other_files(self.macros_by_name.get_mut(name), index, |reference| reference.file),
+        EntityKind::Field => retain_other_files(self.rust_fields_by_name.get_mut(name), index, |reference| reference.file),
         _ => {}
       }
     }

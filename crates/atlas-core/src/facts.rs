@@ -510,14 +510,24 @@ pub enum RefKind {
   JsxElement,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum DeclaredBinding {
+  Param,
+  Let,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ReceiverHint {
   SelfValue,
   This,
   Identifier(String),
   Expr(String),
   TypeHint(Vec<String>),
+  Declared { type_text: String, binding: DeclaredBinding },
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -849,6 +859,24 @@ mod tests {
     assert!(reference.get("origin").is_none());
     let legacy = serde_json::to_string(&facts).unwrap();
     assert_eq!(serde_json::from_str::<FileFacts>(&legacy).unwrap(), facts);
+  }
+
+  #[test]
+  fn should_serialise_declared_receivers_beside_the_existing_hint_shapes() {
+    let declared = ReceiverHint::Declared {
+      type_text: "Box<dyn Store>".into(),
+      binding: DeclaredBinding::Param,
+    };
+    let json = serde_json::to_value(&declared).unwrap();
+    assert_eq!(
+      json,
+      serde_json::json!({ "type": "declared", "value": { "type_text": "Box<dyn Store>", "binding": "param" } })
+    );
+    assert_eq!(serde_json::from_value::<ReceiverHint>(json).unwrap(), declared);
+    assert_eq!(
+      serde_json::to_value(ReceiverHint::TypeHint(strings(&["MemStore"]))).unwrap(),
+      serde_json::json!({ "type": "type_hint", "value": ["MemStore"] })
+    );
   }
 
   #[test]

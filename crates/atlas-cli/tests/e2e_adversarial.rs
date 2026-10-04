@@ -202,7 +202,6 @@ fn should_never_present_macro_generated_items_as_resolved() {
 }
 
 #[test]
-#[ignore = "BUG: calls through a `T: Store` bound and through `Box<dyn Store>` reach the trait method only as [heuristic 0.70]; expected.toml requires resolved"]
 fn should_meet_the_trait_dispatch_expectations() {
   Case::indexed("trait-dispatch-rust").assert_expectations();
 }

@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
-use atlas_core::{ArgSummary, LocalSymbolId, ReceiverHint, RefKind, RefOrigin, ReferenceFact};
+use atlas_core::{ArgSummary, DeclaredBinding, LocalSymbolId, ReceiverHint, RefKind, RefOrigin, ReferenceFact};
 use tree_sitter::Node;
 
 use crate::extract::{Extractor, generic_names};
 use crate::macros::{MacroArgs, PieceBody, STD_EXPRESSION_MACROS, macro_token_tree};
-use crate::source::{Doc, short_text};
+use crate::source::{Doc, short_text, signature_text};
 use crate::summary::{call_args, expression_children, receiver_chain};
 use crate::syntax::{decorated_children, is_comment, name_of, named_children, path_segments};
 use crate::tokens::{inner_tokens, token_tree_args, word};
@@ -19,6 +19,8 @@ const MAX_RECEIVER_TOKENS: usize = 32;
 const DECLARATION_KEYWORDS: [&str; 6] = ["impl", "trait", "mod", "type", "macro_rules", "dyn"];
 const CLOSURE_TRAITS: [&str; 3] = ["Fn", "FnMut", "FnOnce"];
 const PATTERN_FOLLOWERS: [&str; 4] = ["=>", "=", "in", "|"];
+const DEREF_WRAPPERS: [&str; 3] = ["Box", "Arc", "Rc"];
+const NESTED_SELF_TYPE: &str = "(Self)";
 const NEWTYPE_WRAPPERS: [&str; 10] = ["State", "Path", "Json", "Query", "Form", "Extension", "Data", "Some", "Reverse", "Wrapping"];
 const PIECEWISE_SYNTAX_MACROS: [&str; 9] = ["info", "debug", "warn", "error", "trace", "event", "anyhow", "bail", "ensure"];
 const KEYWORDS: [&str; 36] = [
@@ -152,7 +154,7 @@ impl<'t> Cx<'t> {
 #[derive(Default)]
 pub(crate) struct Bindings {
   frames: Vec<Vec<String>>,
-  scopes: HashMap<String, Vec<Option<Vec<String>>>>,
+  scopes: HashMap<String, Vec<Option<ReceiverHint>>>,
 }
 
 impl Bindings {
@@ -171,17 +173,17 @@ impl Bindings {
     }
   }
 
-  fn bind(&mut self, name: &str, type_hint: Option<Vec<String>>) {
+  fn bind(&mut self, name: &str, hint: Option<ReceiverHint>) {
     let Some(frame) = self.frames.last_mut() else { return };
     frame.push(name.to_owned());
-    self.scopes.entry(name.to_owned()).or_default().push(type_hint);
+    self.scopes.entry(name.to_owned()).or_default().push(hint);
   }
 
   fn contains(&self, name: &str) -> bool {
     self.scopes.get(name).is_some_and(|scope| !scope.is_empty())
   }
 
-  fn type_of(&self, name: &str) -> Option<&Vec<String>> {
+  fn hint_of(&self, name: &str) -> Option<&ReceiverHint> {
     self.scopes.get(name)?.last()?.as_ref()
   }
 }
@@ -210,7 +212,10 @@ impl Extractor<'_> {
     Some(Cx { depth: cx.depth + 1, ..cx })
   }
 
-  fn push_ref(&mut self, cx: Cx<'_>, kind: RefKind, path: Vec<String>, receiver: Option<ReceiverHint>, args: Vec<ArgSummary>, at: Node<'_>) {
+  fn push_ref(&mut self, cx: Cx<'_>, kind: RefKind, mut path: Vec<String>, receiver: Option<ReceiverHint>, args: Vec<ArgSummary>, at: Node<'_>) {
+    if self.names_nested_self_type(&path) {
+      path[0] = NESTED_SELF_TYPE.to_owned();
+    }
     let span = self.span(cx.doc, at);
     self.facts.references.push(ReferenceFact {
       from: cx.from,
@@ -221,6 +226,10 @@ impl Extractor<'_> {
       span,
       origin: cx.origin,
     });
+  }
+
+  fn names_nested_self_type(&self, path: &[String]) -> bool {
+    self.nested_items > 0 && path.first().is_some_and(|head| head == "Self")
   }
 
   fn skips_value(&self, name: &str) -> bool {
@@ -241,7 +250,7 @@ impl Extractor<'_> {
         self.visit_type(cx, declared);
       }
       if let Some(pattern) = parameter.child_by_field_name("pattern") {
-        self.bind_declared(cx, pattern, parameter.child_by_field_name("type"));
+        self.bind_declared(cx, pattern, parameter.child_by_field_name("type"), DeclaredBinding::Param);
       }
     }
     if let Some(returned) = node.child_by_field_name("return_type") {
@@ -341,6 +350,7 @@ impl Extractor<'_> {
         }
       }
       "field_expression" => {
+        self.field_access(cx, node);
         if let Some(value) = node.child_by_field_name("value") {
           self.visit_expr(cx, value);
         }
@@ -445,39 +455,63 @@ impl Extractor<'_> {
     if let Some(pattern) = node.child_by_field_name("pattern") {
       let declared = node.child_by_field_name("type");
       match declared {
-        Some(declared) => self.bind_declared(cx, pattern, Some(declared)),
+        Some(declared) => self.bind_declared(cx, pattern, Some(declared), DeclaredBinding::Let),
         None => {
           self.bind_pattern(cx, pattern);
           let literal = node.child_by_field_name("value").and_then(|value| literal_type(cx.doc, value));
-          if let (Some(name), Some(type_hint)) = (plain_binding(cx.doc, pattern), literal) {
-            self.bind_typed(name, type_hint);
+          if let (Some(name), Some(path)) = (plain_binding(cx.doc, pattern), literal) {
+            let unknown = self.generics.contains(&path[0]) || self.names_nested_self_type(&path);
+            self.locals.bind(name, (!unknown).then_some(ReceiverHint::TypeHint(path)));
           }
         }
       }
     }
   }
 
-  fn bind_declared<'t>(&mut self, cx: Cx<'t>, pattern: Node<'t>, declared: Option<Node<'t>>) {
+  fn bind_declared<'t>(&mut self, cx: Cx<'t>, pattern: Node<'t>, declared: Option<Node<'t>>, binding: DeclaredBinding) {
     self.bind_pattern(cx, pattern);
-    if let Some((name, type_hint)) = declared.and_then(|declared| typed_binding(cx.doc, pattern, declared, &self.local_types)) {
-      self.bind_typed(name, type_hint);
+    if let Some((name, declared)) = declared.and_then(|declared| typed_binding(cx.doc, pattern, declared, &self.local_types)) {
+      let hint = self.declared_hint(cx.doc, declared, binding);
+      self.locals.bind(name, hint);
     }
   }
 
-  fn bind_typed(&mut self, name: &str, type_hint: Vec<String>) {
-    let generic = type_hint.first().is_some_and(|head| self.generics.contains(head));
-    self.locals.bind(name, (!generic).then_some(type_hint));
+  fn declared_hint(&self, doc: Doc<'_>, declared: Node<'_>, binding: DeclaredBinding) -> Option<ReceiverHint> {
+    let path = type_hint(doc, declared)?;
+    if self.names_nested_self_type(&path) {
+      return None;
+    }
+    let generic = self.generics.contains(&path[0]);
+    let loses_information = match path.as_slice() {
+      [_] if generic => true,
+      _ if generic => return None,
+      _ => path.last().is_some_and(|last| DEREF_WRAPPERS.contains(&last.as_str())),
+    };
+    // The resolver only knows the generics of the symbol a reference is attributed to, not those of fn items nested in its body.
+    if !loses_information || self.nested_items > 0 {
+      return (!generic).then_some(ReceiverHint::TypeHint(path));
+    }
+    Some(ReceiverHint::Declared {
+      type_text: signature_text(doc.text(declared)),
+      binding,
+    })
   }
 
   fn head_hint(&self, head: &str) -> ReceiverHint {
     match head {
+      "self" if self.nested_items > 0 => ReceiverHint::Expr(head.to_owned()),
       "self" => ReceiverHint::SelfValue,
-      name if self.locals.contains(name) => match self.locals.type_of(name) {
-        Some(type_hint) => ReceiverHint::TypeHint(type_hint.clone()),
-        None => ReceiverHint::Expr(name.to_owned()),
-      },
+      name if self.locals.contains(name) => self.locals.hint_of(name).cloned().unwrap_or_else(|| ReceiverHint::Expr(name.to_owned())),
       name => ReceiverHint::Identifier(name.to_owned()),
     }
+  }
+
+  fn field_access(&mut self, cx: Cx<'_>, node: Node<'_>) {
+    let (Some(path), Some(field)) = (field_chain(cx.doc, node), node.child_by_field_name("field")) else {
+      return;
+    };
+    let hint = self.head_hint(&path[0]);
+    self.push_ref(cx, RefKind::ValueRef, path, Some(hint), Vec::new(), field);
   }
 
   fn match_arm<'t>(&mut self, cx: Cx<'t>, arm: Node<'t>) {
@@ -507,7 +541,7 @@ impl Extractor<'_> {
         self.visit_type(cx, declared);
       }
       if let Some(pattern) = parameter.child_by_field_name("pattern") {
-        self.bind_declared(cx, pattern, parameter.child_by_field_name("type"));
+        self.bind_declared(cx, pattern, parameter.child_by_field_name("type"), DeclaredBinding::Param);
       }
     }
     if let Some(returned) = node.child_by_field_name("return_type") {
@@ -813,12 +847,20 @@ impl Extractor<'_> {
       .map(|symbol| symbol.module_suffix.clone())
       .unwrap_or_default();
     self.push_impl(cx.doc, node, attributes, start, module_suffix, cx.from);
+    self.nested_items += 1;
     self.generics.push(generic_names(cx.doc, node));
     self.nested_parts(cx, node);
     self.generics.pop();
+    self.nested_items -= 1;
   }
 
   fn nested_item<'t>(&mut self, cx: Cx<'t>, node: Node<'t>) {
+    self.nested_items += 1;
+    self.nested_item_parts(cx, node);
+    self.nested_items -= 1;
+  }
+
+  fn nested_item_parts<'t>(&mut self, cx: Cx<'t>, node: Node<'t>) {
     match node.kind() {
       "function_item" | "function_signature_item" => self.function_refs(cx, node),
       "const_item" | "static_item" => {
@@ -916,9 +958,33 @@ fn plain_binding<'t>(doc: Doc<'t>, pattern: Node<'_>) -> Option<&'t str> {
     .filter(|name| !name.is_empty() && *name != "_")
 }
 
-fn typed_binding<'t>(doc: Doc<'t>, pattern: Node<'_>, declared: Node<'_>, local_types: &HashSet<String>) -> Option<(&'t str, Vec<String>)> {
+fn field_chain(doc: Doc<'_>, node: Node<'_>) -> Option<Vec<String>> {
+  let mut segments = Vec::new();
+  let mut current = node;
+  while current.kind() == "field_expression" {
+    if segments.len() >= MAX_PATH_WALK {
+      return None;
+    }
+    let field = doc.identifier(current.child_by_field_name("field")?);
+    if field.is_empty() {
+      return None;
+    }
+    segments.push(field.to_owned());
+    current = current.child_by_field_name("value")?;
+  }
+  let accessed = segments.first()?;
+  let head = doc.identifier(current);
+  if !matches!(current.kind(), "identifier" | "self") || head.is_empty() || accessed.starts_with(|c: char| c.is_ascii_digit()) {
+    return None;
+  }
+  segments.push(head.to_owned());
+  segments.reverse();
+  Some(segments)
+}
+
+fn typed_binding<'t, 'n>(doc: Doc<'t>, pattern: Node<'n>, declared: Node<'n>, local_types: &HashSet<String>) -> Option<(&'t str, Node<'n>)> {
   if let Some(name) = plain_binding(doc, pattern) {
-    return Some((name, type_hint(doc, declared)?));
+    return Some((name, declared));
   }
   if pattern.kind() != "tuple_struct_pattern" {
     return None;
@@ -942,7 +1008,7 @@ fn typed_binding<'t>(doc: Doc<'t>, pattern: Node<'_>, declared: Node<'_>, local_
   let arguments = declared.child_by_field_name("type_arguments")?;
   let arguments = named_children(arguments);
   let [argument] = arguments.as_slice() else { return None };
-  Some((name, type_hint(doc, *argument)?))
+  Some((name, *argument))
 }
 
 fn strip_reference(mut node: Node<'_>) -> Node<'_> {

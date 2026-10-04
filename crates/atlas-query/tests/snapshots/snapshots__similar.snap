@@ -7,15 +7,15 @@ similar to toCents function acme-sdk:src/money.ts:1 [ts]
   consumers 1 (1 uncertain) in acme-web; tests 3
 candidates (3)
   parseMoney function acme-web:src/utils/currency.ts:1 [ts]
-    evidence: lexical 4.31 (string numb), same signature (string) -> number
+    evidence: lexical 4.32 (string numb), same signature (string) -> number
     verdict: same signature shape and related name, behaviour unverified
     consumers 0 in -; tests 0
   to_cents function acme-billing:src/money.rs:1 [rust]
-    evidence: lexical 4.59 (cent amount)
+    evidence: lexical 4.54 (cent amount)
     verdict: related by name only, behaviour unverified
     consumers 1 in acme-billing; tests 3
   formatMoney function acme-api:src/common/money.ts:1 [ts]
-    evidence: lexical 4.50 (cent string numb)
+    evidence: lexical 4.47 (cent string numb)
     verdict: related by name only, behaviour unverified
     consumers 2 in acme-api; tests 0
 likely shared home

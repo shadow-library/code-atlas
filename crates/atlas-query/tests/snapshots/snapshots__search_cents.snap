@@ -5,35 +5,35 @@ expression: output
 fresh run=1 (+0 files, <t>)
 search "convert currency string to cents": 30 hits
 strong (1)
-  toCents function acme-sdk:src/money.ts:1 score=3.066
+  toCents function acme-sdk:src/money.ts:1 score=3.034
     sig function toCents(amount: string): number
     matched name: cents; signature: string cents amount; path: money; expanded money (from currency, cents), amount (from currency, cents)
 related (9)
   parseMoney function acme-web:src/utils/currency.ts:1 score=2.675
     sig function parseMoney(input: string): number
     matched name: money; signature: string money; path: currency; expanded money (from currency, cents)
-  formatMoney function acme-api:src/common/money.ts:1 score=2.209
+  formatMoney function acme-api:src/common/money.ts:1 score=2.191
     sig function formatMoney(cents: number): string
     matched name: money; signature: string cents money; path: money; references: string; expanded money (from currency, cents)
-  to_cents function acme-billing:src/money.rs:1 score=2.149
+  to_cents function acme-billing:src/money.rs:1 score=2.122
     sig pub fn to_cents(amount: &str) -> i64
     matched name: cents; signature: cents amount; path: money; expanded money (from currency, cents), amount (from currency, cents)
-  Invoice::amount_cents field acme-billing:src/store.rs:12 score=1.910
+  Invoice::amount_cents field acme-billing:src/store.rs:12 score=1.884
     sig pub amount_cents: i64
     matched name: cents amount; signature: cents amount; expanded amount (from currency, cents)
-  CreateOrderInput.subtotalCents field acme-api:src/orders/orders.service.ts:12 score=1.236
+  CreateOrderInput.subtotalCents field acme-api:src/orders/orders.service.ts:12 score=1.210
     sig subtotalCents: number
     matched name: cents; signature: cents
-  Order.totalCents field acme-api:src/orders/order.entity.ts:11 score=1.236
+  Order.totalCents field acme-api:src/orders/order.entity.ts:11 score=1.210
     sig totalCents!: number
     matched name: cents; signature: cents
-  Order.totalCents field acme-sdk:src/types.ts:17 score=1.236
+  Order.totalCents field acme-sdk:src/types.ts:17 score=1.210
     sig totalCents: number
     matched name: cents; signature: cents
-  CreateOrderInput.subtotalCents field acme-sdk:src/types.ts:22 score=1.236
+  CreateOrderInput.subtotalCents field acme-sdk:src/types.ts:22 score=1.210
     sig subtotalCents: number
     matched name: cents; signature: cents
-  OrderCreated::total_cents field acme-billing:src/events.rs:19 score=1.236
+  OrderCreated::total_cents field acme-billing:src/events.rs:19 score=1.210
     sig total_cents: i64
     matched name: cents; signature: cents
 caveats:

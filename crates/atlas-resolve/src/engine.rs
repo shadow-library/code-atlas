@@ -17,6 +17,7 @@ pub(crate) const MACRO_SCOPE_CONFIDENCE: f32 = 0.6;
 pub(crate) const MACRO_TOKEN_SCAN_CONFIDENCE: f32 = 0.6;
 pub(crate) const PARAM_TYPE_CONFIDENCE: f32 = 0.7;
 pub(crate) const FN_LOCAL_ITEM_CONFIDENCE: f32 = 0.5;
+pub(crate) const FIELD_NAME_CONFIDENCE: f32 = 0.5;
 
 const COMMON_RUST_METHODS: [&str; 98] = [
   "iter",
@@ -194,6 +195,7 @@ pub(crate) const RULE_MACRO_TOKEN_SCAN: &str = "macro-token-scan";
 pub(crate) const RULE_PARAM_TYPE: &str = "param-type-recovery";
 pub(crate) const RULE_FN_LOCAL_ITEM: &str = "fn-local-item-possible";
 pub(crate) const RULE_OVERRIDE_DISPATCH: &str = "override-dispatch-candidate";
+pub(crate) const RULE_FIELD_NAME: &str = "field-name-only";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum Found {
@@ -474,7 +476,7 @@ impl<'t> Resolver<'t> {
     })
   }
 
-  fn is_visible(&self, file: FileIdx) -> bool {
+  pub(crate) fn is_visible(&self, file: FileIdx) -> bool {
     match &self.visible {
       CandidateScope::Packages(packages) => self.table.file_package(file).is_some_and(|package| packages.contains(package)),
       CandidateScope::Repo(repo) => self.table.file(file).is_some_and(|surface| surface.repo == *repo),

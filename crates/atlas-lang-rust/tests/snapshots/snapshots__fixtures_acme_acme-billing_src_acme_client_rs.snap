@@ -797,6 +797,36 @@ references:
       end_line: 31
       end_col: 20
   - from: 9
+    kind: value_ref
+    path:
+      - self
+      - base_url
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 770
+      end_byte: 778
+      start_line: 31
+      start_col: 43
+      end_line: 31
+      end_col: 51
+  - from: 9
+    kind: value_ref
+    path:
+      - self
+      - http
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 815
+      end_byte: 819
+      start_line: 32
+      start_col: 24
+      end_line: 32
+      end_col: 28
+  - from: 9
     kind: method_call
     path:
       - self
@@ -837,6 +867,21 @@ references:
       start_col: 38
       end_line: 32
       end_col: 44
+  - from: 9
+    kind: value_ref
+    path:
+      - self
+      - api_key
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 855
+      end_byte: 862
+      start_line: 32
+      start_col: 64
+      end_line: 32
+      end_col: 71
   - from: 9
     kind: method_call
     path:

@@ -613,6 +613,23 @@ references:
       end_line: 19
       end_col: 142
   - from: 3
+    kind: value_ref
+    path:
+      - state
+      - acme
+    receiver:
+      type: type_hint
+      value:
+        - AppState
+    args: []
+    span:
+      start_byte: 552
+      end_byte: 556
+      start_line: 20
+      start_col: 20
+      end_line: 20
+      end_col: 24
+  - from: 3
     kind: method_call
     path:
       - state
@@ -634,6 +651,23 @@ references:
       start_col: 25
       end_line: 20
       end_col: 34
+  - from: 3
+    kind: value_ref
+    path:
+      - request
+      - order_id
+    receiver:
+      type: type_hint
+      value:
+        - CreateInvoice
+    args: []
+    span:
+      start_byte: 576
+      end_byte: 584
+      start_line: 20
+      start_col: 44
+      end_line: 20
+      end_col: 52
   - from: 3
     kind: instantiation
     path:
@@ -667,6 +701,54 @@ references:
       end_line: 21
       end_col: 36
   - from: 3
+    kind: value_ref
+    path:
+      - order
+      - id
+    receiver:
+      type: expr
+      value: order
+    args: []
+    span:
+      start_byte: 648
+      end_byte: 650
+      start_line: 21
+      start_col: 54
+      end_line: 21
+      end_col: 56
+  - from: 3
+    kind: value_ref
+    path:
+      - order
+      - id
+    receiver:
+      type: expr
+      value: order
+    args: []
+    span:
+      start_byte: 669
+      end_byte: 671
+      start_line: 21
+      start_col: 75
+      end_line: 21
+      end_col: 77
+  - from: 3
+    kind: value_ref
+    path:
+      - order
+      - total_cents
+    receiver:
+      type: expr
+      value: order
+    args: []
+    span:
+      start_byte: 693
+      end_byte: 704
+      start_line: 21
+      start_col: 99
+      end_line: 21
+      end_col: 110
+  - from: 3
     kind: call
     path:
       - persist
@@ -689,6 +771,23 @@ references:
       start_col: 14
       end_line: 22
       end_col: 21
+  - from: 3
+    kind: value_ref
+    path:
+      - state
+      - store
+    receiver:
+      type: type_hint
+      value:
+        - AppState
+    args: []
+    span:
+      start_byte: 736
+      end_byte: 741
+      start_line: 22
+      start_col: 28
+      end_line: 22
+      end_col: 33
   - from: 3
     kind: method_call
     path:
@@ -868,6 +967,23 @@ references:
       start_col: 105
       end_line: 26
       end_col: 113
+  - from: 4
+    kind: value_ref
+    path:
+      - state
+      - store
+    receiver:
+      type: type_hint
+      value:
+        - AppState
+    args: []
+    span:
+      start_byte: 932
+      end_byte: 937
+      start_line: 27
+      start_col: 8
+      end_line: 27
+      end_col: 13
   - from: 4
     kind: method_call
     path:

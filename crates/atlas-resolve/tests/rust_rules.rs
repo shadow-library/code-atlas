@@ -124,8 +124,7 @@ pub fn outside(holder: &Holder, engine: Box<Engine>) {
   );
   let outside = item(&[], &["outside"], EntityKind::Function);
   project.assert_edge(EdgeKind::Calls, outside, run, RESOLVED);
-  let recovered = project.assert_edge(EdgeKind::Calls, outside, start, HEURISTIC);
-  assert_eq!(recovered.certainty, Certainty::heuristic(Confidence::new(0.7).unwrap(), "param-type-recovery"));
+  project.assert_edge(EdgeKind::Calls, outside, start, RESOLVED);
   project.assert_edge(EdgeKind::Calls, outside, item(&[], &["Trait", "provided"], EntityKind::Method), RESOLVED);
   project.assert_edge(EdgeKind::Contains, item(&[], &["Holder"], EntityKind::Struct), run, RESOLVED);
 }
@@ -379,4 +378,292 @@ fn should_not_add_a_type_edge_for_project_methods_turbofish_or_generic_params() 
   assert_eq!(project.edges_from(EdgeKind::References, turbofish).len(), 1);
   let generic = item(&[], &["uses_generic"], EntityKind::Function);
   project.assert_no_edge(EdgeKind::References, generic, item(&[], &["T"], EntityKind::Struct));
+}
+
+fn field(owner: &str, name: &str) -> atlas_core::EntityId {
+  item(&[], &[owner, name], EntityKind::Field)
+}
+
+#[test]
+fn should_resolve_field_accesses_on_typed_receivers_to_field_symbols() {
+  let manifest = manifest("demo", "");
+  let synthetic = single(
+    "demo",
+    &[
+      ("Cargo.toml", &manifest),
+      (
+        "src/lib.rs",
+        r#"use std::sync::Arc;
+
+pub struct Config { pub name: String, pub retries: u32 }
+pub struct Store { count: u32, config: Config, shared: Arc<Config>, boxed: Box<Config> }
+pub struct Other { count: u32 }
+pub struct Pair(pub u32, pub Config);
+
+impl Store {
+  pub fn bump(&mut self) {
+    self.count += 1;
+    let _ = self.config.name.len();
+  }
+  pub fn read(&self) -> u32 {
+    self.count + self.count + self.count + self.count + self.count
+  }
+  pub fn through(&self) -> u32 {
+    self.shared.retries + self.boxed.retries
+  }
+  pub fn logged(&self) -> String {
+    format!("{}", self.count)
+  }
+}
+
+pub fn typed(store: &Store, config: Box<Config>) -> u32 {
+  store.count + config.retries
+}
+
+pub fn pair(p: Pair) -> u32 {
+  p.0
+}
+
+pub fn wrapper(shared: Arc<Config>) -> u32 {
+  shared.retries
+}
+"#,
+      ),
+    ],
+  );
+  let project = &synthetic.project;
+  let method = |name: &str| item(&[], &["Store", name], EntityKind::Method);
+  project.assert_edge(EdgeKind::References, method("bump"), field("Store", "count"), RESOLVED);
+  project.assert_edge(EdgeKind::References, method("bump"), field("Store", "config"), RESOLVED);
+  project.assert_edge(EdgeKind::References, method("bump"), field("Config", "name"), RESOLVED);
+  let read = project.assert_edge(EdgeKind::References, method("read"), field("Store", "count"), RESOLVED);
+  assert_eq!(read.evidence.len(), 4);
+  for name in ["shared", "boxed"] {
+    project.assert_edge(EdgeKind::References, method("through"), field("Store", name), RESOLVED);
+  }
+  project.assert_edge(EdgeKind::References, method("through"), field("Config", "retries"), RESOLVED);
+  project.assert_edge(EdgeKind::References, method("logged"), field("Store", "count"), RESOLVED);
+  let typed = item(&[], &["typed"], EntityKind::Function);
+  project.assert_edge(EdgeKind::References, typed, field("Store", "count"), RESOLVED);
+  project.assert_edge(EdgeKind::References, typed, field("Config", "retries"), RESOLVED);
+  project.assert_no_edge(EdgeKind::References, typed, field("Other", "count"));
+  project.assert_edge(EdgeKind::References, item(&[], &["wrapper"], EntityKind::Function), field("Config", "retries"), RESOLVED);
+  let pair = item(&[], &["pair"], EntityKind::Function);
+  let targets: Vec<_> = project.edges_from(EdgeKind::References, pair).iter().map(|edge| edge.to).collect();
+  assert_eq!(targets, [item(&[], &["Pair"], EntityKind::Struct)]);
+  assert!(project.unresolved_named(pair, "0").is_empty());
+}
+
+#[test]
+fn should_match_unknown_receivers_by_field_name_only_when_the_name_is_unique_and_not_a_std_field() {
+  let manifest = manifest("demo", "");
+  let synthetic = single(
+    "demo",
+    &[
+      ("Cargo.toml", &manifest),
+      (
+        "src/lib.rs",
+        r#"pub mod cfg {
+  pub struct Config { pub retries: u32, pub start: u32 }
+}
+pub struct Store { pub count: u32 }
+pub struct Other { pub count: u32 }
+
+fn make<T>() -> T { todo!() }
+
+pub fn unique() -> u32 {
+  let config: cfg::Config = make();
+  let guess = make::<cfg::Config>();
+  config.retries + guess.retries
+}
+
+pub fn shared_name(store: &Store) -> u32 {
+  let store = make::<Store>();
+  store.count
+}
+
+pub fn std_like() -> u32 {
+  let range = make::<cfg::Config>();
+  range.start
+}
+
+#[allow(non_camel_case_types)]
+pub struct handle { pub other: u32 }
+
+pub fn anchored() -> u32 {
+  let handle = make::<cfg::Config>();
+  handle.missing
+}
+"#,
+      ),
+    ],
+  );
+  let project = &synthetic.project;
+  let retries = item(&["cfg"], &["Config", "retries"], EntityKind::Field);
+  let unique = project.assert_edge(EdgeKind::References, item(&[], &["unique"], EntityKind::Function), retries, RESOLVED);
+  assert_eq!(unique.evidence.len(), 1);
+  let shared_name = item(&[], &["shared_name"], EntityKind::Function);
+  for owner in ["Store", "Other"] {
+    project.assert_no_edge(EdgeKind::References, shared_name, field(owner, "count"));
+  }
+  let found = project.unresolved_named(shared_name, "count");
+  assert!(
+    matches!(found.as_slice(), [unresolved] if matches!(&unresolved.reason, UnresolvedReason::Ambiguous { candidates } if candidates.len() == 2)),
+    "{found:#?}"
+  );
+  let std_like = item(&[], &["std_like"], EntityKind::Function);
+  project.assert_no_edge(EdgeKind::References, std_like, item(&["cfg"], &["Config", "start"], EntityKind::Field));
+  let anchored = item(&[], &["anchored"], EntityKind::Function);
+  let targets: Vec<_> = project.edges_from(EdgeKind::References, anchored).iter().map(|edge| edge.to).collect();
+  assert_eq!(targets, [item(&["cfg"], &["Config"], EntityKind::Struct)]);
+  project.assert_unresolved(anchored, "missing", &UnresolvedReason::NotFound);
+}
+
+#[test]
+fn should_give_name_only_field_matches_heuristic_certainty() {
+  let manifest = manifest("demo", "");
+  let synthetic = single(
+    "demo",
+    &[
+      ("Cargo.toml", &manifest),
+      (
+        "src/lib.rs",
+        "pub struct Config { pub retries: u32 }\nfn make() -> Config { Config { retries: 1 } }\npub fn guess() -> u32 { let config = make(); config.retries }\n",
+      ),
+    ],
+  );
+  synthetic.project.assert_certainty(
+    EdgeKind::References,
+    item(&[], &["guess"], EntityKind::Function),
+    field("Config", "retries"),
+    &Certainty::heuristic(Confidence::new(0.5).unwrap(), "field-name-only"),
+  );
+}
+
+#[test]
+fn should_resolve_declared_generic_and_wrapper_receivers_through_bounds_and_arguments() {
+  let manifest = manifest("demo", "");
+  let synthetic = single(
+    "demo",
+    &[
+      ("Cargo.toml", &manifest),
+      (
+        "src/lib.rs",
+        r#"use std::sync::Arc;
+
+pub trait Store { fn get(&self) -> u32; }
+pub trait Other { fn get(&self) -> u32; }
+pub struct Mem;
+impl Store for Mem { fn get(&self) -> u32 { 1 } }
+impl Mem { pub fn new() -> Self { Mem } }
+pub struct Pg;
+impl Pg { pub fn save(&self) {} }
+
+pub fn bound<T: Store>(s: &T) -> u32 { s.get() }
+pub fn where_clause<T>(s: T) -> u32 where T: Store { s.get() }
+pub fn let_typed<T: Store>(make: fn() -> T) -> u32 { let s: T = make(); s.get() }
+pub fn closure<T: Store>(items: Vec<T>) -> u32 { items.iter().map(|s: &T| s.get()).sum() }
+pub fn boxed_generic<T: Store>(s: Box<T>) -> u32 { s.get() }
+pub fn arc_dyn(make: fn() -> Arc<dyn Store>) -> u32 { let s: Arc<dyn Store> = make(); s.get() }
+pub fn arc_concrete(p: Arc<Pg>) { p.save(); }
+pub fn unbounded<T>(s: &T) -> u32 { s.get() }
+"#,
+      ),
+    ],
+  );
+  let project = &synthetic.project;
+  let store_get = item(&[], &["Store", "get"], EntityKind::Method);
+  let mem_get = item(&[], &["Mem", "<Store>", "get"], EntityKind::Method);
+  for caller in ["bound", "where_clause", "let_typed", "closure", "boxed_generic", "arc_dyn"] {
+    let from = item(&[], &[caller], EntityKind::Function);
+    project.assert_edge(EdgeKind::Calls, from, store_get, RESOLVED);
+    project.assert_certainty(
+      EdgeKind::Calls,
+      from,
+      mem_get,
+      &Certainty::heuristic(Confidence::new(0.3).unwrap(), "dyn-dispatch-candidate"),
+    );
+    project.assert_no_edge(EdgeKind::Calls, from, item(&[], &["Other", "get"], EntityKind::Method));
+  }
+  project.assert_edge(
+    EdgeKind::Calls,
+    item(&[], &["arc_concrete"], EntityKind::Function),
+    item(&[], &["Pg", "save"], EntityKind::Method),
+    RESOLVED,
+  );
+  let unbounded = item(&[], &["unbounded"], EntityKind::Function);
+  for target in [store_get, mem_get, item(&[], &["Other", "get"], EntityKind::Method)] {
+    project.assert_no_edge_of_class(EdgeKind::Calls, unbounded, target, &[CertaintyClass::Resolved, CertaintyClass::Syntactic]);
+  }
+}
+
+#[test]
+fn should_keep_param_type_recovery_heuristic_when_a_shadowing_or_nested_binding_hides_the_param() {
+  let manifest = manifest("demo", "");
+  let synthetic = single(
+    "demo",
+    &[
+      ("Cargo.toml", &manifest),
+      (
+        "src/lib.rs",
+        r#"use std::sync::Arc;
+
+pub trait Store { fn get(&self) -> u32; }
+pub trait Other { fn get(&self) -> u32; }
+pub struct Mem;
+impl Mem { pub fn new() -> Self { Mem } pub fn get(&self) -> u32 { 0 } }
+pub struct Pg;
+impl Pg { pub fn save(&self) {} }
+impl Mem { pub fn save(&self) {} }
+
+pub fn shadowed<T: Store>(s: &T) -> u32 { let s = Mem::new(); s.get() }
+pub fn pattern<T: Store>(s: &T, found: Option<Mem>) -> u32 { if let Some(s) = found { s.get() } else { 0 } }
+pub fn closure<T: Store>(s: &T, all: Vec<Mem>) -> u32 { all.iter().map(|s| s.get()).sum() }
+pub fn nested<T: Other>(t: &T) -> u32 {
+  fn inner<T: Store>(t: &T) -> u32 { t.get() }
+  inner(&Mem)
+}
+pub fn nested_wrapper(p: Arc<Pg>) {
+  fn inner(p: Arc<Mem>) { p.save(); }
+  inner(Arc::new(Mem));
+}
+"#,
+      ),
+    ],
+  );
+  let project = &synthetic.project;
+  let recovered = Certainty::heuristic(Confidence::new(0.7).unwrap(), "param-type-recovery");
+  for caller in ["shadowed", "pattern", "closure"] {
+    project.assert_certainty(
+      EdgeKind::Calls,
+      item(&[], &[caller], EntityKind::Function),
+      item(&[], &["Store", "get"], EntityKind::Method),
+      &recovered,
+    );
+  }
+  project.assert_edge(
+    EdgeKind::Calls,
+    item(&[], &["nested"], EntityKind::Function),
+    item(&[], &["Other", "get"], EntityKind::Method),
+    HEURISTIC,
+  );
+  project.assert_edge(
+    EdgeKind::Calls,
+    item(&[], &["nested_wrapper"], EntityKind::Function),
+    item(&[], &["Pg", "save"], EntityKind::Method),
+    HEURISTIC,
+  );
+  let authoritative = &[CertaintyClass::Resolved, CertaintyClass::Syntactic];
+  for caller in ["shadowed", "pattern", "closure", "nested", "nested_wrapper"] {
+    let from = item(&[], &[caller], EntityKind::Function);
+    for target in [
+      item(&[], &["Store", "get"], EntityKind::Method),
+      item(&[], &["Other", "get"], EntityKind::Method),
+      item(&[], &["Mem", "get"], EntityKind::Method),
+      item(&[], &["Pg", "save"], EntityKind::Method),
+      item(&[], &["Mem", "save"], EntityKind::Method),
+    ] {
+      project.assert_no_edge_of_class(EdgeKind::Calls, from, target, authoritative);
+    }
+  }
 }

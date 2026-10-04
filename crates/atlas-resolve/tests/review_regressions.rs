@@ -119,22 +119,18 @@ fn should_cap_receiver_types_recovered_from_parameter_text_at_heuristic() {
     "use std::sync::Arc;\npub trait Store { fn insert(&self); }\npub struct Pg;\npub struct Mem;\nimpl Pg { pub fn insert(&self) {} pub fn save(&self) {} }\nimpl Mem { pub fn insert(&self) {} pub fn save(&self) {} pub fn new() -> Self { Mem } }\npub fn f<T: Store>(x: T) { let x = Mem::new(); x.insert(); }\npub fn g(x: Arc<Pg>) { let x: Arc<Mem> = Arc::new(Mem); x.save(); }\npub fn h(x: Pg) { let x = Mem::new(); x.save(); }\npub fn k(x: Arc<Pg>) { let c = |x: Arc<Mem>| x.save(); }\npub fn m(x: Pg) { if let Some(x) = Some(Mem) { x.save(); } }\n",
   );
   let project = &synthetic.project;
-  let recovered = heuristic(0.7, "param-type-recovery");
   project.assert_certainty(
     EdgeKind::Calls,
     demo(&[], &["f"], EntityKind::Function),
     demo(&[], &["Store", "insert"], EntityKind::Method),
-    &recovered,
+    &heuristic(0.7, "param-type-recovery"),
   );
   for caller in ["g", "k"] {
-    project.assert_certainty(
-      EdgeKind::Calls,
-      demo(&[], &[caller], EntityKind::Function),
-      demo(&[], &["Pg", "save"], EntityKind::Method),
-      &recovered,
-    );
+    let from = demo(&[], &[caller], EntityKind::Function);
+    project.assert_edge(EdgeKind::Calls, from, demo(&[], &["Mem", "save"], EntityKind::Method), RESOLVED);
+    project.assert_no_edge(EdgeKind::Calls, from, demo(&[], &["Pg", "save"], EntityKind::Method));
   }
-  for caller in ["f", "g", "h", "k", "m"] {
+  for caller in ["f", "h", "m"] {
     let from = demo(&[], &[caller], EntityKind::Function);
     for target in [
       demo(&[], &["Pg", "save"], EntityKind::Method),
@@ -171,12 +167,7 @@ fn should_attribute_deref_wrapper_methods_to_the_wrapper() {
     );
   }
   project.assert_unresolved(g, "clone", &UnresolvedReason::External { package: "std".to_owned() });
-  project.assert_certainty(
-    EdgeKind::Calls,
-    f,
-    demo(&[], &["Inner", "clone_it"], EntityKind::Method),
-    &heuristic(0.7, "param-type-recovery"),
-  );
+  project.assert_edge(EdgeKind::Calls, f, demo(&[], &["Inner", "clone_it"], EntityKind::Method), RESOLVED);
 }
 
 #[test]
@@ -765,4 +756,51 @@ fn should_weaken_a_const_initializer_block_that_declares_an_item_on_one_line() {
   }
   project.assert_edge(EdgeKind::References, demo(&[], &["D"], EntityKind::Constant), config, RESOLVED);
   project.assert_edge(EdgeKind::References, demo(&[], &["h"], EntityKind::Function), config, RESOLVED);
+}
+
+#[test]
+fn should_never_resolve_self_inside_an_impl_nested_in_a_method_to_the_outer_impl() {
+  let synthetic = rust_project(
+    "pub struct Foo { pub a: u32 }\npub struct Bar { pub a: u32 }\npub trait T { fn g(&self) -> u32; }\nimpl Foo {\n  pub fn helper(&self) {}\n  pub fn make() -> Self { Foo { a: 0 } }\n  pub fn m(&self) -> u32 {\n    struct L { a: u32 }\n    impl L { fn helper(&self) {} fn make() -> Self { L { a: 0 } } fn g(&self, other: &Self) -> u32 { self.helper(); let _ = Self::make(); let _ = Self { a: 1 }; other.a + self.a } }\n    0\n  }\n  pub fn n(&self) -> u32 {\n    impl T for Bar { fn g(&self) -> u32 { self.helper(); let _ = Self::make(); self.a } }\n    self.a\n  }\n}\n",
+  );
+  let project = &synthetic.project;
+  let m = demo(&[], &["Foo", "m"], EntityKind::Method);
+  let n = demo(&[], &["Foo", "n"], EntityKind::Method);
+  let outer = [
+    demo(&[], &["Foo", "helper"], EntityKind::Method),
+    demo(&[], &["Foo", "make"], EntityKind::Method),
+    demo(&[], &["Foo"], EntityKind::Struct),
+  ];
+  for from in [m, n] {
+    for target in outer {
+      for kind in [EdgeKind::Calls, EdgeKind::References, EdgeKind::Instantiates] {
+        project.assert_no_edge_of_class(kind, from, target, AUTHORITATIVE);
+      }
+    }
+  }
+  project.assert_no_edge_of_class(EdgeKind::References, m, demo(&[], &["Foo", "a"], EntityKind::Field), AUTHORITATIVE);
+  project.assert_unresolved(m, "make", &UnresolvedReason::Dynamic);
+  project.assert_unresolved(n, "make", &UnresolvedReason::Dynamic);
+  let outer_field = project.assert_edge(EdgeKind::References, n, demo(&[], &["Foo", "a"], EntityKind::Field), RESOLVED);
+  assert_eq!(outer_field.evidence.len(), 1);
+}
+
+#[test]
+fn should_not_guess_fields_by_name_when_a_declared_receiver_type_does_not_resolve() {
+  let synthetic = rust_project(
+    "macro_rules! mk { ($n:ident) => { pub struct $n { pub b: u32 } } }\nmk!(Gen);\npub struct Bar { pub b: u32 }\npub fn typed(g: &Gen) -> u32 { g.b }\npub fn boxed(g: Box<Gen>) -> u32 { g.b }\npub fn untyped() -> u32 { let g = make(); g.b }\nfn make() -> Bar { Bar { b: 0 } }\n",
+  );
+  let project = &synthetic.project;
+  let bar_b = demo(&[], &["Bar", "b"], EntityKind::Field);
+  for caller in ["typed", "boxed"] {
+    let from = demo(&[], &[caller], EntityKind::Function);
+    project.assert_no_edge(EdgeKind::References, from, bar_b);
+    project.assert_unresolved(from, "b", &UnresolvedReason::NotFound);
+  }
+  project.assert_certainty(
+    EdgeKind::References,
+    demo(&[], &["untyped"], EntityKind::Function),
+    bar_b,
+    &heuristic(0.5, "field-name-only"),
+  );
 }

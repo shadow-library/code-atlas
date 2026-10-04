@@ -33,7 +33,7 @@ expression: output
             "line": 1
           }
         },
-        "score": 0.285045,
+        "score": 0.283499,
         "why": "search hit on string cents",
         "certainty": null,
         "via": null,
@@ -70,7 +70,7 @@ expression: output
             "line": 1
           }
         },
-        "score": 0.260934,
+        "score": 0.261779,
         "why": "exercised by test converts_whole_and_fractional_amounts matching convert",
         "certainty": null,
         "via": null,
@@ -115,7 +115,7 @@ expression: output
             "line": 1
           }
         },
-        "score": 0.24866,
+        "score": 0.249995,
         "why": "search hit on currency string",
         "certainty": null,
         "via": null,
@@ -154,7 +154,7 @@ expression: output
             "line": 1
           }
         },
-        "score": 0.205362,
+        "score": 0.204727,
         "why": "search hit on string cents",
         "certainty": null,
         "via": null,
@@ -197,7 +197,7 @@ expression: output
             "line": 6
           }
         },
-        "score": 0.285045,
+        "score": 0.283499,
         "why": "calls toCents [resolved] (direct)",
         "certainty": {
           "class": "resolved",
@@ -239,7 +239,7 @@ expression: output
             "line": 12
           }
         },
-        "score": 0.285045,
+        "score": 0.283499,
         "why": "calls toCents [resolved] (direct)",
         "certainty": {
           "class": "resolved",
@@ -281,7 +281,7 @@ expression: output
             "line": 21
           }
         },
-        "score": 0.260934,
+        "score": 0.261779,
         "why": "calls to_cents [resolved] (direct)",
         "certainty": {
           "class": "resolved",
@@ -323,7 +323,7 @@ expression: output
             "line": 28
           }
         },
-        "score": 0.260934,
+        "score": 0.261779,
         "why": "calls to_cents [resolved] (direct)",
         "certainty": {
           "class": "resolved",
@@ -365,7 +365,7 @@ expression: output
             "line": 17
           }
         },
-        "score": 0.260934,
+        "score": 0.261779,
         "why": "covers file src/money.rs [syntactic] (covers file)",
         "certainty": {
           "class": "syntactic",
@@ -407,7 +407,7 @@ expression: output
             "line": 5
           }
         },
-        "score": 0.285045,
+        "score": 0.283499,
         "why": "possibly covers file src/money.ts [heuristic 0.60] (covers file)",
         "certainty": {
           "class": "heuristic",

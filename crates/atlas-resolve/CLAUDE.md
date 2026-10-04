@@ -44,7 +44,8 @@ Project-wide Rust and TypeScript name, module and import resolution. It turns pe
   - `macro-name-in-crate` (0.6)
   - `macro-token-scan` (0.6): caps every `MacroTokenScan` reference
   - `override-dispatch-candidate` (0.3): TS subclass overrides of a method resolved on an instance receiver (not through `super`), and Rust impls of a trait method called by path (`Self::m()`, `Trait::m(x)`)
-  - `param-type-recovery` (0.7): caps receiver types read from parameter text. That covers `Box`/`Arc`/`Rc` inner types the `TypeHint` dropped, and generic bounds for an `Expr` receiver, which may be a shadowing local. Only an analyzer `TypeHint` alone yields `resolved`.
+  - `param-type-recovery` (0.7): caps receiver types read from parameter text. That covers `Box`/`Arc`/`Rc` inner types behind a `TypeHint` (bindings in nested fn items), and generic bounds for an `Expr` receiver, which may be a shadowing local. A `TypeHint` or `Declared` receiver yields `resolved`: `Declared` resolves its own type text, with generics through the bounds of the enclosing fn and type, and wrappers through their argument.
+  - `field-name-only` (0.5): a field access on an `Expr` or `Identifier` receiver of unknown type, when the field name matches exactly one Rust field visible from the caller (same package, or `pub` in an in-project dependency). Several matches are `Ambiguous`, and the public std field names `start`, `end`, `status`, `stdout` and `stderr` never match. A `self`, `TypeHint` or `Declared` receiver whose type does not resolve is `NotFound`, never a name match.
   - `fn-local-item-possible` (0.5): a type-like hit (struct, enum, variant, trait, alias or module) from a function whose body declares local `struct`/`enum`/`union`/`trait`/`type`/`mod` items. The analyzer emits no symbols for them. The same applies to `const`/`static` items, which carry a body fingerprint of their initializer: the item-keyword scan (`struct enum union trait type mod fn impl macro_rules!`) decides, with the span heuristic used only when there is no fingerprint. References inside the type annotation are exempt, because items declared in the initializer are not in scope there. The exemption ends at a boundary derived from the signature (`name end + normalised tail length`, a lower bound). It is disabled when the annotation itself contains a `{` block with an item keyword, and when the signature is truncated or the name is not found in it. A fingerprint truncated at `MAX_BODY_TOKENS` (`token_count` above the stored length) counts as possibly declaring items, for fns as well. Fn-scoped `use` targets are resolved with the fn's may-declare flag, so a head that binds a module-level module is weakened too. A name that a fn-local `impl` names is `Unsupported("fn-local item")`, and so is any name after a fn-scoped glob whose target can't be resolved (a fn-local enum or module). Such lookups never fall through to module scope.
 - This crate never emits `compiler_verified`.
 - A fn-scoped `use` or glob that binds a name differently from the enclosing module is `Ambiguous` with both candidates, because the analyzer reports block-scoped uses as fn-scoped.
@@ -72,7 +73,7 @@ Project-wide Rust and TypeScript name, module and import resolution. It turns pe
   - `Call` and `MethodCall` map to `calls`; the kind is `instantiates` when the target is a struct, variant or class.
   - `Instantiation` maps to `instantiates`.
   - `TypeRef` maps to `type_of` from fields, constants and variables, and to `references` otherwise.
-  - `ValueRef` and `MacroCall` map to `references`.
+  - `ValueRef` and `MacroCall` map to `references`. A `ValueRef` with a receiver is a Rust field access: the chain is walked through declared field types and the last segment resolves to the owner's `field` symbol. It never gets a type anchor.
   - `Decorator` maps to `calls`.
   - `JsxElement` maps to `calls`, or `instantiates` for class components.
 - `imports` and `re_exports` run from the file entity, or from the enclosing symbol for a dynamic `import()`. They live in `ResolvedFile.structural`.
@@ -80,11 +81,12 @@ Project-wide Rust and TypeScript name, module and import resolution. It turns pe
 ## Known limits
 
 - Fn-local items are invisible to the analyzer. A local type is detected only through a local `impl` (definite) or item keywords in the body (possible); a local type in a body truncated beyond `MAX_BODY_TOKENS` is not detected.
-- `Self` inside a nested fn of a method is attributed to the method by the analyzer and resolves to the impl's self type.
+- `self`/`Self` inside an impl nested in a method body are unknown (`Expr("self")`, `(Self)` heads), so those calls and field accesses are at most name-only heuristics.
 - `this` inside object-literal methods and `function` expressions is treated as the class until atlas-lang-ts emits `Expr("this")` there.
 
 - Rust `let x = T::new()` receivers stay unknown, because the analyzer emits `Expr` for untyped lets.
-- `TypeHint` drops generic arguments. `Box`, `Arc` and `Rc` hints are recovered from the parameter's type text only.
+- Bindings in fn items nested in a body keep the old hints, so their generic and wrapper receivers stay capped at `param-type-recovery`.
+- Field accesses through a project `Deref` impl and tuple-struct fields (`.0`) are not resolved.
 - Impl-level generic bounds are not available (`ImplFact.generic_params` has names only), so those generics are unknown receivers.
 - When a deref wrapper's inner type lacks a method, the method is attributed to `std`.
 - Methods of derived std or serde traits, and blanket std methods, on project types are `External`.

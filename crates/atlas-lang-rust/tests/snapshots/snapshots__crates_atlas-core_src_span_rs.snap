@@ -2041,6 +2041,70 @@ references:
       start_col: 40
       end_line: 39
       end_col: 42
+  - from: 11
+    kind: value_ref
+    path:
+      - start
+      - line
+    receiver:
+      type: expr
+      value: start
+    args: []
+    span:
+      start_byte: 1165
+      end_byte: 1169
+      start_line: 40
+      start_col: 24
+      end_line: 40
+      end_col: 28
+  - from: 11
+    kind: value_ref
+    path:
+      - start
+      - col
+    receiver:
+      type: expr
+      value: start
+    args: []
+    span:
+      start_byte: 1194
+      end_byte: 1197
+      start_line: 41
+      start_col: 23
+      end_line: 41
+      end_col: 26
+  - from: 11
+    kind: value_ref
+    path:
+      - end
+      - line
+    receiver:
+      type: expr
+      value: end
+    args: []
+    span:
+      start_byte: 1219
+      end_byte: 1223
+      start_line: 42
+      start_col: 20
+      end_line: 42
+      end_col: 24
+  - from: 11
+    kind: value_ref
+    path:
+      - end
+      - col
+    receiver:
+      type: expr
+      value: end
+    args: []
+    span:
+      start_byte: 1244
+      end_byte: 1247
+      start_line: 43
+      start_col: 19
+      end_line: 43
+      end_col: 22
   - from: 12
     kind: type_ref
     path:
@@ -2339,6 +2403,36 @@ references:
       start_col: 4
       end_line: 58
       end_col: 12
+  - from: 13
+    kind: value_ref
+    path:
+      - self
+      - start_line
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 1757
+      end_byte: 1767
+      start_line: 59
+      start_col: 17
+      end_line: 59
+      end_col: 27
+  - from: 13
+    kind: value_ref
+    path:
+      - self
+      - start_col
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 1785
+      end_byte: 1794
+      start_line: 60
+      start_col: 16
+      end_line: 60
+      end_col: 25
   - from: 14
     kind: type_ref
     path:
@@ -2365,6 +2459,51 @@ references:
       start_col: 4
       end_line: 65
       end_col: 12
+  - from: 14
+    kind: value_ref
+    path:
+      - self
+      - end_line
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 1873
+      end_byte: 1881
+      start_line: 66
+      start_col: 17
+      end_line: 66
+      end_col: 25
+  - from: 14
+    kind: value_ref
+    path:
+      - self
+      - end_col
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 1899
+      end_byte: 1906
+      start_line: 67
+      start_col: 16
+      end_line: 67
+      end_col: 23
+  - from: 15
+    kind: value_ref
+    path:
+      - self
+      - end_byte
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 1957
+      end_byte: 1965
+      start_line: 72
+      start_col: 9
+      end_line: 72
+      end_col: 17
   - from: 15
     kind: method_call
     path:
@@ -2385,6 +2524,21 @@ references:
       start_col: 18
       end_line: 72
       end_col: 32
+  - from: 15
+    kind: value_ref
+    path:
+      - self
+      - start_byte
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 1986
+      end_byte: 1996
+      start_line: 72
+      start_col: 38
+      end_line: 72
+      end_col: 48
   - from: 16
     kind: method_call
     path:
@@ -2400,6 +2554,21 @@ references:
       start_col: 9
       end_line: 76
       end_col: 12
+  - from: 17
+    kind: value_ref
+    path:
+      - self
+      - end_line
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2108
+      end_byte: 2116
+      start_line: 80
+      start_col: 9
+      end_line: 80
+      end_col: 17
   - from: 17
     kind: method_call
     path:
@@ -2420,6 +2589,21 @@ references:
       start_col: 18
       end_line: 80
       end_col: 32
+  - from: 17
+    kind: value_ref
+    path:
+      - self
+      - start_line
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2137
+      end_byte: 2147
+      start_line: 80
+      start_col: 38
+      end_line: 80
+      end_col: 48
   - from: 18
     kind: type_ref
     path:
@@ -2433,6 +2617,205 @@ references:
       start_col: 33
       end_line: 83
       end_col: 37
+  - from: 18
+    kind: value_ref
+    path:
+      - self
+      - start_byte
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2216
+      end_byte: 2226
+      start_line: 84
+      start_col: 9
+      end_line: 84
+      end_col: 19
+  - from: 18
+    kind: value_ref
+    path:
+      - other
+      - start_byte
+    receiver:
+      type: type_hint
+      value:
+        - Span
+    args: []
+    span:
+      start_byte: 2236
+      end_byte: 2246
+      start_line: 84
+      start_col: 29
+      end_line: 84
+      end_col: 39
+  - from: 18
+    kind: value_ref
+    path:
+      - other
+      - end_byte
+    receiver:
+      type: type_hint
+      value:
+        - Span
+    args: []
+    span:
+      start_byte: 2256
+      end_byte: 2264
+      start_line: 84
+      start_col: 49
+      end_line: 84
+      end_col: 57
+  - from: 18
+    kind: value_ref
+    path:
+      - self
+      - end_byte
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2273
+      end_byte: 2281
+      start_line: 84
+      start_col: 66
+      end_line: 84
+      end_col: 74
+  - from: 19
+    kind: value_ref
+    path:
+      - self
+      - start_byte
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2347
+      end_byte: 2357
+      start_line: 88
+      start_col: 9
+      end_line: 88
+      end_col: 19
+  - from: 19
+    kind: value_ref
+    path:
+      - self
+      - end_byte
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2381
+      end_byte: 2389
+      start_line: 88
+      start_col: 43
+      end_line: 88
+      end_col: 51
+  - from: 20
+    kind: value_ref
+    path:
+      - self
+      - start_byte
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2445
+      end_byte: 2455
+      start_line: 92
+      start_col: 9
+      end_line: 92
+      end_col: 19
+  - from: 20
+    kind: value_ref
+    path:
+      - self
+      - end_byte
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2464
+      end_byte: 2472
+      start_line: 92
+      start_col: 28
+      end_line: 92
+      end_col: 36
+  - from: 20
+    kind: value_ref
+    path:
+      - self
+      - start_line
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2481
+      end_byte: 2491
+      start_line: 92
+      start_col: 45
+      end_line: 92
+      end_col: 55
+  - from: 20
+    kind: value_ref
+    path:
+      - self
+      - start_line
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2506
+      end_byte: 2516
+      start_line: 92
+      start_col: 70
+      end_line: 92
+      end_col: 80
+  - from: 20
+    kind: value_ref
+    path:
+      - self
+      - start_col
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2523
+      end_byte: 2532
+      start_line: 92
+      start_col: 87
+      end_line: 92
+      end_col: 96
+  - from: 20
+    kind: value_ref
+    path:
+      - self
+      - end_line
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2543
+      end_byte: 2551
+      start_line: 92
+      start_col: 107
+      end_line: 92
+      end_col: 115
+  - from: 20
+    kind: value_ref
+    path:
+      - self
+      - end_col
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2558
+      end_byte: 2565
+      start_line: 92
+      start_col: 122
+      end_line: 92
+      end_col: 129
   - from: 21
     kind: type_ref
     path:
@@ -2484,6 +2867,21 @@ references:
       end_line: 96
       end_col: 30
   - from: 21
+    kind: value_ref
+    path:
+      - self
+      - start_byte
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2671
+      end_byte: 2681
+      start_line: 96
+      start_col: 36
+      end_line: 96
+      end_col: 46
+  - from: 21
     kind: method_call
     path:
       - "(usize::try_from(self.start_byte))"
@@ -2517,6 +2915,21 @@ references:
       start_col: 62
       end_line: 96
       end_col: 70
+  - from: 21
+    kind: value_ref
+    path:
+      - self
+      - end_byte
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 2711
+      end_byte: 2719
+      start_line: 96
+      start_col: 76
+      end_line: 96
+      end_col: 84
   - from: 21
     kind: method_call
     path:
@@ -3072,6 +3485,38 @@ references:
   - from: 25
     kind: value_ref
     path:
+      - span
+      - start_line
+    receiver:
+      type: expr
+      value: span
+    args: []
+    span:
+      start_byte: 3731
+      end_byte: 3741
+      start_line: 135
+      start_col: 21
+      end_line: 135
+      end_col: 31
+  - from: 25
+    kind: value_ref
+    path:
+      - span
+      - end_line
+    receiver:
+      type: expr
+      value: span
+    args: []
+    span:
+      start_byte: 3748
+      end_byte: 3756
+      start_line: 135
+      start_col: 38
+      end_line: 135
+      end_col: 46
+  - from: 25
+    kind: value_ref
+    path:
       - u32
       - MAX
     receiver: ~
@@ -3189,6 +3634,54 @@ references:
       start_col: 4
       end_line: 142
       end_col: 13
+  - from: 26
+    kind: value_ref
+    path:
+      - span
+      - start_line
+    receiver:
+      type: expr
+      value: span
+    args: []
+    span:
+      start_byte: 3966
+      end_byte: 3976
+      start_line: 142
+      start_col: 21
+      end_line: 142
+      end_col: 31
+  - from: 26
+    kind: value_ref
+    path:
+      - span
+      - end_line
+    receiver:
+      type: expr
+      value: span
+    args: []
+    span:
+      start_byte: 3983
+      end_byte: 3991
+      start_line: 142
+      start_col: 38
+      end_line: 142
+      end_col: 46
+  - from: 26
+    kind: value_ref
+    path:
+      - span
+      - end_col
+    receiver:
+      type: expr
+      value: span
+    args: []
+    span:
+      start_byte: 3998
+      end_byte: 4005
+      start_line: 142
+      start_col: 53
+      end_line: 142
+      end_col: 60
   - from: 26
     kind: macro_call
     path:

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use atlas_core::{
   ArgSummary, AttributeFact, Diagnostic, EntityKind, FileFacts, FileRef, ImplFact, ImplInfo, ImportFact, LocalSymbolId, MAX_REPORTED_PARSE_ERRORS, Modifier, ModuleBody,
-  ModuleDeclFact, ParamFact, ParseErrorFact, ParseStatus, Producer, RefKind, Severity, Span, SymbolFact, TestInfo, TestKind, UseBinding, UsePath, Visibility,
+  ModuleDeclFact, ParamFact, ParseErrorFact, ParseStatus, Producer, ReceiverHint, RefKind, Severity, Span, SymbolFact, TestInfo, TestKind, UseBinding, UsePath, Visibility,
 };
 use tree_sitter::{Node, Tree};
 
@@ -18,7 +18,10 @@ use crate::tokens::token_tree_args;
 
 const MAX_ITEM_NESTING: u32 = 64;
 const MAX_USE_NESTING: u32 = 32;
+const MAX_FIELD_ACCESS_SPANS: usize = 4;
 pub(crate) const DEPTH_LIMIT_CODE: &str = "rust.depth_limit";
+
+type FieldAccessKey = (Option<LocalSymbolId>, Vec<String>, Option<ReceiverHint>);
 
 pub(crate) struct Extractor<'s> {
   source: &'s str,
@@ -28,6 +31,7 @@ pub(crate) struct Extractor<'s> {
   pub(crate) locals: Bindings,
   pub(crate) generics: Bindings,
   pub(crate) local_types: HashSet<String>,
+  pub(crate) nested_items: u32,
   pub(crate) depth_exceeded: bool,
 }
 
@@ -105,6 +109,7 @@ impl<'s> Extractor<'s> {
       locals: Bindings::default(),
       local_types: HashSet::new(),
       generics: Bindings::default(),
+      nested_items: 0,
       depth_exceeded: false,
     }
   }
@@ -122,7 +127,7 @@ impl<'s> Extractor<'s> {
     self.facts.file_doc = self.file_doc(doc, root);
     self.items(doc, root, &file);
     self.link_impls();
-    self.dedupe_type_refs();
+    self.dedupe_refs();
     if self.depth_exceeded {
       tracing::debug!(path = %self.facts.file.path, "rust analyzer skipped syntax nested beyond its depth limit");
       self.facts.diagnostics.push(Diagnostic {
@@ -668,12 +673,21 @@ impl<'s> Extractor<'s> {
     }
   }
 
-  fn dedupe_type_refs(&mut self) {
-    let mut seen = HashSet::new();
-    self
-      .facts
-      .references
-      .retain(|reference| reference.kind != RefKind::TypeRef || seen.insert((reference.from, reference.path.clone())));
+  fn dedupe_refs(&mut self) {
+    let mut types = HashSet::new();
+    let mut fields: HashMap<FieldAccessKey, Vec<u32>> = HashMap::new();
+    self.facts.references.retain(|reference| match (reference.kind, &reference.receiver) {
+      (RefKind::TypeRef, _) => types.insert((reference.from, reference.path.clone())),
+      (RefKind::ValueRef, Some(_)) => {
+        let spans = fields.entry((reference.from, reference.path.clone(), reference.receiver.clone())).or_default();
+        let admitted = spans.len() < MAX_FIELD_ACCESS_SPANS && !spans.contains(&reference.span.start_byte);
+        if admitted {
+          spans.push(reference.span.start_byte);
+        }
+        admitted
+      }
+      _ => true,
+    });
   }
 }
 

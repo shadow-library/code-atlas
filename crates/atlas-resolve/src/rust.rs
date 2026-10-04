@@ -3,8 +3,8 @@ use atlas_core::{EntityKind, LanguageFamily, ReceiverHint, RefKind, ReferenceFac
 use std::collections::{HashSet, VecDeque};
 
 use crate::engine::{
-  DISPATCH_CONFIDENCE, FN_LOCAL_ITEM_CONFIDENCE, Found, Guard, Heuristic, Hit, ImplTargets, Lookup, MACRO_SCOPE_CONFIDENCE, MAX_DISPATCH_CANDIDATES, Miss, Outcome,
-  RULE_DYN_DISPATCH, RULE_FN_LOCAL_ITEM, RULE_MACRO_SCOPE, RULE_OVERRIDE_DISPATCH, Recv, RecvType, Resolver, unique, weakest,
+  DISPATCH_CONFIDENCE, FIELD_NAME_CONFIDENCE, FN_LOCAL_ITEM_CONFIDENCE, Found, Guard, Heuristic, Hit, ImplTargets, Lookup, MACRO_SCOPE_CONFIDENCE, MAX_DISPATCH_CANDIDATES, Miss,
+  Outcome, RULE_DYN_DISPATCH, RULE_FIELD_NAME, RULE_FN_LOCAL_ITEM, RULE_MACRO_SCOPE, RULE_OVERRIDE_DISPATCH, Recv, RecvType, Resolver, unique, weakest,
 };
 use crate::layout::{ExternCrate, PackageKey};
 use crate::surface::{SymSurface, UseScope, UseSurface};
@@ -92,6 +92,7 @@ const DERIVED_METHODS: [(&str, &str, &str); 15] = [
 const PRIMITIVES: [&str; 17] = [
   "bool", "char", "str", "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128", "isize", "f32", "f64",
 ];
+const COMMON_STD_FIELDS: [&str; 5] = ["start", "end", "status", "stdout", "stderr"];
 const STD_CRATES: [&str; 5] = ["std", "core", "alloc", "proc_macro", "test"];
 const STD_MACROS: [&str; 38] = [
   "println",
@@ -253,6 +254,10 @@ fn ends_in_annotation(symbol: &SymSurface, at: Option<Span>) -> bool {
   matches!((symbol.annotation_end_byte, at), (Some(end), Some(at)) if at.end_byte <= end)
 }
 
+fn has_declared_type(receiver: Option<&ReceiverHint>) -> bool {
+  matches!(receiver, Some(ReceiverHint::SelfValue | ReceiverHint::TypeHint(_) | ReceiverHint::Declared { .. }))
+}
+
 fn is_dynamic_segment(segment: &str) -> bool {
   segment.starts_with('[') || segment.starts_with('(')
 }
@@ -374,6 +379,7 @@ impl Resolver<'_> {
       RefKind::MethodCall => self.rust_method_call(&scope, reference),
       RefKind::MacroCall => self.rust_macro(&scope, reference, &mut guard),
       RefKind::TypeRef | RefKind::Instantiation | RefKind::Inherit => Outcome::from_lookup(self.rust_resolve_path(&scope, path, Ns::Type, &mut guard)),
+      RefKind::ValueRef if reference.receiver.is_some() => self.rust_field_access(&scope, reference),
       RefKind::Call | RefKind::ValueRef => {
         let lookup = self.rust_resolve_path(&scope, path, Ns::Value, &mut guard);
         match lookup {
@@ -393,7 +399,7 @@ impl Resolver<'_> {
   }
 
   pub(crate) fn rust_type_anchor(&self, reference: &ReferenceFact) -> Option<Hit> {
-    if !matches!(reference.kind, RefKind::Call | RefKind::ValueRef) || reference.path.len() < 2 {
+    if !matches!(reference.kind, RefKind::Call | RefKind::ValueRef) || reference.path.len() < 2 || reference.receiver.is_some() {
       return None;
     }
     let scope = self.rust_scope_at(self.file, reference.from.map(|local| local.0), Some(reference.span))?;
@@ -1008,21 +1014,87 @@ impl Resolver<'_> {
     let Some((method, receiver_chain)) = path.split_last() else {
       return Outcome::Unresolved(Miss::NotFound);
     };
-    let Some(head) = receiver_chain.first() else {
+    if receiver_chain.is_empty() {
       return Outcome::Unresolved(Miss::NotFound);
-    };
+    }
     let caller = scope.from.map(|local| SymRef { file: scope.file, local });
-    let mut receiver = match &reference.receiver {
+    let receiver = self.rust_chain_recv(scope, reference.receiver.as_ref(), receiver_chain);
+    self.rust_method_on_recv(receiver, method, caller)
+  }
+
+  fn rust_chain_recv(&self, scope: &RustScope, hint: Option<&ReceiverHint>, chain: &[String]) -> Recv {
+    let Some((head, fields)) = chain.split_first() else { return Recv::unknown() };
+    let mut receiver = match hint {
       Some(ReceiverHint::SelfValue) => self.rust_self_recv(scope),
       Some(ReceiverHint::TypeHint(hint)) => self.rust_hint_recv(scope, head, hint),
+      Some(ReceiverHint::Declared { type_text, .. }) => self.recv_from_text(scope, type_text, &scope.generics),
       Some(ReceiverHint::Expr(name)) if name == head => self.rust_generic_recv(scope, head),
       Some(ReceiverHint::Identifier(name)) if name == head => self.rust_identifier_recv(scope, name),
       _ => Recv::unknown(),
     };
-    for field in &receiver_chain[1..] {
+    for field in fields {
       receiver = self.rust_field_type(receiver, field);
     }
-    self.rust_method_on_recv(receiver, method, caller)
+    receiver
+  }
+
+  fn rust_field_access(&self, scope: &RustScope, reference: &ReferenceFact) -> Outcome {
+    let Some((field, receiver_chain)) = reference.path.split_last() else {
+      return Outcome::Unresolved(Miss::NotFound);
+    };
+    if receiver_chain.is_empty() {
+      return Outcome::Unresolved(Miss::NotFound);
+    }
+    let receiver = self.rust_chain_recv(scope, reference.receiver.as_ref(), receiver_chain);
+    match receiver.ty {
+      RecvType::Concrete(owner) => match self.rust_field_of(owner, field) {
+        Some(member) => Outcome::Targets {
+          primary: Hit::exact(Found::Symbol(member)).weaken(receiver.heuristic),
+          extra: Vec::new(),
+        },
+        None => Outcome::Unresolved(Miss::NotFound),
+      },
+      RecvType::External(package) => Outcome::External(package),
+      RecvType::Unknown if has_declared_type(reference.receiver.as_ref()) => Outcome::Unresolved(Miss::NotFound),
+      RecvType::Unknown => self.rust_field_name_candidates(field),
+      RecvType::Traits { .. } | RecvType::Static(_) | RecvType::Namespace(_) => Outcome::Unresolved(Miss::NotFound),
+    }
+  }
+
+  fn rust_field_of(&self, owner: SymRef, name: &str) -> Option<SymRef> {
+    self.note(name);
+    let file = self.table.file(owner.file)?;
+    file
+      .children(owner.local)
+      .iter()
+      .find(|child| file.symbol(**child).is_some_and(|symbol| symbol.kind == EntityKind::Field && symbol.name == name))
+      .map(|child| SymRef { file: owner.file, local: *child })
+  }
+
+  fn rust_field_name_candidates(&self, name: &str) -> Outcome {
+    self.note(name);
+    let Some(package) = self.table.file_package(self.file) else {
+      return Outcome::Unresolved(Miss::NotFound);
+    };
+    let mut candidates: Vec<SymRef> = self
+      .table
+      .rust_fields_by_name
+      .get(name)
+      .map(|fields| {
+        fields
+          .iter()
+          .copied()
+          .filter(|field| self.is_visible(field.file))
+          .filter(|field| self.table.file_package(field.file) == Some(package) || self.table.sym(*field).is_some_and(|surface| surface.visibility == Visibility::Public))
+          .collect()
+      })
+      .unwrap_or_default();
+    candidates.sort();
+    match candidates.as_slice() {
+      [] => Outcome::Unresolved(Miss::NotFound),
+      [single] if !COMMON_STD_FIELDS.contains(&name) => Outcome::Candidates(vec![Hit::heuristic(Found::Symbol(*single), FIELD_NAME_CONFIDENCE, RULE_FIELD_NAME)]),
+      _ => Outcome::Unresolved(Miss::NameOnly(candidates.into_iter().map(|candidate| Hit::exact(Found::Symbol(candidate))).collect())),
+    }
   }
 
   fn rust_method_on_recv(&self, receiver: Recv, method: &str, caller: Option<SymRef>) -> Outcome {

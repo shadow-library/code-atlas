@@ -26,17 +26,11 @@ mod trait_dispatch {
   #[test]
   fn should_resolve_trait_receivers_to_the_trait_method_with_heuristic_impl_candidates() {
     let project = Project::adversarial(REPO);
-    let param_recovery = atlas_core::Certainty::heuristic(atlas_core::Confidence::new(0.7).unwrap(), "param-type-recovery");
-    let cases = [
-      ("read_dyn", "get", atlas_core::Certainty::Resolved),
-      ("read_impl", "get", atlas_core::Certainty::Resolved),
-      ("read_generic", "get", param_recovery.clone()),
-      ("write_boxed", "put", param_recovery),
-    ];
-    for (caller, method, certainty) in cases {
+    let cases = [("read_dyn", "get"), ("read_impl", "get"), ("read_generic", "get"), ("write_boxed", "put")];
+    for (caller, method) in cases {
       let from = item(&[caller], EntityKind::Function);
-      let declaration = project.assert_edge(EdgeKind::Calls, from, item(&["Store", method], EntityKind::Method), &[certainty.class()]);
-      assert_eq!(declaration.certainty, certainty, "{caller}");
+      let declaration = project.assert_edge(EdgeKind::Calls, from, item(&["Store", method], EntityKind::Method), RESOLVED);
+      assert_eq!(declaration.certainty, atlas_core::Certainty::Resolved, "{caller}");
       for implementor in ["MemStore", "DiskStore"] {
         let concrete = item(&[implementor, "<Store>", method], EntityKind::Method);
         let edge = project.assert_edge(EdgeKind::Calls, from, concrete, HEURISTIC);

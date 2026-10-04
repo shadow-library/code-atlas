@@ -1,6 +1,6 @@
 mod common;
 
-use atlas_core::{ARG_MAX_TEXT, ARG_MAX_WIDTH, ArgSummary, ObjectEntry, ObjectKey, ReceiverHint, RefKind, RefOrigin, Span};
+use atlas_core::{ARG_MAX_TEXT, ARG_MAX_WIDTH, ArgSummary, DeclaredBinding, ObjectEntry, ObjectKey, ReceiverHint, RefKind, RefOrigin, Span};
 use common::{analyze, paths_of, reference, refs_of, strings};
 
 type ChainLink = (String, Vec<String>, Option<ReceiverHint>, Vec<ArgSummary>);
@@ -120,7 +120,7 @@ fn should_emit_macro_calls_with_format_style_arguments() {
   );
   assert_eq!(reference(&facts, RefKind::MacroCall, &["format"]).args, [text("{}/users"), path(&["BASE"])]);
   assert_eq!(reference(&facts, RefKind::MacroCall, &["std", "println"]).args, []);
-  assert_eq!(paths_of(&facts, RefKind::ValueRef), ["COUNT", "BASE"]);
+  assert_eq!(paths_of(&facts, RefKind::ValueRef), ["user::name", "COUNT", "BASE"]);
 }
 
 #[test]
@@ -215,7 +215,7 @@ fn should_emit_value_refs_for_functions_passed_as_values_but_not_for_locals() {
   let facts = analyze(source);
   assert_eq!(
     paths_of(&facts, RefKind::ValueRef),
-    ["on_event", "items", "lookup", "message", "Message::Text", "T::method"]
+    ["on_event", "event::id", "items", "lookup", "message", "Message::Text", "T::method"]
   );
 }
 
@@ -373,15 +373,21 @@ fn should_describe_the_head_segment_of_method_call_paths() {
     .map(|reference| (reference.path.clone(), reference.receiver.clone()))
     .collect();
   let hint = |segments: &[&str]| Some(ReceiverHint::TypeHint(strings(segments)));
+  let declared = |type_text: &str, binding: DeclaredBinding| {
+    Some(ReceiverHint::Declared {
+      type_text: type_text.to_owned(),
+      binding,
+    })
+  };
   assert_eq!(
     calls,
     [
       (strings(&["state", "acme", "get_order"]), hint(&["AppState"])),
       (strings(&["cache", "get"]), Some(ReceiverHint::Expr("cache".into()))),
       (strings(&["raw", "len"]), Some(ReceiverHint::Expr("raw".into()))),
-      (strings(&["typed", "put"]), hint(&["Arc"])),
+      (strings(&["typed", "put"]), declared("Arc<Store>", DeclaredBinding::Let)),
       (strings(&["built", "apply"]), hint(&["Config"])),
-      (strings(&["generic", "read"]), Some(ReceiverHint::Expr("generic".into()))),
+      (strings(&["generic", "read"]), declared("&T", DeclaredBinding::Param)),
       (strings(&["client", "send"]), hint(&["Client"])),
       (strings(&["CONFIG", "reload"]), Some(ReceiverHint::Identifier("CONFIG".into()))),
     ]
@@ -410,7 +416,7 @@ fn should_parse_tracing_style_arguments_piece_by_piece() {
   );
   let compute = reference(&facts, RefKind::Call, &["compute"]);
   assert_eq!(compute.origin, RefOrigin::Syntax);
-  assert_eq!(paths_of(&facts, RefKind::ValueRef), Vec::<String>::new());
+  assert_eq!(paths_of(&facts, RefKind::ValueRef), ["state::value"]);
 }
 
 #[test]
@@ -463,4 +469,125 @@ fn should_not_turn_dsl_identifiers_into_references() {
       (RefKind::Call, "create_user".to_owned(), RefOrigin::MacroTokenScan),
     ]
   );
+}
+
+fn value_refs_with_receivers(facts: &atlas_core::FileFacts) -> Vec<(String, Option<ReceiverHint>)> {
+  facts
+    .references
+    .iter()
+    .filter(|reference| reference.kind == RefKind::ValueRef && reference.receiver.is_some())
+    .map(|reference| (reference.path.join("."), reference.receiver.clone()))
+    .collect()
+}
+
+#[test]
+fn should_emit_field_reads_and_writes_but_not_method_callees() {
+  let source = "impl Counter {\n  fn bump(&mut self, other: &Counter) {\n    self.count += 1;\n    self.config.name = other.config.name.clone();\n    let pair = make();\n    pair.0;\n    pair.1.label;\n    (self.callback)(1);\n    self.store.get();\n    make().field;\n    a::B.field;\n  }\n}\n";
+  let facts = analyze(source);
+  let hint = |segments: &[&str]| Some(ReceiverHint::TypeHint(strings(segments)));
+  assert_eq!(
+    value_refs_with_receivers(&facts),
+    [
+      ("self.count".to_owned(), Some(ReceiverHint::SelfValue)),
+      ("self.config.name".to_owned(), Some(ReceiverHint::SelfValue)),
+      ("self.config".to_owned(), Some(ReceiverHint::SelfValue)),
+      ("other.config.name".to_owned(), hint(&["Counter"])),
+      ("other.config".to_owned(), hint(&["Counter"])),
+      ("pair.1.label".to_owned(), Some(ReceiverHint::Expr("pair".into()))),
+      ("self.callback".to_owned(), Some(ReceiverHint::SelfValue)),
+      ("self.store".to_owned(), Some(ReceiverHint::SelfValue)),
+    ]
+  );
+  let count = reference(&facts, RefKind::ValueRef, &["self", "count"]);
+  let prefix = "impl Counter {\n  fn bump(&mut self, other: &Counter) {\n    self.";
+  assert_eq!(count.span, Span::of_text(source, prefix.len(), prefix.len() + "count".len()).unwrap());
+  assert_eq!(paths_of(&facts, RefKind::MethodCall), ["other::config::name::clone", "self::store::get"]);
+}
+
+#[test]
+fn should_keep_at_most_four_field_access_spans_per_symbol_and_receiver() {
+  let facts = analyze(
+    "fn sum(&self) -> u32 { self.n + self.n + self.n + self.n + self.n }\nfn other(&self) -> u32 { self.n }\nfn shadow(n: &Num) -> u32 { n.v + { let n = make(); n.v } }\n",
+  );
+  let fields: Vec<(String, Vec<String>)> = refs_of(&facts, RefKind::ValueRef);
+  assert_eq!(
+    fields,
+    [
+      ("sum".to_owned(), strings(&["self", "n"])),
+      ("sum".to_owned(), strings(&["self", "n"])),
+      ("sum".to_owned(), strings(&["self", "n"])),
+      ("sum".to_owned(), strings(&["self", "n"])),
+      ("other".to_owned(), strings(&["self", "n"])),
+      ("shadow".to_owned(), strings(&["n", "v"])),
+      ("shadow".to_owned(), strings(&["n", "v"])),
+    ]
+  );
+  let shadow_hints: Vec<Option<ReceiverHint>> = facts
+    .references
+    .iter()
+    .filter(|reference| reference.path == ["n", "v"])
+    .map(|reference| reference.receiver.clone())
+    .collect();
+  assert_eq!(shadow_hints, [Some(ReceiverHint::TypeHint(strings(&["Num"]))), Some(ReceiverHint::Expr("n".into()))]);
+}
+
+#[test]
+fn should_carry_declared_type_text_for_generic_and_wrapper_bindings_only_while_they_are_in_scope() {
+  let source = "fn run<T: Store>(a: &T, b: Box<dyn Store>, c: &mut Arc<Pg>, d: Pg, e: T::Key, State(f): State<Rc<App>>) {\n  a.get();\n  b.put();\n  c.save();\n  d.save();\n  e.len();\n  f.go();\n  let g: Arc<T> = make();\n  g.get();\n  let a = Mem::new();\n  a.get();\n  let h = |b: Box<Mem>| b.put();\n  b.put();\n  fn nested<U: Store>(u: &U, w: Arc<Pg>) { u.get(); w.save(); }\n}\n";
+  let facts = analyze(source);
+  let declared = |type_text: &str, binding: DeclaredBinding| {
+    Some(ReceiverHint::Declared {
+      type_text: type_text.to_owned(),
+      binding,
+    })
+  };
+  let calls: Vec<(String, Option<ReceiverHint>)> = facts
+    .references
+    .iter()
+    .filter(|reference| reference.kind == RefKind::MethodCall)
+    .map(|reference| (reference.path.join("."), reference.receiver.clone()))
+    .collect();
+  assert_eq!(
+    calls,
+    [
+      ("a.get".to_owned(), declared("&T", DeclaredBinding::Param)),
+      ("b.put".to_owned(), declared("Box<dyn Store>", DeclaredBinding::Param)),
+      ("c.save".to_owned(), declared("&mut Arc<Pg>", DeclaredBinding::Param)),
+      ("d.save".to_owned(), Some(ReceiverHint::TypeHint(strings(&["Pg"])))),
+      ("e.len".to_owned(), Some(ReceiverHint::Expr("e".into()))),
+      ("f.go".to_owned(), declared("Rc<App>", DeclaredBinding::Param)),
+      ("g.get".to_owned(), declared("Arc<T>", DeclaredBinding::Let)),
+      ("a.get".to_owned(), Some(ReceiverHint::Expr("a".into()))),
+      ("b.put".to_owned(), declared("Box<Mem>", DeclaredBinding::Param)),
+      ("b.put".to_owned(), declared("Box<dyn Store>", DeclaredBinding::Param)),
+      ("u.get".to_owned(), Some(ReceiverHint::Expr("u".into()))),
+      ("w.save".to_owned(), Some(ReceiverHint::TypeHint(strings(&["Arc"])))),
+    ]
+  );
+}
+
+#[test]
+fn should_hide_the_outer_self_from_items_nested_in_a_method_body() {
+  let facts = analyze(
+    "impl Foo {\n  fn m(&self, other: &Self) {\n    self.a;\n    Self::make();\n    impl L { fn g(&self, x: &Self) { self.a; self.go(); Self::make(); let y = Self { a: 1 }; x.go(); y.go(); } }\n  }\n}\n",
+  );
+  let receivers: Vec<(String, Option<ReceiverHint>)> = facts
+    .references
+    .iter()
+    .filter(|reference| reference.receiver.is_some())
+    .map(|reference| (reference.path.join("."), reference.receiver.clone()))
+    .collect();
+  let expr = |name: &str| Some(ReceiverHint::Expr(name.into()));
+  assert_eq!(
+    receivers,
+    [
+      ("self.a".to_owned(), Some(ReceiverHint::SelfValue)),
+      ("self.a".to_owned(), expr("self")),
+      ("self.go".to_owned(), expr("self")),
+      ("x.go".to_owned(), expr("x")),
+      ("y.go".to_owned(), expr("y")),
+    ]
+  );
+  assert_eq!(paths_of(&facts, RefKind::Call), ["Self::make", "(Self)::make"]);
+  assert_eq!(paths_of(&facts, RefKind::Instantiation), ["(Self)"]);
 }

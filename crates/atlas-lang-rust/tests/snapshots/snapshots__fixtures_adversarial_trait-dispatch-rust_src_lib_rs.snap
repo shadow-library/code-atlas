@@ -1257,6 +1257,21 @@ references:
       start_col: 4
       end_line: 23
       end_col: 10
+  - from: 8
+    kind: value_ref
+    path:
+      - self
+      - root
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 435
+      end_byte: 439
+      start_line: 23
+      start_col: 26
+      end_line: 23
+      end_col: 30
   - from: ~
     kind: type_ref
     path:
@@ -1310,6 +1325,21 @@ references:
       end_line: 28
       end_col: 43
   - from: 9
+    kind: value_ref
+    path:
+      - self
+      - entries
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 535
+      end_byte: 542
+      start_line: 29
+      start_col: 9
+      end_line: 29
+      end_col: 16
+  - from: 9
     kind: method_call
     path:
       - self
@@ -1357,6 +1387,21 @@ references:
       start_col: 38
       end_line: 32
       end_col: 44
+  - from: 10
+    kind: value_ref
+    path:
+      - self
+      - entries
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 623
+      end_byte: 630
+      start_line: 33
+      start_col: 9
+      end_line: 33
+      end_col: 16
   - from: 10
     kind: method_call
     path:
@@ -1586,8 +1631,10 @@ references:
       - store
       - get
     receiver:
-      type: expr
-      value: store
+      type: declared
+      value:
+        type_text: "&T"
+        binding: param
     args:
       - type: path
         value:
@@ -1808,9 +1855,10 @@ references:
       - store
       - put
     receiver:
-      type: type_hint
+      type: declared
       value:
-        - Box
+        type_text: Box<dyn Store>
+        binding: param
     args:
       - type: path
         value:

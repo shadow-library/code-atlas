@@ -1247,6 +1247,21 @@ references:
       start_col: 52
       end_line: 27
       end_col: 55
+  - from: 11
+    kind: value_ref
+    path:
+      - self
+      - database_url
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 706
+      end_byte: 718
+      start_line: 31
+      start_col: 10
+      end_line: 31
+      end_col: 22
   - from: ~
     kind: type_ref
     path:
@@ -1299,6 +1314,21 @@ references:
       start_col: 56
       end_line: 36
       end_col: 64
+  - from: 12
+    kind: value_ref
+    path:
+      - self
+      - rows
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 857
+      end_byte: 861
+      start_line: 37
+      start_col: 24
+      end_line: 37
+      end_col: 28
   - from: 12
     kind: method_call
     path:
@@ -1401,6 +1431,23 @@ references:
       end_line: 38
       end_col: 15
   - from: 12
+    kind: value_ref
+    path:
+      - invoice
+      - id
+    receiver:
+      type: type_hint
+      value:
+        - Invoice
+    args: []
+    span:
+      start_byte: 948
+      end_byte: 950
+      start_line: 38
+      start_col: 24
+      end_line: 38
+      end_col: 26
+  - from: 12
     kind: method_call
     path:
       - invoice
@@ -1477,6 +1524,21 @@ references:
       start_col: 37
       end_line: 42
       end_col: 44
+  - from: 13
+    kind: value_ref
+    path:
+      - self
+      - rows
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 1056
+      end_byte: 1060
+      start_line: 43
+      start_col: 9
+      end_line: 43
+      end_col: 13
   - from: 13
     kind: method_call
     path:
@@ -1636,6 +1698,21 @@ references:
       end_line: 53
       end_col: 64
   - from: 16
+    kind: value_ref
+    path:
+      - self
+      - rows
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 1321
+      end_byte: 1325
+      start_line: 54
+      start_col: 24
+      end_line: 54
+      end_col: 28
+  - from: 16
     kind: method_call
     path:
       - self
@@ -1789,6 +1866,21 @@ references:
       end_line: 59
       end_col: 44
   - from: 17
+    kind: value_ref
+    path:
+      - self
+      - rows
+    receiver:
+      type: self_value
+    args: []
+    span:
+      start_byte: 1498
+      end_byte: 1502
+      start_line: 60
+      start_col: 9
+      end_line: 60
+      end_col: 13
+  - from: 17
     kind: method_call
     path:
       - self
@@ -1856,6 +1948,22 @@ references:
       start_col: 34
       end_line: 60
       end_col: 38
+  - from: 17
+    kind: value_ref
+    path:
+      - invoice
+      - id
+    receiver:
+      type: expr
+      value: invoice
+    args: []
+    span:
+      start_byte: 1546
+      end_byte: 1548
+      start_line: 60
+      start_col: 57
+      end_line: 60
+      end_col: 59
   - from: 17
     kind: method_call
     path:
