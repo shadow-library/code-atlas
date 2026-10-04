@@ -543,6 +543,10 @@ expression: output
         }
       ]
     },
+    "router_fragments": {
+      "total": 0,
+      "items": []
+    },
     "auth_matrix": [
       {
         "repo": "acme-api",

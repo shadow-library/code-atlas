@@ -102,7 +102,6 @@ fn should_record_dynamic_dispatch_as_unresolved_instead_of_linking_it() {
 }
 
 #[test]
-#[ignore = "BUG: callers/impact of a function reachable only through a computed member call (table[methodName]()) show no dynamic-dispatch risk caveat"]
 fn should_warn_about_dynamic_dispatch_in_callers_and_impact() {
   let case = Case::indexed("dynamic-ts");
   let stop = case.find("src/handlers.ts", "stop");
@@ -137,7 +136,6 @@ fn should_keep_computed_routes_heuristic_and_invent_no_routes() {
 }
 
 #[test]
-#[ignore = "BUG: `api` lists router-relative fragments (GET /{id}, POST /) of a router mounted elsewhere as endpoints of the server"]
 fn should_not_list_router_relative_fragments_as_server_endpoints() {
   let case = Case::indexed("computed-routes-ts");
 

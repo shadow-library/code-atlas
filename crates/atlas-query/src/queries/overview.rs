@@ -9,7 +9,7 @@ use crate::error::QueryResult;
 use crate::graph::Graph;
 use crate::model::{AttrView, CertaintyTag, EntityRef, Response};
 use crate::policy::Policy;
-use crate::queries::common::{attr_str, attribute_names};
+use crate::queries::common::{attr_str, attribute_names, is_router_relative, superseded_fragments};
 use crate::queries::patterns::{PatternTopic, instances};
 
 const TOP_MODULES: usize = 8;
@@ -52,6 +52,8 @@ pub struct ModuleFanIn {
 pub struct DomainSummary {
   pub repo: String,
   pub endpoints: usize,
+  #[serde(skip_serializing_if = "is_zero")]
+  pub router_fragments: usize,
   pub auth_schemes: Vec<String>,
 }
 
@@ -232,16 +234,23 @@ fn top_modules(graph: &Graph<'_, '_>) -> QueryResult<Vec<ModuleFanIn>> {
 
 fn apis(graph: &Graph<'_, '_>) -> QueryResult<Vec<DomainSummary>> {
   let mut by_repo: BTreeMap<String, DomainSummary> = BTreeMap::new();
+  let superseded = superseded_fragments(graph)?;
   for endpoint in graph.entities_of_kind(&EntityKind::ApiEndpoint)? {
+    let fragment = is_router_relative(&endpoint);
+    if fragment && superseded.contains(&endpoint.key.to_string()) {
+      continue;
+    }
     let repo = endpoint.repo.as_ref().map(ToString::to_string).unwrap_or_default();
-    by_repo
-      .entry(repo.clone())
-      .or_insert_with(|| DomainSummary {
-        repo,
-        endpoints: 0,
-        auth_schemes: Vec::new(),
-      })
-      .endpoints += 1;
+    let summary = by_repo.entry(repo.clone()).or_insert_with(|| DomainSummary {
+      repo,
+      endpoints: 0,
+      router_fragments: 0,
+      auth_schemes: Vec::new(),
+    });
+    match fragment {
+      true => summary.router_fragments += 1,
+      false => summary.endpoints += 1,
+    }
   }
   for scheme in graph.entities_of_kind(&EntityKind::AuthScheme)? {
     let repo = scheme.repo.as_ref().map(ToString::to_string).unwrap_or_default();
@@ -250,6 +259,7 @@ fn apis(graph: &Graph<'_, '_>) -> QueryResult<Vec<DomainSummary>> {
       .or_insert_with(|| DomainSummary {
         repo,
         endpoints: 0,
+        router_fragments: 0,
         auth_schemes: Vec::new(),
       })
       .auth_schemes
@@ -337,4 +347,8 @@ fn patterns(graph: &Graph<'_, '_>) -> QueryResult<Vec<String>> {
     lines.push(format!("multiple HTTP frameworks: {}", frameworks.into_iter().collect::<Vec<_>>().join(", ")));
   }
   Ok(lines)
+}
+
+fn is_zero(count: &usize) -> bool {
+  *count == 0
 }

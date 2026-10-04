@@ -1,5 +1,5 @@
 mod api;
-mod common;
+pub(crate) mod common;
 mod context;
 mod explain;
 mod impact;

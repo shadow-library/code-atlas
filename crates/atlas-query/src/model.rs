@@ -209,6 +209,10 @@ pub enum Caveat {
     by_reason: BTreeMap<String, usize>,
     sites: Vec<UnresolvedSite>,
   },
+  DynamicMemberCalls {
+    total: usize,
+    sites: Vec<UnresolvedSite>,
+  },
   ProblemFiles {
     total: usize,
     files: Vec<ProblemFile>,

@@ -3,7 +3,8 @@ use crate::text::{RenderText, TextOut, caveats, entity_line, snippet};
 
 fn header(item: &ContextItem) -> String {
   let flag = if item.uncertain { " UNCERTAIN" } else { "" };
-  format!("{}{flag}  why: {}", entity_line(&item.entity), item.why)
+  let edit = if item.read_directly { " (named in the task: read the file directly)" } else { "" };
+  format!("{}{flag}{edit}  why: {}", entity_line(&item.entity), item.why)
 }
 
 fn section(out: &mut TextOut, title: &str, items: &[ContextItem], summaries: &[SectionSummary], render: impl Fn(&mut TextOut, &ContextItem)) {

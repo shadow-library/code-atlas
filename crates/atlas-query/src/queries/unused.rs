@@ -1,18 +1,17 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use atlas_core::{
-  ATTR_IMPL_OF, ATTR_IMPLEMENTS, EdgeKind, Entity, EntityId, EntityKey, EntityKind, ImplInfo, LanguageFamily, Owner, RelPath, RepoName, UnresolvedReason, Visibility,
-};
+use atlas_core::{ATTR_IMPL_OF, ATTR_IMPLEMENTS, EdgeKind, Entity, EntityId, EntityKind, ImplInfo, LanguageFamily, Owner, RelPath, RepoName, UnresolvedReason, Visibility};
 use atlas_store::{FreshnessPolicy, InferredQuery};
 use serde::Serialize;
 
 use crate::QueryEngine;
+use crate::dynamic::dynamic_member_calls;
 use crate::engine::unresolved_risk;
 use crate::error::QueryResult;
 use crate::graph::Graph;
 use crate::model::{Caveat, EntityRef, Listing, Response};
 use crate::policy::Policy;
-use crate::queries::common::{DEFAULT_LIMIT, attr_str, attribute_names, file_entity, is_test, language, link_caveat, package_key};
+use crate::queries::common::{DEFAULT_LIMIT, attr_str, attribute_names, is_router_relative, is_test, language, link_caveat, package_key, superseded_fragments};
 
 const SYMBOL_KINDS: [EntityKind; 10] = [
   EntityKind::Function,
@@ -363,7 +362,6 @@ struct Scan<'p> {
 #[derive(Default, Clone)]
 struct DynamicSites {
   imports: Vec<String>,
-  computed: BTreeMap<RelPath, usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -538,7 +536,7 @@ fn symbol_candidate(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity)
     evidence.push(format!("{total} unresolved references named {:?} could reach it ({})", entity.name, reasons.join(", ")));
     class = UnusedClass::PossiblyUnused;
   }
-  if let Some(reason) = dynamic_risk(graph, scan, entity)? {
+  for reason in dynamic_risk(graph, scan, entity)? {
     evidence.push(reason);
     class = UnusedClass::PossiblyUnused;
   }
@@ -650,8 +648,6 @@ fn dynamic_sites(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, repo: &RepoName) ->
       let head = reference.path.first().map(String::as_str);
       if matches!(head, Some("import" | "require")) {
         sites.imports.push(format!("{repo}:{path}:{}", reference.span.start_line));
-      } else if reference.path.iter().any(|segment| segment.starts_with('[')) {
-        *sites.computed.entry(path.clone()).or_default() += 1;
       }
     }
   }
@@ -659,39 +655,25 @@ fn dynamic_sites(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, repo: &RepoName) ->
   Ok(sites)
 }
 
-fn dynamic_risk(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> QueryResult<Option<String>> {
+fn dynamic_risk(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> QueryResult<Vec<String>> {
+  let mut reasons = Vec::new();
   if language(entity) != Some(LanguageFamily::Ts) {
-    return Ok(None);
+    return Ok(reasons);
   }
-  let (Some(repo), Some(path)) = (entity.repo.clone(), entity.path.clone()) else {
-    return Ok(None);
-  };
+  let Some(repo) = entity.repo.clone() else { return Ok(reasons) };
   let sites = dynamic_sites(graph, scan, &repo)?;
   if let Some(site) = sites.imports.first()
     && externally_visible(graph, entity)?
   {
-    return Ok(Some(format!(
+    reasons.push(format!(
       "{} dynamic import()/require() calls in the repo (first at {site}) may load its module",
       sites.imports.len()
-    )));
+    ));
   }
-  let mut importers: BTreeSet<RelPath> = BTreeSet::from([path.clone()]);
-  let mut targets = vec![entity.id];
-  if let Some(file) = file_entity(entity) {
-    targets.push(EntityId::of(&file));
+  if let Some(Caveat::DynamicMemberCalls { total, .. }) = dynamic_member_calls(graph, entity)? {
+    reasons.push(format!("{total} dynamic member calls could reach this (computed property access)"));
   }
-  for target in targets {
-    for edge in graph.edges_in(target, &[EdgeKind::Imports])? {
-      if let Some(EntityKey::File { path, .. }) = graph.entity(edge.from)?.map(|importer| importer.key) {
-        importers.insert(path);
-      }
-    }
-  }
-  let computed: usize = importers.iter().filter_map(|importer| sites.computed.get(importer)).sum();
-  if computed == 0 {
-    return Ok(None);
-  }
-  Ok(Some(format!("{computed} computed-member dynamic calls in its file or its importers could reach it")))
+  Ok(reasons)
 }
 
 fn externally_visible(graph: &Graph<'_, '_>, entity: &Entity) -> QueryResult<bool> {
@@ -775,8 +757,13 @@ fn package_role(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> 
 }
 
 fn endpoint_candidates(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, request: &UnusedRequest) -> QueryResult<()> {
+  let superseded = superseded_fragments(graph)?;
   for endpoint in graph.entities_of_kind(&EntityKind::ApiEndpoint)? {
     if !in_repo(request, &endpoint) || !graph.edges_in(endpoint.id, &[EdgeKind::CallsEndpoint])?.is_empty() {
+      continue;
+    }
+    let fragment = is_router_relative(&endpoint);
+    if fragment && superseded.contains(&endpoint.key.to_string()) {
       continue;
     }
     let inferred = graph.tx().inferred_facts(&InferredQuery {
@@ -787,7 +774,10 @@ fn endpoint_candidates(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, request: &Unu
     if inferred.iter().any(atlas_semantic::included_in_default_results) {
       continue;
     }
-    let evidence = vec!["no detected consumers in project".to_owned(), "external clients outside the project may exist".to_owned()];
+    let mut evidence = vec!["no detected consumers in project".to_owned(), "external clients outside the project may exist".to_owned()];
+    if fragment {
+      evidence.insert(0, "router fragment; mount not detected".to_owned());
+    }
     scan.candidates.push(UnusedCandidate {
       entity: EntityRef::of(&endpoint),
       class: UnusedClass::PossiblyUnused,

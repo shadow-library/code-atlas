@@ -158,6 +158,15 @@ fn comparable(target: &Entity, candidate: &Entity) -> bool {
     && candidate.kind != EntityKind::Field
 }
 
+fn structural_reason(status: &atlas_similarity::StructuralStatus) -> String {
+  match status {
+    atlas_similarity::StructuralStatus::Unknown => "the target is not in the structural index".to_owned(),
+    atlas_similarity::StructuralStatus::NoBody => "the target has no body".to_owned(),
+    atlas_similarity::StructuralStatus::TooSmall { tokens } => format!("too small for structural comparison ({tokens} tokens)"),
+    atlas_similarity::StructuralStatus::Indexed { tokens } => format!("indexed ({tokens} tokens)"),
+  }
+}
+
 fn similar(graph: &Graph<'_, '_>, index: &SimilarityIndex, target: &Entity, request: &SimilarRequest) -> QueryResult<SimilarAnswer> {
   let mut signals: BTreeMap<EntityId, Vec<SimilaritySignal>> = BTreeMap::new();
   let mut caveats = Vec::new();
@@ -169,7 +178,10 @@ fn similar(graph: &Graph<'_, '_>, index: &SimilarityIndex, target: &Entity, requ
   let structural = index.structural_status(target.id);
   if !matches!(structural, atlas_similarity::StructuralStatus::Indexed { .. }) {
     caveats.push(Caveat::Note {
-      message: format!("no structural fingerprint for the target ({structural:?}); only lexical and inferred signals apply"),
+      message: format!(
+        "no structural fingerprint for the target: {}; only lexical and inferred signals apply",
+        structural_reason(&structural)
+      ),
     });
   }
   let text = format!("{} {}", target.name, target.signature.clone().unwrap_or_default());

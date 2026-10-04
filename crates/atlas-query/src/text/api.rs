@@ -1,5 +1,5 @@
 use crate::model::AttrView;
-use crate::queries::{ApiAnswer, LinkState, Related, SchemeSupport, SupportBasis, UsageState};
+use crate::queries::{ApiAnswer, EndpointView, LinkState, Related, SchemeSupport, SupportBasis, UsageState};
 use crate::text::{RenderText, TextOut, caveats, entity_line, hop_text, listing};
 
 fn related(item: &Related) -> String {
@@ -24,74 +24,80 @@ fn joined(items: &[Related]) -> String {
   items.iter().map(related).collect::<Vec<_>>().join(", ")
 }
 
+fn endpoint_text(out: &mut TextOut, indent: usize, view: &EndpointView, consumer_links: LinkState) {
+  out.line(
+    indent,
+    format!(
+      "{} {} {} {}",
+      view.method,
+      view.route,
+      view.endpoint.location.as_ref().map(ToString::to_string).unwrap_or_default(),
+      view.certainty.tag
+    ),
+  );
+  match &view.handler {
+    Some(handler) => out.line(indent + 1, format!("handler {} {}", handler.entity.short, handler.relation.certainty.tag)),
+    None => out.line(indent + 1, "handler unresolved"),
+  }
+  for guard in &view.guards {
+    let schemes = match guard.schemes.is_empty() {
+      true => String::new(),
+      false => format!(", {}", guard.schemes.iter().map(|scheme| hop_text(&scheme.relation)).collect::<Vec<_>>().join(", ")),
+    };
+    out.line(indent + 1, format!("guard {}{schemes}", related(&guard.guard)));
+  }
+  for support in &view.auth {
+    let combinator = support
+      .combinator
+      .as_ref()
+      .map(|attr| format!(" ({} {})", attr.value_text(), attr.tag()))
+      .unwrap_or_default();
+    out.line(indent + 1, format!("{}{combinator}", hop_text(&support.scheme.relation)));
+  }
+  let extra: Vec<AttrView> = view.auth_attrs.iter().filter(|attr| !redundant(attr, !view.auth.is_empty())).cloned().collect();
+  if !extra.is_empty() {
+    out.line(indent + 1, format!("auth {}", attrs_text(&extra)));
+  }
+  if !view.permissions.is_empty() {
+    out.line(indent + 1, format!("permissions {}", joined(&view.permissions)));
+  }
+  match (view.consumers.is_empty(), consumer_links) {
+    (true, LinkState::Linked) => out.line(indent + 1, "consumers: none detected in project (external clients may exist)"),
+    (true, LinkState::NotLinked) => out.line(indent + 1, "consumers: unknown (no client->endpoint links in index)"),
+    (false, _) => {}
+  }
+  for consumer in &view.consumers {
+    let via = consumer.client_call.as_ref().map(|call| format!(" via {}", call.short)).unwrap_or_default();
+    out.line(
+      indent + 1,
+      format!("consumer {}{via}  {}", entity_line(&consumer.consumer.entity), hop_text(&consumer.consumer.relation)),
+    );
+    if !consumer.callers.is_empty() {
+      out.line(indent + 2, format!("callers {}", joined(&consumer.callers)));
+    }
+    if !consumer.auth_used.is_empty() {
+      out.line(indent + 2, format!("auth used {}", joined(&consumer.auth_used)));
+    }
+    let apps: Vec<&str> = consumer.applications.iter().map(|app| app.short.as_str()).collect();
+    out.line(
+      indent + 2,
+      format!(
+        "repos {} apps {}",
+        consumer.repos.join(", "),
+        if apps.is_empty() { "-".to_owned() } else { apps.join(", ") }
+      ),
+    );
+  }
+}
+
 impl RenderText for ApiAnswer {
   fn render_text(&self, out: &mut TextOut) {
     out.line(0, format!("endpoints ({})", self.endpoints.total));
-    listing(out, 1, &self.endpoints, |out, indent, view| {
-      out.line(
-        indent,
-        format!(
-          "{} {} {} {}",
-          view.method,
-          view.route,
-          view.endpoint.location.as_ref().map(ToString::to_string).unwrap_or_default(),
-          view.certainty.tag
-        ),
-      );
-      match &view.handler {
-        Some(handler) => out.line(indent + 1, format!("handler {} {}", handler.entity.short, handler.relation.certainty.tag)),
-        None => out.line(indent + 1, "handler unresolved"),
-      }
-      for guard in &view.guards {
-        let schemes = match guard.schemes.is_empty() {
-          true => String::new(),
-          false => format!(", {}", guard.schemes.iter().map(|scheme| hop_text(&scheme.relation)).collect::<Vec<_>>().join(", ")),
-        };
-        out.line(indent + 1, format!("guard {}{schemes}", related(&guard.guard)));
-      }
-      for support in &view.auth {
-        let combinator = support
-          .combinator
-          .as_ref()
-          .map(|attr| format!(" ({} {})", attr.value_text(), attr.tag()))
-          .unwrap_or_default();
-        out.line(indent + 1, format!("{}{combinator}", hop_text(&support.scheme.relation)));
-      }
-      let extra: Vec<AttrView> = view.auth_attrs.iter().filter(|attr| !redundant(attr, !view.auth.is_empty())).cloned().collect();
-      if !extra.is_empty() {
-        out.line(indent + 1, format!("auth {}", attrs_text(&extra)));
-      }
-      if !view.permissions.is_empty() {
-        out.line(indent + 1, format!("permissions {}", joined(&view.permissions)));
-      }
-      match (view.consumers.is_empty(), self.consumer_links) {
-        (true, LinkState::Linked) => out.line(indent + 1, "consumers: none detected in project (external clients may exist)"),
-        (true, LinkState::NotLinked) => out.line(indent + 1, "consumers: unknown (no client->endpoint links in index)"),
-        (false, _) => {}
-      }
-      for consumer in &view.consumers {
-        let via = consumer.client_call.as_ref().map(|call| format!(" via {}", call.short)).unwrap_or_default();
-        out.line(
-          indent + 1,
-          format!("consumer {}{via}  {}", entity_line(&consumer.consumer.entity), hop_text(&consumer.consumer.relation)),
-        );
-        if !consumer.callers.is_empty() {
-          out.line(indent + 2, format!("callers {}", joined(&consumer.callers)));
-        }
-        if !consumer.auth_used.is_empty() {
-          out.line(indent + 2, format!("auth used {}", joined(&consumer.auth_used)));
-        }
-        let apps: Vec<&str> = consumer.applications.iter().map(|app| app.short.as_str()).collect();
-        out.line(
-          indent + 2,
-          format!(
-            "repos {} apps {}",
-            consumer.repos.join(", "),
-            if apps.is_empty() { "-".to_owned() } else { apps.join(", ") }
-          ),
-        );
-      }
-    });
+    listing(out, 1, &self.endpoints, |out, indent, view| endpoint_text(out, indent, view, self.consumer_links));
+    if !self.router_fragments.is_empty() {
+      out.line(0, format!("router fragments (not mounted in this project) ({})", self.router_fragments.total));
+      listing(out, 1, &self.router_fragments, |out, indent, view| endpoint_text(out, indent, view, self.consumer_links));
+    }
     for matrix in &self.auth_matrix {
       out.line(0, format!("auth matrix {}", matrix.repo));
       for scheme in &matrix.schemes {

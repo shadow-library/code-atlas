@@ -36,6 +36,18 @@ pub(crate) fn attr_str<'e>(entity: &'e Entity, name: &str) -> Option<&'e str> {
   entity.attrs.get(name).and_then(serde_json::Value::as_str)
 }
 
+pub(crate) fn is_router_relative(endpoint: &Entity) -> bool {
+  attr_str(endpoint, "route_scope") == Some("router_relative")
+}
+
+pub(crate) fn superseded_fragments(graph: &Graph<'_, '_>) -> QueryResult<std::collections::BTreeSet<String>> {
+  let mut superseded = std::collections::BTreeSet::new();
+  for endpoint in graph.entities_of_kind(&EntityKind::ApiEndpoint)? {
+    superseded.extend(attr_str(&endpoint, "composed_from").map(str::to_owned));
+  }
+  Ok(superseded)
+}
+
 pub(crate) fn file_entity(entity: &Entity) -> Option<EntityKey> {
   Some(EntityKey::File {
     repo: entity.repo.clone()?,

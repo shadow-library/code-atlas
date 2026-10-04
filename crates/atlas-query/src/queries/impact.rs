@@ -4,6 +4,7 @@ use atlas_core::{EdgeKind, Entity, EntityId, EntityKey, EntityKind};
 use serde::Serialize;
 
 use crate::QueryEngine;
+use crate::dynamic::dynamic_member_calls;
 use crate::engine::unresolved_risk;
 use crate::error::QueryResult;
 use crate::graph::{Graph, Reached, Step, WalkSpec};
@@ -298,6 +299,7 @@ fn impact(graph: &Graph<'_, '_>, targets: &[Entity], request: &ImpactRequest) ->
   let mut risk = Vec::new();
   for target in targets {
     risk.extend(unresolved_risk(graph, target.id, risk_name(target))?);
+    risk.extend(dynamic_member_calls(graph, target)?);
     risk.extend(dispatch_caveat(graph, target)?);
   }
   let mut caveats = Vec::new();

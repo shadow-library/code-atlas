@@ -149,6 +149,13 @@ fn caveat_line(out: &mut TextOut, caveat: &Caveat) {
       }
       omitted(out, 2, total.saturating_sub(sites.len()));
     }
+    Caveat::DynamicMemberCalls { total, sites } => {
+      out.line(1, format!("{total} dynamic member calls could reach this (computed property access)"));
+      for site in sites {
+        out.line(2, format!("{} {}", site.location, site.path));
+      }
+      omitted(out, 2, total.saturating_sub(sites.len()));
+    }
     Caveat::ProblemFiles { total, files } => {
       out.line(1, format!("{total} files in scope parsed partially or failed; their relations may be missing"));
       for file in files {

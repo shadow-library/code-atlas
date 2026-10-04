@@ -15,6 +15,7 @@ use crate::queries::common::{first_line, is_test};
 
 const DEFAULT_SEARCH_LIMIT: usize = 10;
 const STRONG_FRACTION: f64 = 0.6;
+const COVERAGE_WEIGHT: f64 = 1.0;
 const STRUCTURAL_THRESHOLD: f64 = 0.6;
 const STRUCTURAL_SEEDS: usize = 3;
 const STRUCTURAL_PER_SEED: usize = 5;
@@ -170,26 +171,54 @@ pub(crate) fn rounded(value: f64) -> f64 {
   (value * 1000.0).round() / 1000.0
 }
 
+fn coverage_boost(hit: &SearchHit, significant: usize) -> f64 {
+  if significant == 0 {
+    return 1.0;
+  }
+  let covered = hit.direct_terms.len().min(significant) as f64 / significant as f64;
+  (1.0 + COVERAGE_WEIGHT * covered) / (1.0 + COVERAGE_WEIGHT)
+}
+
+fn related_token(left: &str, right: &str) -> bool {
+  let (short, long) = if left.len() <= right.len() { (left, right) } else { (right, left) };
+  short.len() >= 3 && long.starts_with(short)
+}
+
+fn names_cover(hit: &SearchHit, qualified: &str, significant: &BTreeSet<&str>, phrase: &str, words: &[String]) -> bool {
+  if !phrase.is_empty() && (normalised(&hit.name) == phrase || normalised(qualified) == phrase) {
+    return true;
+  }
+  let Some(name) = hit.matched_fields.iter().find(|field| field.field == Field::Name) else {
+    return false;
+  };
+  let covers_query = !significant.is_empty() && significant.iter().all(|term| name.terms.iter().any(|candidate| candidate == term));
+  let within_query = query_terms(&hit.name).iter().all(|token| words.iter().any(|word| related_token(token, word)));
+  covers_query && within_query
+}
+
 fn search(graph: &Graph<'_, '_>, index: &SimilarityIndex, request: &SearchRequest) -> QueryResult<SearchAnswer> {
   let hits = lexical_hits(index, &request.text, &request.kinds, request.repo.as_deref(), request.limit.max(1) * 3);
   let words = query_words(&request.text);
-  let top = hits.first().map_or(0.0, |hit| hit.score);
-  let wanted: BTreeSet<String> = std::iter::once(normalised(&request.text))
-    .chain(request.text.split_whitespace().map(normalised))
-    .filter(|word| !word.is_empty())
-    .collect();
+  let significant: BTreeSet<&str> = hits.iter().flat_map(|hit| hit.direct_terms.iter().map(String::as_str)).collect();
+  let boosted: Vec<f64> = hits.iter().map(|hit| hit.score * coverage_boost(hit, significant.len())).collect();
+  let mut order: Vec<usize> = (0..hits.len()).collect();
+  order.sort_by(|left, right| boosted[*right].total_cmp(&boosted[*left]).then(left.cmp(right)));
+  let phrase = normalised(&request.text);
+  let top = order.first().map_or(0.0, |index| boosted[*index]);
   let mut exact_name = Vec::new();
   let mut strong = Vec::new();
   let mut related = Vec::new();
   let mut tests = Vec::new();
   let mut seeds = Vec::new();
-  for hit in &hits {
+  for index_of in order {
+    let hit = &hits[index_of];
+    let score = boosted[index_of];
     let Some(entity) = graph.entity(hit.entity)? else { continue };
     let view = SearchHitView {
       entity: EntityRef::of(&entity),
       signature: entity.signature.clone(),
       doc: first_line(entity.doc.as_deref()),
-      score: rounded(hit.score),
+      score: rounded(score),
       matched_fields: hit
         .matched_fields
         .iter()
@@ -204,12 +233,12 @@ fn search(graph: &Graph<'_, '_>, index: &SimilarityIndex, request: &SearchReques
     };
     if is_test(&entity) {
       tests.push(view);
-    } else if wanted.contains(&normalised(&entity.name)) {
+    } else if names_cover(hit, &view.entity.short, &significant, &phrase, &words) {
       if seeds.len() < STRUCTURAL_SEEDS {
         seeds.push((entity.id, view.entity.short.clone()));
       }
       exact_name.push(view);
-    } else if hit.score >= STRONG_FRACTION * top {
+    } else if score >= STRONG_FRACTION * top {
       strong.push(view);
     } else {
       related.push(view);

@@ -55,6 +55,7 @@ expression: output
           ],
           "omitted_lines": 0
         },
+        "read_directly": false,
         "run": null
       },
       {
@@ -99,6 +100,7 @@ expression: output
           ],
           "omitted_lines": 0
         },
+        "read_directly": false,
         "run": null
       },
       {
@@ -137,6 +139,7 @@ expression: output
           ],
           "omitted_lines": 0
         },
+        "read_directly": false,
         "run": null
       },
       {
@@ -173,6 +176,7 @@ expression: output
           ],
           "omitted_lines": 0
         },
+        "read_directly": false,
         "run": null
       }
     ],
@@ -220,6 +224,7 @@ expression: output
         "doc": null,
         "skeleton": [],
         "body": null,
+        "read_directly": false,
         "run": "[acme-sdk] npx vitest run src/money.test.ts -t \"toCents should convert whole and fractional amounts\""
       },
       {
@@ -261,6 +266,7 @@ expression: output
         "doc": null,
         "skeleton": [],
         "body": null,
+        "read_directly": false,
         "run": "[acme-sdk] npx vitest run src/money.test.ts -t \"toCents should keep the sign of negative amounts\""
       },
       {
@@ -302,6 +308,7 @@ expression: output
         "doc": null,
         "skeleton": [],
         "body": null,
+        "read_directly": false,
         "run": "[acme-billing] cargo test -p acme-billing --lib money::tests::converts_whole_and_fractional_amounts"
       },
       {
@@ -343,6 +350,7 @@ expression: output
         "doc": null,
         "skeleton": [],
         "body": null,
+        "read_directly": false,
         "run": "[acme-billing] cargo test -p acme-billing --lib money::tests::keeps_the_sign_of_negative_amounts"
       },
       {
@@ -384,6 +392,7 @@ expression: output
         "doc": null,
         "skeleton": [],
         "body": null,
+        "read_directly": false,
         "run": "[acme-billing] cargo test -p acme-billing --lib money::tests"
       },
       {
@@ -425,6 +434,7 @@ expression: output
         "doc": null,
         "skeleton": [],
         "body": null,
+        "read_directly": false,
         "run": "[acme-sdk] npx vitest run src/money.test.ts -t \"toCents\""
       }
     ],

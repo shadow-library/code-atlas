@@ -41,6 +41,22 @@ async fn should_advertise_the_workflow_instructions_after_initialize() {
 }
 
 #[tokio::test]
+async fn should_tell_agents_to_read_files_they_will_edit_with_their_own_tool() {
+  let harness = start(&ACME_REPOS).await;
+  let guidance = "To edit a file, read it with your own file-reading tool; use atlas_read for code you only need to view.";
+
+  let instructions = harness.client.peer_info().unwrap().instructions.clone().unwrap();
+  let tools = harness.client.list_all_tools().await.unwrap();
+
+  assert!(instructions.contains(guidance), "{instructions}");
+  for name in ["atlas_read", "atlas_context"] {
+    let description = tools.iter().find(|tool| tool.name == name).and_then(|tool| tool.description.clone()).unwrap();
+    assert!(description.contains(guidance), "{name}: {description}");
+  }
+  harness.stop().await.unwrap();
+}
+
+#[tokio::test]
 async fn should_list_every_tool_with_a_schema_and_an_agent_facing_description() {
   let harness = start(&ACME_REPOS).await;
 

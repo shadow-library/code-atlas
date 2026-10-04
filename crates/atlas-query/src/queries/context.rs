@@ -35,6 +35,7 @@ const DAMPING: f64 = 0.85;
 const MUST_READ_SHARE: f64 = 0.8;
 const MUST_READ_RELEVANCE: f64 = 0.2;
 const BODY_LINES: usize = 80;
+const SMALL_BODY_LINES: u32 = 15;
 const LARGE_TYPE_LINES: u32 = 40;
 const LOW_RELEVANCE: f64 = 0.04;
 const MAX_CODE_ITEMS: usize = 40;
@@ -145,6 +146,7 @@ pub struct ContextItem {
   pub doc: Option<String>,
   pub skeleton: Vec<String>,
   pub body: Option<Snippet>,
+  pub read_directly: bool,
   pub run: Option<String>,
 }
 
@@ -153,6 +155,7 @@ pub struct ContextItem {
 pub enum OmissionReason {
   Budget,
   ShownInEnclosingItem,
+  ShownInOutline,
   LowRelevance,
   BelowConfidenceFloor,
   AmbiguousSeed,
@@ -164,6 +167,7 @@ impl OmissionReason {
     match self {
       Self::Budget => "budget",
       Self::ShownInEnclosingItem => "shown inside an enclosing MUST READ body",
+      Self::ShownInOutline => "shown in the outline of an enclosing MUST READ item",
       Self::LowRelevance => "low relevance",
       Self::BelowConfidenceFloor => "below confidence floor",
       Self::AmbiguousSeed => "ambiguous seed",
@@ -487,7 +491,7 @@ impl QueryEngine {
       + (impact.len().min(IMPACT_SHOWN) + uncertain.len().min(UNCERTAIN_SHOWN) + TESTS_SHOWN) * MENTION_TOKENS;
     let must_read_budget = (request.budget as f64 * MUST_READ_SHARE) as usize;
     let must_read_floor = code.iter().map(|item| item.score).fold(0.0_f64, f64::max) * MUST_READ_RELEVANCE;
-    let mut included: Vec<(String, String, u32, u32)> = Vec::new();
+    let mut included: Vec<(String, String, u32, u32, bool)> = Vec::new();
     let mut skim_candidates = Vec::new();
     {
       let mut reader = self.sources(&mut freshness);
@@ -497,17 +501,20 @@ impl QueryEngine {
           (Some(repo), Some(path), Some(span)) if entity.kind.is_code_symbol() => Some((repo.to_string(), path.to_string(), span.start_line, span.end_line)),
           _ => None,
         };
-        let covered = location.as_ref().is_some_and(|(repo, path, start, end)| {
+        let cover = location.as_ref().and_then(|(repo, path, start, end)| {
           included
             .iter()
-            .any(|(other_repo, other_path, other_start, other_end)| other_repo == repo && other_path == path && other_start <= start && end <= other_end)
+            .find(|(other_repo, other_path, other_start, other_end, _)| other_repo == repo && other_path == path && other_start <= start && end <= other_end)
         });
-        if covered {
+        if let Some((.., outline)) = cover {
           let entry = item_of(&item);
           omitted.push(OmittedItem {
             label: crate::text::entity_line(&entry.entity),
             entity: Some(entry.entity),
-            reason: OmissionReason::ShownInEnclosingItem,
+            reason: match outline {
+              true => OmissionReason::ShownInOutline,
+              false => OmissionReason::ShownInEnclosingItem,
+            },
           });
           continue;
         }
@@ -518,16 +525,21 @@ impl QueryEngine {
         };
         let contains_included = included
           .iter()
-          .any(|(other_repo, other_path, other_start, other_end)| *other_repo == repo && *other_path == path && start <= *other_start && *other_end <= end);
+          .any(|(other_repo, other_path, other_start, other_end, _)| *other_repo == repo && *other_path == path && start <= *other_start && *other_end <= end);
         let type_like = matches!(
           entity.kind,
           EntityKind::Class | EntityKind::Struct | EntityKind::Trait | EntityKind::Interface | EntityKind::Enum
         );
         let skeleton_only = type_like && (contains_included || end.saturating_sub(start) > LARGE_TYPE_LINES) && !item.skeleton.is_empty();
+        let edit_target = item.node.named && end - start + 1 > SMALL_BODY_LINES;
         let mut entry = item_of(&item);
-        let cost = match skeleton_only {
-          true => tokens(item.skeleton.iter().map(|(_, line)| line.len() + 1).sum()) + MENTION_TOKENS,
-          false => {
+        let cost = match (edit_target, skeleton_only) {
+          (true, _) => {
+            entry.read_directly = true;
+            outline_tokens(&entry)
+          }
+          (false, true) => tokens(item.skeleton.iter().map(|(_, line)| line.len() + 1).sum()) + MENTION_TOKENS,
+          (false, false) => {
             let body = reader.snippet(entity.id, SnippetMode::Body { max_lines: Some(BODY_LINES) }, 0)?;
             let cost = tokens(body.char_len()) + MENTION_TOKENS;
             entry.body = Some(body);
@@ -539,13 +551,15 @@ impl QueryEngine {
           continue;
         }
         if !skeleton_only {
-          entry.skeleton = item
-            .skeleton
-            .iter()
-            .filter(|(line, _)| !(start..=end).contains(line))
-            .map(|(_, text)| text.clone())
-            .collect();
-          included.push((repo, path, start, end));
+          if !edit_target {
+            entry.skeleton = item
+              .skeleton
+              .iter()
+              .filter(|(line, _)| !(start..=end).contains(line))
+              .map(|(_, text)| text.clone())
+              .collect();
+          }
+          included.push((repo, path, start, end, edit_target));
         }
         used += cost;
         tests_by_owner.push((item.node.named, item.score, item.tests.clone()));
@@ -554,8 +568,7 @@ impl QueryEngine {
     }
     for item in skim_candidates {
       let entry = item_of(&item);
-      let cost =
-        tokens(entry.signature.as_deref().map_or(0, str::len) + entry.doc.as_deref().map_or(0, str::len) + entry.skeleton.iter().map(String::len).sum::<usize>()) + MENTION_TOKENS;
+      let cost = outline_tokens(&entry);
       if used + cost <= request.budget {
         used += cost;
         answer.skim.push(entry);
@@ -643,6 +656,7 @@ fn select_tests(owners: Vec<(bool, f64, Vec<TestItem>)>) -> (Vec<ContextItem>, O
       doc: None,
       skeleton: Vec::new(),
       body: None,
+      read_directly: false,
       run: test.run.clone(),
       score,
       entity: test.test,
@@ -675,6 +689,10 @@ fn tokens(chars: usize) -> usize {
   chars.div_ceil(4)
 }
 
+fn outline_tokens(entry: &ContextItem) -> usize {
+  tokens(entry.signature.as_deref().map_or(0, str::len) + entry.doc.as_deref().map_or(0, str::len) + entry.skeleton.iter().map(String::len).sum::<usize>()) + MENTION_TOKENS
+}
+
 fn item_of(item: &Ranked) -> ContextItem {
   let entity = &item.node.entity;
   ContextItem {
@@ -688,6 +706,7 @@ fn item_of(item: &Ranked) -> ContextItem {
     doc: first_line(entity.doc.as_deref()),
     skeleton: item.skeleton.iter().map(|(_, line)| line.clone()).collect(),
     body: None,
+    read_directly: false,
     run: match item.node.role {
       Role::Test => run_hint(entity),
       _ => None,

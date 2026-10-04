@@ -3,7 +3,7 @@ Code Atlas answers questions about ONE indexed project (a group of repos) from a
 1. Start a task with atlas_context: a ranked, budgeted pack of code to read, with reasons and omissions.
 2. Before writing new code, run atlas_search and atlas_similar to find something to reuse.
 3. Before changing shared code, run atlas_impact on it; use atlas_tests_for to pick tests.
-4. Read only the code the results list (atlas_read returns one symbol from disk).
+4. Read only the code the results list. To edit a file, read it with your own file-reading tool; use atlas_read for code you only need to view.
 5. [resolved]/[syntactic]/[compiler_verified]/[declared] relations are reliable but not exhaustive; always read the caveats. [heuristic] and [inferred] relations are leads: verify them in the source before relying on them.
 6. An empty result is not proof of absence: read the caveats (unresolved references, files that failed to parse, hidden low-confidence relations).
 7. After editing, call atlas_changes or re-query; freshness is automatic, there is no reindex tool.
@@ -18,6 +18,7 @@ macro_rules! certainty {
 
 pub(crate) const CONTEXT: &str = concat!(
   "START HERE for a task. Returns a ranked, budgeted pack of the code to read: full bodies for the top items, signatures for the next, one-liners for the rest, each with why it was included, plus what was omitted and why. ",
+  "Items marked \"likely to edit: read the file directly\" show only a signature outline. To edit a file, read it with your own file-reading tool; use atlas_read for code you only need to view. ",
   "Seeds are optional symbols or files to anchor on. ",
   certainty!()
 );
@@ -54,7 +55,7 @@ pub(crate) const PATTERNS: &str =
   "How this codebase does something (e.g. 'error handling', 'pagination'): exemplar implementations ranked by prevalence. Use to match local conventions.";
 pub(crate) const EXPLAIN: &str =
   "Provenance of a symbol or relation: certainty, evidence spans, producing run, staleness and history. Use to decide whether to trust a [heuristic]/[inferred] fact.";
-pub(crate) const READ: &str = "Source of exactly one symbol, re-read from disk (never a cache), with optional extra context lines. Prefer this over opening whole files.";
+pub(crate) const READ: &str = "Source of exactly one symbol, re-read from disk (never a cache), with optional extra context lines. To edit a file, read it with your own file-reading tool; use atlas_read for code you only need to view.";
 pub(crate) const OVERVIEW: &str = "Project map: repos, packages, applications, entrypoints, key modules and detected domains. Use to orient in an unfamiliar project.";
 pub(crate) const STATUS: &str =
   "Index health: freshness, parse failures, SCIP coverage, LLM status and this server's per-tool call telemetry. Use when answers look incomplete or stale.";

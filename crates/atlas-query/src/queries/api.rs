@@ -8,7 +8,7 @@ use crate::error::{QueryError, QueryResult};
 use crate::graph::{Graph, Step, WalkSpec};
 use crate::model::{AttrView, Caveat, CertaintyTag, EntityRef, Hop, Listing, Location, Response};
 use crate::policy::{Direction, Policy};
-use crate::queries::common::{DEFAULT_LIMIT, MAX_NODES, link_caveat, package_key};
+use crate::queries::common::{DEFAULT_LIMIT, MAX_NODES, is_router_relative, link_caveat, package_key, superseded_fragments};
 use crate::target::{TargetFilter, TargetSpec, resolve};
 
 const CONSUMER_CALLER_DEPTH: u32 = 2;
@@ -134,6 +134,7 @@ pub enum LinkState {
 pub struct ApiAnswer {
   pub consumer_links: LinkState,
   pub endpoints: Listing<EndpointView>,
+  pub router_fragments: Listing<EndpointView>,
   pub auth_matrix: Vec<AuthMatrix>,
   pub unmatched_calls: Listing<ClientCallView>,
   pub caveats: Vec<Caveat>,
@@ -167,9 +168,14 @@ fn api(query: &QueryEngine, graph: &Graph<'_, '_>, request: &ApiRequest) -> Quer
     EdgeKind::SupportsAuth,
     "no endpoint->scheme facts (supports_auth) exist in this index; supported schemes come from guards only",
   )?;
-  let mut endpoints = Vec::with_capacity(selected.len());
-  for endpoint in &selected {
+  let (mounted, fragments) = split_router_fragments(graph, &selected, request.endpoint.is_some())?;
+  let mut endpoints = Vec::with_capacity(mounted.len());
+  for endpoint in &mounted {
     endpoints.push(endpoint_view(graph, endpoint)?);
+  }
+  let mut router_fragments = Vec::with_capacity(fragments.len());
+  for endpoint in &fragments {
+    router_fragments.push(endpoint_view(graph, endpoint)?);
   }
   let api_repos: BTreeSet<String> = selected.iter().filter_map(|endpoint| endpoint.repo.as_ref().map(ToString::to_string)).collect();
   let mut auth_matrix = Vec::new();
@@ -190,10 +196,28 @@ fn api(query: &QueryEngine, graph: &Graph<'_, '_>, request: &ApiRequest) -> Quer
   Ok(ApiAnswer {
     consumer_links,
     endpoints: Listing::truncated(endpoints, request.limit),
+    router_fragments: Listing::truncated(router_fragments, request.limit),
     auth_matrix,
     unmatched_calls: Listing::truncated(unmatched, request.limit),
     caveats,
   })
+}
+
+fn split_router_fragments(graph: &Graph<'_, '_>, selected: &[Entity], explicit: bool) -> QueryResult<(Vec<Entity>, Vec<Entity>)> {
+  if explicit {
+    return Ok((selected.to_vec(), Vec::new()));
+  }
+  let superseded = superseded_fragments(graph)?;
+  let mut mounted = Vec::new();
+  let mut fragments = Vec::new();
+  for endpoint in selected {
+    match (is_router_relative(endpoint), superseded.contains(&endpoint.key.to_string())) {
+      (true, true) => {}
+      (true, false) => fragments.push(endpoint.clone()),
+      (false, _) => mounted.push(endpoint.clone()),
+    }
+  }
+  Ok((mounted, fragments))
 }
 
 fn selected_endpoints(query: &QueryEngine, graph: &Graph<'_, '_>, request: &ApiRequest) -> QueryResult<Vec<Entity>> {

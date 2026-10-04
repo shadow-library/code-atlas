@@ -4,6 +4,7 @@ use atlas_core::{EdgeKind, Entity, EntityKind};
 use serde::Serialize;
 
 use crate::QueryEngine;
+use crate::dynamic::dynamic_member_calls;
 use crate::engine::unresolved_risk;
 use crate::error::QueryResult;
 use crate::graph::{Graph, Reached, Step, WalkSpec, group_by_repo};
@@ -212,6 +213,7 @@ fn traversal(graph: &Graph<'_, '_>, kind: TraversalKind, request: &TraverseReque
   }
   if kind.direction() == Direction::Reverse {
     caveats.extend(unresolved_risk(graph, target.id, risk_name(target))?);
+    caveats.extend(dynamic_member_calls(graph, target)?);
     caveats.extend(dispatch_caveat(graph, target)?);
   }
   Ok(TraversalAnswer {

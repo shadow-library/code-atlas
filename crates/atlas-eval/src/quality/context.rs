@@ -272,6 +272,7 @@ mod tests {
       doc: None,
       skeleton: Vec::new(),
       body: None,
+      read_directly: false,
       run: None,
     }
   }

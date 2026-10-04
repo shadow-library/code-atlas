@@ -49,7 +49,9 @@ impl RenderText for ExplainAnswer {
           out.line(0, format!("inferred facts ({})", inferred.len()));
           for fact in inferred {
             out.line(1, format!("{} {} {}", fact.relation, fact.subjects.join(", "), fact.certainty.tag));
-            out.line(2, format!("by {}/{} call={:?} run={:?}", fact.provider, fact.model, fact.llm_call, fact.created_run));
+            let call = fact.llm_call.map(|call| format!(" call {call}")).unwrap_or_default();
+            let run = fact.created_run.map(|run| format!(" in run {run}")).unwrap_or_default();
+            out.line(2, format!("by {}/{}{call}{run}", fact.provider, fact.model));
             out.line(2, format!("rationale: {}", fact.rationale));
           }
         }

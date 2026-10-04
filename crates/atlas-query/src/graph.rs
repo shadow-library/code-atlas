@@ -1,16 +1,21 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::rc::Rc;
 
-use atlas_core::{Certainty, Edge, EdgeId, EdgeKind, Entity, EntityId, EntityKind, Owner};
+use atlas_core::{Certainty, Edge, EdgeId, EdgeKind, Entity, EntityId, EntityKind, Owner, RelPath, RepoName};
 use atlas_store::{AttrSources, EdgeFilter, EntityFilter, ReadTx};
 
+use crate::dynamic::load_dynamic_sites;
 use crate::error::QueryResult;
-use crate::model::{AttrView, CertaintyTag, EntityRef, Hop};
+use crate::model::{AttrView, CertaintyTag, EntityRef, Hop, UnresolvedSite};
 use crate::policy::{Direction, Policy, phrase};
+
+type FileKey = (RepoName, RelPath);
 
 pub(crate) struct Graph<'a, 'c> {
   tx: &'a ReadTx<'c>,
   cache: RefCell<HashMap<EntityId, Option<Entity>>>,
+  dynamic: RefCell<HashMap<FileKey, Rc<Vec<UnresolvedSite>>>>,
   pub policy: Policy,
 }
 
@@ -19,6 +24,7 @@ impl<'a, 'c> Graph<'a, 'c> {
     Self {
       tx,
       cache: RefCell::new(HashMap::new()),
+      dynamic: RefCell::new(HashMap::new()),
       policy,
     }
   }
@@ -34,6 +40,16 @@ impl<'a, 'c> Graph<'a, 'c> {
     let entity = self.tx.entity(id)?;
     self.cache.borrow_mut().insert(id, entity.clone());
     Ok(entity)
+  }
+
+  pub fn dynamic_sites(&self, repo: &RepoName, path: &RelPath) -> QueryResult<Rc<Vec<UnresolvedSite>>> {
+    let key = (repo.clone(), path.clone());
+    if let Some(cached) = self.dynamic.borrow().get(&key) {
+      return Ok(Rc::clone(cached));
+    }
+    let sites = load_dynamic_sites(self, repo, path)?;
+    self.dynamic.borrow_mut().insert(key, Rc::clone(&sites));
+    Ok(sites)
   }
 
   pub fn entity_attrs(&self, id: EntityId, names: &[&str]) -> QueryResult<Vec<AttrView>> {

@@ -74,7 +74,11 @@ impl RenderText for OverviewAnswer {
           true => "none detected".to_owned(),
           false => api.auth_schemes.join(", "),
         };
-        out.line(1, format!("{}: {} endpoints, auth {schemes}", api.repo, api.endpoints));
+        let fragments = match api.router_fragments {
+          0 => String::new(),
+          count => format!(" (+{count} unmounted router fragments)"),
+        };
+        out.line(1, format!("{}: {} endpoints{fragments}, auth {schemes}", api.repo, api.endpoints));
       }
     }
     if !self.events.is_empty() {
