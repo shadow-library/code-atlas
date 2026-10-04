@@ -38,6 +38,8 @@ pub(crate) struct RepoMeta {
 pub(crate) struct ScipMeta {
   pub last_run_ms: Option<i64>,
   pub lagging: BTreeSet<String>,
+  #[serde(default)]
+  pub dropped_in: BTreeMap<String, i64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

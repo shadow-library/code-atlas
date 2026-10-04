@@ -11,8 +11,9 @@ use serde_json::json;
 use crate::artifact::{FileArtifact, FileKey};
 use crate::engine::{Engine, lock_inner};
 use crate::error::{EngineError, EngineResult};
+use crate::packages::graph_fingerprint;
 use crate::run::key_label;
-use crate::state::ScipMeta;
+use crate::state::{DIRTY_BLOB, EngineMeta, ScipMeta};
 
 pub struct ScipIndexers<'a> {
   pub cargo: Option<&'a dyn ScipIndexer>,
@@ -48,6 +49,9 @@ struct PackageJob {
   root: PathBuf,
   package_dir: Option<RelPath>,
   files: BTreeMap<RelPath, ContentHash>,
+  generation: Option<RunId>,
+  graph_fingerprint: String,
+  dropped_in: BTreeMap<String, i64>,
 }
 
 fn now_ms() -> i64 {
@@ -121,6 +125,9 @@ impl Engine {
           root: repo_state.config.path.join(package.root.as_str()),
           package_dir,
           files,
+          generation: state.generation,
+          graph_fingerprint: graph_fingerprint(graph),
+          dropped_in: state.scip.dropped_in.clone(),
         });
       }
     }
@@ -162,6 +169,7 @@ impl Engine {
     let bytes = std::fs::read(&output).map_err(|source| EngineError::io(&output, source))?;
     let mut inner = lock_inner(&self.inner);
     let state = &inner.state;
+    let repos: Vec<RepoName> = state.repos.keys().cloned().collect();
     let current: BTreeSet<FileKey> = job
       .files
       .iter()
@@ -204,6 +212,7 @@ impl Engine {
       }
     };
     let mut edges_written = 0u64;
+    let mut package_stale = false;
     let mut written: BTreeSet<FileKey> = BTreeSet::new();
     let timeout = self.options.store.lock_timeout;
     let store = &self.store;
@@ -211,12 +220,24 @@ impl Engine {
       store.write(|tx| -> EngineResult<ScipMeta> {
         tx.resume_run(run)?;
         let mut scip_meta = ScipMeta::read(tx)?;
+        let meta = EngineMeta::read(tx)?;
+        let moved = meta.as_ref().and_then(|meta| meta.generation).map(RunId) != job.generation;
+        package_stale = tx.blob(DIRTY_BLOB)?.is_some()
+          || moved && meta.as_ref().and_then(|meta| meta.repos.get(job.repo.as_str())).map(|repo| repo.graph_fingerprint.as_str()) != Some(job.graph_fingerprint.as_str());
+        let reresolved = |label: &String| scip_meta.dropped_in.get(label) != job.dropped_in.get(label);
+        if package_stale {
+          tracing::info!(repo = %job.repo, manifest = %job.manifest, "the package graph changed or a run is unfinished after the SCIP indexer ran; leaving the package lagging");
+          for path in job.files.keys() {
+            scip_meta.lagging.insert(key_label(&(job.repo.clone(), path.clone())));
+          }
+          included.clear();
+        }
         for key in &lagging {
           scip_meta.lagging.insert(key_label(key));
         }
         for key in &included {
           let indexed = job.files.get(&key.1).copied();
-          if tx.file(&key.0, &key.1)?.map(|record| record.content_hash) != indexed {
+          if reresolved(&key_label(key)) || tx.file(&key.0, &key.1)?.map(|record| record.content_hash) != indexed {
             scip_meta.lagging.insert(key_label(key));
             continue;
           }
@@ -236,6 +257,12 @@ impl Engine {
           )?;
           scip_meta.lagging.remove(&key_label(key));
         }
+        let mut live: BTreeSet<String> = BTreeSet::new();
+        for repo in &repos {
+          live.extend(tx.files_in_repo(repo)?.into_iter().map(|record| key_label(&(record.repo, record.path))));
+        }
+        scip_meta.lagging.retain(|label| live.contains(label));
+        scip_meta.dropped_in.retain(|label, _| live.contains(label));
         scip_meta.last_run_ms = Some(now_ms());
         scip_meta.write(tx)?;
         Ok(scip_meta)
@@ -245,7 +272,10 @@ impl Engine {
     Ok(ScipPackageOutcome::Ingested {
       files: written.len() as u64,
       edges: edges_written,
-      skipped_changed: (lagging.len() + included.len() - written.len()) as u64,
+      skipped_changed: match package_stale {
+        true => job.files.len() as u64,
+        false => (lagging.len() + included.len() - written.len()) as u64,
+      },
       stats: facts.stats,
     })
   }

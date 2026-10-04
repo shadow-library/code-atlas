@@ -926,3 +926,297 @@ fn ingested(report: &atlas_engine::ScipReport) -> IngestCounts {
     other => panic!("expected an ingested package, got {other:?}"),
   }
 }
+
+struct HookedScip {
+  inner: FakeScip,
+  during: Box<dyn Fn() + Send + Sync>,
+}
+
+impl ScipIndexer for HookedScip {
+  fn id(&self) -> &'static str {
+    "hooked-scip"
+  }
+
+  fn availability(&self) -> Availability {
+    Availability::Available
+  }
+
+  fn index(&self, request: &ScipRequest) -> ScipRun {
+    let run = self.inner.index(request);
+    (self.during)();
+    run
+  }
+}
+
+fn paths_tsconfig(dir: &str) -> String {
+  format!("{{ \"compilerOptions\": {{ \"baseUrl\": \".\", \"paths\": {{ \"@lib/*\": [\"src/{dir}/*\"] }} }} }}\n")
+}
+
+fn paths_tree(scratch: &Path) -> (PathBuf, Project) {
+  let root = scratch.join("demo");
+  fs::create_dir_all(root.join("src/a")).unwrap();
+  fs::create_dir_all(root.join("src/c")).unwrap();
+  fs::write(root.join("package.json"), "{ \"name\": \"demo\" }\n").unwrap();
+  fs::write(root.join("tsconfig.json"), paths_tsconfig("a")).unwrap();
+  let load = "export function load(n: number) {\n  return n;\n}\n";
+  fs::write(root.join("src/a/x.ts"), load).unwrap();
+  fs::write(root.join("src/c/x.ts"), load).unwrap();
+  fs::write(root.join("src/b.ts"), "import { load } from '@lib/x';\nexport function run() {\n  return load(1);\n}\n").unwrap();
+  let project = project("demo", vec![repo_config("demo", &root)]);
+  (root, project)
+}
+
+fn assert_package_left_lagging(engine: &Engine, report: &atlas_engine::ScipReport) {
+  let IngestCounts { files, skipped } = ingested(report);
+  assert_eq!((files, skipped), (0, 3), "{report:?}");
+  let owner = Owner::Project {
+    pass: ScipFacts::owner_pass(&RepoName::new("demo").unwrap(), &RelPath::new("src/b.ts").unwrap()),
+  };
+  let kept = engine.store().read(|tx| tx.owned_facts(&owner)).unwrap();
+  assert!(
+    kept.edges.is_empty(),
+    "a compiler-verified edge was written after a tsconfig change during indexing: {:#?}",
+    kept.edges
+  );
+  assert_eq!(fresh(engine).header().scip, ScipLag::Behind { files: 3 });
+}
+
+#[test]
+fn should_not_ingest_a_package_whose_tsconfig_changed_while_the_indexer_ran() {
+  let scratch = tempfile::tempdir().unwrap();
+  let (root, project) = paths_tree(scratch.path());
+  let engine = Arc::new(open(&project, &scratch.path().join("home")));
+  fresh(&engine);
+  let during = {
+    let engine = Arc::clone(&engine);
+    move || {
+      fs::write(root.join("tsconfig.json"), paths_tsconfig("c")).unwrap();
+      assert!(engine.ensure_fresh().unwrap().header().run.is_some());
+    }
+  };
+  let indexer = HookedScip {
+    inner: FakeScip {
+      output: scratch.path().join("index.scip"),
+    },
+    during: Box::new(during),
+  };
+
+  let report = engine.scip(&ScipIndexers { cargo: None, npm: Some(&indexer) }).unwrap();
+
+  assert_package_left_lagging(&engine, &report);
+}
+
+#[test]
+fn should_not_ingest_a_package_whose_tsconfig_another_process_changed_while_the_indexer_ran() {
+  let scratch = tempfile::tempdir().unwrap();
+  let (root, project) = paths_tree(scratch.path());
+  let home = scratch.path().join("home");
+  let scip_engine = open(&project, &home);
+  fresh(&scip_engine);
+  let other = Arc::new(open(&project, &home));
+  fresh(&other);
+  let during = {
+    let other = Arc::clone(&other);
+    move || {
+      fs::write(root.join("tsconfig.json"), paths_tsconfig("c")).unwrap();
+      assert!(other.ensure_fresh().unwrap().header().run.is_some());
+    }
+  };
+  let indexer = HookedScip {
+    inner: FakeScip {
+      output: scratch.path().join("index.scip"),
+    },
+    during: Box::new(during),
+  };
+
+  let report = scip_engine.scip(&ScipIndexers { cargo: None, npm: Some(&indexer) }).unwrap();
+
+  assert_package_left_lagging(&scip_engine, &report);
+}
+
+#[test]
+fn should_report_scip_current_after_a_lagging_file_is_deleted() {
+  let scratch = tempfile::tempdir().unwrap();
+  let root = scratch.path().join("demo");
+  fs::create_dir_all(root.join("src")).unwrap();
+  fs::write(root.join("package.json"), "{ \"name\": \"demo\" }\n").unwrap();
+  fs::write(root.join("src/a.ts"), "export function load(n: number) {\n  return n;\n}\n").unwrap();
+  fs::write(root.join("src/b.ts"), "import { load } from './a';\nexport function run() {\n  return load(1);\n}\n").unwrap();
+  let project = project("demo", vec![repo_config("demo", &root)]);
+  let engine = open(&project, &scratch.path().join("home"));
+  fresh(&engine);
+  let indexer = RacingScip {
+    output: scratch.path().join("racing.scip"),
+    during: Box::new(|| {}),
+  };
+  engine.scip(&ScipIndexers { cargo: None, npm: Some(&indexer) }).unwrap();
+  assert_eq!(fresh(&engine).header().scip, ScipLag::Current);
+
+  fs::write(root.join("src/b.ts"), "import { load } from './a';\nexport function run() {\n  return load(2);\n}\n").unwrap();
+  assert_eq!(fresh(&engine).header().scip, ScipLag::Behind { files: 1 });
+  fs::remove_file(root.join("src/b.ts")).unwrap();
+  assert_eq!(fresh(&engine).header().scip, ScipLag::Behind { files: 1 });
+
+  engine.scip(&ScipIndexers { cargo: None, npm: Some(&indexer) }).unwrap();
+  assert_eq!(fresh(&engine).header().scip, ScipLag::Current);
+}
+
+#[test]
+fn should_prune_lagging_entries_without_a_file_record_when_ingesting() {
+  let scratch = tempfile::tempdir().unwrap();
+  let root = scratch.path().join("demo");
+  fs::create_dir_all(root.join("src")).unwrap();
+  fs::write(root.join("package.json"), "{ \"name\": \"demo\" }\n").unwrap();
+  fs::write(root.join("src/a.ts"), "export function load(n: number) {\n  return n;\n}\n").unwrap();
+  fs::write(root.join("src/b.ts"), "import { load } from './a';\nexport function run() {\n  return load(1);\n}\n").unwrap();
+  let project = project("demo", vec![repo_config("demo", &root)]);
+  let engine = open(&project, &scratch.path().join("home"));
+  fresh(&engine);
+  let indexer = RacingScip {
+    output: scratch.path().join("racing.scip"),
+    during: Box::new(|| {}),
+  };
+  engine.scip(&ScipIndexers { cargo: None, npm: Some(&indexer) }).unwrap();
+  engine
+    .store()
+    .write(|tx| -> Result<(), atlas_store::StoreError> {
+      tx.put_blob("engine:scip", 1, br#"{"last_run_ms":1,"lagging":["demo:src/gone.ts"]}"#)?;
+      Ok(())
+    })
+    .unwrap();
+  drop(engine);
+  let reopened = open(&project, &scratch.path().join("home"));
+  assert_eq!(fresh(&reopened).header().scip, ScipLag::Behind { files: 1 });
+
+  reopened.scip(&ScipIndexers { cargo: None, npm: Some(&indexer) }).unwrap();
+
+  assert_eq!(fresh(&reopened).header().scip, ScipLag::Current);
+}
+
+#[test]
+fn should_skip_a_file_re_resolved_during_the_first_ever_scip_run() {
+  let scratch = tempfile::tempdir().unwrap();
+  let root = scratch.path().join("demo");
+  fs::create_dir_all(root.join("src")).unwrap();
+  fs::write(root.join("package.json"), "{ \"name\": \"demo\" }\n").unwrap();
+  fs::write(root.join("src/a.ts"), "export function load(n: number) {\n  return n;\n}\n").unwrap();
+  fs::write(root.join("src/b.ts"), "import { load } from './a';\nexport function run() {\n  return load(1);\n}\n").unwrap();
+  let project = project("demo", vec![repo_config("demo", &root)]);
+  let engine = Arc::new(open(&project, &scratch.path().join("home")));
+  fresh(&engine);
+  let during = {
+    let engine = Arc::clone(&engine);
+    let root = root.clone();
+    move || {
+      fs::write(root.join("src/a.ts"), "export function loadAll(n: number) {\n  return n;\n}\n").unwrap();
+      assert!(engine.ensure_fresh().unwrap().header().run.is_some());
+    }
+  };
+  let indexer = RacingScip {
+    output: scratch.path().join("racing.scip"),
+    during: Box::new(during),
+  };
+
+  let report = engine.scip(&ScipIndexers { cargo: None, npm: Some(&indexer) }).unwrap();
+
+  let IngestCounts { files, skipped } = ingested(&report);
+  assert_eq!((files, skipped), (0, 2), "{report:?}");
+  assert_eq!(fresh(&engine).header().scip, ScipLag::Behind { files: 2 });
+}
+
+struct HookedRustScip {
+  output: PathBuf,
+  during: Box<dyn Fn() + Send + Sync>,
+}
+
+impl ScipIndexer for HookedRustScip {
+  fn id(&self) -> &'static str {
+    "hooked-rust-scip"
+  }
+
+  fn availability(&self) -> Availability {
+    Availability::Available
+  }
+
+  fn index(&self, _request: &ScipRequest) -> ScipRun {
+    let load = "rust-analyzer cargo demo 0.1.0 load().";
+    let run = "rust-analyzer cargo demo 0.1.0 run().";
+    let mut tool = ToolInfo::new();
+    tool.name = "rust-analyzer".to_owned();
+    let mut metadata = Metadata::new();
+    metadata.tool_info = Some(tool).into();
+    let mut index = Index::new();
+    index.metadata = Some(metadata).into();
+    let mut lib = document(
+      "src/lib.rs",
+      vec![
+        occurrence(load, vec![0, 7, 11], true),
+        occurrence(run, vec![4, 7, 10], true),
+        occurrence(load, vec![5, 2, 6], false),
+      ],
+    );
+    lib.position_encoding = EnumOrUnknown::new(PositionEncoding::UTF8CodeUnitOffsetFromLineStart);
+    index.documents = vec![lib];
+    fs::write(&self.output, index.write_to_bytes().unwrap()).unwrap();
+    (self.during)();
+    ScipRun {
+      indexer: "hooked-rust-scip".to_owned(),
+      version: Some("1".to_owned()),
+      duration: Duration::ZERO,
+      output_path: Some(self.output.clone()),
+      outcome: ScipOutcome::Ok,
+      cache: CacheStatus::Miss,
+      degradations: Vec::new(),
+      warnings: Vec::new(),
+    }
+  }
+}
+
+#[test]
+fn should_not_ingest_while_another_process_crashed_mid_run_during_the_indexer() {
+  let scratch = tempfile::tempdir().unwrap();
+  let root = scratch.path().join("demo");
+  fs::create_dir_all(root.join("src")).unwrap();
+  let manifest = |dependencies: &str| format!("[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\n{dependencies}");
+  fs::write(root.join("Cargo.toml"), manifest("")).unwrap();
+  fs::write(root.join("src/lib.rs"), "pub fn load(n: i32) -> i32 {\n  n\n}\n\npub fn run() -> i32 {\n  load(1)\n}\n").unwrap();
+  let project = project("demo", vec![repo_config("demo", &root)]);
+  let home = scratch.path().join("home");
+  let engine = open(&project, &home);
+  fresh(&engine);
+  let armed = Arc::new(AtomicBool::new(false));
+  let other = Arc::new(open_with(
+    &project,
+    &home,
+    EngineOptions {
+      fault_injection: FaultInjection::crash_after_persist(Arc::clone(&armed)),
+      ..EngineOptions::default()
+    },
+  ));
+  fresh(&other);
+  let during = {
+    let other = Arc::clone(&other);
+    let armed = Arc::clone(&armed);
+    let root = root.clone();
+    move || {
+      fs::write(root.join("Cargo.toml"), manifest("serde = \"1\"\n")).unwrap();
+      armed.store(true, Ordering::SeqCst);
+      other.ensure_fresh().unwrap();
+      armed.store(false, Ordering::SeqCst);
+    }
+  };
+  let indexer = HookedRustScip {
+    output: scratch.path().join("index.scip"),
+    during: Box::new(during),
+  };
+
+  engine.scip(&ScipIndexers { cargo: Some(&indexer), npm: None }).unwrap();
+
+  let owner = Owner::Project {
+    pass: ScipFacts::owner_pass(&RepoName::new("demo").unwrap(), &RelPath::new("src/lib.rs").unwrap()),
+  };
+  let edges = engine.store().read(|tx| tx.owned_facts(&owner)).unwrap().edges;
+  assert!(edges.is_empty(), "stale edges after ingest: {edges:#?}");
+  fresh(&engine);
+  assert!(engine.store().read(|tx| tx.owned_facts(&owner)).unwrap().edges.is_empty());
+}

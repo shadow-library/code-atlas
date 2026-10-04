@@ -852,8 +852,20 @@ impl<'a, 'e> Pipeline<'a, 'e> {
           apply_write(tx, write, &mut deltas, &mut dropped)?;
         }
         let mut scip = ScipMeta::read(tx)?;
-        if scip.last_run_ms.is_some() && !dropped.is_empty() {
-          scip.lagging.extend(dropped.iter().map(key_label));
+        if !dropped.is_empty() {
+          for key in &dropped {
+            let label = key_label(key);
+            match tx.file(&key.0, &key.1)?.is_some() {
+              true => {
+                scip.lagging.insert(label.clone());
+                scip.dropped_in.insert(label, run.0);
+              }
+              false => {
+                scip.lagging.remove(&label);
+                scip.dropped_in.remove(&label);
+              }
+            }
+          }
           scip.write(tx)?;
         }
         Ok((deltas, scip))
