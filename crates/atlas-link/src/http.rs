@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use atlas_core::{Attrs, Edge, EdgeKind, Entity, EntityId, EntityKey, EntityKind, Evidence, HttpMethod, RepoName};
 use serde_json::{Value, json};
 
+use crate::ATTR_CLIENT_CALL;
 use crate::base::{BaseSource, RepoNames};
 use crate::compose::{Route, Routes, entity_evidence};
 use crate::error::LinkResult;
@@ -256,7 +257,7 @@ fn calls_endpoint(facts: &Facts<'_, '_>, site: &Site, placement: &Placement<'_>,
   let mut edge = Edge::new(EdgeKind::CallsEndpoint, site.caller.id, route.id, "", heuristic(placement.confidence, RULE)?);
   let attrs = &mut edge.attrs;
   attrs.insert("rule".to_owned(), json!(found.rule()));
-  attrs.insert("client_call".to_owned(), json!(site.client.to_string()));
+  attrs.insert(ATTR_CLIENT_CALL.to_owned(), json!(site.client.to_string()));
   attrs.insert("route".to_owned(), json!(route.route));
   attrs.insert("same_repo".to_owned(), json!(site.caller.repo.as_ref() == Some(&route.repo)));
   attrs.insert("base_source".to_owned(), site.attrs.get("base_source").cloned().unwrap_or(Value::Null));

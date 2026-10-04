@@ -47,15 +47,14 @@ fn should_hide_stale_inferred_facts_by_default_and_flag_them_with_include_stale(
 
   let enriched = sandbox.run_with(&api_repo, &["enrich"], &with_fake).ok();
   let calls = claude.calls();
-  assert!(calls > 0, "{enriched}");
-  assert!(
-    enriched.stdout.contains(&format!("similarity: completed; {calls} provider calls, 0 cache hits")),
-    "{enriched}"
-  );
+  assert_eq!(calls, 8, "{enriched}");
+  assert!(enriched.stdout.contains("links: completed; 1 provider calls, 0 cache hits"), "{enriched}");
+  assert!(enriched.stdout.contains("similarity (structural): completed; 3 provider calls, 0 cache hits"), "{enriched}");
+  assert!(enriched.stdout.contains("similarity (lexical): completed; 4 provider calls, 0 cache hits"), "{enriched}");
   let status = sandbox.run(&api_repo, &["status", "--json"]).ok().answer();
   assert_eq!(
     (status["inferred_current"].as_u64(), status["inferred_stale"].as_u64()),
-    (Some(calls as u64), Some(0)),
+    (Some(calls as u64 - 1), Some(0)),
     "{status:#}"
   );
 
@@ -146,7 +145,8 @@ fn should_skip_enrichment_when_the_llm_is_unavailable_and_leave_queries_untouche
 
   let enriched = sandbox.run_with(&api_repo, &["enrich"], &[("PATH", empty_path(&sandbox).as_os_str())]).expect(3);
 
-  assert!(enriched.stdout.contains("similarity: provider unavailable (cannot run `claude`"), "{enriched}");
+  assert!(enriched.stdout.contains("similarity (structural): provider unavailable (cannot run `claude`"), "{enriched}");
+  assert!(enriched.stdout.contains("links: provider unavailable (cannot run `claude`"), "{enriched}");
   assert!(enriched.stdout.contains("0 provider calls"), "{enriched}");
   let after: Vec<Value> = queries.iter().map(|query| sandbox.run(&api_repo, query).ok().answer()).collect();
   assert_eq!(before, after);
@@ -430,4 +430,32 @@ fn should_let_two_cli_processes_edit_and_query_concurrently_without_lock_errors(
     &[&["api"], &["query", "overview"], &["search", "apiHelper"], &["search", "webHelper"]],
     "after concurrent edits",
   );
+}
+
+#[test]
+fn should_list_enrichment_candidates_in_a_dry_run_without_calling_the_llm() {
+  let (sandbox, root) = indexed_acme();
+  let api_repo = root.join("acme-api");
+  let claude = FakeClaude::replying(&sandbox.work(), &similarity_reply("equivalent", 0.9, &[]));
+  sandbox.run(&api_repo, &LLM_ON).ok();
+
+  let planned = sandbox
+    .run_with(&api_repo, &["enrich", "--dry-run", "--summaries"], &[("PATH", claude.path().as_os_str())])
+    .ok();
+
+  assert_eq!(claude.calls(), 0, "{planned}");
+  assert!(planned.stdout.contains("links (1 unmatched calls, 0 without a same-method endpoint)"), "{planned}");
+  assert!(
+    planned.stdout.contains("GET {}/health from checkHealth: GET /orders/{id} 0.250, GET /users/{id} 0.250"),
+    "{planned}"
+  );
+  assert!(planned.stdout.contains("similarity (lexical) (4)"), "{planned}");
+  assert!(
+    planned
+      .stdout
+      .contains("<> ts:acme-sdk:@acme/sdk:src/money::toCents#function (bm25 0.556, related name concepts cent"),
+    "{planned}"
+  );
+  assert!(planned.stdout.contains("summaries ("), "{planned}");
+  assert_eq!(sandbox.run(&api_repo, &["status", "--json"]).ok().answer()["llm_calls"], 0);
 }

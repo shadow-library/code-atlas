@@ -42,11 +42,7 @@ pub(crate) fn is_router_relative(endpoint: &Entity) -> bool {
 }
 
 pub(crate) fn superseded_fragments(graph: &Graph<'_, '_>) -> QueryResult<std::collections::BTreeSet<String>> {
-  let mut superseded = std::collections::BTreeSet::new();
-  for endpoint in graph.entities_of_kind(&EntityKind::ApiEndpoint)? {
-    superseded.extend(attr_str(&endpoint, "composed_from").map(str::to_owned));
-  }
-  Ok(superseded)
+  Ok(atlas_engine::superseded_fragment_keys(graph.tx())?)
 }
 
 pub(crate) fn file_entity(entity: &Entity) -> Option<EntityKey> {

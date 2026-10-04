@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use atlas_core::{ContentHash, Freshness, RelPath, RepoName, RunId};
 use atlas_store::{InferredFactId, StoredInferredFact};
 
-use crate::engine::{Job, SemanticEngine, SemanticReport, SkipReason};
+use crate::engine::{Job, JobOrder, SemanticEngine, SemanticReport, SkipReason};
 use crate::error::SemanticResult;
 use crate::task::SemanticTask;
 
@@ -44,7 +44,7 @@ impl SemanticEngine<'_> {
       }
       jobs.push(Job { task, replaces: Some(fact.id) });
     }
-    let rerun = self.execute(run, jobs)?;
+    let rerun = self.execute(run, jobs, JobOrder::ByKindAndSubjects)?;
     Ok(RevalidationReport {
       unchanged: unchanged.into_iter().map(|fact| fact.id).collect(),
       skipped,

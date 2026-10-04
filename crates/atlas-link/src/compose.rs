@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use atlas_core::{Certainty, Edge, EdgeKind, Entity, EntityId, EntityKey, EntityKind, Evidence, HttpMethod, RepoName, Span, normalize_route};
 use serde_json::json;
 
+use crate::ATTR_COMPOSED_FROM;
 use crate::error::LinkResult;
 use crate::facts::Facts;
 use crate::output::{Output, attr_str, confidence_of, evidence, heuristic, relabel, weaker};
@@ -258,7 +259,7 @@ fn compose(facts: &Facts<'_, '_>, endpoint: &Entity, base: &Route, chain: &Chain
   composed.span = endpoint.span;
   composed.attrs = endpoint.attrs.clone();
   composed.attrs.insert("route_scope".to_owned(), json!("composed"));
-  composed.attrs.insert("composed_from".to_owned(), json!(endpoint.key.to_string()));
+  composed.attrs.insert(ATTR_COMPOSED_FROM.to_owned(), json!(endpoint.key.to_string()));
   composed.attrs.insert("mount_prefix".to_owned(), json!(chain.prefix));
   composed.attrs.insert("rule".to_owned(), json!(chain.rule));
   composed.attrs.remove("router");
@@ -268,7 +269,7 @@ fn compose(facts: &Facts<'_, '_>, endpoint: &Entity, base: &Route, chain: &Chain
       false => weaker(&exposure.certainty, &certainty),
     };
     let mut edge = Edge::new(EdgeKind::ExposesEndpoint, exposure.from, composed.id, "", exposure_certainty);
-    edge.attrs.insert("composed_from".to_owned(), json!(endpoint.key.to_string()));
+    edge.attrs.insert(ATTR_COMPOSED_FROM.to_owned(), json!(endpoint.key.to_string()));
     edge.evidence = exposure
       .evidence
       .iter()

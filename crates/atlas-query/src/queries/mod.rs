@@ -3,6 +3,7 @@ pub(crate) mod common;
 mod context;
 mod explain;
 mod impact;
+mod inferred_links;
 mod overview;
 mod patterns;
 mod search;

@@ -1,5 +1,5 @@
 use crate::model::AttrView;
-use crate::queries::{ApiAnswer, EndpointView, LinkState, Related, SchemeSupport, SupportBasis, UsageState};
+use crate::queries::{ApiAnswer, ConsumerView, EndpointView, LinkState, Related, SchemeSupport, SupportBasis, UsageState};
 use crate::text::{RenderText, TextOut, caveats, counted, entity_line, hop_text, labelled_text, listing, phrased_text};
 
 fn related(item: &Related) -> String {
@@ -80,22 +80,38 @@ fn endpoint_text(out: &mut TextOut, indent: usize, view: &EndpointView, consumer
       indent + 1,
       format!("consumer {}{via}  {}", entity_line(&consumer.consumer.entity), hop_text(&consumer.consumer.relation)),
     );
-    if !consumer.callers.is_empty() {
-      out.line(indent + 2, format!("callers {}", joined(&consumer.callers)));
-    }
-    if !consumer.auth_used.is_empty() {
-      out.line(indent + 2, format!("auth used {}", joined(&consumer.auth_used)));
-    }
-    let apps: Vec<String> = consumer.applications.iter().map(|app| app.tagged_short()).collect();
+    consumer_details(out, indent + 2, consumer);
+  }
+  for consumer in &view.inferred_consumers {
+    let via = consumer.client_call.as_ref().map(|call| format!(" via {}", call.tagged_short())).unwrap_or_default();
     out.line(
-      indent + 2,
+      indent + 1,
       format!(
-        "repos {} apps {}",
-        consumer.repos.join(", "),
-        if apps.is_empty() { "-".to_owned() } else { apps.join(", ") }
+        "inferred consumer {}{via}  {}",
+        entity_line(&consumer.consumer.entity),
+        hop_text(&consumer.consumer.relation)
       ),
     );
+    consumer_details(out, indent + 2, consumer);
   }
+}
+
+fn consumer_details(out: &mut TextOut, indent: usize, consumer: &ConsumerView) {
+  if !consumer.callers.is_empty() {
+    out.line(indent, format!("callers {}", joined(&consumer.callers)));
+  }
+  if !consumer.auth_used.is_empty() {
+    out.line(indent, format!("auth used {}", joined(&consumer.auth_used)));
+  }
+  let apps: Vec<String> = consumer.applications.iter().map(|app| app.tagged_short()).collect();
+  out.line(
+    indent,
+    format!(
+      "repos {} apps {}",
+      consumer.repos.join(", "),
+      if apps.is_empty() { "-".to_owned() } else { apps.join(", ") }
+    ),
+  );
 }
 
 impl RenderText for ApiAnswer {
@@ -148,6 +164,9 @@ impl RenderText for ApiAnswer {
           indent,
           format!("{} from {}{site}: {}{detail}", call.call.tagged_short(), call.caller.entity.tagged_short(), call.reason),
         );
+        if let Some(link) = &call.inferred_link {
+          out.line(indent + 1, format!("{}: {}", hop_text(&link.relation), link.rationale));
+        }
       });
     }
     caveats(out, &self.caveats);

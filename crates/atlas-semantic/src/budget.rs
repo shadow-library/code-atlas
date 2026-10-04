@@ -15,6 +15,49 @@ impl Default for SemanticBudget {
   }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BudgetUse {
+  pub calls: u32,
+  pub input_tokens: u64,
+}
+
+impl BudgetUse {
+  pub fn plus(self, other: BudgetUse) -> BudgetUse {
+    BudgetUse {
+      calls: self.calls.saturating_add(other.calls),
+      input_tokens: self.input_tokens.saturating_add(other.input_tokens),
+    }
+  }
+}
+
+impl SemanticBudget {
+  pub fn remaining_after(self, used: BudgetUse) -> SemanticBudget {
+    SemanticBudget {
+      max_calls_per_run: self.max_calls_per_run.saturating_sub(used.calls),
+      max_input_tokens_per_run: self.max_input_tokens_per_run.saturating_sub(used.input_tokens),
+      max_concurrency: self.max_concurrency,
+    }
+  }
+
+  pub fn capped_by(self, cap: SemanticBudget) -> SemanticBudget {
+    SemanticBudget {
+      max_calls_per_run: self.max_calls_per_run.min(cap.max_calls_per_run),
+      max_input_tokens_per_run: self.max_input_tokens_per_run.min(cap.max_input_tokens_per_run),
+      max_concurrency: self.max_concurrency,
+    }
+  }
+
+  pub fn share(self, numerator: u32, denominator: u32) -> SemanticBudget {
+    let denominator = denominator.max(1);
+    let calls = u64::from(self.max_calls_per_run) * u64::from(numerator);
+    SemanticBudget {
+      max_calls_per_run: u32::try_from(calls / u64::from(denominator)).unwrap_or(u32::MAX),
+      max_input_tokens_per_run: self.max_input_tokens_per_run.saturating_mul(u64::from(numerator)) / u64::from(denominator),
+      max_concurrency: self.max_concurrency,
+    }
+  }
+}
+
 #[derive(Debug)]
 pub(crate) struct BudgetState {
   limits: SemanticBudget,
@@ -49,6 +92,13 @@ impl BudgetState {
 
   pub(crate) fn has_headroom(&self) -> bool {
     self.spent_tokens < self.limits.max_input_tokens_per_run
+  }
+
+  pub(crate) fn used(&self) -> BudgetUse {
+    BudgetUse {
+      calls: self.calls,
+      input_tokens: self.input_tokens,
+    }
   }
 }
 

@@ -236,6 +236,10 @@ pub struct EnrichArgs {
   pub budget_calls: Option<u32>,
   #[arg(long, value_name = "N")]
   pub budget_tokens: Option<u64>,
+  #[arg(long, help = "Also summarise module capabilities, with its own share of the budget")]
+  pub summaries: bool,
+  #[arg(long, help = "List the candidates each task would see without calling the LLM or writing facts")]
+  pub dry_run: bool,
 }
 
 #[derive(Debug, Subcommand)]

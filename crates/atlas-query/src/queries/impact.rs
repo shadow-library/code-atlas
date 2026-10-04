@@ -11,6 +11,7 @@ use crate::graph::{Graph, Reached, Step, WalkSpec};
 use crate::model::{Caveat, EntityRef, Hop, MacroGapScope, Response, Targeted};
 use crate::policy::{Direction, Policy};
 use crate::queries::common::{MAX_NODES, file_entity, file_symbols, is_test, package_key, resolve_one};
+use crate::queries::inferred_links::{LinkEnd, LinkScan, inferred_links};
 use crate::queries::traverse::{dispatch_caveat, risk_name};
 use crate::target::TargetFilter;
 
@@ -57,6 +58,12 @@ pub struct ImpactGroup {
   pub collapsed: usize,
 }
 
+impl ImpactGroup {
+  pub fn is_empty(&self) -> bool {
+    self.total == 0
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RepoImpact {
   pub repo: String,
@@ -73,6 +80,8 @@ pub struct ImpactAnswer {
   pub transitive: ImpactGroup,
   pub endpoints: ImpactGroup,
   pub consumers: ImpactGroup,
+  #[serde(skip_serializing_if = "ImpactGroup::is_empty")]
+  pub inferred_consumers: ImpactGroup,
   pub repos: Vec<RepoImpact>,
   pub tests: ImpactGroup,
   pub config: ImpactGroup,
@@ -199,9 +208,17 @@ fn impact(graph: &Graph<'_, '_>, targets: &[Entity], request: &ImpactRequest) ->
   let mut repos: BTreeMap<String, (usize, bool, BTreeSet<EntityId>)> = BTreeMap::new();
   let mut impacted_files: BTreeMap<EntityId, (Reached, EntityKey)> = BTreeMap::new();
   let mut seen_tests: BTreeSet<EntityId> = BTreeSet::new();
+  let mut endpoints: Vec<Reached> = targets
+    .iter()
+    .filter(|target| target.kind == EntityKind::ApiEndpoint)
+    .map(|target| seed_reached(target.id))
+    .collect();
   for reached in &walk.reached {
     let Some(entity) = graph.entity(reached.id)? else { continue };
     let bucket = bucket(&entity, reached);
+    if bucket == Bucket::Endpoint {
+      endpoints.push(reached.clone());
+    }
     if bucket == Bucket::Test {
       seen_tests.insert(entity.id);
     }
@@ -228,20 +245,12 @@ fn impact(graph: &Graph<'_, '_>, targets: &[Entity], request: &ImpactRequest) ->
   }
   for target in targets {
     if let Some(file) = file_entity(target) {
-      impacted_files.entry(EntityId::of(&file)).or_insert_with(|| {
-        (
-          Reached {
-            id: target.id,
-            depth: 0,
-            hops: Vec::new(),
-            strength: 1.0,
-            in_degree: 0,
-          },
-          file,
-        )
-      });
+      impacted_files.entry(EntityId::of(&file)).or_insert_with(|| (seed_reached(target.id), file));
     }
   }
+  let reached_ids: BTreeSet<EntityId> = walk.reached.iter().map(|reached| reached.id).collect();
+  let mut hidden_links = LinkScan::default();
+  let inferred_consumers = inferred_consumers(graph, &endpoints, &reached_ids, &mut hidden_links)?;
   let mut hidden = walk.hidden_below_floor;
   let mut covering = graph.admitted_into(impacted_files.keys().copied(), EdgeKind::CoversFile, &mut hidden)?;
   for (file, (via, _)) in &impacted_files {
@@ -308,6 +317,8 @@ fn impact(graph: &Graph<'_, '_>, targets: &[Entity], request: &ImpactRequest) ->
   if walk.truncated {
     caveats.push(Caveat::Truncated { max_nodes: request.max_nodes });
   }
+  caveats.extend(hidden_links.inferred_hidden());
+  hidden += hidden_links.below_floor();
   if hidden > 0 {
     caveats.push(Caveat::BelowConfidenceFloor {
       hidden,
@@ -327,12 +338,49 @@ fn impact(graph: &Graph<'_, '_>, targets: &[Entity], request: &ImpactRequest) ->
     transitive: take(Bucket::Transitive),
     endpoints: take(Bucket::Endpoint),
     consumers: take(Bucket::Consumer),
+    inferred_consumers: group(inferred_consumers, request.limit),
     repos: affected,
     tests: take(Bucket::Test),
     config: group(config, request.limit),
     unresolved_risk: risk,
     caveats,
   })
+}
+
+fn seed_reached(id: EntityId) -> Reached {
+  Reached {
+    id,
+    depth: 0,
+    hops: Vec::new(),
+    strength: 1.0,
+    in_degree: 0,
+  }
+}
+
+fn inferred_consumers(graph: &Graph<'_, '_>, endpoints: &[Reached], reached: &BTreeSet<EntityId>, hidden: &mut LinkScan) -> QueryResult<Vec<ImpactItem>> {
+  let mut items: Vec<ImpactItem> = Vec::new();
+  for endpoint in endpoints {
+    for link in inferred_links(graph, endpoint.id, LinkEnd::Endpoint, hidden)? {
+      let confidence = f64::from(link.hop.certainty.confidence.unwrap_or(0.0));
+      for request in graph.edges_in(link.call.id, &[EdgeKind::MakesRequest])? {
+        let Some(caller) = graph.entity(request.from)? else { continue };
+        if reached.contains(&caller.id) || is_test(&caller) || items.iter().any(|item| item.entity.id == caller.id.to_string()) {
+          continue;
+        }
+        let depth = endpoint.depth + 1;
+        let mut why = vec![graph.relation(&request, caller.id)?, link.hop.clone()];
+        why.extend(graph.path(endpoint)?);
+        items.push(ImpactItem {
+          entity: EntityRef::of(&caller),
+          depth,
+          score: ((endpoint.strength * confidence / f64::from(depth)) * 1000.0).round() / 1000.0,
+          uncertain: true,
+          why,
+        });
+      }
+    }
+  }
+  Ok(items)
 }
 
 fn group(mut items: Vec<ImpactItem>, limit: usize) -> ImpactGroup {

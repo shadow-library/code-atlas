@@ -27,6 +27,9 @@ impl RenderText for ImpactAnswer {
     group(out, "transitive dependents", &self.transitive);
     group(out, "affected endpoints", &self.endpoints);
     group(out, "endpoint consumers", &self.consumers);
+    if !self.inferred_consumers.is_empty() {
+      group(out, "inferred endpoint consumers (LLM-proposed links, not verified)", &self.inferred_consumers);
+    }
     out.line(0, format!("affected repos ({})", self.repos.len()));
     for repo in &self.repos {
       let apps: Vec<String> = repo.applications.iter().map(|app| app.tagged_short()).collect();

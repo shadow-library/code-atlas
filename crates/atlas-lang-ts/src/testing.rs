@@ -21,19 +21,6 @@ const MODIFIERS: [&str; 13] = [
   "serial",
 ];
 
-pub(crate) fn is_test_path(path: &str) -> bool {
-  let mut segments: Vec<&str> = path.split('/').collect();
-  let file_name = segments.pop().unwrap_or_default();
-  if segments.iter().any(|segment| matches!(*segment, "__tests__" | "test" | "tests")) {
-    return true;
-  }
-  let stem = file_name.rsplit_once('.').map_or(file_name, |(stem, _)| stem);
-  stem.split('.').skip(1).any(|part| {
-    let marker = part.rsplit(['-', '_']).next().unwrap_or(part);
-    matches!(marker, "spec" | "test")
-  })
-}
-
 pub(crate) fn framework_of_import(specifier: &str) -> Option<&'static str> {
   match specifier {
     "vitest" => Some("vitest"),
@@ -110,23 +97,6 @@ pub(crate) fn recognize<'t>(call: Node<'t>, source: &str) -> Option<TestCall<'t>
 #[cfg(test)]
 mod tests {
   use super::*;
-
-  #[test]
-  fn should_recognise_test_file_conventions() {
-    for path in [
-      "src/users.spec.ts",
-      "src/money.test.tsx",
-      "test/app.e2e-spec.ts",
-      "src/__tests__/x.ts",
-      "tests/a.js",
-      "a.int_test.mjs",
-    ] {
-      assert!(is_test_path(path), "{path}");
-    }
-    for path in ["src/users.ts", "src/testing/helpers.ts", "src/spec.ts", "src/contest.ts", "src/latest.ts"] {
-      assert!(!is_test_path(path), "{path}");
-    }
-  }
 
   #[test]
   fn should_map_framework_imports() {

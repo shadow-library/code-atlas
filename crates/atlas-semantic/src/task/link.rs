@@ -9,6 +9,7 @@ use crate::error::SemanticError;
 
 pub const LINK_TEMPLATE_VERSION: u32 = 1;
 pub const MAX_LINK_CANDIDATES: usize = 10;
+pub const LINK_CANDIDATES_PAYLOAD: &str = "candidates";
 
 const OUTPUT_SCHEMA: &str = r#"{
   "type": "object",
@@ -147,6 +148,10 @@ impl ClientCallLink {
     payload.insert("method".to_owned(), json!(candidate.method));
     payload.insert("route".to_owned(), json!(candidate.route));
     payload.insert("rationale".to_owned(), json!(parsed.rationale));
+    payload.insert(
+      LINK_CANDIDATES_PAYLOAD.to_owned(),
+      json!(self.candidates.iter().map(|candidate| candidate.entity.to_string()).collect::<Vec<_>>()),
+    );
     let call_evidence = EvidenceSource {
       source: self.call.source.clone(),
       note: snippet_note(&self.call.shown()),

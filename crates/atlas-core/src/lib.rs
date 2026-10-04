@@ -8,6 +8,7 @@ mod kinds;
 mod lang;
 mod provenance;
 mod span;
+mod testing;
 mod traits;
 
 pub use args::*;
@@ -20,4 +21,5 @@ pub use kinds::*;
 pub use lang::*;
 pub use provenance::*;
 pub use span::*;
+pub use testing::*;
 pub use traits::*;

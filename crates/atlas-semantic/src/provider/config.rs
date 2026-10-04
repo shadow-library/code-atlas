@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use atlas_core::LlmProvider;
 use atlas_project::LlmSettings;
 
@@ -69,17 +71,25 @@ impl ProviderConfig {
 }
 
 pub struct TaskProviders {
-  similarity: Box<dyn LlmProvider>,
-  summary: Box<dyn LlmProvider>,
-  link: Box<dyn LlmProvider>,
+  similarity: Arc<dyn LlmProvider>,
+  summary: Arc<dyn LlmProvider>,
+  link: Arc<dyn LlmProvider>,
 }
 
 impl TaskProviders {
   pub fn from_config(config: &ProviderConfig) -> Self {
     Self {
-      similarity: config.build_for(TaskKind::ClassifySimilarityPair),
-      summary: config.build_for(TaskKind::SummarizeCapability),
-      link: config.build_for(TaskKind::LinkUnresolvedClientCall),
+      similarity: Arc::from(config.build_for(TaskKind::ClassifySimilarityPair)),
+      summary: Arc::from(config.build_for(TaskKind::SummarizeCapability)),
+      link: Arc::from(config.build_for(TaskKind::LinkUnresolvedClientCall)),
+    }
+  }
+
+  pub fn shared(provider: Arc<dyn LlmProvider>) -> Self {
+    Self {
+      similarity: Arc::clone(&provider),
+      summary: Arc::clone(&provider),
+      link: provider,
     }
   }
 

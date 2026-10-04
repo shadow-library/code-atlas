@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use atlas_core::{EdgeKind, Entity, EntityId, EntityKey, EntityKind};
+use atlas_engine::{client_call_flagged_unmatched, client_call_site_linked};
 use serde::Serialize;
 
 use crate::QueryEngine;
@@ -9,6 +10,7 @@ use crate::graph::{Graph, Step, WalkSpec};
 use crate::model::{AttrView, Caveat, CertaintyTag, EntityRef, Hop, Listing, Location, Response};
 use crate::policy::{Direction, Policy};
 use crate::queries::common::{DEFAULT_LIMIT, MAX_NODES, is_router_relative, link_caveat, package_key, superseded_fragments};
+use crate::queries::inferred_links::{LinkEnd, LinkScan, inferred_links};
 use crate::target::{TargetFilter, TargetSpec, resolve};
 
 const CONSUMER_CALLER_DEPTH: u32 = 2;
@@ -74,6 +76,8 @@ pub struct EndpointView {
   pub auth_attrs: Vec<AttrView>,
   pub permissions: Vec<Related>,
   pub consumers: Vec<ConsumerView>,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  pub inferred_consumers: Vec<ConsumerView>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -121,6 +125,15 @@ pub struct ClientCallView {
   pub site: Option<Location>,
   pub reason: String,
   pub unmatched_reason: Option<AttrView>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub inferred_link: Option<InferredLinkView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct InferredLinkView {
+  pub endpoint: EntityRef,
+  pub relation: Hop,
+  pub rationale: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -169,13 +182,14 @@ fn api(query: &QueryEngine, graph: &Graph<'_, '_>, request: &ApiRequest) -> Quer
     "no endpoint->scheme facts (supports_auth) exist in this index; supported schemes come from guards only",
   )?;
   let (mounted, fragments) = split_router_fragments(graph, &selected, request.endpoint.is_some())?;
+  let mut hidden = LinkScan::default();
   let mut endpoints = Vec::with_capacity(mounted.len());
   for endpoint in &mounted {
-    endpoints.push(endpoint_view(graph, endpoint)?);
+    endpoints.push(endpoint_view(graph, endpoint, &mut hidden)?);
   }
   let mut router_fragments = Vec::with_capacity(fragments.len());
   for endpoint in &fragments {
-    router_fragments.push(endpoint_view(graph, endpoint)?);
+    router_fragments.push(endpoint_view(graph, endpoint, &mut hidden)?);
   }
   let api_repos: BTreeSet<String> = selected.iter().filter_map(|endpoint| endpoint.repo.as_ref().map(ToString::to_string)).collect();
   let mut auth_matrix = Vec::new();
@@ -184,7 +198,7 @@ fn api(query: &QueryEngine, graph: &Graph<'_, '_>, request: &ApiRequest) -> Quer
   }
   let unmatched = match request.endpoint {
     Some(_) => Vec::new(),
-    None => unmatched_calls(graph, calls_missing.is_some())?,
+    None => unmatched_calls(graph, calls_missing.is_some(), &mut hidden)?,
   };
   let consumer_links = match calls_missing {
     Some(_) => LinkState::NotLinked,
@@ -193,6 +207,7 @@ fn api(query: &QueryEngine, graph: &Graph<'_, '_>, request: &ApiRequest) -> Quer
   caveats.extend(calls_missing);
   caveats.extend(uses_missing);
   caveats.extend(supports_missing);
+  caveats.extend(hidden.caveats(graph.policy.min_confidence));
   Ok(ApiAnswer {
     consumer_links,
     endpoints: Listing::truncated(endpoints, request.limit),
@@ -268,7 +283,7 @@ fn admitted(graph: &Graph<'_, '_>, id: EntityId, direction: Direction, kind: Edg
   graph.admitted(id, direction, &[kind], &mut hidden)
 }
 
-fn endpoint_view(graph: &Graph<'_, '_>, endpoint: &Entity) -> QueryResult<EndpointView> {
+fn endpoint_view(graph: &Graph<'_, '_>, endpoint: &Entity, hidden: &mut LinkScan) -> QueryResult<EndpointView> {
   let (method, route) = match &endpoint.key {
     EntityKey::Endpoint { method, route, .. } => (method.to_string(), route.clone()),
     _ => (String::new(), endpoint.name.clone()),
@@ -314,6 +329,15 @@ fn endpoint_view(graph: &Graph<'_, '_>, endpoint: &Entity) -> QueryResult<Endpoi
     }
   }
   consumers.sort_by_key(|consumer| consumer.consumer.entity.sort_key());
+  let mut inferred_consumers = Vec::new();
+  for link in inferred_links(graph, endpoint.id, LinkEnd::Endpoint, hidden)? {
+    for request in admitted(graph, link.call.id, Direction::Reverse, EdgeKind::MakesRequest)? {
+      let Some(caller) = graph.entity(request.from)? else { continue };
+      let mut view = consumer(graph, &caller, &link.edge, Some(&link.call))?;
+      view.consumer.relation = link.hop.clone();
+      inferred_consumers.push(view);
+    }
+  }
   Ok(EndpointView {
     endpoint: EntityRef::of(endpoint),
     method,
@@ -325,6 +349,7 @@ fn endpoint_view(graph: &Graph<'_, '_>, endpoint: &Entity) -> QueryResult<Endpoi
     auth_attrs: graph.entity_attrs(endpoint.id, &ENDPOINT_AUTH_ATTRS)?,
     permissions,
     consumers,
+    inferred_consumers,
   })
 }
 
@@ -456,33 +481,26 @@ fn matrix(graph: &Graph<'_, '_>, repo: &str, uses_missing: bool, supports_known:
   Ok(AuthMatrix { repo: repo.to_owned(), schemes })
 }
 
-fn same_site(left: &atlas_core::Evidence, right: &atlas_core::Evidence) -> bool {
-  left.repo == right.repo && left.path == right.path && left.span.start_byte <= right.span.end_byte && right.span.start_byte <= left.span.end_byte
-}
-
 pub(crate) fn site_linked(graph: &Graph<'_, '_>, call: &Entity, request: &atlas_core::Edge, site: Option<&atlas_core::Evidence>) -> QueryResult<bool> {
-  if !graph.edges_out(call.id, &[EdgeKind::CallsEndpoint])?.is_empty() {
-    return Ok(true);
-  }
-  let links = graph.edges_out(request.from, &[EdgeKind::CallsEndpoint])?;
-  let call_key = call.key.to_string();
-  let call_id = call.id.to_string();
-  for link in &links {
-    let names_call = link.attrs.values().any(|value| value.as_str().is_some_and(|text| text == call_key || text == call_id));
-    let shares_site = site.is_some_and(|site| link.evidence.iter().any(|evidence| same_site(evidence, site)));
-    if names_call || shares_site {
-      return Ok(true);
-    }
-  }
-  let unattributable = links.iter().all(|link| link.evidence.is_empty());
-  let only_request = graph.edges_out(request.from, &[EdgeKind::MakesRequest])?.len() == 1;
-  Ok(!links.is_empty() && unattributable && only_request)
+  Ok(client_call_site_linked(graph.tx(), call, request, site)?)
 }
 
-fn unmatched_calls(graph: &Graph<'_, '_>, calls_missing: bool) -> QueryResult<Vec<ClientCallView>> {
+fn inferred_link_view(graph: &Graph<'_, '_>, call: &Entity, hidden: &mut LinkScan) -> QueryResult<Option<InferredLinkView>> {
+  let Some(link) = inferred_links(graph, call.id, LinkEnd::Call, hidden)?.into_iter().next() else {
+    return Ok(None);
+  };
+  Ok(Some(InferredLinkView {
+    endpoint: EntityRef::of(&link.endpoint),
+    relation: link.hop,
+    rationale: link.rationale,
+  }))
+}
+
+fn unmatched_calls(graph: &Graph<'_, '_>, calls_missing: bool, hidden: &mut LinkScan) -> QueryResult<Vec<ClientCallView>> {
   let mut unmatched = Vec::new();
   for call in graph.entities_of_kind(&EntityKind::ApiClientCall)? {
-    let flagged = call.attrs.get("unmatched").and_then(serde_json::Value::as_bool).unwrap_or(false);
+    let flagged = client_call_flagged_unmatched(&call);
+    let inferred_link = inferred_link_view(graph, &call, hidden)?;
     for request in graph.edges_in(call.id, &[EdgeKind::MakesRequest])? {
       let sites: Vec<Option<&atlas_core::Evidence>> = match request.evidence.is_empty() {
         true => vec![None],
@@ -510,6 +528,7 @@ fn unmatched_calls(graph: &Graph<'_, '_>, calls_missing: bool) -> QueryResult<Ve
           }),
           reason: reason.to_owned(),
           unmatched_reason: graph.entity_attrs(call.id, &["unmatched_reason"])?.into_iter().next(),
+          inferred_link: inferred_link.clone(),
         });
       }
     }

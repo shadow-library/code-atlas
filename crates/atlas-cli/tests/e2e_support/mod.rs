@@ -306,13 +306,21 @@ pub struct FakeClaude {
 
 impl FakeClaude {
   pub fn replying(dir: &Path, reply: &Value) -> Self {
+    Self::routing(dir, reply, &[("client call targets", link_reply())])
+  }
+
+  pub fn routing(dir: &Path, fallback: &Value, routes: &[(&str, Value)]) -> Self {
     let bin = dir.join("fake-bin");
     fs::create_dir_all(&bin).unwrap();
     let calls = dir.join("claude-calls.log");
+    let cases: String = routes
+      .iter()
+      .map(|(needle, reply)| format!("  *'{needle}'*) cat <<'REPLY'\n{reply}\nREPLY\n  ;;\n"))
+      .collect();
     let body = format!(
-      "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'fake-claude 1.0.0'; exit 0; fi\ncat >/dev/null\necho call >> '{}'\ncat <<'REPLY'\n{}\nREPLY\n",
+      "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'fake-claude 1.0.0'; exit 0; fi\nprompt=$(cat)\necho call >> '{}'\ncase \"$prompt\" in\n{cases}  *) cat <<'REPLY'\n{}\nREPLY\n  ;;\nesac\n",
       calls.display(),
-      reply
+      fallback
     );
     executable(&bin.join("claude"), &body);
     Self { bin, calls }
@@ -327,6 +335,16 @@ impl FakeClaude {
   pub fn calls(&self) -> usize {
     fs::read_to_string(&self.calls).map(|log| log.lines().count()).unwrap_or(0)
   }
+}
+
+pub fn link_reply() -> Value {
+  serde_json::json!({
+    "type": "result",
+    "is_error": false,
+    "result": "",
+    "structured_output": { "endpoint_index": null, "confidence": 0.9, "rationale": "scripted by the e2e fake provider: no candidate fits" },
+    "usage": { "input_tokens": 120, "output_tokens": 30 }
+  })
 }
 
 pub fn similarity_reply(verdict: &str, confidence: f64, differences: &[&str]) -> Value {

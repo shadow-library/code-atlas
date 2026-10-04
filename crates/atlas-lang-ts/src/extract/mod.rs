@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 
 use atlas_core::{
   ArgSummary, AttributeFact, EntityKind, ExportFact, FileFacts, FileRef, ImportBinding, ImportFact, LocalSymbolId, Producer, ReceiverHint, RefKind, RefOrigin, ReferenceFact, Span,
-  SymbolFact, Visibility,
+  SymbolFact, Visibility, is_test_path,
 };
 use tree_sitter::Node;
 
@@ -16,7 +16,7 @@ use crate::args::summarize_arguments;
 use crate::modules::{import_statement, require_call};
 use crate::scope::{Namespace, ScopeKind, Scopes};
 use crate::syntax::{children, first_child, member_chain, span_of, text};
-use crate::testing::{UNKNOWN_FRAMEWORK, framework_of_global, framework_of_import, is_test_path};
+use crate::testing::{UNKNOWN_FRAMEWORK, framework_of_global, framework_of_import};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Container {

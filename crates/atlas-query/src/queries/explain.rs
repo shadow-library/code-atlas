@@ -1,4 +1,5 @@
 use atlas_core::{Certainty, ContentHash, EdgeId, EdgeKind, EntityId, Evidence, Owner, RelPath, RepoName, Span};
+use atlas_semantic::RELATION_CALLS_ENDPOINT;
 use atlas_store::{FreshnessPolicy, InferredQuery};
 use serde::Serialize;
 
@@ -9,6 +10,7 @@ use crate::graph::Graph;
 use crate::model::{AttrView, CertaintyTag, EntityRef, Location, Response, Targeted, short_name};
 use crate::policy::Policy;
 use crate::queries::common::resolve_one;
+use crate::queries::inferred_links::LinkScan;
 use crate::target::TargetFilter;
 
 const LINEAGE_LIMIT: usize = 20;
@@ -247,6 +249,7 @@ fn explain_entity(graph: &Graph<'_, '_>, entity: &atlas_core::Entity) -> QueryRe
     current = edge.to;
   }
   let mut inferred = Vec::new();
+  let mut links = LinkScan::default();
   for fact in graph.tx().inferred_facts(&InferredQuery {
     subject: Some(entity.id),
     relation: None,
@@ -260,10 +263,14 @@ fn explain_entity(graph: &Graph<'_, '_>, entity: &atlas_core::Entity) -> QueryRe
     for subject in &fact.subjects {
       subjects.push(graph.entity(*subject)?.map_or_else(|| subject.to_string(), |entity| short_name(&entity.key)));
     }
+    let freshness = match fact.relation == RELATION_CALLS_ENDPOINT {
+      true => links.explained_freshness(graph, &fact)?,
+      false => fact.freshness.clone(),
+    };
     inferred.push(InferredView {
       relation: fact.relation.clone(),
       subjects,
-      certainty: CertaintyTag::inferred(&fact.certainty, &fact.freshness),
+      certainty: CertaintyTag::inferred(&fact.certainty, &freshness),
       provider,
       model,
       rationale,

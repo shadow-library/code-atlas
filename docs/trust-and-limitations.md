@@ -182,6 +182,7 @@ Current numbers are in `docs/evaluation/results.md` once published.
 | SCIP indexer unavailable, timed out, or network failure | `code-atlas scip` reports per package; `doctor` shows tool availability | no `compiler_verified` upgrade for that package |
 | LLM provider unavailable or over budget | `enrich` prints skipped task counts, run recorded `partial`, exit code 3; `status` shows the run | no new inferred facts |
 | Stale inferred facts | tag suffix `stale` or `needs-revalidation`; `status` counts; hidden unless `--include-stale` | excluded from default results |
+| Inferred client-call link whose candidate endpoints changed | queries (`api`, `impact`, `unused`, `explain`) recompute the candidate set live and tag the link `needs-revalidation`; `status` counts it as current until the next `enrich` marks it | hidden from default results; the next `enrich` re-asks the model |
 | Target not found or ambiguous | `not found: "<target>" (...)` or candidate list; exit code 4 | try `search`; an empty result is not proof of absence |
 | Query returned nothing | caveats listing unresolved references, dynamic accesses and problem files that could hide relations | read the caveats before concluding |
 

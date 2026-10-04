@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use atlas_core::{ATTR_IMPL_OF, ATTR_IMPLEMENTS, EdgeKind, Entity, EntityId, EntityKind, ImplInfo, LanguageFamily, Owner, RelPath, RepoName, UnresolvedReason, Visibility};
-use atlas_store::{FreshnessPolicy, InferredQuery};
 use serde::Serialize;
 
 use crate::QueryEngine;
@@ -12,6 +11,7 @@ use crate::graph::{FileKey, Graph};
 use crate::model::{Caveat, EntityRef, Listing, Response};
 use crate::policy::Policy;
 use crate::queries::common::{DEFAULT_LIMIT, attr_str, attribute_names, is_router_relative, is_test, language, link_caveat, package_key, superseded_fragments};
+use crate::queries::inferred_links::{LinkEnd, LinkScan, inferred_links};
 use crate::queries::textual::{TextCheck, TextIndex, TextScopes};
 
 const SYMBOL_KINDS: [EntityKind; 10] = [
@@ -222,8 +222,10 @@ fn unused(graph: &Graph<'_, '_>, request: &UnusedRequest, private: &BTreeSet<Ent
       EdgeKind::CallsEndpoint,
       "no client->endpoint links (calls_endpoint) exist in this index; every endpoint appears unconsumed",
     )?;
-    endpoint_candidates(graph, &mut scan, request)?;
+    let mut hidden = LinkScan::default();
+    endpoint_candidates(graph, &mut scan, request, &mut hidden)?;
     caveats.extend(missing);
+    caveats.extend(hidden.caveats(graph.policy.min_confidence));
   }
   if wanted(request, &EntityKind::AuthScheme) {
     let missing = link_caveat(
@@ -589,7 +591,7 @@ fn package_role(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> 
   Ok(Some(role))
 }
 
-fn endpoint_candidates(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, request: &UnusedRequest) -> QueryResult<()> {
+fn endpoint_candidates(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, request: &UnusedRequest, hidden: &mut LinkScan) -> QueryResult<()> {
   let superseded = superseded_fragments(graph)?;
   for endpoint in graph.entities_of_kind(&EntityKind::ApiEndpoint)? {
     if !in_repo(request, &endpoint) || !graph.edges_in(endpoint.id, &[EdgeKind::CallsEndpoint])?.is_empty() {
@@ -599,18 +601,11 @@ fn endpoint_candidates(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, request: &Unu
     if fragment && superseded.contains(&endpoint.key.to_string()) {
       continue;
     }
-    let inferred = graph.tx().inferred_facts(&InferredQuery {
-      subject: Some(endpoint.id),
-      relation: Some(atlas_semantic::RELATION_CALLS_ENDPOINT.to_owned()),
-      freshness: FreshnessPolicy::IncludeStale,
-    })?;
-    if inferred.iter().any(atlas_semantic::included_in_default_results) {
-      continue;
-    }
     let mut evidence = vec!["no detected consumers in project".to_owned(), "external clients outside the project may exist".to_owned()];
     if fragment {
       evidence.insert(0, "router fragment; mount not detected".to_owned());
     }
+    evidence.extend(inferred_consumer_evidence(graph, &endpoint, hidden)?);
     scan.candidates.push(UnusedCandidate {
       entity: EntityRef::of(&endpoint),
       class: UnusedClass::PossiblyUnused,
@@ -618,6 +613,18 @@ fn endpoint_candidates(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, request: &Unu
     });
   }
   Ok(())
+}
+
+fn inferred_consumer_evidence(graph: &Graph<'_, '_>, endpoint: &Entity, hidden: &mut LinkScan) -> QueryResult<Vec<String>> {
+  let mut evidence = Vec::new();
+  for link in inferred_links(graph, endpoint.id, LinkEnd::Endpoint, hidden)? {
+    let call = EntityRef::of(&link.call);
+    for request in graph.edges_in(link.call.id, &[EdgeKind::MakesRequest])? {
+      let Some(caller) = graph.entity(request.from)? else { continue };
+      evidence.push(format!("likely consumer {} via {} {}", EntityRef::of(&caller).short, call.short, link.hop.certainty.tag));
+    }
+  }
+  Ok(evidence)
 }
 
 fn linked_candidates(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, request: &UnusedRequest, kind: EntityKind, usage: EdgeKind, reason: &str) -> QueryResult<()> {

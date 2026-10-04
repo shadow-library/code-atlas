@@ -9,7 +9,7 @@ use atlas_store::{
 };
 use serde_json::Value;
 
-use crate::budget::{BudgetState, SemanticBudget};
+use crate::budget::{BudgetState, BudgetUse, SemanticBudget};
 use crate::error::SemanticResult;
 use crate::facts::LOW_CONFIDENCE_ATTR;
 use crate::pricing::PriceTable;
@@ -90,6 +90,19 @@ pub struct SemanticReport {
   pub cache_hits: u32,
   pub usage: TokenUsage,
   pub cost_estimate_usd: Option<f64>,
+  pub budget_used: BudgetUse,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskCost {
+  Cached,
+  Uncached { estimated_input_tokens: u64 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum JobOrder {
+  ByKindAndSubjects,
+  AsGiven,
 }
 
 pub(crate) struct Job {
@@ -222,11 +235,41 @@ impl<'a> SemanticEngine<'a> {
   }
 
   pub fn run(&self, run: Option<RunId>, tasks: Vec<SemanticTask>) -> SemanticResult<SemanticReport> {
-    self.execute(run, tasks.into_iter().map(|task| Job { task, replaces: None }).collect())
+    self.execute(run, Self::jobs(tasks), JobOrder::ByKindAndSubjects)
   }
 
-  pub(crate) fn execute(&self, run: Option<RunId>, mut jobs: Vec<Job>) -> SemanticResult<SemanticReport> {
-    jobs.sort_by_cached_key(|job| (job.task.kind(), job.task.subjects()));
+  pub fn run_in_priority_order(&self, run: Option<RunId>, tasks: Vec<SemanticTask>) -> SemanticResult<SemanticReport> {
+    self.execute(run, Self::jobs(tasks), JobOrder::AsGiven)
+  }
+
+  pub fn cost(&self, task: &SemanticTask) -> SemanticResult<TaskCost> {
+    let prepared = self.prepare(task);
+    Ok(match self.cached(task, &prepared)? {
+      Some(_) => TaskCost::Cached,
+      None => TaskCost::Uncached {
+        estimated_input_tokens: prepared.estimate,
+      },
+    })
+  }
+
+  fn jobs(tasks: Vec<SemanticTask>) -> Vec<Job> {
+    tasks.into_iter().map(|task| Job { task, replaces: None }).collect()
+  }
+
+  fn prepare(&self, task: &SemanticTask) -> Prepared {
+    let rendered = task.render();
+    let provider = self.provider_for(rendered.kind);
+    Prepared {
+      key: cache_key(&rendered, provider.id(), provider.model()),
+      estimate: estimate_tokens(&rendered),
+      rendered,
+    }
+  }
+
+  pub(crate) fn execute(&self, run: Option<RunId>, mut jobs: Vec<Job>, order: JobOrder) -> SemanticResult<SemanticReport> {
+    if order == JobOrder::ByKindAndSubjects {
+      jobs.sort_by_cached_key(|job| (job.task.kind(), job.task.subjects()));
+    }
     let mut outcomes: Vec<Option<TaskOutcome>> = jobs.iter().map(|_| None).collect();
     let mut tally = Tally::default();
     let mut unavailable: BTreeMap<TaskKind, String> = BTreeMap::new();
@@ -238,18 +281,7 @@ impl<'a> SemanticEngine<'a> {
       }
     }
 
-    let prepared: Vec<Prepared> = jobs
-      .iter()
-      .map(|job| {
-        let rendered = job.task.render();
-        let provider = self.provider_for(rendered.kind);
-        Prepared {
-          key: cache_key(&rendered, provider.id(), provider.model()),
-          estimate: estimate_tokens(&rendered),
-          rendered,
-        }
-      })
-      .collect();
+    let prepared: Vec<Prepared> = jobs.iter().map(|job| self.prepare(&job.task)).collect();
     let budget = Mutex::new(BudgetState::new(self.config.budget));
     let mut hits = Vec::new();
     let mut pending = Vec::new();
@@ -262,7 +294,7 @@ impl<'a> SemanticEngine<'a> {
         continue;
       }
       let started = Instant::now();
-      if let Some(answer) = self.cached(job, &prepared[index])? {
+      if let Some(answer) = self.cached(&job.task, &prepared[index])? {
         let record = CallRecord {
           model: answer.model,
           usage: TokenUsage::default(),
@@ -319,20 +351,21 @@ impl<'a> SemanticEngine<'a> {
       }
       self.persist(run, &jobs, finished, &mut outcomes, &mut tally)?;
     }
-    Ok(self.report(&jobs, outcomes, tally))
+    let used = lock(&budget).used();
+    Ok(self.report(&jobs, outcomes, tally, used))
   }
 
-  fn cached(&self, job: &Job, prepared: &Prepared) -> SemanticResult<Option<CachedAnswer>> {
+  fn cached(&self, task: &SemanticTask, prepared: &Prepared) -> SemanticResult<Option<CachedAnswer>> {
     let Some(entry) = self.store.read(|tx| tx.llm_cache(&prepared.key))? else {
       return Ok(None);
     };
-    match interpret_text(&job.task, &prepared.rendered.schema, &entry.response) {
+    match interpret_text(task, &prepared.rendered.schema, &entry.response) {
       Ok(interpretation) => Ok(Some(CachedAnswer {
         interpretation,
         model: entry.model,
       })),
       Err(reason) => {
-        tracing::warn!(task = job.task.kind().as_str(), reason = %reason, "ignoring cached response that no longer validates");
+        tracing::warn!(task = task.kind().as_str(), reason = %reason, "ignoring cached response that no longer validates");
         Ok(None)
       }
     }
@@ -578,7 +611,7 @@ impl<'a> SemanticEngine<'a> {
     }
   }
 
-  fn report(&self, jobs: &[Job], outcomes: Vec<Option<TaskOutcome>>, tally: Tally) -> SemanticReport {
+  fn report(&self, jobs: &[Job], outcomes: Vec<Option<TaskOutcome>>, tally: Tally, budget_used: BudgetUse) -> SemanticReport {
     let tasks: Vec<TaskReport> = jobs
       .iter()
       .zip(outcomes)
@@ -610,6 +643,7 @@ impl<'a> SemanticEngine<'a> {
       cache_hits: tally.cache_hits,
       usage: tally.usage,
       cost_estimate_usd: tally.cost,
+      budget_used,
     }
   }
 

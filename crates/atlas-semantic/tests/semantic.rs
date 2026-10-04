@@ -2,8 +2,9 @@ use std::time::Duration;
 
 use atlas_core::{Certainty, ContentHash, EdgeKind, EntityId, Freshness, LlmError, RelPath, RepoName, RunId, Span, TokenUsage};
 use atlas_semantic::{
-  CapabilityInput, ClientCall, ClientCallLink, EndpointCandidate, FakeProvider, FakeStep, SemanticConfig, SemanticEngine, SemanticReport, SemanticRunStatus, SemanticTask,
-  SimilarityPair, SkipReason, SourceRef, SymbolDigest, SymbolSnippet, TaskKind, TaskOutcome, included_in_default_results, inferred_edge, is_low_confidence,
+  BudgetUse, CapabilityInput, ClientCall, ClientCallLink, EndpointCandidate, FakeProvider, FakeStep, SemanticBudget, SemanticConfig, SemanticEngine, SemanticReport,
+  SemanticRunStatus, SemanticTask, SimilarityPair, SkipReason, SourceRef, SymbolDigest, SymbolSnippet, TaskCost, TaskKind, TaskOutcome, included_in_default_results, inferred_edge,
+  is_low_confidence,
 };
 use atlas_store::{CacheStatus, FreshnessPolicy, InferredQuery, LlmCallOutcome, Store, StoredInferredFact};
 
@@ -293,6 +294,73 @@ fn should_skip_remaining_tasks_when_the_call_budget_runs_out() {
 }
 
 #[test]
+fn should_reserve_the_budget_in_the_given_order_when_asked_to() {
+  let store = Store::open_in_memory().unwrap();
+  let provider = FakeProvider::new().otherwise(FakeStep::respond(similarity_json("unrelated", 0.9, &[])));
+  let mut config = config();
+  config.budget.max_calls_per_run = 1;
+  let run = start_run(&store);
+  let report = SemanticEngine::new(&provider, &store, config)
+    .run_in_priority_order(Some(run), vec![pair(5, 6), pair(1, 2)])
+    .unwrap();
+  let subjects: Vec<Vec<EntityId>> = report.tasks.iter().map(|task| task.subjects.clone()).collect();
+  assert_eq!(
+    subjects,
+    vec![vec![EntityId::from_raw(5), EntityId::from_raw(6)], vec![EntityId::from_raw(1), EntityId::from_raw(2)]]
+  );
+  assert_eq!(report.tasks[0].outcome, TaskOutcome::NoRelation);
+  assert_eq!(
+    report.tasks[1].outcome,
+    TaskOutcome::Skipped {
+      reason: SkipReason::BudgetExhausted
+    }
+  );
+  assert_eq!(report.budget_used.calls, 1);
+}
+
+#[test]
+fn should_price_a_task_as_cached_only_after_a_valid_answer_was_stored() {
+  let store = Store::open_in_memory().unwrap();
+  let provider = FakeProvider::new().otherwise(FakeStep::respond(similarity_json("unrelated", 0.9, &[])));
+  let engine = SemanticEngine::new(&provider, &store, config());
+  let TaskCost::Uncached { estimated_input_tokens } = engine.cost(&pair(1, 2)).unwrap() else {
+    panic!("expected a cache miss")
+  };
+  assert!(estimated_input_tokens > 0);
+  run_tasks(&provider, &store, config(), vec![pair(1, 2)]);
+  assert_eq!(engine.cost(&pair(1, 2)).unwrap(), TaskCost::Cached);
+  assert_eq!(provider.call_count(), 1);
+}
+
+#[test]
+fn should_split_and_subtract_budgets_without_underflow() {
+  let total = SemanticBudget {
+    max_calls_per_run: 12,
+    max_input_tokens_per_run: 1_000,
+    max_concurrency: 2,
+  };
+  assert_eq!(
+    total.share(1, 5),
+    SemanticBudget {
+      max_calls_per_run: 2,
+      max_input_tokens_per_run: 200,
+      max_concurrency: 2
+    }
+  );
+  let used = BudgetUse { calls: 10, input_tokens: 400 }.plus(BudgetUse { calls: 5, input_tokens: 100 });
+  assert_eq!(
+    total.remaining_after(used),
+    SemanticBudget {
+      max_calls_per_run: 0,
+      max_input_tokens_per_run: 500,
+      max_concurrency: 2
+    }
+  );
+  assert_eq!(total.capped_by(total.share(2, 5)).max_calls_per_run, 4);
+  assert_eq!(SemanticBudget { max_calls_per_run: 4, ..total }.share(1, 5).max_calls_per_run, 0);
+}
+
+#[test]
 fn should_skip_tasks_that_would_exceed_the_input_token_budget() {
   let store = Store::open_in_memory().unwrap();
   let provider = FakeProvider::new().otherwise(FakeStep::respond(similarity_json("unrelated", 0.9, &[])));
@@ -574,6 +642,10 @@ fn should_link_a_client_call_to_the_chosen_endpoint_with_both_files_as_evidence(
     (EdgeKind::CallsEndpoint, EntityId::from_raw(8), EntityId::from_raw(901))
   );
   assert_eq!(edge.fact.attrs["route"], "/users/:id");
+  assert_eq!(
+    edge.fact.attrs["candidates"],
+    serde_json::json!([EntityId::from_raw(900).to_string(), EntityId::from_raw(901).to_string()])
+  );
   let notes: Vec<&str> = fact.evidence.iter().map(|item| item.note.as_deref().unwrap_or_default()).collect();
   assert_eq!(notes.len(), 3);
   assert!(notes[0].starts_with("snippet blake3:"));
