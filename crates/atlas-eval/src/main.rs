@@ -8,6 +8,7 @@ use atlas_eval::agent::{
   self, AgentError, AgentReport, ClaudeConfig, Condition, ConfigIsolation, DEFAULT_JUDGE_MODEL, DEFAULT_SESSION_MODEL, DryRunContext, JudgeMode, LoadedTask, RepoSource,
   RunnerConfig,
 };
+use atlas_eval::quality::{self, QualityArgs};
 
 #[derive(Debug, Parser)]
 #[command(name = "atlas-eval", about = "Code Atlas evaluation harness")]
@@ -20,6 +21,8 @@ struct Cli {
 enum Command {
   #[command(subcommand, about = "Controlled Claude Code A/B comparison: baseline vs Code Atlas MCP")]
   Agent(AgentCommand),
+  #[command(about = "Knowledge-quality evaluation: ground truth, SCIP oracle, refactor robustness and context selection")]
+  Quality(Box<QualityArgs>),
 }
 
 #[derive(Debug, Subcommand)]
@@ -123,10 +126,11 @@ fn main() -> ExitCode {
     .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
     .init();
   let cli = Cli::parse();
-  let outcome = match cli.command {
-    Command::Agent(AgentCommand::Run(args)) => run(&args),
-    Command::Agent(AgentCommand::Report(args)) => report(&args),
-    Command::Agent(AgentCommand::Probe(args)) => probe(&args),
+  let outcome: Result<(), Box<dyn std::error::Error>> = match cli.command {
+    Command::Agent(AgentCommand::Run(args)) => run(&args).map_err(Into::into),
+    Command::Agent(AgentCommand::Report(args)) => report(&args).map_err(Into::into),
+    Command::Agent(AgentCommand::Probe(args)) => probe(&args).map_err(Into::into),
+    Command::Quality(args) => run_quality(&args).map_err(Into::into),
   };
   match outcome {
     Ok(()) => ExitCode::SUCCESS,
@@ -265,6 +269,15 @@ fn report(args: &ReportArgs) -> Result<(), AgentError> {
   };
   let (markdown, json) = agent::write_report(&report, &base)?;
   tracing::info!(markdown = %markdown.display(), json = %json.display(), runs = records.len(), "report written");
+  Ok(())
+}
+
+fn run_quality(args: &QualityArgs) -> Result<(), quality::QualityError> {
+  let outcome = quality::execute(args)?;
+  tracing::info!(markdown = %outcome.markdown.display(), json = %outcome.json.display(), "quality report written");
+  if let Some(comparison) = &outcome.comparison {
+    print!("{comparison}");
+  }
   Ok(())
 }
 
