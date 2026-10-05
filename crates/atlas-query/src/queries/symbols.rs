@@ -394,24 +394,19 @@ fn name_path_candidates(graph: &Graph<'_, '_>, pattern: &NamePath, text: &str) -
     qualifier: pattern.qualifier().to_vec(),
     name: pattern.name().to_owned(),
   };
-  let found = named(graph, pattern)?;
   let hint = not_found_hint(graph, &spec, text)?;
-  let Some(literal) = pattern.literal_fallback().filter(|_| found.is_empty()) else {
-    return Ok((prefer_definitions(found), hint));
+  let found = prefer_definitions(named(graph, pattern)?);
+  let (found, name) = match pattern.literal_fallback().filter(|_| found.is_empty()) {
+    Some(literal) => (prefer_definitions(named(graph, &literal)?), literal.name().to_owned()),
+    None => (found, pattern.name().to_owned()),
   };
-  let whole = named(graph, &literal)?;
-  if literal.name().contains(char::is_whitespace) {
-    return Ok((prefer_definitions(whole), hint));
+  let only_test_blocks = !found.is_empty() && found.iter().all(is_test_block);
+  if !only_test_blocks || name.contains(char::is_whitespace) {
+    return Ok((found, hint));
   }
-  let mut withheld: Vec<String> = whole.iter().map(|entity| format!("{} {}", entity.kind, entity.key)).collect();
+  let mut withheld: Vec<String> = found.iter().map(|entity| format!("{} {}", entity.kind, entity.key)).collect();
   withheld.sort();
-  Ok(match withheld.is_empty() {
-    true => (Vec::new(), hint),
-    false => (
-      Vec::new(),
-      format!("{hint}; {} is named exactly {:?}, pass its key to target it", withheld.join(", "), literal.name()),
-    ),
-  })
+  Ok((Vec::new(), format!("{hint}; {} is named exactly {name:?}, pass its key to target it", withheld.join(", "))))
 }
 
 fn matching(graph: &Graph<'_, '_>, pattern: &NamePath, rule: NameMatch, candidates: impl Iterator<Item = Entity>) -> QueryResult<Vec<Entity>> {

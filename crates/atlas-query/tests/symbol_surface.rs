@@ -930,3 +930,67 @@ mod renamed_method {
     );
   }
 }
+
+mod nested_describe {
+  use super::*;
+
+  const SPEC: &str = "import { UsersService } from './users.service';\n\n\
+                      describe('UsersService', () => {\n  describe('findOne', () => {\n    it('should find one', () => {\n      new UsersService().findById('u1');\n    });\n  });\n});\n\n\
+                      describe('loadAll', () => {});\n";
+
+  fn fixture() -> common::Fixture {
+    common::single_repo(
+      "users",
+      &[
+        ("package.json", r#"{"name":"users","version":"1.0.0"}"#),
+        (
+          "src/users.service.ts",
+          "export class UsersService {\n  findById(id: string): string {\n    return id;\n  }\n}\n",
+        ),
+        ("src/users.service.spec.ts", SPEC),
+      ],
+    )
+  }
+
+  fn not_found(text: &str, name: &str, key: &str) -> Targeted<atlas_core::Entity> {
+    Targeted::NotFound {
+      spec: text.to_owned(),
+      hint: format!("no entity matches {text}; try a search for {text}; test_suite {key} is named exactly {name:?}, pass its key to target it"),
+    }
+  }
+
+  #[test]
+  fn should_not_resolve_a_stale_code_name_to_a_nested_describe_block() {
+    let fixture = fixture();
+    fixture.query.fresh().unwrap();
+    let suite = "ts:users:users:src/users.service.spec::UsersService::findOne#test_suite";
+
+    for text in ["UsersService/findOne", "UsersService.findOne", "findOne"] {
+      assert_eq!(fixture.query.resolve_target(text).unwrap(), not_found(text, "findOne", suite), "{text}");
+    }
+    assert_eq!(
+      fixture.query.resolve_target("loadAll").unwrap(),
+      not_found("loadAll", "loadAll", "ts:users:users:src/users.service.spec::loadAll#test_suite")
+    );
+    assert!(matches!(
+      fixture.query.symbol_references(&ReferencesRequest::new("UsersService/findOne")).unwrap().answer,
+      Targeted::NotFound { .. }
+    ));
+    assert_eq!(found(fixture.query.resolve_target(suite).unwrap()).key.to_string(), suite);
+  }
+
+  #[test]
+  fn should_still_list_describe_blocks_in_find_and_resolve_whitespace_test_names() {
+    let fixture = fixture();
+    fixture.query.fresh().unwrap();
+
+    let listed = fixture.query.find(&FindRequest::new("findOne")).unwrap();
+    let test = found(fixture.query.resolve_target("should find one").unwrap());
+
+    assert_eq!(
+      listed.answer.matches.items.iter().map(|found| found.entity.key.as_str()).collect::<Vec<_>>(),
+      vec!["ts:users:users:src/users.service.spec::UsersService::findOne#test_suite"]
+    );
+    assert_eq!(test.key.to_string(), "ts:users:users:src/users.service.spec::UsersService::findOne::should find one#test");
+  }
+}
