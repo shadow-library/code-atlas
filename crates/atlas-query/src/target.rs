@@ -15,7 +15,7 @@ pub enum TargetSpec {
   Name { qualifier: Vec<String>, name: String },
 }
 
-const SOURCE_EXTENSIONS: [&str; 10] = [".rs", ".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs", ".json"];
+pub(crate) const SOURCE_EXTENSIONS: [&str; 10] = [".rs", ".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs", ".json"];
 
 impl TargetSpec {
   pub fn parse(text: &str) -> QueryResult<Self> {
@@ -156,11 +156,11 @@ fn admits(filter: &TargetFilter, entity: &Entity) -> bool {
   kind_ok && repo_ok
 }
 
-fn is_test_block(entity: &Entity) -> bool {
+pub(crate) fn is_test_block(entity: &Entity) -> bool {
   matches!(entity.kind, EntityKind::Test | EntityKind::TestSuite)
 }
 
-fn prefer_definitions(candidates: Vec<Entity>) -> Vec<Entity> {
+pub(crate) fn prefer_definitions(candidates: Vec<Entity>) -> Vec<Entity> {
   if candidates.iter().all(is_test_block) {
     return candidates;
   }
@@ -172,7 +172,7 @@ fn sorted(mut candidates: Vec<Entity>) -> Vec<Entity> {
   candidates
 }
 
-fn not_found_hint(graph: &Graph<'_, '_>, spec: &TargetSpec, text: &str) -> QueryResult<String> {
+pub(crate) fn not_found_hint(graph: &Graph<'_, '_>, spec: &TargetSpec, text: &str) -> QueryResult<String> {
   Ok(match spec {
     TargetSpec::Endpoint { .. } => format!("no endpoint matches {text}; list endpoints with the api query"),
     TargetSpec::File { .. } => format!("no indexed file or symbol at {text}"),

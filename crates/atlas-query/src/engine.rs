@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use atlas_core::{Entity, EntityId, EntityKey, ParseStatus, RefKind, RepoName, UnresolvedReason};
+use atlas_core::{Entity, EntityId, EntityKey, ParseStatus, RefKind, RepoName, UnresolvedReason, UnresolvedRef};
 use atlas_engine::{Engine, EngineError};
 use serde::Serialize;
 
@@ -137,13 +137,7 @@ pub(crate) fn unresolved_risk(graph: &Graph<'_, '_>, target: EntityId, name: &st
   let mut sites = Vec::new();
   for found in graph.tx().unresolved_by_names(&[name])? {
     let reference = found.reference;
-    let reason = match &reference.reason {
-      UnresolvedReason::Dynamic => "dynamic",
-      UnresolvedReason::Ambiguous { candidates } if candidates.is_empty() || candidates.contains(&target) => "ambiguous",
-      UnresolvedReason::NotFound if matches!(reference.kind, RefKind::MethodCall) => "unknown receiver",
-      UnresolvedReason::Unsupported { detail } if detail == "macro_generated" => "macro generated",
-      _ => continue,
-    };
+    let Some(reason) = risk_reason(&reference, target) else { continue };
     *by_reason.entry(reason.to_owned()).or_default() += 1;
     sites.push(UnresolvedSite {
       location: Location {
@@ -168,6 +162,16 @@ pub(crate) fn unresolved_risk(graph: &Graph<'_, '_>, target: EntityId, name: &st
     by_reason,
     sites,
   }))
+}
+
+pub(crate) fn risk_reason(reference: &UnresolvedRef, target: EntityId) -> Option<&'static str> {
+  match &reference.reason {
+    UnresolvedReason::Dynamic => Some("dynamic"),
+    UnresolvedReason::Ambiguous { candidates } if candidates.is_empty() || candidates.contains(&target) => Some("ambiguous"),
+    UnresolvedReason::NotFound if matches!(reference.kind, RefKind::MethodCall) => Some("unknown receiver"),
+    UnresolvedReason::Unsupported { detail } if detail == "macro_generated" => Some("macro generated"),
+    _ => None,
+  }
 }
 
 pub(crate) fn macro_generated_refs(graph: &Graph<'_, '_>, target: &Entity, owners: &[EntityId], scope: MacroGapScope) -> QueryResult<Option<Caveat>> {

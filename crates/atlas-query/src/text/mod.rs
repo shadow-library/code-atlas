@@ -8,6 +8,7 @@ mod search;
 mod similar;
 mod status;
 mod symbol;
+mod symbols;
 mod tests_for;
 mod traverse;
 mod unused;
