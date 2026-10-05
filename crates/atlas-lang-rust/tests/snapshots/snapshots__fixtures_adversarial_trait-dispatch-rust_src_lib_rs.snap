@@ -1364,8 +1364,19 @@ references:
       - (self.entries.get(key))
       - cloned
     receiver:
-      type: expr
-      value: self.entries.get(key)
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: self
+            hint:
+              type: self_value
+        steps:
+          - type: field
+            value: entries
+          - type: method
+            value: get
     args: []
     span:
       start_byte: 552
@@ -1518,8 +1529,18 @@ references:
       - "(std::fs::read_to_string(self.path_for(key)))"
       - ok
     receiver:
-      type: expr
-      value: "std::fs::read_to_string(self.path_for(key))"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - std
+              - fs
+              - read_to_string
+            args:
+              - ~
+        steps: []
     args: []
     span:
       start_byte: 792
@@ -1892,7 +1913,7 @@ module_decls: []
 diagnostics: []
 analyzer:
   name: atlas-lang-rust
-  version: 2
+  version: 3
 impls:
   - self_type:
       segments:

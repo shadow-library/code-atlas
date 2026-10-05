@@ -851,8 +851,19 @@ references:
       - (self.http.get(url))
       - header
     receiver:
-      type: expr
-      value: self.http.get(url)
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: self
+            hint:
+              type: self_value
+        steps:
+          - type: field
+            value: http
+          - type: method
+            value: get
     args:
       - type: str
         value: x-api-key
@@ -888,8 +899,21 @@ references:
       - "(self.http.get(url).header(\"x-api-key\", &self.api_key))"
       - send
     receiver:
-      type: expr
-      value: "self.http.get(url).header(\"x-api-key\", &self.api_key)"
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: self
+            hint:
+              type: self_value
+        steps:
+          - type: field
+            value: http
+          - type: method
+            value: get
+          - type: method
+            value: header
     args: []
     span:
       start_byte: 864
@@ -904,8 +928,25 @@ references:
       - "(self.http.get(url).header(\"x-api-key\", &self.api_key).send().await?)"
       - error_for_status
     receiver:
-      type: expr
-      value: "self.http.get(url).header(\"x-api-key\", &self.api_key).send().await?"
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: self
+            hint:
+              type: self_value
+        steps:
+          - type: field
+            value: http
+          - type: method
+            value: get
+          - type: method
+            value: header
+          - type: method
+            value: send
+          - type: await
+          - type: try
     args: []
     span:
       start_byte: 878
@@ -949,7 +990,7 @@ module_decls: []
 diagnostics: []
 analyzer:
   name: atlas-lang-rust
-  version: 2
+  version: 3
 impls:
   - self_type:
       segments:

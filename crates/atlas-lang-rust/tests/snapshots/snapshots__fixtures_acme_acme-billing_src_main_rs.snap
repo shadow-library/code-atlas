@@ -216,8 +216,18 @@ references:
       - "(std::env::var(\"DATABASE_URL\"))"
       - unwrap_or_else
     receiver:
-      type: expr
-      value: "std::env::var(\"DATABASE_URL\")"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - std
+              - env
+              - var
+            args:
+              - ~
+        steps: []
     args:
       - type: closure
         value:
@@ -448,4 +458,4 @@ module_decls: []
 diagnostics: []
 analyzer:
   name: atlas-lang-rust
-  version: 2
+  version: 3

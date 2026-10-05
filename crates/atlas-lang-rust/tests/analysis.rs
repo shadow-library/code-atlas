@@ -195,7 +195,7 @@ fn should_reject_non_rust_files_and_describe_itself() {
     Err(AnalysisError::UnsupportedLanguage(Language::TypeScript))
   );
   assert_eq!(analyzer.language_family(), LanguageFamily::Rust);
-  assert_eq!(analyzer.producer(), Producer::new("atlas-lang-rust", 2));
+  assert_eq!(analyzer.producer(), Producer::new("atlas-lang-rust", 3));
 }
 
 #[test]

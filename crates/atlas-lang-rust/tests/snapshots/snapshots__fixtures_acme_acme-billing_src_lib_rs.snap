@@ -572,8 +572,16 @@ references:
       - "(Router::new())"
       - route
     receiver:
-      type: expr
-      value: "Router::new()"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - Router
+              - new
+            args: []
+        steps: []
     args:
       - type: str
         value: /invoices
@@ -627,8 +635,18 @@ references:
       - "(Router::new().route(\"/invoices\", post(create_invoice)))"
       - route
     receiver:
-      type: expr
-      value: "Router::new().route(\"/invoices\", post(create_invoice))"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - Router
+              - new
+            args: []
+        steps:
+          - type: method
+            value: route
     args:
       - type: str
         value: "/invoices/{id}"
@@ -682,8 +700,20 @@ references:
       - "(Router::new().route(\"/invoices\", post(create_invoice)).route(\"/invoices/{id}\", get(get_invoice)))"
       - with_state
     receiver:
-      type: expr
-      value: "Router::new().route(\"/invoices\", post(create_invoice)).route(\"/invoices/{id}\", get(get_invoice))"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - Router
+              - new
+            args: []
+        steps:
+          - type: method
+            value: route
+          - type: method
+            value: route
     args:
       - type: path
         value:
@@ -789,4 +819,4 @@ module_decls:
 diagnostics: []
 analyzer:
   name: atlas-lang-rust
-  version: 2
+  version: 3

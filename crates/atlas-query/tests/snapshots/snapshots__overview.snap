@@ -42,6 +42,6 @@ patterns
   DI via constructor injection (11 decorated classes)
   multiple HTTP frameworks: axum, nestjs
 health
-  450 unresolved references: ambiguous 10, dynamic 73, external 333, not_found 34
+  450 unresolved references: ambiguous 10, dynamic 69, external 337, not_found 34
   scip coverage 0/58 files
   inferred facts current 0 stale 0 needs revalidation 0

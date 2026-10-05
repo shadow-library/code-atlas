@@ -108,8 +108,17 @@ references:
       - "(env::var(\"OUT_DIR\"))"
       - expect
     receiver:
-      type: expr
-      value: "env::var(\"OUT_DIR\")"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - env
+              - var
+            args:
+              - ~
+        steps: []
     args:
       - type: str
         value: OUT_DIR is set by cargo
@@ -143,8 +152,17 @@ references:
       - "(Path::new(&out_dir))"
       - join
     receiver:
-      type: expr
-      value: "Path::new(&out_dir)"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - Path
+              - new
+            args:
+              - ~
+        steps: []
     args:
       - type: str
         value: constants.rs
@@ -180,8 +198,18 @@ references:
       - "(fs::write(target, \"pub const MAX_ITEMS: usize = 128;\\npub fn default_label() -> &'static str { \\\"generated\\\" }\\n\"))"
       - expect
     receiver:
-      type: expr
-      value: "fs::write(target, \"pub const MAX_ITEMS: usize = 128;\\npub fn default_label() -> &'static str { \\\"generated\\\" }\\n\")"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - fs
+              - write
+            args:
+              - ~
+              - ~
+        steps: []
     args:
       - type: str
         value: write constants
@@ -211,4 +239,4 @@ module_decls: []
 diagnostics: []
 analyzer:
   name: atlas-lang-rust
-  version: 2
+  version: 3

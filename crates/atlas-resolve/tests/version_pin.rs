@@ -10,9 +10,9 @@ use common::{Project, fixtures_root};
 use serde::Serialize;
 
 const PINNED: (u32, &str, &str) = (
-  5,
-  "6eb687e560696f5f1a4e39eda95dc5f53a3bbaa2cd6152d73748113f5d8e22fe",
-  "fa3309b3c3c69c32346191b3a3c6ed0b0044aad1bd4f370f1275ebff1c513ab8",
+  6,
+  "63e242fc32dc635dd69c9b7942fe59eb38f81b9cd86f1ab282ca5d4cf3b416e3",
+  "f1357803d17f3d3699d80f88c5d27f2f655aad8cab40323129b43e279a62c64a",
 );
 
 fn walk(dir: &Path) -> Vec<PathBuf> {

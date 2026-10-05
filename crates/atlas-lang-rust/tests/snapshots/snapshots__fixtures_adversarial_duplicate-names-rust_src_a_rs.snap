@@ -106,8 +106,20 @@ references:
       - "(input.split(','))"
       - collect
     receiver:
-      type: expr
-      value: "input.split(',')"
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: input
+            hint:
+              type: declared
+              value:
+                type_text: "&str"
+                binding: param
+        steps:
+          - type: method
+            value: split
     args: []
     span:
       start_byte: 60
@@ -120,4 +132,4 @@ module_decls: []
 diagnostics: []
 analyzer:
   name: atlas-lang-rust
-  version: 2
+  version: 3

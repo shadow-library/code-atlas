@@ -1,6 +1,6 @@
 mod common;
 
-use atlas_core::{ARG_MAX_TEXT, ARG_MAX_WIDTH, ArgSummary, DeclaredBinding, ObjectEntry, ObjectKey, ReceiverHint, RefKind, RefOrigin, Span};
+use atlas_core::{ARG_MAX_TEXT, ARG_MAX_WIDTH, ArgSummary, ChainHead, ChainStep, DeclaredBinding, ObjectEntry, ObjectKey, ReceiverChain, ReceiverHint, RefKind, RefOrigin, Span};
 use common::{analyze, paths_of, reference, refs_of, strings};
 
 type ChainLink = (String, Vec<String>, Option<ReceiverHint>, Vec<ArgSummary>);
@@ -11,6 +11,27 @@ fn path(segments: &[&str]) -> ArgSummary {
 
 fn text(value: &str) -> ArgSummary {
   ArgSummary::Str(value.to_owned())
+}
+
+fn chained(head: ChainHead, steps: Vec<ChainStep>) -> ReceiverHint {
+  ReceiverHint::Chain(Box::new(ReceiverChain { head, steps }))
+}
+
+fn binding(name: &str, hint: ReceiverHint) -> ChainHead {
+  ChainHead::Binding { name: name.to_owned(), hint }
+}
+
+fn call(path: &[&str], args: Vec<Option<String>>) -> ChainHead {
+  ChainHead::Call { path: strings(path), args }
+}
+
+fn receiver_of<'a>(facts: &'a atlas_core::FileFacts, method: &str) -> Vec<&'a ReceiverHint> {
+  facts
+    .references
+    .iter()
+    .filter(|reference| reference.kind == RefKind::MethodCall && reference.name() == Some(method))
+    .filter_map(|reference| reference.receiver.as_ref())
+    .collect()
 }
 
 #[test]
@@ -42,7 +63,13 @@ fn should_emit_method_calls_with_receiver_hints() {
       (strings(&["self", "flush"]), Some(ReceiverHint::SelfValue)),
       (strings(&["client", "send"]), Some(ReceiverHint::TypeHint(strings(&["Client"])))),
       (strings(&["self", "pool", "get"]), Some(ReceiverHint::SelfValue)),
-      (strings(&["(self.pool.get())", "unwrap"]), Some(ReceiverHint::Expr("self.pool.get()".into()))),
+      (
+        strings(&["(self.pool.get())", "unwrap"]),
+        Some(chained(
+          binding("self", ReceiverHint::SelfValue),
+          vec![ChainStep::Field("pool".into()), ChainStep::Method("get".into())]
+        ))
+      ),
     ]
   );
   assert_eq!(reference(&facts, RefKind::MethodCall, &["client", "send"]).args, [ArgSummary::Number("1".into())]);
@@ -64,7 +91,7 @@ fn should_emit_a_method_call_for_every_link_of_a_call_chain() {
       (
         "MethodCall".to_owned(),
         strings(&["(Router::new())", "route"]),
-        Some(ReceiverHint::Expr("Router::new()".into())),
+        Some(chained(call(&["Router", "new"], vec![]), vec![])),
         vec![
           text("/users"),
           ArgSummary::Call {
@@ -77,7 +104,7 @@ fn should_emit_a_method_call_for_every_link_of_a_call_chain() {
       (
         "MethodCall".to_owned(),
         strings(&["(Router::new() .route(\"/users\", get(list_users)))", "with_state"]),
-        Some(ReceiverHint::Expr("Router::new() .route(\"/users\", get(list_users))".into())),
+        Some(chained(call(&["Router", "new"], vec![]), vec![ChainStep::Method("route".into())])),
         vec![path(&["state"])]
       ),
     ]
@@ -590,4 +617,51 @@ fn should_hide_the_outer_self_from_items_nested_in_a_method_body() {
   );
   assert_eq!(paths_of(&facts, RefKind::Call), ["Self::make", "(Self)::make"]);
   assert_eq!(paths_of(&facts, RefKind::Instantiation), ["(Self)"]);
+}
+
+#[test]
+fn should_describe_call_and_try_receivers_as_chains_with_declared_heads() {
+  let facts = analyze(
+    "async fn run(graph: &Graph<'_>, budget: &Mutex<Budget>, plain: Plain) {\n  graph.tx().entity_by_key(1)?.unwrap().label();\n  lock(&budget, 3, plain).try_reserve(1);\n  Store::<u8>::open().await.flush();\n  (graph.tx()).find();\n  let local = Mutex::new(Budget);\n  lock(&local).spend();\n}\n",
+  );
+  let declared = |type_text: &str| ReceiverHint::Declared {
+    type_text: type_text.to_owned(),
+    binding: DeclaredBinding::Param,
+  };
+  assert_eq!(
+    receiver_of(&facts, "label"),
+    [&chained(
+      binding("graph", declared("&Graph<'_>")),
+      vec![
+        ChainStep::Method("tx".into()),
+        ChainStep::Method("entity_by_key".into()),
+        ChainStep::Try,
+        ChainStep::Method("unwrap".into()),
+      ]
+    )]
+  );
+  assert_eq!(
+    receiver_of(&facts, "try_reserve"),
+    [&chained(call(&["lock"], vec![Some("&Mutex<Budget>".into()), None, Some("Plain".into())]), vec![])]
+  );
+  assert_eq!(receiver_of(&facts, "flush"), [&chained(call(&["Store", "open"], vec![]), vec![ChainStep::Await])]);
+  assert_eq!(
+    receiver_of(&facts, "find"),
+    [&chained(binding("graph", declared("&Graph<'_>")), vec![ChainStep::Method("tx".into())])]
+  );
+  assert_eq!(receiver_of(&facts, "spend"), [&chained(call(&["lock"], vec![None]), vec![])]);
+}
+
+#[test]
+fn should_keep_expression_receivers_for_closures_generics_nested_items_and_long_chains() {
+  let long = format!("x(){}", ".a()".repeat(9));
+  let facts = analyze(&format!(
+    "fn run<T: Make>(items: Vec<u8>) {{\n  let make = || 1;\n  make().closure();\n  T::new().generic();\n  items[0].indexed();\n  {long}.long();\n  fn nested(s: &S) {{ s.get().inner(); }}\n  let untyped = make();\n  untyped.get().untyped();\n}}\n"
+  ));
+  for method in ["closure", "generic", "indexed", "long", "inner", "untyped"] {
+    let hints = receiver_of(&facts, method);
+    assert!(matches!(hints.as_slice(), [ReceiverHint::Expr(_)]), "{method}: {hints:?}");
+  }
+  let eight = analyze(&format!("fn run() {{ x(){}.last(); }}\n", ".a()".repeat(8)));
+  assert!(matches!(receiver_of(&eight, "last").as_slice(), [ReceiverHint::Chain(chain)] if chain.steps.len() == 8));
 }

@@ -1351,8 +1351,19 @@ references:
       - (self.rows.write())
       - map_err
     receiver:
-      type: expr
-      value: self.rows.write()
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: self
+            hint:
+              type: self_value
+        steps:
+          - type: field
+            value: rows
+          - type: method
+            value: write
     args:
       - type: closure
         value:
@@ -1561,8 +1572,19 @@ references:
       - (self.rows.read())
       - ok
     receiver:
-      type: expr
-      value: self.rows.read()
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: self
+            hint:
+              type: self_value
+        steps:
+          - type: field
+            value: rows
+          - type: method
+            value: read
     args: []
     span:
       start_byte: 1068
@@ -1577,8 +1599,22 @@ references:
       - (self.rows.read().ok()?)
       - get
     receiver:
-      type: expr
-      value: self.rows.read().ok()?
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: self
+            hint:
+              type: self_value
+        steps:
+          - type: field
+            value: rows
+          - type: method
+            value: read
+          - type: method
+            value: ok
+          - type: try
     args:
       - type: path
         value:
@@ -1596,8 +1632,24 @@ references:
       - (self.rows.read().ok()?.get(id))
       - cloned
     receiver:
-      type: expr
-      value: self.rows.read().ok()?.get(id)
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: self
+            hint:
+              type: self_value
+        steps:
+          - type: field
+            value: rows
+          - type: method
+            value: read
+          - type: method
+            value: ok
+          - type: try
+          - type: method
+            value: get
     args: []
     span:
       start_byte: 1082
@@ -1734,8 +1786,19 @@ references:
       - (self.rows.write())
       - map_err
     receiver:
-      type: expr
-      value: self.rows.write()
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: self
+            hint:
+              type: self_value
+        steps:
+          - type: field
+            value: rows
+          - type: method
+            value: write
     args:
       - type: closure
         value:
@@ -1902,8 +1965,19 @@ references:
       - (self.rows.read())
       - ok
     receiver:
-      type: expr
-      value: self.rows.read()
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: self
+            hint:
+              type: self_value
+        steps:
+          - type: field
+            value: rows
+          - type: method
+            value: read
     args: []
     span:
       start_byte: 1510
@@ -1918,8 +1992,22 @@ references:
       - (self.rows.read().ok()?)
       - iter
     receiver:
-      type: expr
-      value: self.rows.read().ok()?
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: self
+            hint:
+              type: self_value
+        steps:
+          - type: field
+            value: rows
+          - type: method
+            value: read
+          - type: method
+            value: ok
+          - type: try
     args: []
     span:
       start_byte: 1516
@@ -1934,8 +2022,24 @@ references:
       - (self.rows.read().ok()?.iter())
       - find
     receiver:
-      type: expr
-      value: self.rows.read().ok()?.iter()
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: self
+            hint:
+              type: self_value
+        steps:
+          - type: field
+            value: rows
+          - type: method
+            value: read
+          - type: method
+            value: ok
+          - type: try
+          - type: method
+            value: iter
     args:
       - type: closure
         value:
@@ -1970,8 +2074,26 @@ references:
       - (self.rows.read().ok()?.iter().find(|invoice| invoice.id == id))
       - cloned
     receiver:
-      type: expr
-      value: self.rows.read().ok()?.iter().find(|invoice| invoice.id == id)
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: self
+            hint:
+              type: self_value
+        steps:
+          - type: field
+            value: rows
+          - type: method
+            value: read
+          - type: method
+            value: ok
+          - type: try
+          - type: method
+            value: iter
+          - type: method
+            value: find
     args: []
     span:
       start_byte: 1556
@@ -1984,7 +2106,7 @@ module_decls: []
 diagnostics: []
 analyzer:
   name: atlas-lang-rust
-  version: 2
+  version: 3
 impls:
   - self_type:
       segments:

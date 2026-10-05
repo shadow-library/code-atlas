@@ -7,7 +7,7 @@ use atlas_detect::DetectorRegistry;
 use atlas_lang_rust::RustAnalyzer;
 use atlas_lang_ts::TsAnalyzer;
 
-const PINNED_INPUTS: &str = "bf52e87c97c8e82b55ae5b56e1b258d5e3dc194e47e36dd23ee45d409ad0c774";
+const PINNED_INPUTS: &str = "850fccac8f7d12dd8499e52b32ae3d4d18d6fde744e408b56e056c8b62fd26e9";
 const PINNED: [(&str, u32, &str); 11] = [
   ("auth-schemes", 1, "8fa6fd38da5eabf63f5d072ca900a04da55fdca21bef5a27c4d4b042a296afcc"),
   ("config-env", 2, "8edc86c8db3c8b3cf447f7e2b06648da0a9b94e725737ec8c31f75e1de6fd25a"),

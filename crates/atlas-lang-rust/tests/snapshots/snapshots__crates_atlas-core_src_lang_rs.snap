@@ -1809,8 +1809,20 @@ references:
       - (extension.to_ascii_lowercase())
       - as_str
     receiver:
-      type: expr
-      value: extension.to_ascii_lowercase()
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: extension
+            hint:
+              type: declared
+              value:
+                type_text: "&str"
+                binding: param
+        steps:
+          - type: method
+            value: to_ascii_lowercase
     args: []
     span:
       start_byte: 896
@@ -2029,8 +2041,20 @@ references:
       - "(path.rsplit(['/', '\\\\']))"
       - next
     receiver:
-      type: expr
-      value: "path.rsplit(['/', '\\\\'])"
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: path
+            hint:
+              type: declared
+              value:
+                type_text: "&str"
+                binding: param
+        steps:
+          - type: method
+            value: rsplit
     args: []
     span:
       start_byte: 1233
@@ -2045,8 +2069,22 @@ references:
       - "(path.rsplit(['/', '\\\\']).next())"
       - unwrap_or
     receiver:
-      type: expr
-      value: "path.rsplit(['/', '\\\\']).next()"
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: path
+            hint:
+              type: declared
+              value:
+                type_text: "&str"
+                binding: param
+        steps:
+          - type: method
+            value: rsplit
+          - type: method
+            value: next
     args:
       - type: path
         value:
@@ -2174,8 +2212,18 @@ references:
       - (DECLARATION_SUFFIXES.iter())
       - any
     receiver:
-      type: expr
-      value: DECLARATION_SUFFIXES.iter()
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: DECLARATION_SUFFIXES
+            hint:
+              type: identifier
+              value: DECLARATION_SUFFIXES
+        steps:
+          - type: method
+            value: iter
     args:
       - type: closure
         value:
@@ -3908,8 +3956,17 @@ references:
       - "(serde_json::to_string(&language))"
       - unwrap
     receiver:
-      type: expr
-      value: "serde_json::to_string(&language)"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - serde_json
+              - to_string
+            args:
+              - ~
+        steps: []
     args: []
     span:
       start_byte: 4835
@@ -4113,7 +4170,7 @@ module_decls:
 diagnostics: []
 analyzer:
   name: atlas-lang-rust
-  version: 2
+  version: 3
 impls:
   - self_type:
       segments:

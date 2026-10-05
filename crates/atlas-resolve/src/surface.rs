@@ -8,7 +8,7 @@ use atlas_core::{
 };
 
 use crate::error::ResolveError;
-use crate::typetext::{ValueType, rust_declared_type, rust_generic_bounds, rust_return_type, ts_return_type, ts_type_params, ts_value_type};
+use crate::typetext::{ValueType, rust_alias_target, rust_declared_type, rust_generic_bounds, rust_return_type, ts_return_type, ts_type_params, ts_value_type};
 
 const LOCAL_ITEM_KEYWORDS: [&str; 9] = ["struct", "enum", "union", "trait", "type", "mod", "fn", "impl", "macro_rules!"];
 const MIN_ITEM_BLOCK_BYTES: usize = "{mod m{}}".len();
@@ -30,6 +30,7 @@ pub(crate) struct SymSurface {
   pub params: Vec<(String, Option<String>)>,
   pub value_type: Option<ValueType>,
   pub return_type: Option<String>,
+  pub alias_target: Option<String>,
   pub generics: Vec<(String, Vec<String>)>,
   pub exported_macro: bool,
   pub derives: Vec<String>,
@@ -277,6 +278,7 @@ impl FileSurface {
           &symbol.params,
           &symbol.value_type,
           &symbol.return_type,
+          &symbol.alias_target,
           &symbol.generics,
         ),
         (symbol.exported_macro, &symbol.derives, symbol.has_body, parent),
@@ -482,6 +484,9 @@ fn symbol_surface(family: LanguageFamily, symbol: &atlas_core::SymbolFact, disam
     params: symbol.params.iter().map(|param| (param.name.clone(), param.type_text.clone())).collect(),
     value_type,
     return_type,
+    alias_target: (family == LanguageFamily::Rust && symbol.kind == EntityKind::TypeAlias && symbol.impl_of.is_none())
+      .then(|| rust_alias_target(signature))
+      .flatten(),
     generics,
     exported_macro: symbol.attributes.iter().any(|attribute| attribute.is("macro_export")),
     derives: symbol

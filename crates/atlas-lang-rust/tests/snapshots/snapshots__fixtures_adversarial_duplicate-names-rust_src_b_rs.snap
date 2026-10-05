@@ -104,8 +104,20 @@ references:
       - (input.trim())
       - parse
     receiver:
-      type: expr
-      value: input.trim()
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: input
+            hint:
+              type: declared
+              value:
+                type_text: "&str"
+                binding: param
+        steps:
+          - type: method
+            value: trim
     args: []
     span:
       start_byte: 58
@@ -120,8 +132,22 @@ references:
       - (input.trim().parse())
       - ok
     receiver:
-      type: expr
-      value: input.trim().parse()
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: input
+            hint:
+              type: declared
+              value:
+                type_text: "&str"
+                binding: param
+        steps:
+          - type: method
+            value: trim
+          - type: method
+            value: parse
     args: []
     span:
       start_byte: 66
@@ -134,4 +160,4 @@ module_decls: []
 diagnostics: []
 analyzer:
   name: atlas-lang-rust
-  version: 2
+  version: 3

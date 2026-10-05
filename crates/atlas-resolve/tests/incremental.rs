@@ -325,3 +325,110 @@ fn should_list_the_package_and_its_dependents_for_added_and_removed_files() {
   let affected = project.table.affected_files(&[removed], &relocations);
   assert!(affected.contains(&key("app", "src/a.ts")), "{affected:?}");
 }
+
+const CHAIN_MODEL: &str = "pub struct Table;\n\nimpl Table {\n  pub fn remove_file(&self) {}\n}\n\npub struct Other;\n\nimpl Other {\n  pub fn remove_file(&self) {}\n}\n\npub struct State {\n  pub table: Table,\n}\n";
+const CHAIN_API: &str = "use crate::model::State;\n\npub type ApiResult<T> = Result<T, ()>;\n\npub struct Api {\n  pub state: State,\n}\n\nimpl Api {\n  pub fn state(&self) -> &State {\n    &self.state\n  }\n}\n\npub fn open() -> ApiResult<Api> {\n  todo!()\n}\n";
+const CHAIN_CALLER: &str =
+  "use crate::api::{open, Api};\n\npub fn go(api: &Api) {\n  api.state().table.remove_file();\n  open().unwrap().state().table.remove_file();\n  open().map(|api| api.state);\n}\n";
+
+struct Live {
+  synthetic: common::Synthetic,
+  corpus: Corpus,
+}
+
+impl Live {
+  fn new(files: &[(&str, &str)]) -> Self {
+    let synthetic = common::single("demo", files);
+    let corpus = synthetic.project.repos.iter().flat_map(|source| source.files.iter().cloned()).collect();
+    Self { synthetic, corpus }
+  }
+
+  fn edit(&mut self, path: &str, source: &str) {
+    let project = &mut self.synthetic.project;
+    let facts = common::analyze(&common::repo("demo"), path, source);
+    let entry = self.corpus.iter_mut().find(|(existing, _)| existing.file.path.as_str() == path).unwrap();
+    let delta = project.table.upsert_file(&facts, &entry.1).unwrap();
+    entry.0 = facts;
+    let relocations = project.table.refresh();
+    let mut stale = project.table.affected_files(std::slice::from_ref(&delta), &relocations);
+    stale.insert(key("demo", path));
+    stale.extend(relocations.iter().map(|relocation| (relocation.repo.clone(), relocation.path.clone())));
+    for (facts, _) in &self.corpus {
+      if stale.contains(&(facts.file.repo.clone(), facts.file.path.clone())) {
+        let resolved = resolve_file(facts, &project.table).unwrap();
+        project.results.insert((facts.file.repo.to_string(), facts.file.path.to_string()), resolved);
+      }
+    }
+  }
+
+  fn assert_matches_scratch(&self, label: &str) {
+    let mut table = ProjectSymbolTable::new();
+    let root = self.synthetic.dirs[0].path();
+    table.set_repo_packages(common::repo("demo"), graph("demo", root));
+    for (facts, context) in &self.corpus {
+      table.upsert_file(facts, context).unwrap();
+    }
+    table.refresh();
+    let expected = resolve_all(&table, &self.corpus);
+    for (key, expected) in &expected {
+      assert_eq!(
+        self.synthetic.project.results.get(key),
+        Some(expected),
+        "{label}: {key:?} differs from a table built from scratch"
+      );
+    }
+  }
+}
+
+#[test]
+fn should_re_resolve_receiver_chains_when_a_declared_type_they_pass_through_changes() {
+  let manifest = "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n";
+  let mut live = Live::new(&[
+    ("Cargo.toml", manifest),
+    ("src/lib.rs", "pub mod api;\npub mod caller;\npub mod model;\npub mod other;\n"),
+    ("src/model.rs", CHAIN_MODEL),
+    ("src/api.rs", CHAIN_API),
+    ("src/caller.rs", CHAIN_CALLER),
+    ("src/other.rs", "pub fn unrelated() {}\n"),
+  ]);
+  let go = common::rust("demo", "demo", &["caller"], &["go"], atlas_core::EntityKind::Function);
+  let table_remove = common::rust("demo", "demo", &["model"], &["Table", "remove_file"], atlas_core::EntityKind::Method);
+  let other_remove = common::rust("demo", "demo", &["model"], &["Other", "remove_file"], atlas_core::EntityKind::Method);
+  let calls_to = |live: &Live, target: atlas_core::EntityId| -> usize {
+    live
+      .synthetic
+      .project
+      .result("demo", "src/caller.rs")
+      .edges
+      .iter()
+      .filter(|edge| edge.from == go && edge.to == target)
+      .map(|edge| edge.evidence.len())
+      .sum()
+  };
+  assert_eq!(calls_to(&live, table_remove), 1);
+  let edits: [(&str, &str, String); 9] = [
+    ("change a field type", "src/model.rs", CHAIN_MODEL.replace("pub table: Table", "pub table: Other")),
+    ("rename the field", "src/model.rs", CHAIN_MODEL.replace("pub table: Table", "pub tables: Table")),
+    ("restore the field", "src/model.rs", CHAIN_MODEL.to_owned()),
+    ("change a return type", "src/api.rs", CHAIN_API.replace("-> &State {", "-> Option<&State> {")),
+    ("make the method async", "src/api.rs", CHAIN_API.replace("pub fn state", "pub async fn state")),
+    ("change the alias target", "src/api.rs", CHAIN_API.replace("Result<T, ()>", "Option<Vec<T>>")),
+    ("restore the api", "src/api.rs", CHAIN_API.to_owned()),
+    ("delete the struct", "src/model.rs", CHAIN_MODEL.replace("pub struct State {\n  pub table: Table,\n}\n", "")),
+    (
+      "move the struct to another module",
+      "src/other.rs",
+      "use crate::model::Table;\n\npub fn unrelated() {}\n\npub struct State {\n  pub table: Table,\n}\n".to_owned(),
+    ),
+  ];
+  for (label, path, source) in &edits {
+    live.edit(path, source);
+    live.assert_matches_scratch(label);
+    if *label == "change a field type" {
+      assert_eq!((calls_to(&live, table_remove), calls_to(&live, other_remove)), (0, 1), "{label}");
+    }
+  }
+  live.edit("src/api.rs", &CHAIN_API.replace("crate::model::State", "crate::other::State"));
+  live.assert_matches_scratch("import the moved struct");
+  assert_eq!(calls_to(&live, table_remove), 1);
+}

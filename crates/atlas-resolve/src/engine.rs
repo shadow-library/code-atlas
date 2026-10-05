@@ -5,6 +5,7 @@ use std::rc::Rc;
 use atlas_core::{EntityKind, LanguageFamily, RUST_TEST_MODULES, RepoName, RustTarget, is_test_path};
 
 use crate::layout::{DependencyUse, PackageKey};
+use crate::rust_chain::{Cursor, SelfType};
 use crate::surface::FileSurface;
 use crate::table::{FileIdx, ModuleId, ProjectSymbolTable, Reachability, SymRef};
 
@@ -19,6 +20,9 @@ pub(crate) const MACRO_TOKEN_SCAN_CONFIDENCE: f32 = 0.6;
 pub(crate) const PARAM_TYPE_CONFIDENCE: f32 = 0.7;
 pub(crate) const FN_LOCAL_ITEM_CONFIDENCE: f32 = 0.5;
 pub(crate) const FIELD_NAME_CONFIDENCE: f32 = 0.5;
+pub(crate) const UNWRAP_CONFIDENCE: f32 = 0.8;
+pub(crate) const DEREF_GUARD_CONFIDENCE: f32 = 0.8;
+pub(crate) const CONSTRUCTOR_CONFIDENCE: f32 = 0.9;
 
 const COMMON_RUST_METHODS: [&str; 98] = [
   "iter",
@@ -197,6 +201,9 @@ pub(crate) const RULE_PARAM_TYPE: &str = "param-type-recovery";
 pub(crate) const RULE_FN_LOCAL_ITEM: &str = "fn-local-item-possible";
 pub(crate) const RULE_OVERRIDE_DISPATCH: &str = "override-dispatch-candidate";
 pub(crate) const RULE_FIELD_NAME: &str = "field-name-only";
+pub(crate) const RULE_UNWRAP_OPTION: &str = "unwrap:Option";
+pub(crate) const RULE_UNWRAP_RESULT: &str = "unwrap:Result";
+pub(crate) const RULE_CONSTRUCTOR: &str = "constructor-signature";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum Found {
@@ -391,6 +398,7 @@ pub(crate) struct Resolver<'t> {
   pub(crate) self_types: RefCell<HashMap<SymRef, Option<Found>>>,
   pub(crate) impl_targets: RefCell<HashMap<(FileIdx, u32), ImplTargets>>,
   pub(crate) module_lookups: RefCell<HashMap<String, Lookup>>,
+  pub(crate) return_cursors: RefCell<HashMap<(SymRef, SelfType), Cursor>>,
   lookups: RefCell<BTreeSet<String>>,
 }
 
@@ -413,6 +421,7 @@ impl<'t> Resolver<'t> {
       self_types: RefCell::new(HashMap::new()),
       impl_targets: RefCell::new(HashMap::new()),
       module_lookups: RefCell::new(HashMap::new()),
+      return_cursors: RefCell::new(HashMap::new()),
       lookups: RefCell::new(BTreeSet::new()),
     }
   }

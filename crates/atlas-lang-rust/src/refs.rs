@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use atlas_core::{ArgSummary, DeclaredBinding, LocalSymbolId, ReceiverHint, RefKind, RefOrigin, ReferenceFact};
+use atlas_core::{ArgSummary, ChainHead, ChainStep, DeclaredBinding, LocalSymbolId, ReceiverChain, ReceiverHint, RefKind, RefOrigin, ReferenceFact};
 use tree_sitter::Node;
 
 use crate::extract::{Extractor, generic_names};
@@ -16,6 +16,7 @@ const MAX_PATH_WALK: usize = 64;
 const MAX_SCAN_TOKENS: usize = 4_096;
 const MAX_SCAN_DEPTH: u32 = 8;
 const MAX_RECEIVER_TOKENS: usize = 32;
+const MAX_CHAIN_STEPS: usize = 8;
 const DECLARATION_KEYWORDS: [&str; 6] = ["impl", "trait", "mod", "type", "macro_rules", "dyn"];
 const CLOSURE_TRAITS: [&str; 3] = ["Fn", "FnMut", "FnOnce"];
 const PATTERN_FOLLOWERS: [&str; 4] = ["=>", "=", "in", "|"];
@@ -151,16 +152,22 @@ impl<'t> Cx<'t> {
   }
 }
 
+#[derive(Clone, Default)]
+struct Local {
+  hint: Option<ReceiverHint>,
+  declared: Option<(String, DeclaredBinding)>,
+}
+
 #[derive(Default)]
 pub(crate) struct Bindings {
   frames: Vec<Vec<String>>,
-  scopes: HashMap<String, Vec<Option<ReceiverHint>>>,
+  scopes: HashMap<String, Vec<Local>>,
 }
 
 impl Bindings {
   pub(crate) fn push(&mut self, names: Vec<String>) {
     for name in &names {
-      self.scopes.entry(name.clone()).or_default().push(None);
+      self.scopes.entry(name.clone()).or_default().push(Local::default());
     }
     self.frames.push(names);
   }
@@ -174,17 +181,29 @@ impl Bindings {
   }
 
   fn bind(&mut self, name: &str, hint: Option<ReceiverHint>) {
+    self.bind_local(name, Local { hint, declared: None });
+  }
+
+  fn bind_local(&mut self, name: &str, local: Local) {
     let Some(frame) = self.frames.last_mut() else { return };
     frame.push(name.to_owned());
-    self.scopes.entry(name.to_owned()).or_default().push(hint);
+    self.scopes.entry(name.to_owned()).or_default().push(local);
   }
 
   fn contains(&self, name: &str) -> bool {
     self.scopes.get(name).is_some_and(|scope| !scope.is_empty())
   }
 
+  fn local(&self, name: &str) -> Option<&Local> {
+    self.scopes.get(name)?.last()
+  }
+
   fn hint_of(&self, name: &str) -> Option<&ReceiverHint> {
-    self.scopes.get(name)?.last()?.as_ref()
+    self.local(name)?.hint.as_ref()
+  }
+
+  fn declared_of(&self, name: &str) -> Option<&(String, DeclaredBinding)> {
+    self.local(name)?.declared.as_ref()
   }
 }
 
@@ -472,7 +491,9 @@ impl Extractor<'_> {
     self.bind_pattern(cx, pattern);
     if let Some((name, declared)) = declared.and_then(|declared| typed_binding(cx.doc, pattern, declared, &self.local_types)) {
       let hint = self.declared_hint(cx.doc, declared, binding);
-      self.locals.bind(name, hint);
+      let text = signature_text(cx.doc.text(declared));
+      let declared = (self.nested_items == 0 && !text.ends_with('…')).then_some((text, binding));
+      self.locals.bind_local(name, Local { hint, declared });
     }
   }
 
@@ -685,11 +706,113 @@ impl Extractor<'_> {
       }
       None => {
         let text = short_text(cx.doc.text(receiver));
-        (vec![format!("({text})")], ReceiverHint::Expr(text))
+        let hint = match self.chain_receiver(cx.doc, receiver) {
+          Some(chain) => ReceiverHint::Chain(Box::new(chain)),
+          None => ReceiverHint::Expr(text.clone()),
+        };
+        (vec![format!("({text})")], hint)
       }
     };
     path.push(name.to_owned());
     self.push_ref(cx, RefKind::MethodCall, path, Some(hint), args, method);
+  }
+
+  fn chain_receiver(&self, doc: Doc<'_>, receiver: Node<'_>) -> Option<ReceiverChain> {
+    if self.nested_items > 0 {
+      return None;
+    }
+    let mut steps = Vec::new();
+    let mut current = receiver;
+    let head = loop {
+      let step = match current.kind() {
+        "field_expression" => {
+          let field = doc.identifier(current.child_by_field_name("field")?);
+          current = current.child_by_field_name("value")?;
+          ChainStep::Field(field.to_owned())
+        }
+        "call_expression" => {
+          let function = callee(current)?;
+          if function.kind() != "field_expression" {
+            break self.call_head(doc, function, current.child_by_field_name("arguments"))?;
+          }
+          let method = doc.identifier(function.child_by_field_name("field")?);
+          current = function.child_by_field_name("value")?;
+          ChainStep::Method(method.to_owned())
+        }
+        "try_expression" => {
+          current = first_expression(current)?;
+          ChainStep::Try
+        }
+        "await_expression" => {
+          current = first_expression(current)?;
+          ChainStep::Await
+        }
+        "parenthesized_expression" => {
+          current = first_expression(current)?;
+          continue;
+        }
+        "self" => {
+          break ChainHead::Binding {
+            name: "self".to_owned(),
+            hint: ReceiverHint::SelfValue,
+          };
+        }
+        "identifier" if !doc.identifier(current).is_empty() => {
+          let name = doc.identifier(current);
+          let hint = self.chain_head_hint(name);
+          if matches!(hint, ReceiverHint::Expr(_)) {
+            return None;
+          }
+          break ChainHead::Binding { name: name.to_owned(), hint };
+        }
+        _ => return None,
+      };
+      if matches!(&step, ChainStep::Field(name) | ChainStep::Method(name) if name.is_empty()) || steps.len() == MAX_CHAIN_STEPS {
+        return None;
+      }
+      steps.push(step);
+    };
+    steps.reverse();
+    Some(ReceiverChain { head, steps })
+  }
+
+  fn chain_head_hint(&self, name: &str) -> ReceiverHint {
+    match self.locals.declared_of(name) {
+      Some((type_text, binding)) => ReceiverHint::Declared {
+        type_text: type_text.clone(),
+        binding: *binding,
+      },
+      None => self.head_hint(name),
+    }
+  }
+
+  fn call_head(&self, doc: Doc<'_>, function: Node<'_>, arguments: Option<Node<'_>>) -> Option<ChainHead> {
+    if !matches!(function.kind(), "identifier" | "scoped_identifier") {
+      return None;
+    }
+    let path = path_segments(doc, function)?;
+    let head = path.first()?;
+    if (path.len() == 1 && self.locals.contains(head)) || self.generics.contains(head) {
+      return None;
+    }
+    let args = arguments
+      .map(expression_children)
+      .unwrap_or_default()
+      .into_iter()
+      .map(|argument| self.argument_type(doc, argument))
+      .collect();
+    Some(ChainHead::Call { path, args })
+  }
+
+  fn argument_type(&self, doc: Doc<'_>, argument: Node<'_>) -> Option<String> {
+    let value = match argument.kind() {
+      "reference_expression" => argument.child_by_field_name("value")?,
+      _ => argument,
+    };
+    if value.kind() != "identifier" {
+      return None;
+    }
+    self.locals.declared_of(doc.identifier(value)).map(|(text, _)| text.clone())
   }
 
   fn struct_literal<'t>(&mut self, cx: Cx<'t>, node: Node<'t>) {
@@ -946,6 +1069,18 @@ fn receiver_tokens(doc: Doc<'_>, before: &[Node<'_>]) -> Vec<String> {
   }
   chain.reverse();
   chain
+}
+
+fn callee(call: Node<'_>) -> Option<Node<'_>> {
+  let function = call.child_by_field_name("function")?;
+  match function.kind() {
+    "generic_function" => function.child_by_field_name("function"),
+    _ => Some(function),
+  }
+}
+
+fn first_expression(node: Node<'_>) -> Option<Node<'_>> {
+  expression_children(node).into_iter().next()
 }
 
 fn plain_binding<'t>(doc: Doc<'t>, pattern: Node<'_>) -> Option<&'t str> {

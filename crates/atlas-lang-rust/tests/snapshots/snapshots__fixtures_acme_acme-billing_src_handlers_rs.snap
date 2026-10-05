@@ -1011,8 +1011,22 @@ references:
       - (state.store.find(&id))
       - map
     receiver:
-      type: expr
-      value: state.store.find(&id)
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: state
+            hint:
+              type: declared
+              value:
+                type_text: AppState
+                binding: param
+        steps:
+          - type: field
+            value: store
+          - type: method
+            value: find
     args:
       - type: path
         value:
@@ -1043,8 +1057,24 @@ references:
       - (state.store.find(&id).map(Json))
       - ok_or
     receiver:
-      type: expr
-      value: state.store.find(&id).map(Json)
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: state
+            hint:
+              type: declared
+              value:
+                type_text: AppState
+                binding: param
+        steps:
+          - type: field
+            value: store
+          - type: method
+            value: find
+          - type: method
+            value: map
     args:
       - type: call
         value:
@@ -1083,4 +1113,4 @@ module_decls: []
 diagnostics: []
 analyzer:
   name: atlas-lang-rust
-  version: 2
+  version: 3

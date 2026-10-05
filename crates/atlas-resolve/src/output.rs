@@ -12,7 +12,7 @@ use crate::table::{FileIdx, LookupSource, ProjectSymbolTable, Reachability, SymR
 use crate::ts::{TsNs, specifier_display};
 
 pub const RESOLVER_NAME: &str = "atlas-resolve";
-pub const RESOLVER_VERSION: u32 = 5;
+pub const RESOLVER_VERSION: u32 = 6;
 const PROTOTYPE: &str = "prototype";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -166,6 +166,17 @@ pub fn resolve_path_in_file(file: &FileFacts, path: &[String], from: Option<Loca
   };
   table.record_lookups(index, resolver.take_lookups(), LookupSource::Detector);
   Ok(resolution)
+}
+
+fn display_receiver(reference: &ReferenceFact) -> Option<ReceiverHint> {
+  match &reference.receiver {
+    Some(ReceiverHint::Chain(_)) => reference
+      .path
+      .first()
+      .and_then(|head| head.strip_prefix('(')?.strip_suffix(')'))
+      .map(|text| ReceiverHint::Expr(text.to_owned())),
+    other => other.clone(),
+  }
 }
 
 fn cap_hit(hit: Hit) -> Hit {
@@ -449,7 +460,7 @@ impl<'r, 't> Emitter<'r, 't> {
       from,
       path: reference.path.clone(),
       kind: reference.kind,
-      receiver: reference.receiver.clone(),
+      receiver: display_receiver(reference),
       reason,
       repo: self.resolver.surface.repo.clone(),
       file: self.resolver.surface.path.clone(),

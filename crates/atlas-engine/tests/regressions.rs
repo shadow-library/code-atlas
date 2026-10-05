@@ -523,6 +523,81 @@ fn should_match_a_full_index_after_targeted_edit_kinds() {
   assert!(failures.is_empty(), "{}", failures.join("\n=====\n"));
 }
 
+const LEDGER: &str = "pub struct Entries;\n\nimpl Entries {\n  pub fn remove_entry(&self) {}\n}\n\npub struct Archive;\n\nimpl Archive {\n  pub fn remove_entry(&self) {}\n}\n\npub struct Book {\n  pub entries: Entries,\n}\n";
+const LEDGER_API: &str = "use crate::ledger::Book;\n\npub type LedgerResult<T> = Result<T, ()>;\n\npub struct Ledger {\n  book: Book,\n}\n\nimpl Ledger {\n  pub fn book(&self) -> &Book {\n    &self.book\n  }\n}\n\npub fn open_ledger() -> LedgerResult<Ledger> {\n  todo!()\n}\n";
+const LEDGER_USE: &str = "use crate::ledger_api::{open_ledger, Ledger};\n\npub fn settle(ledger: &Ledger) {\n  ledger.book().entries.remove_entry();\n  open_ledger().unwrap().book().entries.remove_entry();\n}\n";
+
+#[test]
+fn should_match_a_full_index_after_edits_to_types_that_receiver_chains_pass_through() {
+  let scratch = tempfile::tempdir().unwrap();
+  let tree = scratch.path().join("tree");
+  let project = acme_copy(&tree);
+  let billing = tree.join("acme-billing/src");
+  fs::write(billing.join("ledger.rs"), LEDGER).unwrap();
+  fs::write(billing.join("ledger_api.rs"), LEDGER_API).unwrap();
+  fs::write(billing.join("ledger_use.rs"), LEDGER_USE).unwrap();
+  edit(
+    "acme-billing/src/lib.rs",
+    "pub mod store;\n",
+    "pub mod store;\npub mod ledger;\npub mod ledger_api;\npub mod ledger_use;\n",
+  )(&tree);
+  let engine = open(&project, &scratch.path().join("home"));
+  fresh(&engine);
+  let calls_into = |engine: &Engine, owner: &str| -> usize {
+    let filter = EdgeFilter {
+      kinds: vec![EdgeKind::Calls],
+      ..EdgeFilter::default()
+    };
+    named(engine, "remove_entry")
+      .into_iter()
+      .filter(|entity| entity.key.to_string().contains(&format!("::{owner}::remove_entry")))
+      .map(|entity| engine.store().read(|tx| tx.edges_to(entity.id, &filter)).unwrap().len())
+      .sum()
+  };
+  assert_eq!((calls_into(&engine, "Entries"), calls_into(&engine, "Archive")), (1, 0));
+  let cases: Vec<(&str, Edit)> = vec![
+    ("change a field type", edit("acme-billing/src/ledger.rs", "pub entries: Entries", "pub entries: Archive")),
+    ("rename the field", edit("acme-billing/src/ledger.rs", "pub entries: Archive", "pub records: Archive")),
+    ("restore the field", edit("acme-billing/src/ledger.rs", "pub records: Archive", "pub entries: Entries")),
+    ("change a return type", edit("acme-billing/src/ledger_api.rs", "-> &Book {", "-> Option<&Book> {")),
+    ("restore the return type", edit("acme-billing/src/ledger_api.rs", "-> Option<&Book> {", "-> &Book {")),
+    ("make the method async", edit("acme-billing/src/ledger_api.rs", "pub fn book", "pub async fn book")),
+    ("change the alias target", edit("acme-billing/src/ledger_api.rs", "Result<T, ()>", "Option<Vec<T>>")),
+    (
+      "delete the struct",
+      edit("acme-billing/src/ledger.rs", "pub struct Book {\n  pub entries: Entries,\n}\n", ""),
+    ),
+    (
+      "move the struct to another module",
+      Box::new(|root: &Path| {
+        fs::write(
+          root.join("acme-billing/src/ledger_book.rs"),
+          "use crate::ledger::Entries;\n\npub struct Book {\n  pub entries: Entries,\n}\n",
+        )
+        .unwrap();
+        edit("acme-billing/src/lib.rs", "pub mod ledger;\n", "pub mod ledger;\npub mod ledger_book;\n")(root);
+        fs::write(
+          root.join("acme-billing/src/ledger_api.rs"),
+          LEDGER_API.replace("crate::ledger::Book", "crate::ledger_book::Book"),
+        )
+        .unwrap();
+      }),
+    ),
+  ];
+  let mut failures = Vec::new();
+  for (index, (label, apply)) in cases.iter().enumerate() {
+    apply(&tree);
+    if fresh(&engine).header().run.is_none() {
+      failures.push(format!("{label}: NO RUN TRIGGERED"));
+    }
+    if let Some(diff) = mismatch(&project, &engine, scratch.path(), &format!("chain{index}")) {
+      failures.push(format!("{label}:\n{diff}"));
+    }
+  }
+  assert!(failures.is_empty(), "{}", failures.join("\n=====\n"));
+  assert_eq!((calls_into(&engine, "Entries"), calls_into(&engine, "Archive")), (1, 0));
+}
+
 #[test]
 fn should_index_a_symlinked_repo_root_like_its_target() {
   let scratch = tempfile::tempdir().unwrap();

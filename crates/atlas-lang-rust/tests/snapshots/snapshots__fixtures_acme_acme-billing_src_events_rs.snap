@@ -794,8 +794,20 @@ references:
       - (store.insert(invoice))
       - is_ok
     receiver:
-      type: expr
-      value: store.insert(invoice)
+      type: chain
+      value:
+        head:
+          type: binding
+          value:
+            name: store
+            hint:
+              type: declared
+              value:
+                type_text: "&dyn InvoiceStore"
+                binding: param
+        steps:
+          - type: method
+            value: insert
     args: []
     span:
       start_byte: 937
@@ -808,4 +820,4 @@ module_decls: []
 diagnostics: []
 analyzer:
   name: atlas-lang-rust
-  version: 2
+  version: 3

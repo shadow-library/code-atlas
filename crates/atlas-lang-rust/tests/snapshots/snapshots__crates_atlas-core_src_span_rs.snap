@@ -1998,8 +1998,17 @@ references:
       - "(u32::try_from(start_byte))"
       - ok
     receiver:
-      type: expr
-      value: "u32::try_from(start_byte)"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - u32
+              - try_from
+            args:
+              - usize
+        steps: []
     args: []
     span:
       start_byte: 1087
@@ -2031,8 +2040,17 @@ references:
       - "(u32::try_from(end_byte))"
       - ok
     receiver:
-      type: expr
-      value: "u32::try_from(end_byte)"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - u32
+              - try_from
+            args:
+              - usize
+        steps: []
     args: []
     span:
       start_byte: 1134
@@ -2281,8 +2299,17 @@ references:
       - "(u32::try_from(newlines))"
       - unwrap_or
     receiver:
-      type: expr
-      value: "u32::try_from(newlines)"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - u32
+              - try_from
+            args:
+              - ~
+        steps: []
     args:
       - type: path
         value:
@@ -2315,8 +2342,19 @@ references:
       - "(u32::try_from(newlines).unwrap_or(u32::MAX))"
       - saturating_add
     receiver:
-      type: expr
-      value: "u32::try_from(newlines).unwrap_or(u32::MAX)"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - u32
+              - try_from
+            args:
+              - ~
+        steps:
+          - type: method
+            value: unwrap_or
     args:
       - type: number
         value: "1"
@@ -2349,8 +2387,17 @@ references:
       - "(u32::try_from(byte - line_start))"
       - unwrap_or
     receiver:
-      type: expr
-      value: "u32::try_from(byte - line_start)"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - u32
+              - try_from
+            args:
+              - ~
+        steps: []
     args:
       - type: path
         value:
@@ -2887,8 +2934,17 @@ references:
       - "(usize::try_from(self.start_byte))"
       - ok
     receiver:
-      type: expr
-      value: "usize::try_from(self.start_byte)"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - usize
+              - try_from
+            args:
+              - ~
+        steps: []
     args: []
     span:
       start_byte: 2683
@@ -2936,8 +2992,17 @@ references:
       - "(usize::try_from(self.end_byte))"
       - ok
     receiver:
-      type: expr
-      value: "usize::try_from(self.end_byte)"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - usize
+              - try_from
+            args:
+              - ~
+        steps: []
     args: []
     span:
       start_byte: 2721
@@ -3029,8 +3094,19 @@ references:
       - "(Span::of_text(source, start, start + \"bé\".len()))"
       - unwrap
     receiver:
-      type: expr
-      value: "Span::of_text(source, start, start + \"bé\".len())"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - Span
+              - of_text
+            args:
+              - ~
+              - ~
+              - ~
+        steps: []
     args: []
     span:
       start_byte: 3008
@@ -3589,8 +3665,19 @@ references:
       - "(Span::of_text(source, 0, source.len()))"
       - unwrap
     receiver:
-      type: expr
-      value: "Span::of_text(source, 0, source.len())"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - Span
+              - of_text
+            args:
+              - ~
+              - ~
+              - ~
+        steps: []
     args: []
     span:
       start_byte: 3935
@@ -3746,8 +3833,19 @@ references:
       - "(Span::of_text(source, 5, 5))"
       - unwrap
     receiver:
-      type: expr
-      value: "Span::of_text(source, 5, 5)"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - Span
+              - of_text
+            args:
+              - ~
+              - ~
+              - ~
+        steps: []
     args: []
     span:
       start_byte: 4102
@@ -4001,8 +4099,19 @@ references:
       - "(Span::of_text(\"0123456789\", 1, 8))"
       - unwrap
     receiver:
-      type: expr
-      value: "Span::of_text(\"0123456789\", 1, 8)"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - Span
+              - of_text
+            args:
+              - ~
+              - ~
+              - ~
+        steps: []
     args: []
     span:
       start_byte: 4475
@@ -4037,8 +4146,19 @@ references:
       - "(Span::of_text(\"0123456789\", 2, 5))"
       - unwrap
     receiver:
-      type: expr
-      value: "Span::of_text(\"0123456789\", 2, 5)"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - Span
+              - of_text
+            args:
+              - ~
+              - ~
+              - ~
+        steps: []
     args: []
     span:
       start_byte: 4535
@@ -4317,7 +4437,7 @@ module_decls:
 diagnostics: []
 analyzer:
   name: atlas-lang-rust
-  version: 2
+  version: 3
 impls:
   - self_type:
       segments:

@@ -528,6 +528,31 @@ pub enum ReceiverHint {
   Expr(String),
   TypeHint(Vec<String>),
   Declared { type_text: String, binding: DeclaredBinding },
+  Chain(Box<ReceiverChain>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ReceiverChain {
+  pub head: ChainHead,
+  pub steps: Vec<ChainStep>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ChainHead {
+  Binding { name: String, hint: ReceiverHint },
+  Call { path: Vec<String>, args: Vec<Option<String>> },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ChainStep {
+  Field(String),
+  Method(String),
+  Try,
+  Await,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -877,6 +902,35 @@ mod tests {
       serde_json::to_value(ReceiverHint::TypeHint(strings(&["MemStore"]))).unwrap(),
       serde_json::json!({ "type": "type_hint", "value": ["MemStore"] })
     );
+  }
+
+  #[test]
+  fn should_serialise_receiver_chains_with_call_heads_and_try_steps() {
+    let chain = ReceiverHint::Chain(Box::new(ReceiverChain {
+      head: ChainHead::Call {
+        path: strings(&["lock"]),
+        args: vec![Some("&Mutex<Budget>".into()), None],
+      },
+      steps: vec![ChainStep::Method("tx".into()), ChainStep::Try, ChainStep::Field("inner".into())],
+    }));
+    let json = serde_json::to_value(&chain).unwrap();
+    assert_eq!(
+      json,
+      serde_json::json!({ "type": "chain", "value": {
+        "head": { "type": "call", "value": { "path": ["lock"], "args": ["&Mutex<Budget>", null] } },
+        "steps": [{ "type": "method", "value": "tx" }, { "type": "try" }, { "type": "field", "value": "inner" }]
+      } })
+    );
+    assert_eq!(serde_json::from_value::<ReceiverHint>(json).unwrap(), chain);
+    let binding = ReceiverHint::Chain(Box::new(ReceiverChain {
+      head: ChainHead::Binding {
+        name: "graph".into(),
+        hint: ReceiverHint::SelfValue,
+      },
+      steps: vec![ChainStep::Await],
+    }));
+    let json = serde_json::to_string(&binding).unwrap();
+    assert_eq!(serde_json::from_str::<ReceiverHint>(&json).unwrap(), binding);
   }
 
   #[test]

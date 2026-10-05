@@ -237,7 +237,7 @@ fn is_type_like(kind: Option<&EntityKind>) -> bool {
   )
 }
 
-fn qualified_trait(segment: &str) -> Option<Vec<String>> {
+pub(crate) fn qualified_trait(segment: &str) -> Option<Vec<String>> {
   let inner = segment.strip_prefix('<')?.strip_suffix('>')?;
   let head = inner.split('<').next().unwrap_or(inner);
   let path: Vec<String> = head.split("::").map(|part| part.trim().to_owned()).collect();
@@ -352,7 +352,7 @@ impl Resolver<'_> {
     Vec::new()
   }
 
-  fn symbol_scope(&self, symbol: SymRef) -> Option<RustScope> {
+  pub(crate) fn symbol_scope(&self, symbol: SymRef) -> Option<RustScope> {
     let scope = self.rust_scope(symbol.file, Some(symbol.local))?;
     Some(RustScope::at_module(scope.file, scope.module))
   }
@@ -375,6 +375,12 @@ impl Resolver<'_> {
     let path = &reference.path;
     if path.is_empty() {
       return Outcome::Unresolved(Miss::NotFound);
+    }
+    if reference.kind == RefKind::MethodCall
+      && let (Some(ReceiverHint::Chain(chain)), Some(method)) = (reference.receiver.as_ref(), path.last())
+    {
+      let caller = scope.from.map(|local| SymRef { file: scope.file, local });
+      return self.rust_chain_call(&scope, chain, method, caller);
     }
     if path.iter().any(|segment| is_dynamic_segment(segment)) {
       return Outcome::Unresolved(Miss::Dynamic);
@@ -692,6 +698,7 @@ impl Resolver<'_> {
   }
 
   fn rust_globs<'s>(&'s self, globs: Vec<(RustScope, &'s UseSurface)>, name: &str, ns: Ns, guard: &mut Guard) -> Lookup {
+    let importers: Vec<(FileIdx, ModuleId)> = globs.iter().map(|(scope, _)| (scope.file, scope.module.root())).collect();
     let mut hits = Vec::new();
     let mut external = None;
     let mut generated = false;
@@ -750,10 +757,25 @@ impl Resolver<'_> {
       return Err(Miss::NotFound);
     }
     match (external, generated) {
+      (Some(_), _) if ns == Ns::Type && importers.iter().any(|(file, root)| self.is_extern_prelude_name(*file, root, name)) => Err(Miss::NotFound),
       (Some(package), _) => Ok(Hit::exact(Found::External(package))),
       (None, true) => Err(Miss::MacroGenerated),
       (None, false) => Err(Miss::NotFound),
     }
+  }
+
+  fn is_extern_prelude_name(&self, file: FileIdx, root: &ModuleId, name: &str) -> bool {
+    if self.rust_extern_crate(file, name).is_some() {
+      return true;
+    }
+    self.table.module_entry(root).is_some_and(|entry| {
+      entry.effective_locs().filter(|location| location.suffix.is_empty()).any(|location| {
+        self
+          .table
+          .file(location.file)
+          .is_some_and(|surface| surface.rust.extern_crates.iter().any(|(alias, _)| alias == name))
+      })
+    })
   }
 
   fn rust_std_fallback(&self, owner: SymRef, method: &str) -> Option<String> {
@@ -767,7 +789,7 @@ impl Resolver<'_> {
       .map(|(_, _, package)| (*package).to_owned())
   }
 
-  fn rust_method_or_std(&self, owner: SymRef, name: &str) -> Lookup {
+  pub(crate) fn rust_method_or_std(&self, owner: SymRef, name: &str) -> Lookup {
     match self.rust_method_on_type(owner, name) {
       Err(Miss::NotFound) => {
         if let Some(constant) = self.rust_assoc_const(owner, name) {
@@ -1133,7 +1155,7 @@ impl Resolver<'_> {
     }
   }
 
-  fn rust_method_on_recv(&self, receiver: Recv, method: &str, caller: Option<SymRef>, reach: DispatchReach) -> Outcome {
+  pub(crate) fn rust_method_on_recv(&self, receiver: Recv, method: &str, caller: Option<SymRef>, reach: DispatchReach) -> Outcome {
     self.note(method);
     let carried = receiver.heuristic;
     let wrapper = receiver.wrapper;
@@ -1236,7 +1258,7 @@ impl Resolver<'_> {
       .collect()
   }
 
-  fn rust_self_recv(&self, scope: &RustScope) -> Recv {
+  pub(crate) fn rust_self_recv(&self, scope: &RustScope) -> Recv {
     match self.rust_self_type(scope) {
       Ok(hit) => self.recv_from_type_hit(hit),
       Err(_) => Recv::unknown(),
@@ -1268,7 +1290,7 @@ impl Resolver<'_> {
     })
   }
 
-  fn rust_hint_recv(&self, scope: &RustScope, head: &str, hint: &[String]) -> Recv {
+  pub(crate) fn rust_hint_recv(&self, scope: &RustScope, head: &str, hint: &[String]) -> Recv {
     if !is_deref_wrapper(hint) {
       return self.recv_from_shape(scope, TypeShape::Path(hint.to_vec()), &scope.generics);
     }
@@ -1295,7 +1317,7 @@ impl Resolver<'_> {
     self.recv_from_shape(scope, TypeShape::Bounds(paths), &[]).recovered_from_param()
   }
 
-  fn rust_identifier_recv(&self, scope: &RustScope, name: &str) -> Recv {
+  pub(crate) fn rust_identifier_recv(&self, scope: &RustScope, name: &str) -> Recv {
     let Ok(hit) = self.rust_lookup_name(scope, name, Ns::Value, &mut Guard::default()) else {
       return Recv::unknown();
     };
@@ -1332,7 +1354,7 @@ impl Resolver<'_> {
     }
   }
 
-  fn recv_from_shape(&self, scope: &RustScope, shape: TypeShape, generics: &[(String, Vec<String>)]) -> Recv {
+  pub(crate) fn recv_from_shape(&self, scope: &RustScope, shape: TypeShape, generics: &[(String, Vec<String>)]) -> Recv {
     match shape {
       TypeShape::Path(path) => {
         if let [single] = path.as_slice()

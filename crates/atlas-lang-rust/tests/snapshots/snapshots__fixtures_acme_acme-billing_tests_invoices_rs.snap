@@ -537,8 +537,16 @@ references:
       - "(app_with(Arc::new(InMemoryInvoiceStore::default())))"
       - oneshot
     receiver:
-      type: expr
-      value: "app_with(Arc::new(InMemoryInvoiceStore::default()))"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - app_with
+            args:
+              - ~
+        steps: []
     args:
       - type: other
         value: "Request::builder().uri(\"/invoices/inv_missing\").body(Body::empty()).unwrap()"
@@ -569,8 +577,16 @@ references:
       - "(Request::builder())"
       - uri
     receiver:
-      type: expr
-      value: "Request::builder()"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - Request
+              - builder
+            args: []
+        steps: []
     args:
       - type: str
         value: /invoices/inv_missing
@@ -587,8 +603,18 @@ references:
       - "(Request::builder().uri(\"/invoices/inv_missing\"))"
       - body
     receiver:
-      type: expr
-      value: "Request::builder().uri(\"/invoices/inv_missing\")"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - Request
+              - builder
+            args: []
+        steps:
+          - type: method
+            value: uri
     args:
       - type: call
         value:
@@ -623,8 +649,20 @@ references:
       - "(Request::builder().uri(\"/invoices/inv_missing\").body(Body::empty()))"
       - unwrap
     receiver:
-      type: expr
-      value: "Request::builder().uri(\"/invoices/inv_missing\").body(Body::empty())"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - Request
+              - builder
+            args: []
+        steps:
+          - type: method
+            value: uri
+          - type: method
+            value: body
     args: []
     span:
       start_byte: 644
@@ -639,8 +677,19 @@ references:
       - "(app_with(Arc::new(InMemoryInvoiceStore::default())) .oneshot(Request::builder().uri(\"/invoices/inv_missing\").body(Body::empty()).unwrap()) .await)"
       - unwrap
     receiver:
-      type: expr
-      value: "app_with(Arc::new(InMemoryInvoiceStore::default())) .oneshot(Request::builder().uri(\"/invoices/inv_missing\").body(Body::empty()).unwrap()) .await"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - app_with
+            args:
+              - ~
+        steps:
+          - type: method
+            value: oneshot
+          - type: await
     args: []
     span:
       start_byte: 670
@@ -855,8 +904,16 @@ references:
       - (app_with(store))
       - oneshot
     receiver:
-      type: expr
-      value: app_with(store)
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - app_with
+            args:
+              - ~
+        steps: []
     args:
       - type: other
         value: "Request::builder().uri(\"/invoices/inv_1\").body(Body::empty()).unwrap()"
@@ -887,8 +944,16 @@ references:
       - "(Request::builder())"
       - uri
     receiver:
-      type: expr
-      value: "Request::builder()"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - Request
+              - builder
+            args: []
+        steps: []
     args:
       - type: str
         value: /invoices/inv_1
@@ -905,8 +970,18 @@ references:
       - "(Request::builder().uri(\"/invoices/inv_1\"))"
       - body
     receiver:
-      type: expr
-      value: "Request::builder().uri(\"/invoices/inv_1\")"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - Request
+              - builder
+            args: []
+        steps:
+          - type: method
+            value: uri
     args:
       - type: call
         value:
@@ -941,8 +1016,20 @@ references:
       - "(Request::builder().uri(\"/invoices/inv_1\").body(Body::empty()))"
       - unwrap
     receiver:
-      type: expr
-      value: "Request::builder().uri(\"/invoices/inv_1\").body(Body::empty())"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - Request
+              - builder
+            args: []
+        steps:
+          - type: method
+            value: uri
+          - type: method
+            value: body
     args: []
     span:
       start_byte: 1064
@@ -957,8 +1044,19 @@ references:
       - "(app_with(store).oneshot(Request::builder().uri(\"/invoices/inv_1\").body(Body::empty()).unwrap()).await)"
       - unwrap
     receiver:
-      type: expr
-      value: "app_with(store).oneshot(Request::builder().uri(\"/invoices/inv_1\").body(Body::empty()).unwrap()).await"
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - app_with
+            args:
+              - ~
+        steps:
+          - type: method
+            value: oneshot
+          - type: await
     args: []
     span:
       start_byte: 1080
@@ -1024,4 +1122,4 @@ module_decls: []
 diagnostics: []
 analyzer:
   name: atlas-lang-rust
-  version: 2
+  version: 3

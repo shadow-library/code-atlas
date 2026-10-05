@@ -5,6 +5,7 @@ mod manifest;
 mod modtree;
 mod output;
 mod rust;
+mod rust_chain;
 mod surface;
 mod table;
 mod ts;

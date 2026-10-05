@@ -102,11 +102,46 @@ pub(crate) fn rust_declared_type(signature: &str) -> Option<String> {
 }
 
 pub(crate) fn rust_return_type(signature: &str) -> Option<String> {
-  let arrow = signature.rfind("->")?;
-  let rest = &signature[arrow + 2..];
-  let end = rest.find(" where ").unwrap_or(rest.len());
-  let text = rest[..end].trim();
+  if signature.ends_with('…') {
+    return None;
+  }
+  let bytes = signature.as_bytes();
+  let is_where = |text: &str, index: usize| text.as_bytes()[index..].starts_with(b" where ");
+  let head = match top_level_positions(Syntax::Rust, signature, is_where).first() {
+    Some(at) => &signature[..*at],
+    None => signature,
+  };
+  let arrow = top_level_positions(Syntax::Rust, head, |_, index| bytes[index] == b'-' && bytes.get(index + 1) == Some(&b'>'))
+    .into_iter()
+    .next()?;
+  let text = head[arrow + 2..].trim();
   (!text.is_empty()).then(|| text.to_owned())
+}
+
+pub(crate) fn rust_alias_target(signature: &str) -> Option<String> {
+  if signature.ends_with('…') {
+    return None;
+  }
+  let equals = *top_level_positions(Syntax::Rust, signature, is_assignment).first()?;
+  let text = signature[equals + 1..].trim();
+  (!text.is_empty()).then(|| text.to_owned())
+}
+
+pub(crate) fn rust_type_parts(text: &str) -> Option<(Vec<String>, Vec<&str>)> {
+  let text = strip_reference(text);
+  let (head, args) = match text.find('<') {
+    Some(open) => {
+      let close = matching_close(text, open, b'<', b'>')?;
+      if !text[close + 1..].trim().is_empty() {
+        return None;
+      }
+      (&text[..open], split_top_level(Syntax::Rust, &text[open + 1..close], b','))
+    }
+    None => (text, Vec::new()),
+  };
+  let path = path_segments(head, "::")?;
+  let args = args.into_iter().filter(|arg| !arg.starts_with('\'')).collect();
+  Some((path, args))
 }
 
 fn generic_list_after<'a>(signature: &'a str, name: &str) -> Option<&'a str> {
@@ -170,7 +205,7 @@ pub(crate) fn rust_generic_bounds(signature: &str, name: &str) -> Vec<(String, V
   bounds
 }
 
-fn strip_reference(text: &str) -> &str {
+pub(crate) fn strip_reference(text: &str) -> &str {
   let mut text = text.trim();
   loop {
     let before = text;
@@ -314,6 +349,31 @@ mod tests {
     assert_eq!(rust_return_type("pub fn new(root: &str) -> Self").as_deref(), Some("Self"));
     assert_eq!(rust_return_type("fn f<T>(t: T) -> Vec<T> where T: Clone").as_deref(), Some("Vec<T>"));
     assert_eq!(rust_return_type("fn f()"), None);
+    assert_eq!(rust_return_type("fn f(cb: impl Fn() -> u8) -> Store").as_deref(), Some("Store"));
+    assert_eq!(rust_return_type("fn f<F: Fn() -> u8>(cb: F)"), None);
+    assert_eq!(rust_return_type("fn f<F>(cb: F) where F: Fn() -> u8"), None);
+    assert_eq!(rust_return_type("fn f() -> impl Fn() -> Store").as_deref(), Some("impl Fn() -> Store"));
+    assert_eq!(rust_return_type("fn f() -> Box<dyn Fn(u8) -> Store>").as_deref(), Some("Box<dyn Fn(u8) -> Store>"));
+    assert_eq!(rust_return_type("fn f(a: A, b: B…"), None);
+  }
+
+  #[test]
+  fn should_read_alias_targets_and_type_arguments() {
+    assert_eq!(
+      rust_alias_target("pub type StoreResult<T> = Result<T, StoreError>").as_deref(),
+      Some("Result<T, StoreError>")
+    );
+    assert_eq!(rust_alias_target("type Map<K, V = u8> = HashMap<K, V>").as_deref(), Some("HashMap<K, V>"));
+    assert_eq!(rust_alias_target("type Output;"), None);
+    assert_eq!(rust_alias_target("type Long = Vec<…"), None);
+    assert_eq!(rust_type_parts("&'a MutexGuard<'_, Budget>"), Some((vec!["MutexGuard".to_owned()], vec!["Budget"])));
+    assert_eq!(
+      rust_type_parts("crate::store::Tx<'c, Vec<u8>, E>"),
+      Some((vec!["crate".to_owned(), "store".to_owned(), "Tx".to_owned()], vec!["Vec<u8>", "E"]))
+    );
+    assert_eq!(rust_type_parts("(A, B)"), None);
+    assert_eq!(rust_type_parts("<T as Trait>::Out"), None);
+    assert_eq!(rust_type_parts("Vec<u8>::Item"), None);
   }
 
   #[test]

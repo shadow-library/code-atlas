@@ -300,8 +300,16 @@ references:
       - (parse(line))
       - len
     receiver:
-      type: expr
-      value: parse(line)
+      type: chain
+      value:
+        head:
+          type: call
+          value:
+            path:
+              - parse
+            args:
+              - "&str"
+        steps: []
     args: []
     span:
       start_byte: 93
@@ -389,4 +397,4 @@ module_decls:
 diagnostics: []
 analyzer:
   name: atlas-lang-rust
-  version: 2
+  version: 3
