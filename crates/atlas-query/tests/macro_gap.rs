@@ -109,3 +109,30 @@ fn should_say_dependencies_not_callees_for_a_dependencies_query() {
   );
   assert!(!text.contains("callees may be incomplete"), "{text}");
 }
+
+#[test]
+fn should_hint_that_a_not_found_name_is_macro_generated() {
+  let fixture = fixture();
+
+  let response = fixture.query.callers(&TraverseRequest::new("add")).unwrap();
+
+  let Targeted::NotFound { hint, .. } = &response.answer else {
+    panic!("{:?}", response.answer)
+  };
+  assert_eq!(
+    hint,
+    "no entity matches add; `add` looks macro-generated (1 macro call site, e.g. macro-heavy-rust:src/lib.rs:34); macro-generated items have no symbol: search for the macro definition"
+  );
+}
+
+#[test]
+fn should_not_hint_macro_generation_for_a_name_without_macro_references() {
+  let fixture = fixture();
+
+  let response = fixture.query.callers(&TraverseRequest::new("nonexistent_name")).unwrap();
+
+  let Targeted::NotFound { hint, .. } = &response.answer else {
+    panic!("{:?}", response.answer)
+  };
+  assert_eq!(hint, "no entity matches nonexistent_name; try a search for nonexistent_name");
+}

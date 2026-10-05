@@ -1,9 +1,10 @@
-use atlas_core::{Entity, EntityId, EntityKey, EntityKind, HttpMethod, RelPath, RepoName, normalize_route};
+use atlas_core::{Entity, EntityId, EntityKey, EntityKind, HttpMethod, RelPath, RepoName, UnresolvedReason, normalize_route};
 use atlas_store::EntityFilter;
 
 use crate::error::{QueryError, QueryResult};
 use crate::graph::Graph;
 use crate::model::{EntityRef, Targeted};
+use crate::text::counted;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TargetSpec {
@@ -137,7 +138,10 @@ pub(crate) fn resolve(graph: &Graph<'_, '_>, repos: &[RepoName], text: &str, fil
   let candidates: Vec<Entity> = candidates.into_iter().filter(|entity| admits(filter, entity)).collect();
   let candidates = prefer_definitions(candidates);
   Ok(match candidates.len() {
-    0 => Resolution::NotFound(outside.unwrap_or_else(|| not_found_hint(&spec, text))),
+    0 => Resolution::NotFound(match outside {
+      Some(hint) => hint,
+      None => not_found_hint(graph, &spec, text)?,
+    }),
     1 => Resolution::Found(Box::new(candidates.into_iter().next().ok_or_else(|| QueryError::invalid("empty candidate list"))?)),
     _ => Resolution::Ambiguous(sorted(candidates)),
   })
@@ -168,12 +172,35 @@ fn sorted(mut candidates: Vec<Entity>) -> Vec<Entity> {
   candidates
 }
 
-fn not_found_hint(spec: &TargetSpec, text: &str) -> String {
-  match spec {
+fn not_found_hint(graph: &Graph<'_, '_>, spec: &TargetSpec, text: &str) -> QueryResult<String> {
+  Ok(match spec {
     TargetSpec::Endpoint { .. } => format!("no endpoint matches {text}; list endpoints with the api query"),
     TargetSpec::File { .. } => format!("no indexed file or symbol at {text}"),
+    TargetSpec::Name { name, .. } => match macro_call_sites(graph, name)? {
+      Some(macros) => format!("no entity matches {text}; {macros}"),
+      None => format!("no entity matches {text}; try a search for {text}"),
+    },
     _ => format!("no entity matches {text}; try a search for {text}"),
-  }
+  })
+}
+
+fn macro_call_sites(graph: &Graph<'_, '_>, name: &str) -> QueryResult<Option<String>> {
+  let mut sites: Vec<String> = graph
+    .tx()
+    .unresolved_by_names(&[name])?
+    .into_iter()
+    .map(|found| found.reference)
+    .filter(|reference| matches!(&reference.reason, UnresolvedReason::Unsupported { detail } if detail == "macro_generated"))
+    .map(|reference| format!("{}:{}:{}", reference.repo, reference.file, reference.span.start_line))
+    .collect();
+  sites.sort();
+  let Some(first) = sites.first() else {
+    return Ok(None);
+  };
+  Ok(Some(format!(
+    "`{name}` looks macro-generated ({}, e.g. {first}); macro-generated items have no symbol: search for the macro definition",
+    counted(sites.len(), "macro call site")
+  )))
 }
 
 fn anonymous_route(route: &str) -> String {
