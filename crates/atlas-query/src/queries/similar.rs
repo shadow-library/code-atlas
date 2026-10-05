@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use atlas_core::{ATTR_PARAMS, EdgeKind, Entity, EntityId, EntityKey, EntityKind, LanguageFamily, ParamFact, RelPath};
+use atlas_core::{EdgeKind, Entity, EntityId, EntityKey, EntityKind, LanguageFamily, RelPath};
 use atlas_semantic::{RELATION_EQUIVALENT_TO, RELATION_SIMILAR_TO};
 use atlas_similarity::{SMALL_BODY_TOKENS, SMALL_PAIR_MIN_JACCARD, SimilarityIndex};
 use atlas_store::{EntityFilter, FreshnessPolicy, InferredQuery};
@@ -12,13 +12,13 @@ use crate::graph::Graph;
 use crate::model::{Caveat, CertaintyTag, EntityRef, Response, Targeted};
 use crate::policy::{Direction, InferredAdmission, Policy};
 use crate::queries::common::{is_test, language, package_key, resolve_one};
-use crate::queries::search::{lexical_hits, rounded};
+use crate::queries::reuse::{CandidateQuery, lexical_and_signature_candidates, signature_shape};
+use crate::queries::search::rounded;
 use crate::queries::tests_for::direct_tests;
 use crate::target::TargetFilter;
 
 const DEFAULT_THRESHOLD: f64 = 0.5;
 const IDENTICAL_JACCARD: f64 = 0.95;
-const LEXICAL_FRACTION: f64 = 0.35;
 const STRUCTURAL_CANDIDATE_FACTOR: usize = 4;
 const SHAPE_ONLY_LIMIT: usize = 5;
 const SHAPE_ONLY_NOTE: &str = "shape-only (small body, likely boilerplate)";
@@ -216,20 +216,23 @@ fn similar(graph: &Graph<'_, '_>, index: &SimilarityIndex, target: &Entity, requ
     });
   }
   let text = format!("{} {}", target.name, target.signature.clone().unwrap_or_default());
-  let hits = lexical_hits(index, &text, &[], None, request.limit * 3);
-  let top = hits.iter().filter(|hit| hit.entity != target.id).map(|hit| hit.score).fold(0.0_f64, f64::max);
-  let name_matches = |hit: &&atlas_similarity::SearchHit| hit.matched_fields.iter().any(|field| field.field == atlas_similarity::Field::Name);
-  for hit in hits
-    .iter()
-    .filter(|hit| hit.entity != target.id && hit.score >= LEXICAL_FRACTION * top)
-    .filter(name_matches)
-  {
-    signals.entry(hit.entity).or_default().push(SimilaritySignal::Lexical {
-      score: rounded(hit.score),
-      terms: hit.direct_terms.clone(),
-    });
-  }
   let target_shape = signature_shape(target);
+  let query = CandidateQuery {
+    text: &text,
+    shape: target_shape.as_deref(),
+    exclude: Some(target.id),
+    fetch: request.limit * 3,
+  };
+  for candidate in lexical_and_signature_candidates(graph, index, &query)? {
+    let found = signals.entry(candidate.entity.id).or_default();
+    found.push(SimilaritySignal::Lexical {
+      score: rounded(candidate.score),
+      terms: candidate.terms,
+    });
+    if let Some(shape) = target_shape.clone().filter(|_| candidate.same_shape) {
+      found.push(SimilaritySignal::SignatureShape { shape });
+    }
+  }
   for (id, found) in signals.iter_mut() {
     add_signature_shape(graph, target_shape.as_ref(), *id, found)?;
   }
@@ -319,29 +322,6 @@ fn consolidation_candidate(target: &Entity, entity: &Entity, signals: &[Similari
     ) || matches!(signal, SimilaritySignal::Inferred { certainty, .. } if certainty.freshness.is_none())
   });
   strong || language(entity) != language(target)
-}
-
-fn signature_shape(entity: &Entity) -> Option<String> {
-  let signature = entity.signature.as_deref()?;
-  let params: Vec<ParamFact> = entity
-    .attrs
-    .get(ATTR_PARAMS)
-    .and_then(|value| serde_json::from_value(value.clone()).ok())
-    .unwrap_or_default();
-  let types: Vec<String> = params
-    .iter()
-    .filter(|param| !matches!(param.name.as_str(), "self" | "&self" | "&mut self" | "this"))
-    .map(|param| param.type_text.as_deref().map_or_else(|| "?".to_owned(), compact))
-    .collect();
-  let returns = match language(entity) {
-    Some(LanguageFamily::Rust) => signature.rsplit_once("->").map(|(_, rest)| rest.split(" where ").next().unwrap_or(rest).to_owned()),
-    _ => signature.rsplit_once("):").map(|(_, rest)| rest.to_owned()),
-  };
-  Some(format!("({}) -> {}", types.join(", "), returns.as_deref().map_or_else(|| "?".to_owned(), compact)))
-}
-
-fn compact(text: &str) -> String {
-  text.split_whitespace().collect::<Vec<_>>().join("")
 }
 
 fn strength(signals: &[SimilaritySignal]) -> f64 {

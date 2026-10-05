@@ -10,6 +10,7 @@ mod name_path;
 mod overview;
 mod patterns;
 mod positions;
+mod reuse;
 mod search;
 mod similar;
 mod status;

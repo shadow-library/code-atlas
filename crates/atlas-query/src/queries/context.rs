@@ -11,6 +11,7 @@ use crate::graph::{Graph, certainty_value};
 use crate::model::{Caveat, CertaintyTag, EntityRef, Hop, Listing, Response, short_name};
 use crate::policy::{Policy, hedge};
 use crate::queries::common::{first_line, is_test};
+use crate::queries::reuse::access;
 use crate::queries::search::{lexical_hits, query_words, unstemmed};
 use crate::queries::tests_for::{TestItem, direct_tests, run_hint};
 use crate::target::{Resolution, TargetFilter, resolve};
@@ -51,6 +52,10 @@ const UNCERTAIN_SHOWN: usize = 10;
 const PATTERN_ANCHORS: usize = 3;
 const PATTERN_SIBLINGS: usize = 2;
 const REGISTRY_MIN_SIBLINGS: usize = 2;
+const PLATFORM_TYPES: [&str; 20] = [
+  "Response", "Request", "Headers", "Error", "Date", "Map", "Set", "Promise", "URL", "Record", "Array", "Object", "JSON", "String", "Vec", "Option", "Result", "Box", "Arc",
+  "HashMap",
+];
 const AUTH_WORDS: [(&str, &str); 7] = [
   ("api-key", "api_key"),
   ("apikey", "api_key"),
@@ -290,6 +295,13 @@ impl Scope {
     let repo = entity.repo.as_ref().is_some_and(|repo| self.repos.contains(repo.as_str()));
     let package = crate::queries::common::package_key(entity).is_some_and(|key| self.packages.contains(&key.display_name()));
     repo || package
+  }
+
+  fn label(&self, entity: &Entity) -> String {
+    match entity.repo.as_ref().filter(|repo| self.repos.contains(repo.as_str())) {
+      Some(repo) => repo.to_string(),
+      None => crate::queries::common::package_key(entity).map_or_else(String::new, |key| key.display_name()),
+    }
   }
 
   fn factor(&self, entity: &Entity, inside: f64, outside: f64) -> f64 {
@@ -860,14 +872,27 @@ fn seed(query: &QueryEngine, graph: &Graph<'_, '_>, index: &SimilarityIndex, req
     }
   }
   for identifier in identifiers(&request.task) {
-    match resolve(graph, &repos, &identifier, &TargetFilter::default()) {
-      Ok(Resolution::Found(entity)) => pack.seed(*entity, 1.0, format!("named in task as {identifier}"), true),
-      Ok(Resolution::Ambiguous(candidates)) if candidates.len() <= AMBIGUOUS_SEED_LIMIT => {
-        for entity in candidates {
-          pack.seed(entity, 0.4, format!("named in task as {identifier} (ambiguous)"), false);
-        }
+    let platform = PLATFORM_TYPES.contains(&identifier.as_str());
+    let candidates = match resolve(graph, &repos, &identifier, &TargetFilter::default()) {
+      Ok(Resolution::Found(entity)) if !platform => {
+        pack.seed(*entity, 1.0, format!("named in task as {identifier}"), true);
+        continue;
       }
-      _ => {}
+      Ok(Resolution::Found(entity)) => vec![*entity],
+      Ok(Resolution::Ambiguous(candidates)) => candidates,
+      _ => continue,
+    };
+    let scoped: Vec<&Entity> = candidates.iter().filter(|entity| pack.scope.contains(entity)).collect();
+    if let [entity] = scoped.as_slice() {
+      let why = format!("named in task as {identifier} (the only match in {})", pack.scope.label(entity));
+      pack.seed((*entity).clone(), 1.0, why, true);
+      continue;
+    }
+    if platform || candidates.len() > AMBIGUOUS_SEED_LIMIT {
+      continue;
+    }
+    for entity in candidates {
+      pack.seed(entity, 0.4, format!("named in task as {identifier} (ambiguous)"), false);
     }
   }
   route_seeds(graph, &request.task, pack)?;
@@ -998,7 +1023,7 @@ fn search_seeds(graph: &Graph<'_, '_>, index: &SimilarityIndex, task: &str, pack
 }
 
 fn identifiers(task: &str) -> Vec<String> {
-  let mut found = BTreeSet::new();
+  let mut found: BTreeSet<String> = code_span_names(task).collect();
   for word in task.split(|c: char| !(c.is_alphanumeric() || matches!(c, '_' | '.' | ':' | '$'))) {
     let word = word.trim_matches(|c: char| matches!(c, '.' | ':'));
     if word.len() < 3 || word.chars().all(|c| c.is_uppercase() || !c.is_alphabetic()) {
@@ -1011,6 +1036,17 @@ fn identifiers(task: &str) -> Vec<String> {
     }
   }
   found.into_iter().collect()
+}
+
+fn code_span_names(task: &str) -> impl Iterator<Item = String> + '_ {
+  task.split('`').skip(1).step_by(2).filter_map(|span| {
+    let span = span.trim();
+    let name = span.strip_suffix("()").unwrap_or(span);
+    let identifier = name.chars().all(|c| c.is_alphanumeric() || matches!(c, '_' | '$')) && name.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_');
+    let shouted = name.chars().all(|c| c.is_uppercase() || !c.is_alphabetic());
+    let code_like = name.starts_with(char::is_uppercase) || name.len() < span.len();
+    (identifier && code_like && name.len() >= 3 && !shouted).then(|| name.to_owned())
+  })
 }
 
 struct RouteMention {
@@ -1243,13 +1279,11 @@ fn expand_node(graph: &Graph<'_, '_>, index: &SimilarityIndex, pack: &mut Pack, 
         if !corroborated {
           continue;
         }
-        format!(
-          "similar small body to {name} [structural {:.2}, small body, name-corroborated], behaviour unverified",
-          found.exact_jaccard
-        )
+        format!("similar small body to {name} [structural {:.2}, small body, name-corroborated]", found.exact_jaccard)
       } else {
-        format!("same shape as {name} [structural {:.2}], behaviour unverified", found.exact_jaccard)
+        format!("same shape as {name} [structural {:.2}]", found.exact_jaccard)
       };
+      let why = format!("{why}; {}; behaviour unverified", access(graph, &entity, Some(&node.entity))?);
       pack.mention(&node, entity, 0.3, Role::Reuse, why, false);
       kept += 1;
     }
@@ -1481,6 +1515,13 @@ mod tests {
     pack.insert(second);
     let node = pack.nodes.into_values().next().unwrap();
     (node.role, node.uncertain, node.why, node.weight)
+  }
+
+  #[test]
+  fn should_read_capitalised_and_called_code_spans_as_identifiers() {
+    let task = "add `deletedAt` to the `User` entity, keep `serialize()` and `target`, `GET`, `Accept-Encoding`, `id` and plain User untouched";
+
+    assert_eq!(identifiers(task), ["User", "deletedAt", "serialize"]);
   }
 
   #[test]
