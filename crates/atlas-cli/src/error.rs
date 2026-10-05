@@ -2,7 +2,9 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 
 use atlas_core::CoreError;
+use atlas_edit::EditError;
 use atlas_engine::EngineError;
+use atlas_ide::IdeError;
 use atlas_mcp::McpError;
 use atlas_project::ProjectError;
 use atlas_query::QueryError;
@@ -15,6 +17,9 @@ pub enum Exit {
   Usage,
   Degraded,
   NoMatch,
+  Refused,
+  RolledBack,
+  PartiallyApplied,
 }
 
 impl Exit {
@@ -25,6 +30,9 @@ impl Exit {
       Self::Usage => 2,
       Self::Degraded => 3,
       Self::NoMatch => 4,
+      Self::Refused => 5,
+      Self::RolledBack => 6,
+      Self::PartiallyApplied => 7,
     }
   }
 }
@@ -68,6 +76,12 @@ pub enum CliError {
   ConfirmationRequired { what: String },
   #[error("{0}")]
   InvalidSetting(String),
+  #[error(transparent)]
+  Ide(#[from] IdeError),
+  #[error("invalid plan file {}: {message}", .path.display())]
+  InvalidPlan { path: PathBuf, message: String },
+  #[error("{0}")]
+  InvalidInput(String),
   #[error("the `claude` CLI is not available: {reason}")]
   ClaudeUnavailable { reason: String, command: String },
   #[error("aborted")]
@@ -108,7 +122,10 @@ impl CliError {
       | Self::ProjectNameUnderivable(_)
       | Self::ConfirmationRequired { .. }
       | Self::InvalidSetting(_)
+      | Self::InvalidPlan { .. }
+      | Self::InvalidInput(_)
       | Self::ClaudeUnavailable { .. } => Exit::Usage,
+      Self::Ide(error) => ide_exit(error),
       Self::RunNotFound(_) | Self::FileNotIndexed { .. } => Exit::NoMatch,
       _ => Exit::Failure,
     }
@@ -130,6 +147,8 @@ impl CliError {
       Self::Mcp(_) => Some("the MCP client must speak JSON-RPC over this process's stdin and stdout"),
       Self::RunNotFound(_) => Some("list recent runs with `code-atlas status`"),
       Self::FileNotIndexed { .. } => Some("check the repo name with `code-atlas project show` and the path relative to the repo root"),
+      Self::Ide(error) => ide_hint(error),
+      Self::InvalidPlan { .. } => Some("make a plan with `code-atlas edit <operation> --dry-run --plan-out plan.json`"),
       Self::MalformedGuidance(_) => Some("fix or delete the code-atlas:begin / code-atlas:end markers, then rerun"),
       Self::InvalidConfig { .. } => Some("fix the file by hand; Code Atlas will not overwrite it"),
       _ => None,
@@ -154,6 +173,52 @@ impl CliError {
     if let Some(hint) = self.hint() {
       let _ = writeln!(stderr, "hint: {hint}");
     }
+  }
+}
+
+fn ide_exit(error: &IdeError) -> Exit {
+  match error {
+    IdeError::InvalidRequest(_)
+    | IdeError::Regex { .. }
+    | IdeError::RegexGroups { .. }
+    | IdeError::RegexMatches { .. }
+    | IdeError::InvalidPosition { .. }
+    | IdeError::UnsupportedFile { .. }
+    | IdeError::UnknownRepo { .. }
+    | IdeError::AmbiguousFile { .. }
+    | IdeError::OutsideProject { .. } => Exit::Usage,
+    IdeError::FileNotFound { .. } | IdeError::EndpointTarget { .. } | IdeError::NotASymbol { .. } => Exit::NoMatch,
+    IdeError::PlanExpired { .. } | IdeError::UnknownPlan { .. } => Exit::Refused,
+    IdeError::Query(QueryError::Invalid(_)) => Exit::Usage,
+    IdeError::Edit(error) => edit_exit(error),
+    _ => Exit::Failure,
+  }
+}
+
+fn edit_exit(error: &EditError) -> Exit {
+  match error {
+    EditError::EmptyPattern
+    | EditError::InvalidRegex { .. }
+    | EditError::UnknownCaptureGroup { .. }
+    | EditError::InvalidOccurrenceId(_)
+    | EditError::InvalidGlob { .. }
+    | EditError::UnknownRepo(_)
+    | EditError::EmptySelection
+    | EditError::EmptyText => Exit::Usage,
+    EditError::RolledBack { .. } => Exit::RolledBack,
+    EditError::PartiallyApplied { .. } => Exit::PartiallyApplied,
+    EditError::Io { .. } | EditError::LockTimeout { .. } | EditError::Project(_) => Exit::Failure,
+    _ => Exit::Refused,
+  }
+}
+
+fn ide_hint(error: &IdeError) -> Option<&'static str> {
+  match error {
+    IdeError::Unavailable { alternative: Some(_), .. } | IdeError::Disabled { alternative: Some(_), .. } | IdeError::ServerFailed { alternative: Some(_), .. } => {
+      Some("pass --source graph for tagged graph results that need no language server")
+    }
+    IdeError::Unavailable { .. } | IdeError::ServerFailed { .. } => Some("check the language servers with `code-atlas lsp check` and `code-atlas doctor`"),
+    _ => None,
   }
 }
 

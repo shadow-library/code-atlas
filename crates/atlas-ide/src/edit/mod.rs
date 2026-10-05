@@ -1,4 +1,5 @@
 mod extras;
+mod gate;
 mod notify;
 mod plans;
 mod projects;
@@ -18,9 +19,10 @@ use serde::{Deserialize, Serialize};
 
 pub use extras::{VerifyReason, VerifySite};
 pub use notify::{DiagnosticsDelta, NewDiagnostic};
-pub use plans::{IdePlan, PlanGuard};
+pub use plans::{IdePlan, PLAN_VERSION, PlanGuard};
 
 pub(crate) use extras::Reach;
+pub(crate) use gate::WriteGate;
 pub(crate) use plans::{PLAN_TTL, PlanCache};
 
 use crate::error::{IdeError, IdeResult};
@@ -256,7 +258,12 @@ pub(crate) fn refusal_of(error: &EditError) -> Option<String> {
     | EditError::InvalidSpan { .. }
     | EditError::InvalidPlan(_)
     | EditError::AlreadyExists { .. }
-    | EditError::Missing { .. } => Some(format!("{error}; nothing was written")),
+    | EditError::Missing { .. }
+    | EditError::NoMatch { .. }
+    | EditError::MultipleMatches { .. }
+    | EditError::ExpectedCountMismatch { .. }
+    | EditError::UnknownOccurrences { .. }
+    | EditError::EmptyMatch { .. } => Some(format!("{error}; nothing was written")),
     _ => None,
   }
 }
@@ -394,12 +401,24 @@ impl IdeService {
 
   fn apply_planned(&self, plan: IdePlan) -> IdeResult<Response<EditOutcome>> {
     let project = self.query.engine().project().name.to_string();
-    if plan.project != project {
-      return Err(IdeError::InvalidRequest(format!("plan {} was made for project {}, not {project}", plan.id, plan.project)));
-    }
     let files = self.files();
     let freshness = self.query.fresh()?;
-    if let Some(reason) = self.guard_violation(&plan, &freshness, &files) {
+    let refusal = if plan.version != PLAN_VERSION {
+      let found = if plan.version == 0 {
+        "no version".to_owned()
+      } else {
+        format!("version {}", plan.version)
+      };
+      Some(format!(
+        "plan {} has {found}; this code-atlas reads plan version {PLAN_VERSION}; run the dry run again; nothing was written",
+        plan.id
+      ))
+    } else if plan.project != project {
+      Some(format!("plan {} was made for project {}, not {project}; nothing was written", plan.id, plan.project))
+    } else {
+      self.guard_violation(&plan, &freshness, &files)
+    };
+    if let Some(reason) = refusal {
       return respond(freshness, EditOutcome::of_plan(&plan, EditStatus::Refused { reason }));
     }
     let units = self.warm_units(&files, &plan.edits);
@@ -516,6 +535,7 @@ impl IdeService {
     let targets: Vec<(RepoName, RelPath)> = file_targets(&plan.edits).into_iter().map(|file| (file.repo, file.path)).collect();
     let options = ApplyOptions::new(edit_lock_path(&engine.db_path()));
     tracing::info!(plan = %plan.id, files = targets.len(), "applying an edit plan");
+    let Some(_writing) = self.writes.enter() else { return Err(IdeError::Interrupted) };
     let (applied, report) = engine.write_then_refresh(&targets, || atlas_edit::apply(&plan.edits, &scope, &options))?;
     let mut after = Freshness::from_report(&report);
     after.notes = freshness.notes;

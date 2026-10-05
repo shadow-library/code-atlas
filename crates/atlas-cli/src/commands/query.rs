@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::Path;
 
+use atlas_core::Language;
 use atlas_project::Project;
 use atlas_query::{
   ApiRequest, ChangesRequest, ContextRequest, ExplainRequest, ImpactRequest, PatternsRequest, QueryEngine, ReadRequest, RenderText, Response, SearchRequest, SimilarRequest,
@@ -9,9 +10,10 @@ use atlas_query::{
 use serde::Serialize;
 
 use crate::cli::{
-  ApiArgs, ChangesArgs, ContextArgs, ExplainArgs, ImpactArgs, PatternsArgs, QueryCommand, ReadArgs, SearchArgs, SimilarArgs, StatusArgs, SymbolArgs, TargetFilterArgs,
-  TestsForArgs, TraverseArgs, UnusedArgs,
+  ApiArgs, ChangesArgs, CodeLanguage, ContextArgs, ExplainArgs, ImpactArgs, PatternsArgs, QueryCommand, ReadArgs, SearchArgs, SimilarArgs, StatusArgs, SymbolArgs,
+  TargetFilterArgs, TestsForArgs, TraverseArgs, UnusedArgs,
 };
+use crate::commands::read_input;
 use crate::context::Context;
 use crate::error::{CliError, CliResult};
 use crate::output::{Outcome, emit};
@@ -29,10 +31,10 @@ pub fn run(ctx: &Context, command: QueryCommand) -> CliResult<Outcome> {
     }
     QueryCommand::Search(args) => search(ctx, args),
     QueryCommand::Symbol(args) => symbol(ctx, args),
-    QueryCommand::Callers(args) => traverse(ctx, TraversalKind::Callers, args),
-    QueryCommand::Callees(args) => traverse(ctx, TraversalKind::Callees, args),
-    QueryCommand::Dependents(args) => traverse(ctx, TraversalKind::Dependents, args),
-    QueryCommand::Dependencies(args) => traverse(ctx, TraversalKind::Dependencies, args),
+    QueryCommand::Callers(args) => traverse(ctx, TraversalKind::Callers, args.traverse, args.via_http),
+    QueryCommand::Callees(args) => traverse(ctx, TraversalKind::Callees, args.traverse, args.via_http),
+    QueryCommand::Dependents(args) => traverse(ctx, TraversalKind::Dependents, args, false),
+    QueryCommand::Dependencies(args) => traverse(ctx, TraversalKind::Dependencies, args, false),
     QueryCommand::Impact(args) => impact(ctx, args),
     QueryCommand::TestsFor(args) => tests_for(ctx, args),
     QueryCommand::Api(args) => api(ctx, args),
@@ -78,11 +80,12 @@ fn symbol(ctx: &Context, args: SymbolArgs) -> CliResult<Outcome> {
   finish_targeted(query.symbol(&request)?, args.common.json)
 }
 
-fn traverse(ctx: &Context, kind: TraversalKind, args: TraverseArgs) -> CliResult<Outcome> {
+fn traverse(ctx: &Context, kind: TraversalKind, args: TraverseArgs, via_http: bool) -> CliResult<Outcome> {
   let (query, _) = open(ctx)?;
   let mut request = TraverseRequest::new(args.target);
   request.filter = target_filter(&args.filter);
   request.min_confidence = args.min_confidence;
+  request.via_http = via_http;
   if let Some(depth) = args.depth {
     request.depth = depth;
   }
@@ -133,6 +136,18 @@ fn api(ctx: &Context, args: ApiArgs) -> CliResult<Outcome> {
 
 fn similar(ctx: &Context, args: SimilarArgs) -> CliResult<Outcome> {
   let (query, project) = open(ctx)?;
+  if let (Some(source), Some(language)) = (&args.code, args.language) {
+    let mut request = SimilarRequest::from_code(code_language(language), read_input(source)?);
+    request.filter = target_filter(&args.filter);
+    request.include_stale = args.include_stale;
+    if let Some(limit) = args.limit {
+      request.limit = limit;
+    }
+    if let Some(threshold) = args.threshold {
+      request.threshold = threshold;
+    }
+    return finish(query.similar_to_code(&request)?, args.common.json);
+  }
   let target = match (&args.snippet, &args.target) {
     (Some(snippet), _) => snippet_target(snippet, &ctx.cwd, &project)?,
     (None, Some(target)) => target.clone(),
@@ -148,6 +163,15 @@ fn similar(ctx: &Context, args: SimilarArgs) -> CliResult<Outcome> {
     request.threshold = threshold;
   }
   finish_targeted(query.similar(&request)?, args.common.json)
+}
+
+fn code_language(language: CodeLanguage) -> Language {
+  match language {
+    CodeLanguage::Rust => Language::Rust,
+    CodeLanguage::Ts => Language::TypeScript,
+    CodeLanguage::Tsx => Language::Tsx,
+    CodeLanguage::Js => Language::JavaScript,
+  }
 }
 
 fn unused(ctx: &Context, args: UnusedArgs) -> CliResult<Outcome> {

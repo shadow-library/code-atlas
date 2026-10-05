@@ -4,6 +4,7 @@ mod confirm;
 mod context;
 mod diff;
 mod error;
+mod interrupt;
 mod json_edit;
 mod logging;
 mod output;
@@ -21,9 +22,14 @@ fn main() -> ExitCode {
   let exit = match result {
     Ok(outcome) => outcome.exit(),
     Err(error) => {
-      error.report();
+      if !interrupt::interrupted() {
+        error.report();
+      }
       error.exit()
     }
   };
-  ExitCode::from(Exit::code(exit))
+  match interrupt::interrupted() {
+    true => ExitCode::from(interrupt::INTERRUPTED_EXIT),
+    false => ExitCode::from(Exit::code(exit)),
+  }
 }

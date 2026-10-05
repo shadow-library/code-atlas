@@ -3,11 +3,12 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-use atlas_core::Availability;
-use atlas_project::Registry;
-use atlas_scip::{RustAnalyzerScip, ScipIndexer};
+use atlas_project::{Project, Registry};
 use rusqlite::{Connection, OpenFlags};
 
+use crate::cli::DoctorArgs;
+use crate::commands::ide::{check_outcome, check_servers, resolved_text, unit_detail};
+use crate::commands::lsp_probe::{self, Resolved};
 use crate::context::Context;
 use crate::error::CliResult;
 use crate::output::{Outcome, emit_line};
@@ -26,6 +27,7 @@ struct Check {
   level: Level,
   name: String,
   detail: String,
+  lines: Vec<String>,
 }
 
 impl Check {
@@ -34,19 +36,27 @@ impl Check {
       level,
       name: name.into(),
       detail: detail.into(),
+      lines: Vec::new(),
     }
+  }
+
+  fn with_lines(mut self, lines: Vec<String>) -> Self {
+    self.lines = lines;
+    self
   }
 }
 
-pub fn run(ctx: &Context) -> CliResult<Outcome> {
+pub fn run(ctx: &Context, args: DoctorArgs) -> CliResult<Outcome> {
   let mut checks = vec![Check::new(
     Level::Ok,
     "home",
     format!("config {}, data {}", ctx.home.config_dir().display(), ctx.home.data_dir().display()),
   )];
+  let mut focus = None;
   match Registry::load(&ctx.home) {
     Err(error) => checks.push(Check::new(Level::Fail, "registry", error.to_string())),
     Ok(registry) => {
+      focus = registry.resolve_project(&ctx.cwd, ctx.project.as_deref()).ok().cloned();
       checks.push(Check::new(
         Level::Ok,
         "registry",
@@ -59,7 +69,10 @@ pub fn run(ctx: &Context) -> CliResult<Outcome> {
     }
   }
   checks.push(sqlite_build());
-  checks.push(rust_analyzer());
+  checks.extend(language_servers(focus.as_ref()));
+  if args.lsp {
+    checks.extend(live_servers(ctx, focus.as_ref()));
+  }
   checks.push(tool("npx", "npx", &["--version"], "needed for TypeScript SCIP indexing"));
   checks.push(tool("claude", "claude", &["--version"], "needed to connect Claude Code and for LLM enrichment through it"));
   for check in &checks {
@@ -69,6 +82,9 @@ pub fn run(ctx: &Context) -> CliResult<Outcome> {
       Level::Fail => "FAIL",
     };
     emit_line(format!("{label}  {}: {}", check.name, check.detail))?;
+    for line in &check.lines {
+      emit_line(format!("      {line}"))?;
+    }
   }
   let failures = checks.iter().filter(|check| check.level == Level::Fail).count();
   let warnings = checks.iter().filter(|check| check.level == Level::Warn).count();
@@ -164,10 +180,95 @@ fn sqlite_build_check(options: &[String]) -> Check {
   }
 }
 
-fn rust_analyzer() -> Check {
-  match RustAnalyzerScip::new().availability() {
-    Availability::Available => Check::new(Level::Ok, "rust-analyzer", "available for Rust SCIP indexing"),
-    Availability::Unavailable { reason } => Check::new(Level::Warn, "rust-analyzer", format!("{reason}; Rust edges stay at resolver certainty")),
+fn language_servers(project: Option<&Project>) -> Vec<Check> {
+  let mut checks = Vec::new();
+  let defaults = atlas_project::LspSettings::default();
+  let settings = project.map_or(&defaults, |project| &project.settings.lsp);
+  let scope = project.map_or_else(|| "no project in scope; default settings".to_owned(), |project| format!("project {}", project.name));
+  if !settings.enabled {
+    checks.push(Check::new(
+      Level::Warn,
+      "language servers",
+      format!("disabled for {scope} (lsp.enabled = false); exact operations refuse until `code-atlas project config <project> --lsp on`"),
+    ));
+  }
+  match lsp_probe::probe_rust_analyzer().result {
+    Resolved::Found { summary } => checks.push(Check::new(
+      Level::Ok,
+      "rust-analyzer",
+      format!("{summary}; used for exact Rust operations and Rust SCIP indexing"),
+    )),
+    Resolved::Unavailable { reason } => checks.push(Check::new(
+      Level::Warn,
+      "rust-analyzer",
+      format!("{reason}; exact Rust operations and Rust SCIP indexing are unavailable (`rustup component add rust-analyzer`)"),
+    )),
+  }
+  let roots = project.map(lsp_probe::typescript_roots).unwrap_or_default();
+  let probe = lsp_probe::probe_typescript(settings, &roots, false);
+  let lines: Vec<String> = probe
+    .steps
+    .iter()
+    .map(|step| match settings.download && step.label.starts_with("download (") {
+      true => format!(
+        "{}: skipped by doctor (no network); lsp.download = on; `code-atlas lsp check` probes the npm registry",
+        step.label
+      ),
+      false => step.text(),
+    })
+    .collect();
+  checks.push(
+    match probe.result {
+      Resolved::Found { summary } => Check::new(Level::Ok, "typescript-language-server", summary),
+      Resolved::Unavailable { .. } if settings.download => Check::new(
+        Level::Ok,
+        "typescript-language-server",
+        "not installed; it is fetched through npx on first use (lsp.download is on)",
+      ),
+      Resolved::Unavailable { reason } => Check::new(Level::Warn, "typescript-language-server", reason),
+    }
+    .with_lines(lines),
+  );
+  for project in project.into_iter() {
+    for (repo, version) in lsp_probe::typescript_seven_repos(project) {
+      checks.push(Check::new(
+        Level::Warn,
+        format!("{}/{repo} typescript", project.name),
+        format!(
+          "node_modules holds TypeScript {version}, which has no tsserver; exact TypeScript operations need typescript@5 beside the server or the one bundled with it, or they fail as unavailable"
+        ),
+      ));
+    }
+  }
+  checks
+}
+
+fn live_servers(ctx: &Context, project: Option<&Project>) -> Vec<Check> {
+  if project.is_none() {
+    return vec![Check::new(Level::Warn, "language server health", "no project in scope; run from a repo or pass --project")];
+  }
+  match check_servers(ctx) {
+    Err(error) => vec![Check::new(Level::Warn, "language server health", error.to_string())],
+    Ok((_, report)) => {
+      let mut checks = Vec::new();
+      for unit in &report.units {
+        let (detail, notes) = unit_detail(unit, &project.map(|project| project.settings.lsp.exclude.clone()).unwrap_or_default());
+        let level = match check_outcome(std::slice::from_ref(unit)) {
+          Outcome::Complete => Level::Ok,
+          Outcome::Failed => Level::Fail,
+          _ => Level::Warn,
+        };
+        checks.push(Check::new(level, format!("{} ({})", unit.server, unit.scope), detail).with_lines(notes));
+      }
+      if report.units.is_empty() {
+        checks.push(Check::new(
+          Level::Ok,
+          "language server health",
+          format!("no Rust or TypeScript files indexed; typescript {}", resolved_text(&report.typescript.result)),
+        ));
+      }
+      checks
+    }
   }
 }
 

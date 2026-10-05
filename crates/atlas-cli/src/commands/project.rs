@@ -3,9 +3,9 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 use atlas_core::Language;
-use atlas_project::{Project, ProjectSettings, RepoConfig, RepoFilters, RepoSpec};
+use atlas_project::{LspUnit, Project, ProjectSettings, RepoConfig, RepoFilters, RepoSpec};
 
-use crate::cli::{AddRepoArgs, ConfigArgs, CreateArgs, DeleteArgs, JsonFlag, ProjectCommand, RemoveRepoArgs, RenameRepoArgs, SetRepoArgs, ShowArgs, Toggle};
+use crate::cli::{AddRepoArgs, ConfigArgs, CreateArgs, DeleteArgs, JsonFlag, LspUnitArg, ProjectCommand, RemoveRepoArgs, RenameRepoArgs, SetRepoArgs, ShowArgs, Toggle};
 use crate::confirm::confirm;
 use crate::context::Context;
 use crate::error::{CliError, CliResult};
@@ -241,7 +241,8 @@ fn config(ctx: &Context, args: ConfigArgs) -> CliResult<Outcome> {
     || args.llm_model.is_some()
     || args.scip.is_some()
     || args.scip_debounce.is_some()
-    || args.max_file_bytes.is_some();
+    || args.max_file_bytes.is_some()
+    || touches_lsp(&args);
   if !touched {
     return show_settings(&current, args.json);
   }
@@ -256,6 +257,68 @@ fn config(ctx: &Context, args: ConfigArgs) -> CliResult<Outcome> {
     emit_line(change)?;
   }
   Ok(Outcome::Complete)
+}
+
+fn touches_lsp(args: &ConfigArgs) -> bool {
+  args.lsp.is_some()
+    || args.lsp_download.is_some()
+    || !args.lsp_ts_command.is_empty()
+    || args.lsp_ts_command_clear
+    || args.lsp_idle_secs.is_some()
+    || args.lsp_max_servers.is_some()
+    || args.lsp_unit.is_some()
+    || args.lsp_ready_timeout_secs.is_some()
+    || args.lsp_check_timeout_secs.is_some()
+    || !args.lsp_exclude.is_empty()
+    || args.lsp_exclude_clear
+}
+
+fn positive(flag: &str, value: u64) -> CliResult<u64> {
+  match value {
+    0 => Err(CliError::InvalidSetting(format!("{flag} must be greater than 0"))),
+    value => Ok(value),
+  }
+}
+
+fn apply_lsp(settings: &mut ProjectSettings, args: &ConfigArgs) -> CliResult<()> {
+  let lsp = &mut settings.lsp;
+  if let Some(toggle) = args.lsp {
+    lsp.enabled = toggle == Toggle::On;
+  }
+  if let Some(toggle) = args.lsp_download {
+    lsp.download = toggle == Toggle::On;
+  }
+  if !args.lsp_ts_command.is_empty() {
+    lsp.typescript_command = Some(args.lsp_ts_command.clone());
+  }
+  if args.lsp_ts_command_clear {
+    lsp.typescript_command = None;
+  }
+  if let Some(seconds) = args.lsp_idle_secs {
+    lsp.idle_secs = positive("--lsp-idle-secs", seconds)?;
+  }
+  if let Some(count) = args.lsp_max_servers {
+    lsp.max_servers = count;
+  }
+  if let Some(unit) = args.lsp_unit {
+    lsp.unit = match unit {
+      LspUnitArg::Project => LspUnit::Project,
+      LspUnitArg::Repo => LspUnit::Repo,
+    };
+  }
+  if let Some(seconds) = args.lsp_ready_timeout_secs {
+    lsp.ready_timeout_secs = positive("--lsp-ready-timeout-secs", seconds)?;
+  }
+  if let Some(seconds) = args.lsp_check_timeout_secs {
+    lsp.check_timeout_secs = positive("--lsp-check-timeout-secs", seconds)?;
+  }
+  if !args.lsp_exclude.is_empty() {
+    lsp.exclude = args.lsp_exclude.clone();
+  }
+  if args.lsp_exclude_clear {
+    lsp.exclude.clear();
+  }
+  settings.validate().map_err(CliError::InvalidSetting)
 }
 
 fn apply_settings(current: &ProjectSettings, args: &ConfigArgs) -> CliResult<ProjectSettings> {
@@ -290,6 +353,7 @@ fn apply_settings(current: &ProjectSettings, args: &ConfigArgs) -> CliResult<Pro
     }
     settings.max_file_bytes = bytes;
   }
+  apply_lsp(&mut settings, args)?;
   Ok(settings)
 }
 
@@ -302,6 +366,35 @@ fn setting_lines(settings: &ProjectSettings) -> Vec<(&'static str, String)> {
     ("scip.enabled", settings.scip.enabled.to_string()),
     ("scip.debounce_secs", settings.scip.debounce_secs.to_string()),
     ("max_file_bytes", settings.max_file_bytes.to_string()),
+    ("lsp.enabled", settings.lsp.enabled.to_string()),
+    ("lsp.download", settings.lsp.download.to_string()),
+    (
+      "lsp.typescript_command",
+      settings
+        .lsp
+        .typescript_command
+        .as_ref()
+        .map_or_else(|| "(discover)".to_owned(), |command| command.join(" ")),
+    ),
+    (
+      "lsp.unit",
+      match settings.lsp.unit {
+        LspUnit::Project => "project".to_owned(),
+        LspUnit::Repo => "repo".to_owned(),
+      },
+    ),
+    ("lsp.max_servers", settings.lsp.max_servers.to_string()),
+    ("lsp.idle_secs", settings.lsp.idle_secs.to_string()),
+    ("lsp.ready_timeout_secs", settings.lsp.ready_timeout_secs.to_string()),
+    ("lsp.check_timeout_secs", settings.lsp.check_timeout_secs.to_string()),
+    (
+      "lsp.exclude",
+      if settings.lsp.exclude.is_empty() {
+        "(none)".to_owned()
+      } else {
+        settings.lsp.exclude.join(", ")
+      },
+    ),
   ]
 }
 

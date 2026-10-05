@@ -448,8 +448,26 @@ fn edit_counts(files: &[ChangedFile]) -> String {
   format!("{} file(s), {edits} edit(s)", files.len())
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct EditView<'a> {
+  pub outcome: &'a EditOutcome,
+  pub plan_note: &'a str,
+}
+
+impl RenderText for EditView<'_> {
+  fn render_text(&self, out: &mut TextOut) {
+    self.outcome.render_outcome(out, Some(self.plan_note));
+  }
+}
+
 impl RenderText for EditOutcome {
   fn render_text(&self, out: &mut TextOut) {
+    self.render_outcome(out, None);
+  }
+}
+
+impl EditOutcome {
+  fn render_outcome(&self, out: &mut TextOut, plan_note: Option<&str>) {
     let operation = self.operation.to_string();
     let servers = servers_suffix(&self.servers);
     match &self.status {
@@ -459,7 +477,8 @@ impl RenderText for EditOutcome {
           DryRunReason::Requested => "dry run",
           DryRunReason::NeedsSelection => "dry run (no occurrences or expected_count given)",
         };
-        out.line(0, format!("{operation}  {why}, plan {plan_id} (apply within {} min){servers}", valid_secs / 60));
+        let validity = plan_note.map_or_else(|| format!("apply within {} min", valid_secs / 60), str::to_owned);
+        out.line(0, format!("{operation}  {why}, plan {plan_id} ({validity}){servers}"));
       }
       EditStatus::Refused { reason } => out.line(0, format!("REFUSED: {operation}: {reason}{servers}")),
       EditStatus::RolledBack { cause } => out.line(0, format!("FAILED: {operation} was rolled back ({cause}); no file was changed{servers}")),

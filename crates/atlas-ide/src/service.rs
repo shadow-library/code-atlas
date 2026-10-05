@@ -14,7 +14,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use crate::diagnostics::PUSH_TIMEOUT;
-use crate::edit::{PLAN_TTL, PlanCache};
+use crate::edit::{PLAN_TTL, PlanCache, WriteGate};
 use crate::error::{IdeError, IdeResult};
 use crate::render::{ServerView, StatusAnswer, UnitView};
 use crate::servers::{IdeMode, IdeSettings, LaunchRequest, LaunchSpec, Launcher, TsServer, TsServerOrigin, UnitInputs, UnitMode, UnitPlan, kind_of, unavailable};
@@ -74,6 +74,7 @@ pub struct IdeService {
   manifests: Mutex<HashMap<UnitKey, (Option<u32>, Manifests)>>,
   package_dirs: Mutex<HashMap<UnitKey, PackageDirs>>,
   pub(crate) edits: Mutex<()>,
+  pub(crate) writes: WriteGate,
   pub(crate) plans: Mutex<PlanCache>,
   diagnostics_timeout: Duration,
 }
@@ -223,6 +224,7 @@ impl IdeService {
       manifests: Mutex::new(HashMap::new()),
       package_dirs: Mutex::new(HashMap::new()),
       edits: Mutex::new(()),
+      writes: WriteGate::new(),
       plans: Mutex::new(PlanCache::new(options.plan_ttl)),
       diagnostics_timeout: options.diagnostics_timeout,
     }
@@ -236,7 +238,7 @@ impl IdeService {
     self.config.read().unwrap_or_else(PoisonError::into_inner).settings.clone()
   }
 
-  fn pool(&self) -> Arc<LspPool> {
+  pub(crate) fn pool(&self) -> Arc<LspPool> {
     Arc::clone(&self.config.read().unwrap_or_else(PoisonError::into_inner).pool)
   }
 
@@ -263,6 +265,10 @@ impl IdeService {
     if let Some(pool) = retired {
       pool.shutdown();
     }
+  }
+
+  pub fn close_writes(&self) -> bool {
+    self.writes.close()
   }
 
   pub fn shutdown(&self) {
@@ -485,7 +491,7 @@ impl IdeService {
     Ok((synced.lease, notes))
   }
 
-  fn plan(&self, kind: ServerKind, scope: &UnitScope, settings: &IdeSettings) -> IdeResult<(UnitPlan, LaunchSpec, LaunchKey)> {
+  pub(crate) fn plan(&self, kind: ServerKind, scope: &UnitScope, settings: &IdeSettings) -> IdeResult<(UnitPlan, LaunchSpec, LaunchKey)> {
     let units = self.query.engine().language_units()?;
     let project = self.query.engine().project().name.to_string();
     let inputs = UnitInputs {
@@ -562,14 +568,14 @@ impl IdeService {
   }
 }
 
-enum TypeScriptReport {
+pub(crate) enum TypeScriptReport {
   Supported,
   Unreported,
   Contradicts(String),
   Unsupported(String),
 }
 
-fn typescript_report(lease: &Lease, launch: &LaunchSpec) -> TypeScriptReport {
+pub(crate) fn typescript_report(lease: &Lease, launch: &LaunchSpec) -> TypeScriptReport {
   if lease.kind() != ServerKind::TypeScript {
     return TypeScriptReport::Supported;
   }
@@ -592,7 +598,7 @@ fn typescript_report(lease: &Lease, launch: &LaunchSpec) -> TypeScriptReport {
   }
 }
 
-fn unit_scope(settings: &IdeSettings, repo: &RepoName) -> UnitScope {
+pub(crate) fn unit_scope(settings: &IdeSettings, repo: &RepoName) -> UnitScope {
   match settings.unit {
     UnitMode::Project => UnitScope::Project,
     UnitMode::Repo => UnitScope::Repo(repo.to_string()),

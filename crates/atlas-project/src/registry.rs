@@ -89,10 +89,38 @@ impl Default for LspSettings {
   }
 }
 
+fn check_exclude_glob(glob: &str) -> Result<(), String> {
+  if glob.trim().is_empty() {
+    return Err("lsp.exclude must not contain an empty glob".to_owned());
+  }
+  if glob.starts_with('/') {
+    return Err(format!("lsp.exclude globs are relative to the repo root; {glob:?} is absolute"));
+  }
+  let (mut class, mut braces, mut escaped) = (false, 0_i32, false);
+  for character in glob.chars() {
+    match (escaped, character) {
+      (true, _) => escaped = false,
+      (false, '\\') => escaped = true,
+      (false, '[') => class = true,
+      (false, ']') => class = false,
+      (false, '{') => braces += 1,
+      (false, '}') => braces -= 1,
+      _ => {}
+    }
+  }
+  match (class, braces) {
+    (false, 0) => Ok(()),
+    _ => Err(format!("lsp.exclude: {glob:?} has an unclosed or unbalanced [ ] or {{ }}")),
+  }
+}
+
 impl LspSettings {
   pub fn validate(&self) -> Result<(), String> {
     if self.max_servers < 1 {
       return Err("lsp.max_servers must be at least 1".to_owned());
+    }
+    for glob in &self.exclude {
+      check_exclude_glob(glob)?;
     }
     if let Err(error) = crate::PathGlobs::new(&self.exclude) {
       return Err(format!("lsp.exclude: {error}"));

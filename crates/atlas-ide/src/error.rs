@@ -71,6 +71,8 @@ pub enum IdeError {
   Store(#[from] StoreError),
   #[error(transparent)]
   Edit(#[from] EditError),
+  #[error("interrupted before the write started; nothing was written")]
+  Interrupted,
   #[error("{server} is not running; code-atlas does not start it for this")]
   NotRunning { server: String },
   #[error("plan {id} expired after {age_secs}s (plans are kept for {ttl_secs}s); run the dry run again")]

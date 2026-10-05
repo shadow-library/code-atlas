@@ -852,3 +852,336 @@ fn should_fail_mcp_with_a_usage_exit_outside_every_project() {
   assert_eq!(code(&output), 2, "{}", stderr(&output));
   assert_eq!(stdout(&output), "");
 }
+
+fn run_with_path(sandbox: &Sandbox, cwd: &Path, args: &[&str], path: &Path) -> Output {
+  sandbox.run_env(cwd, args, &[("PATH", path.to_str().unwrap())])
+}
+
+fn script(path: &Path, body: &str) {
+  use std::os::unix::fs::PermissionsExt;
+  fs::write(path, body).unwrap();
+  fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+#[test]
+fn should_document_the_edit_exit_codes_and_the_one_shot_server_cost_in_help() {
+  let sandbox = Sandbox::new();
+  let output = sandbox.run(sandbox.work().as_path(), &["--help"]);
+  assert_ok(&output);
+  let help = stdout(&output);
+  for expected in [
+    "5  edit refused, nothing written",
+    "6  edit failed and was rolled back, nothing changed",
+    "7  edit partially applied",
+    "never exits 0",
+    "start a language server per invocation and stop it on exit",
+    "2-5 s on TypeScript fixtures, 20-65 s cold on Rust",
+    "130  interrupted (a write in progress finishes first)",
+    "every refused edit exits 5, never 4",
+    "An applied or dry-run edit whose index freshness is degraded exits 3.",
+    "edit replace-body|insert-before|insert-after start one only when one is already warm",
+  ] {
+    assert!(help.contains(expected), "missing {expected:?} in {help}");
+  }
+  for command in ["find", "outline", "refs", "decl", "impls", "hierarchy", "diagnostics", "edit", "lsp"] {
+    assert!(help.contains(&format!("  {command} ")), "missing the {command} command in {help}");
+  }
+  let edit = stdout(&sandbox.run(sandbox.work().as_path(), &["edit", "--help"]));
+  for subcommand in [
+    "rename",
+    "replace-body",
+    "insert-before",
+    "insert-after",
+    "safe-delete",
+    "replace",
+    "replace-in-files",
+    "apply",
+  ] {
+    assert!(edit.contains(&format!("  {subcommand} ")), "missing edit {subcommand} in {edit}");
+  }
+}
+
+#[test]
+fn should_default_lsp_settings_to_enabled_with_downloads_and_round_trip_every_flag() {
+  let sandbox = Sandbox::new();
+  let root = sandbox.create_acme();
+  let api = root.join("acme-api");
+  let defaults = json(&sandbox.run(&api, &["project", "config", "acme", "--json"]));
+  assert_eq!(defaults.get("lsp"), None);
+  let shown = stdout(&sandbox.run(&api, &["project", "config", "acme"]));
+  for line in [
+    "lsp.enabled = true",
+    "lsp.download = true",
+    "lsp.typescript_command = (discover)",
+    "lsp.unit = project",
+    "lsp.max_servers = 2",
+    "lsp.idle_secs = 600",
+  ] {
+    assert!(shown.contains(line), "missing {line:?} in {shown}");
+  }
+
+  let changed = sandbox.run(
+    &api,
+    &[
+      "project",
+      "config",
+      "acme",
+      "--lsp",
+      "off",
+      "--lsp-download",
+      "off",
+      "--lsp-ts-command",
+      "/usr/bin/node",
+      "--lsp-ts-command",
+      "/opt/ts/cli.mjs",
+      "--lsp-idle-secs",
+      "30",
+      "--lsp-max-servers",
+      "3",
+      "--lsp-unit",
+      "repo",
+      "--lsp-ready-timeout-secs",
+      "90",
+      "--lsp-check-timeout-secs",
+      "45",
+      "--lsp-exclude",
+      "fixtures/**",
+      "--lsp-exclude",
+      "vendor/",
+    ],
+  );
+  assert_ok(&changed);
+  let text = stdout(&changed);
+  for line in [
+    "lsp.enabled: true -> false",
+    "lsp.download: true -> false",
+    "lsp.typescript_command: (discover) -> /usr/bin/node /opt/ts/cli.mjs",
+    "lsp.unit: project -> repo",
+    "lsp.max_servers: 2 -> 3",
+    "lsp.idle_secs: 600 -> 30",
+    "lsp.ready_timeout_secs: 300 -> 90",
+    "lsp.check_timeout_secs: 120 -> 45",
+    "lsp.exclude: (none) -> fixtures/**, vendor/",
+  ] {
+    assert!(text.contains(line), "missing {line:?} in {text}");
+  }
+  let persisted = json(&sandbox.run(&api, &["project", "config", "acme", "--json"]));
+  assert_eq!(
+    persisted["lsp"],
+    serde_json::json!({
+      "enabled": false,
+      "download": false,
+      "typescript_command": ["/usr/bin/node", "/opt/ts/cli.mjs"],
+      "unit": "repo",
+      "max_servers": 3,
+      "idle_secs": 30,
+      "ready_timeout_secs": 90,
+      "check_timeout_secs": 45,
+      "exclude": ["fixtures/**", "vendor/"]
+    })
+  );
+
+  assert_ok(&sandbox.run(&api, &["project", "config", "acme", "--lsp-exclude-clear", "--lsp-ts-command-clear", "--lsp", "on"]));
+  let cleared = json(&sandbox.run(&api, &["project", "config", "acme", "--json"]));
+  assert_eq!(cleared["lsp"]["exclude"], Value::Null);
+  assert_eq!(cleared["lsp"]["typescript_command"], Value::Null);
+  assert_eq!(cleared["lsp"]["enabled"], true);
+  assert_ok(&sandbox.run(&api, &["project", "config", "acme", "--reset"]));
+  assert_eq!(json(&sandbox.run(&api, &["project", "config", "acme", "--json"])).get("lsp"), None);
+}
+
+#[test]
+fn should_reject_invalid_lsp_settings_and_arguments_with_exit_2() {
+  let sandbox = Sandbox::new();
+  let root = sandbox.create_acme();
+  let api = root.join("acme-api");
+  for args in [
+    vec!["project", "config", "acme", "--lsp-max-servers", "0"],
+    vec!["project", "config", "acme", "--lsp-idle-secs", "0"],
+    vec!["project", "config", "acme", "--lsp-ready-timeout-secs", "0"],
+    vec!["project", "config", "acme", "--lsp-check-timeout-secs", "0"],
+    vec!["project", "config", "acme", "--lsp-ts-command", "node"],
+    vec!["project", "config", "acme", "--lsp-exclude", "[z-a]"],
+    vec!["project", "config", "acme", "--lsp-exclude", "["],
+    vec!["project", "config", "acme", "--lsp-exclude", "/abs/**"],
+    vec!["project", "config", "acme", "--lsp-exclude", "src/{a,b"],
+    vec!["project", "config", "acme", "--lsp-unit", "galaxy"],
+    vec!["project", "config", "acme", "--lsp-exclude", "a", "--lsp-exclude-clear"],
+    vec!["edit", "rename", "toCents", "cents", "--plan-out", "plan.json"],
+    vec!["edit", "replace-body", "toCents"],
+    vec!["edit", "replace-body", "toCents", "--text", "x", "--text-file", "-"],
+    vec!["edit", "replace", "src/a.ts", "--pattern", "x"],
+    vec!["edit", "rename", "toCents", "cents", "--cross-repo", "everywhere"],
+    vec!["edit", "apply"],
+    vec!["decl"],
+    vec!["decl", "--path", "src/a.ts"],
+    vec!["decl", "src/a.ts:1:1", "--path", "src/a.ts", "--regex", "x"],
+    vec!["outline", "src/a.ts", "--source", "magic"],
+    vec!["diagnostics", "src/a.ts", "--min-severity", "loud"],
+    vec!["query", "similar", "--code", "-"],
+    vec!["query", "similar", "--language", "rust"],
+    vec!["query", "similar", "toCents", "--code", "-", "--language", "rust"],
+    vec!["query", "similar", "--code", "-", "--language", "python"],
+    vec!["query", "dependents", "toCents", "--via-http"],
+  ] {
+    let output = sandbox.run(&api, &args);
+    assert_eq!(code(&output), 2, "{args:?}: {}", stderr(&output));
+  }
+  let output = sandbox.run(&api, &["project", "config", "acme", "--lsp-ts-command", "node"]);
+  assert!(stderr(&output).contains("lsp.typescript_command must start with an absolute path"), "{}", stderr(&output));
+  let output = sandbox.run(&api, &["project", "config", "acme", "--lsp-max-servers", "0"]);
+  assert!(stderr(&output).contains("lsp.max_servers must be at least 1"), "{}", stderr(&output));
+  assert_eq!(json(&sandbox.run(&api, &["project", "config", "acme", "--json"])).get("lsp"), None);
+}
+
+#[test]
+fn should_exit_1_with_the_install_hint_when_the_typescript_server_is_unavailable() {
+  let sandbox = Sandbox::new();
+  let root = sandbox.create_acme();
+  let sdk = root.join("acme-sdk");
+  assert_ok(&sandbox.run(&sdk, &["index"]));
+  assert_ok(&sandbox.run(&sdk, &["project", "config", "acme", "--lsp-download", "off"]));
+  let empty = sandbox.work().join("empty-bin");
+  fs::create_dir_all(&empty).unwrap();
+
+  let unavailable = run_with_path(&sandbox, &sdk, &["outline", "src/money.ts"], &empty);
+
+  assert_eq!(code(&unavailable), 1, "{}", stderr(&unavailable));
+  let message = stderr(&unavailable);
+  assert!(
+    message.contains("typescript-language-server not found. Install it (npm i -g typescript-language-server typescript@5)"),
+    "{message}"
+  );
+  assert!(message.contains("--lsp-ts-command"), "{message}");
+  assert!(
+    message.contains("hint: pass --source graph for tagged graph results that need no language server"),
+    "{message}"
+  );
+  assert_eq!(stdout(&unavailable), "");
+
+  let graph = run_with_path(&sandbox, &sdk, &["outline", "src/money.ts", "--source", "graph"], &empty);
+  assert_ok(&graph);
+  assert!(stdout(&graph).contains("toCents"), "{}", stdout(&graph));
+
+  let edit = run_with_path(&sandbox, &sdk, &["edit", "rename", "toCents", "cents"], &empty);
+  assert_eq!(code(&edit), 1, "{}", stderr(&edit));
+  assert!(stderr(&edit).contains("typescript-language-server not found"), "{}", stderr(&edit));
+  assert_eq!(
+    fs::read_to_string(sdk.join("src/money.ts")).unwrap(),
+    fs::read_to_string(fixtures_dir().join("acme-sdk/src/money.ts")).unwrap()
+  );
+
+  assert_ok(&sandbox.run(&sdk, &["project", "config", "acme", "--lsp", "off"]));
+  let disabled = sandbox.run(&sdk, &["refs", "toCents"]);
+  assert_eq!(code(&disabled), 1);
+  assert!(
+    stderr(&disabled).contains("language servers are disabled for project acme (lsp.enabled = false); enable them with `code-atlas project config acme --lsp on`"),
+    "{}",
+    stderr(&disabled)
+  );
+}
+
+fn fixtures_dir() -> PathBuf {
+  Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/acme")
+}
+
+#[test]
+fn should_print_every_discovery_step_and_the_rust_analyzer_locator_in_doctor_without_the_network() {
+  let sandbox = Sandbox::new();
+  let root = sandbox.create_acme();
+  let sdk = root.join("acme-sdk");
+  assert_ok(&sandbox.run(&sdk, &["index"]));
+  assert_ok(&sandbox.run(&sdk, &["project", "config", "acme", "--lsp-download", "on"]));
+  let bin = sandbox.work().join("fake-bin");
+  fs::create_dir_all(&bin).unwrap();
+  script(&bin.join("typescript-language-server"), "#!/bin/sh\necho 5.1.3\n");
+  script(&bin.join("rust-analyzer"), "#!/bin/sh\necho 'rust-analyzer 1.2.3 (fake)'\n");
+  let web = root.join("acme-web");
+  fs::create_dir_all(web.join("node_modules/typescript")).unwrap();
+  fs::write(web.join("node_modules/typescript/package.json"), "{\"version\": \"7.0.1\"}\n").unwrap();
+
+  let output = run_with_path(&sandbox, &sdk, &["doctor"], &bin);
+
+  assert_eq!(code(&output), 3, "{}", stdout(&output));
+  let report = stdout(&output);
+  for expected in [
+    "ok    rust-analyzer: ",
+    "fake-bin/rust-analyzer (rust-analyzer 1.2.3 (fake))",
+    "ok    typescript-language-server: ",
+    "lsp.typescript_command: skipped (lsp.typescript_command is not set)",
+    "typescript-language-server on PATH: found (",
+    "(version 5.1.3)",
+    "acme-sdk/node_modules/.bin/typescript-language-server: skipped (an earlier candidate was found)",
+    "npx cache (npx --no-install typescript-language-server): skipped (an earlier candidate was found)",
+    "download (typescript-language-server@5, typescript@5): skipped by doctor (no network); lsp.download = on",
+    "warn  acme/acme-web typescript: node_modules holds TypeScript 7.0.1, which has no tsserver",
+  ] {
+    assert!(report.contains(expected), "missing {expected:?} in {report}");
+  }
+}
+
+#[test]
+fn should_say_when_rust_analyzer_and_typescript_server_are_missing_in_doctor() {
+  let sandbox = Sandbox::new();
+  let root = sandbox.create_acme();
+  let sdk = root.join("acme-sdk");
+  assert_ok(&sandbox.run(&sdk, &["project", "config", "acme", "--lsp-download", "off"]));
+  let empty = sandbox.work().join("empty-bin");
+  fs::create_dir_all(&empty).unwrap();
+
+  let output = run_with_path(&sandbox, &sdk, &["doctor"], &empty);
+
+  let report = stdout(&output);
+  assert_eq!(code(&output), 3, "{report}");
+  assert!(report.contains("warn  rust-analyzer: "), "{report}");
+  assert!(
+    report.contains("exact Rust operations and Rust SCIP indexing are unavailable (`rustup component add rust-analyzer`)"),
+    "{report}"
+  );
+  assert!(
+    report.contains("warn  typescript-language-server: typescript-language-server not found. Install it"),
+    "{report}"
+  );
+  assert!(
+    report.contains("typescript-language-server on PATH: missing (typescript-language-server is not on PATH)"),
+    "{report}"
+  );
+  assert!(
+    report.contains("download (typescript-language-server@5, typescript@5): skipped (download is off (lsp.download = false))"),
+    "{report}"
+  );
+}
+
+#[test]
+fn should_find_code_similar_to_a_draft_on_stdin_and_follow_http_hops() {
+  use std::io::Write;
+  let sandbox = Sandbox::new();
+  let root = sandbox.create_acme();
+  let sdk = root.join("acme-sdk");
+  assert_ok(&sandbox.run(&sdk, &["index"]));
+  let draft = fs::read_to_string(sdk.join("src/money.ts")).unwrap();
+  let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_code-atlas"));
+  command
+    .args(["query", "similar", "--code", "-", "--language", "ts", "--json"])
+    .current_dir(&sdk)
+    .env("CODE_ATLAS_HOME", sandbox.home.path())
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+  let mut child = command.spawn().unwrap();
+  child.stdin.take().unwrap().write_all(draft.as_bytes()).unwrap();
+
+  let output = child.wait_with_output().unwrap();
+
+  assert_ok(&output);
+  let answer = json(&output);
+  assert_eq!(answer["answer"]["language"], "typescript");
+  assert_eq!(answer["answer"]["drafts"][0]["draft"]["name"], "toCents");
+
+  let plain = sandbox.run(&sdk, &["callers", "toCents", "--json"]);
+  let http = sandbox.run(&sdk, &["callees", "toCents", "--via-http", "--json"]);
+  assert!([0, 3].contains(&code(&plain)), "{}", stderr(&plain));
+  assert!([0, 3].contains(&code(&http)), "{}", stderr(&http));
+  assert_eq!(json(&http)["answer"]["via_http"], true);
+  assert_eq!(json(&plain)["answer"].get("via_http"), None);
+}

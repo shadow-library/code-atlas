@@ -10,7 +10,7 @@ const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (commit ", env!("CODE
   name = "code-atlas",
   version = VERSION,
   about = "Cross-repo code knowledge graph for coding agents",
-  after_help = "Exit codes:\n  0  answered with results\n  1  runtime error\n  2  usage or config error (bad flags, ambiguous or no project, invalid values)\n  3  degraded: results were printed but the index is stale, partial or incomplete\n  4  answered, but nothing matched (target not found or ambiguous, run or file not found)"
+  after_help = "Exit codes:\n  0  answered with results\n  1  runtime error\n  2  usage or config error (bad flags, ambiguous or no project, invalid values)\n  3  degraded: results were printed but the index is stale, partial or incomplete\n  4  answered, but nothing matched (read commands only: target not found or ambiguous, run or file not found)\n  5  edit refused, nothing written (stale or foreign or unversioned plan, safe-delete blockers, ambiguous target, no or several matches, scope violation, unverified sites, server refusal); every refused edit exits 5, never 4\n  6  edit failed and was rolled back, nothing changed\n  7  edit partially applied: some files changed and the rollback failed; the output lists them (never exits 0)\n  130  interrupted (a write in progress finishes first)\n\nAn applied or dry-run edit whose index freshness is degraded exits 3.\n\nIDE commands (outline, refs, decl, impls, diagnostics, edit rename|safe-delete, lsp check) start a language server per invocation and stop it on exit; edit replace-body|insert-before|insert-after start one only when one is already warm, which a one-shot process never has, so they start none. Measured: 2-5 s on TypeScript fixtures, 20-65 s cold on Rust (22 s for a 2-crate workspace, 64 s for acme-billing), longer on large workspaces. They suit scripts and CI; the MCP server keeps servers warm."
 )]
 pub struct Cli {
   #[arg(long, global = true, value_name = "FILTER", help = "Log filter such as `info` or `atlas_engine=debug`; overrides RUST_LOG")]
@@ -54,9 +54,9 @@ pub enum Command {
   #[command(about = "Shortcut for `query context`")]
   Context(ContextArgs),
   #[command(about = "Shortcut for `query callers`")]
-  Callers(TraverseArgs),
+  Callers(CallArgs),
   #[command(about = "Shortcut for `query callees`")]
-  Callees(TraverseArgs),
+  Callees(CallArgs),
   #[command(about = "Shortcut for `query symbol`")]
   Symbol(SymbolArgs),
   #[command(about = "Shortcut for `query api`")]
@@ -67,14 +67,32 @@ pub enum Command {
   Read(ReadArgs),
   #[command(name = "tests-for", about = "Shortcut for `query tests-for`")]
   TestsFor(TestsForArgs),
+  #[command(about = "Find symbols by name path in the graph")]
+  Find(FindArgs),
+  #[command(about = "List the symbols of a file from the language server (--source graph for the graph)")]
+  Outline(OutlineArgs),
+  #[command(about = "Exact references to a symbol or position from the language server (--source graph for the graph)")]
+  Refs(RefsArgs),
+  #[command(about = "Go to the definition and declaration at a position, or at the single regex match in a file")]
+  Decl(DeclArgs),
+  #[command(about = "Exact implementations of a trait, interface or method from the language server")]
+  Impls(ImplsArgs),
+  #[command(about = "Show the type hierarchy of a symbol from the graph")]
+  Hierarchy(HierarchyArgs),
+  #[command(about = "Compiler diagnostics of a file from the language server")]
+  Diagnostics(DiagnosticsArgs),
+  #[command(subcommand, about = "Exact edits: rename, symbol edits, safe delete, text replacement, plan application")]
+  Edit(EditCommand),
+  #[command(subcommand, about = "Inspect the language servers")]
+  Lsp(LspCommand),
   #[command(subcommand, about = "Wire Code Atlas into an agent client")]
   Connect(ConnectCommand),
   #[command(about = "Serve the MCP protocol on stdio")]
   Mcp(McpArgs),
   #[command(subcommand, about = "Inspect internals")]
   Debug(DebugCommand),
-  #[command(about = "Check tools, registry, databases and locks")]
-  Doctor,
+  #[command(about = "Check tools, registry, databases, locks and language-server discovery")]
+  Doctor(DoctorArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -190,6 +208,12 @@ pub enum Toggle {
   Off,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum LspUnitArg {
+  Project,
+  Repo,
+}
+
 #[derive(Debug, Args)]
 pub struct ConfigArgs {
   #[arg(value_name = "PROJECT")]
@@ -206,6 +230,37 @@ pub struct ConfigArgs {
   pub scip_debounce: Option<u64>,
   #[arg(long, value_name = "BYTES")]
   pub max_file_bytes: Option<u64>,
+  #[arg(long, value_enum, help = "Allow exact operations to start language servers (default on)")]
+  pub lsp: Option<Toggle>,
+  #[arg(long, value_enum, help = "Allow fetching typescript-language-server through npx when it is not installed (default on)")]
+  pub lsp_download: Option<Toggle>,
+  #[arg(
+    long,
+    value_name = "PATH",
+    action = clap::ArgAction::Append,
+    help = "Command line of typescript-language-server as argv: repeat the flag per word, the first an absolute path, e.g. --lsp-ts-command /usr/bin/node --lsp-ts-command /opt/ts/cli.mjs (--stdio is added)"
+  )]
+  pub lsp_ts_command: Vec<String>,
+  #[arg(long, conflicts_with = "lsp_ts_command", help = "Forget the configured typescript-language-server command")]
+  pub lsp_ts_command_clear: bool,
+  #[arg(long, value_name = "SECS", help = "Seconds a warm language server may idle before it is stopped")]
+  pub lsp_idle_secs: Option<u64>,
+  #[arg(long, value_name = "N", help = "Most language servers running at once")]
+  pub lsp_max_servers: Option<usize>,
+  #[arg(long, value_enum, help = "One server per project or per repo")]
+  pub lsp_unit: Option<LspUnitArg>,
+  #[arg(long, value_name = "SECS", help = "Seconds to wait for a server to become ready")]
+  pub lsp_ready_timeout_secs: Option<u64>,
+  #[arg(long, value_name = "SECS", help = "Seconds `lsp check` and flychecks wait")]
+  pub lsp_check_timeout_secs: Option<u64>,
+  #[arg(
+    long = "lsp-exclude",
+    value_name = "GLOB",
+    help = "Replace the repo-relative globs of Cargo projects and files the language servers must not load (repeatable)"
+  )]
+  pub lsp_exclude: Vec<String>,
+  #[arg(long, conflicts_with = "lsp_exclude", help = "Remove every lsp exclude glob")]
+  pub lsp_exclude_clear: bool,
   #[arg(long, help = "Restore every setting to its default before applying the other flags")]
   pub reset: bool,
   #[arg(long)]
@@ -247,8 +302,8 @@ pub enum QueryCommand {
   Overview(OverviewArgs),
   Search(SearchArgs),
   Symbol(SymbolArgs),
-  Callers(TraverseArgs),
-  Callees(TraverseArgs),
+  Callers(CallArgs),
+  Callees(CallArgs),
   Dependents(TraverseArgs),
   Dependencies(TraverseArgs),
   Impact(ImpactArgs),
@@ -310,6 +365,17 @@ pub struct SymbolArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct CallArgs {
+  #[command(flatten)]
+  pub traverse: TraverseArgs,
+  #[arg(
+    long,
+    help = "Follow HTTP hops: from a handler to the client calls that reach its endpoint (callers) or from a client call to the handler it reaches (callees)"
+  )]
+  pub via_http: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct TraverseArgs {
   pub target: String,
   #[arg(long)]
@@ -368,7 +434,7 @@ pub struct ApiArgs {
 }
 
 #[derive(Debug, Args)]
-#[command(group(ArgGroup::new("subject").required(true).args(["target", "snippet"])))]
+#[command(group(ArgGroup::new("subject").required(true).args(["target", "snippet", "code"])))]
 pub struct SimilarArgs {
   pub target: Option<String>,
   #[arg(long, value_name = "FILE:START-END", help = "Find code similar to a line range, e.g. src/money.rs:3-12")]
@@ -377,12 +443,29 @@ pub struct SimilarArgs {
   pub limit: Option<usize>,
   #[arg(long, value_parser = parse_unit_interval)]
   pub threshold: Option<f64>,
+  #[arg(
+    long,
+    value_name = "FILE|-",
+    requires = "language",
+    help = "Find code similar to a draft read from a file or stdin; needs --language"
+  )]
+  pub code: Option<String>,
+  #[arg(long, value_enum, requires = "code", help = "Language of the draft")]
+  pub language: Option<CodeLanguage>,
   #[arg(long, help = "Include stale inferred facts")]
   pub include_stale: bool,
   #[command(flatten)]
   pub filter: TargetFilterArgs,
   #[command(flatten)]
   pub common: QueryCommon,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum CodeLanguage {
+  Rust,
+  Ts,
+  Tsx,
+  Js,
 }
 
 #[derive(Debug, Args)]
@@ -453,6 +536,251 @@ pub struct ChangesArgs {
   pub limit: Option<usize>,
   #[command(flatten)]
   pub common: QueryCommon,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum SourceArg {
+  Lsp,
+  Graph,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum SeverityArg {
+  Error,
+  Warning,
+  Info,
+  Hint,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum CrossRepoArg {
+  Report,
+  Apply,
+}
+
+#[derive(Debug, Args)]
+pub struct FindArgs {
+  #[arg(value_name = "NAME_PATH")]
+  pub pattern: String,
+  #[arg(long, value_name = "PATH", help = "Restrict to a file or directory, optionally prefixed with the repo")]
+  pub path: Option<String>,
+  #[arg(long, help = "Include children down to this depth")]
+  pub depth: Option<u32>,
+  #[arg(long, help = "Include the full body")]
+  pub body: bool,
+  #[arg(long, help = "Match the last segment as a substring")]
+  pub substring: bool,
+  #[arg(long = "kind", value_name = "KIND")]
+  pub kinds: Vec<EntityKind>,
+  #[arg(long = "exclude-kind", value_name = "KIND")]
+  pub exclude_kinds: Vec<EntityKind>,
+  #[arg(long, value_name = "N")]
+  pub max: Option<usize>,
+  #[command(flatten)]
+  pub common: QueryCommon,
+}
+
+#[derive(Debug, Args)]
+pub struct OutlineArgs {
+  #[arg(value_name = "[REPO:]PATH")]
+  pub file: String,
+  #[arg(long)]
+  pub depth: Option<u32>,
+  #[arg(long, value_enum, default_value_t = SourceArg::Lsp)]
+  pub source: SourceArg,
+  #[command(flatten)]
+  pub common: QueryCommon,
+}
+
+#[derive(Debug, Args)]
+pub struct RefsArgs {
+  #[arg(value_name = "TARGET", help = "Name path, key, or [REPO:]PATH:LINE[:COL]")]
+  pub target: String,
+  #[arg(long, value_enum, default_value_t = SourceArg::Lsp)]
+  pub source: SourceArg,
+  #[command(flatten)]
+  pub common: QueryCommon,
+}
+
+#[derive(Debug, Args)]
+#[command(group(ArgGroup::new("where").required(true).args(["target", "path"])))]
+pub struct DeclArgs {
+  #[arg(value_name = "[REPO:]PATH:LINE:COL")]
+  pub target: Option<String>,
+  #[arg(long, value_name = "[REPO:]PATH", requires = "regex")]
+  pub path: Option<String>,
+  #[arg(
+    long,
+    value_name = "REGEX",
+    requires = "path",
+    help = "Regex with one capture group around the name; it must match exactly once in the file"
+  )]
+  pub regex: Option<String>,
+  #[command(flatten)]
+  pub common: QueryCommon,
+}
+
+#[derive(Debug, Args)]
+pub struct ImplsArgs {
+  pub target: String,
+  #[command(flatten)]
+  pub common: QueryCommon,
+}
+
+#[derive(Debug, Args)]
+pub struct HierarchyArgs {
+  pub target: String,
+  #[arg(long)]
+  pub depth: Option<u32>,
+  #[command(flatten)]
+  pub common: QueryCommon,
+}
+
+#[derive(Debug, Args)]
+pub struct DiagnosticsArgs {
+  #[arg(value_name = "[REPO:]PATH")]
+  pub file: String,
+  #[arg(long, value_name = "A-B", help = "Only diagnostics on these 1-based lines")]
+  pub lines: Option<String>,
+  #[arg(long, value_enum, value_name = "SEVERITY", default_value_t = SeverityArg::Hint)]
+  pub min_severity: SeverityArg,
+  #[command(flatten)]
+  pub common: QueryCommon,
+}
+
+#[derive(Debug, Args)]
+pub struct EditOutput {
+  #[arg(long, help = "Show the plan (diffs and plan id) without writing anything")]
+  pub dry_run: bool,
+  #[arg(
+    long,
+    value_name = "FILE",
+    requires = "dry_run",
+    help = "Write the dry-run plan to FILE as JSON; apply it later with `edit apply FILE`"
+  )]
+  pub plan_out: Option<PathBuf>,
+  #[arg(long, help = "Print the full outcome as JSON")]
+  pub json: bool,
+}
+
+#[derive(Debug, Args)]
+#[command(group(ArgGroup::new("replacement").required(true).args(["text", "text_file"])))]
+pub struct SymbolEditArgs {
+  pub target: String,
+  #[arg(long, value_name = "TEXT", allow_hyphen_values = true)]
+  pub text: Option<String>,
+  #[arg(long, value_name = "FILE|-", help = "Read the text from a file or stdin")]
+  pub text_file: Option<String>,
+  #[command(flatten)]
+  pub output: EditOutput,
+}
+
+#[derive(Debug, Args)]
+pub struct RenameArgs {
+  pub target: String,
+  #[arg(value_name = "NEW")]
+  pub new_name: String,
+  #[arg(long, value_enum, default_value_t = CrossRepoArg::Report, help = "Report uses of the symbol in other repos, or edit the ones the graph proves")]
+  pub cross_repo: CrossRepoArg,
+  #[arg(long, help = "Apply even when sites the index resolves to the symbol were not renamed by the server; check them first")]
+  pub allow_unverified: bool,
+  #[command(flatten)]
+  pub output: EditOutput,
+}
+
+#[derive(Debug, Args)]
+pub struct SafeDeleteArgs {
+  pub target: String,
+  #[command(flatten)]
+  pub output: EditOutput,
+}
+
+#[derive(Debug, Args)]
+#[command(group(ArgGroup::new("replacement").required(true).args(["text", "text_file"])))]
+pub struct ReplaceArgs {
+  #[arg(value_name = "[REPO:]PATH")]
+  pub path: String,
+  #[arg(long, allow_hyphen_values = true)]
+  pub pattern: String,
+  #[arg(long, value_name = "TEXT", allow_hyphen_values = true)]
+  pub text: Option<String>,
+  #[arg(long, value_name = "FILE|-", help = "Read the replacement from a file or stdin")]
+  pub text_file: Option<String>,
+  #[arg(long, help = "Treat the pattern as a regex")]
+  pub regex: bool,
+  #[arg(long, help = "Replace every match instead of requiring exactly one")]
+  pub all: bool,
+  #[command(flatten)]
+  pub output: EditOutput,
+}
+
+#[derive(Debug, Args)]
+#[command(group(ArgGroup::new("replacement").required(true).args(["text", "text_file"])))]
+pub struct ReplaceInFilesArgs {
+  #[arg(long, allow_hyphen_values = true)]
+  pub pattern: String,
+  #[arg(long, value_name = "TEXT", allow_hyphen_values = true)]
+  pub text: Option<String>,
+  #[arg(long, value_name = "FILE|-", help = "Read the replacement from a file or stdin")]
+  pub text_file: Option<String>,
+  #[arg(long, help = "Treat the pattern as a regex")]
+  pub regex: bool,
+  #[arg(long = "include", value_name = "GLOB")]
+  pub include: Vec<String>,
+  #[arg(long = "exclude", value_name = "GLOB")]
+  pub exclude: Vec<String>,
+  #[arg(long = "occurrence", value_name = "ID", help = "Apply only these occurrence ids from the dry run (repeatable)")]
+  pub occurrences: Vec<String>,
+  #[arg(long, value_name = "N", help = "Apply every match, which must number exactly N")]
+  pub expected_count: Option<usize>,
+  #[command(flatten)]
+  pub output: EditOutput,
+}
+
+#[derive(Debug, Args)]
+pub struct ApplyArgs {
+  #[arg(value_name = "PLAN.json")]
+  pub plan: PathBuf,
+  #[arg(long, help = "Print the full outcome as JSON")]
+  pub json: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum EditCommand {
+  #[command(about = "Rename a symbol everywhere the language server finds it")]
+  Rename(RenameArgs),
+  #[command(about = "Replace a symbol's declaration; restate all decorators/attributes of a group or none")]
+  ReplaceBody(SymbolEditArgs),
+  #[command(about = "Insert text before a symbol, after its leading docs and attributes")]
+  InsertBefore(SymbolEditArgs),
+  #[command(about = "Insert text after a symbol")]
+  InsertAfter(SymbolEditArgs),
+  #[command(about = "Delete a symbol only when nothing references it")]
+  SafeDelete(SafeDeleteArgs),
+  #[command(about = "Replace text in one file; exactly one match unless --all")]
+  Replace(ReplaceArgs),
+  #[command(about = "Replace text across files; without --occurrence or --expected-count it is a dry run")]
+  ReplaceInFiles(ReplaceInFilesArgs),
+  #[command(about = "Apply a plan file made with --dry-run --plan-out; refused when the files changed since")]
+  Apply(ApplyArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum LspCommand {
+  #[command(about = "Start each language server once and report discovery, versions, readiness time and workspace health")]
+  Check(LspCheckArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct LspCheckArgs {
+  #[arg(long)]
+  pub json: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct DoctorArgs {
+  #[arg(long, help = "Also start each language server of the working directory's project and report its health (slow)")]
+  pub lsp: bool,
 }
 
 #[derive(Debug, Subcommand)]

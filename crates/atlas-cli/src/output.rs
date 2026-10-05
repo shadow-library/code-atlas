@@ -8,6 +8,9 @@ pub enum Outcome {
   Degraded,
   Unresolved,
   Failed,
+  Refused,
+  RolledBack,
+  PartiallyApplied,
 }
 
 impl Outcome {
@@ -17,6 +20,9 @@ impl Outcome {
       Self::Degraded => Exit::Degraded,
       Self::Unresolved => Exit::NoMatch,
       Self::Failed => Exit::Failure,
+      Self::Refused => Exit::Refused,
+      Self::RolledBack => Exit::RolledBack,
+      Self::PartiallyApplied => Exit::PartiallyApplied,
     }
   }
 

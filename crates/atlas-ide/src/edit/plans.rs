@@ -11,6 +11,7 @@ use crate::error::{IdeError, IdeResult};
 use crate::service::{IdeService, guard};
 
 pub const PLAN_CAPACITY: usize = 32;
+pub const PLAN_VERSION: u32 = 1;
 pub const PLAN_TTL: Duration = Duration::from_secs(15 * 60);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,6 +23,8 @@ pub enum PlanGuard {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IdePlan {
+  #[serde(default)]
+  pub version: u32,
   pub id: String,
   pub project: String,
   pub operation: OperationView,
@@ -65,6 +68,7 @@ impl PlanDraft {
     let fingerprint = serde_json::to_string(&self.edits).unwrap_or_default();
     let hash = ContentHash::of(format!("{}\n{}\n{nanos}\n{fingerprint}", self.project, self.operation).as_bytes()).to_string();
     IdePlan {
+      version: PLAN_VERSION,
       id: format!("p-{}", &hash[..12]),
       project: self.project,
       operation: self.operation,
