@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use atlas_core::{EntityKind, RelPath, RepoName};
 use atlas_engine::{Engine, EngineOptions, FreshnessReport};
+use atlas_ide::{CrossRepo, DiscoveryLauncher};
 use atlas_project::{AtlasHome, Project, Registry, RepoSpec};
 use atlas_query::{
   ContextAnswer, ContextItem, ContextRequest, EntityRef, ImpactAnswer, ImpactRequest, QueryEngine, RenderText, SearchAnswer, SearchRequest, SimilarRequest, Targeted, TextOut,
@@ -14,14 +15,15 @@ use atlas_query::{
 use atlas_store::EntityFilter;
 
 use super::error::{RetrievalError, RetrievalResult};
-use super::patch::{OldLineChange, old_side_changes};
+use super::patch::{OldLineChange, old_side_changes, renamed_old_lines};
 use super::phrases::{MAX_CODE_SPANS, MAX_PROSE_PHRASES, significant_phrases};
 use super::report::{
-  BlastRadius, DEV_SET_CAVEAT, IndexSummary, PackSize, QueryLog, RetrievalReport, RetrievalSettings, SeedOutcome, SimilarSeed, TaskEntry, TaskOutcome, TaskRetrieval, aggregate,
+  BlastRadius, DEV_SET_CAVEAT, IndexSummary, PackSize, QueryLog, RenameRetrieval, RetrievalReport, RetrievalSettings, SeedOutcome, SimilarSeed, TaskEntry, TaskOutcome,
+  TaskRetrieval, aggregate,
 };
-use super::score::{BaseFile, Retrieved, score_files, score_reuse, tree_path};
-use crate::agent::{LoadedTask, StripPlan, apply_patch, atlas_repos, load_tasks, materialize, resolve_source};
-use crate::quality::overlap;
+use super::score::{BaseFile, Retrieved, score_files, score_rename_sites, score_reuse, tree_path};
+use crate::agent::{LoadedTask, RenameSpec, StripPlan, apply_patch, atlas_repos, load_tasks, materialize, resolve_source};
+use crate::quality::{DryRunError, DryRunRequest, RenameOptions, dry_run_rename, observe, overlap, rename_settings};
 
 pub const MAX_SIMILAR_SEEDS: usize = 5;
 pub const BLAST_RADIUS_CATEGORY: &str = "blast-radius";
@@ -277,7 +279,46 @@ fn query_task(task: &LoadedTask, indexed: &Indexed, index: IndexSummary, files: 
     must_consider: score_files(&retrieved, &truth.must_consider, base_file),
     reuse: (!truth.reuse_targets.is_empty()).then(|| score_reuse(&retrieved, &truth.reuse_targets)),
     blast_radius,
+    rename: task.spec.rename.as_ref().map(|rename| rename_retrieval(task, rename, indexed)),
   })
+}
+
+fn rename_retrieval(task: &LoadedTask, rename: &RenameSpec, indexed: &Indexed) -> RenameRetrieval {
+  let unavailable = |reason: String| RenameRetrieval::Unavailable { reason };
+  let patch_path = task.dir.join(REFERENCE_PATCH);
+  let Ok(patch) = fs::read_to_string(&patch_path) else {
+    return unavailable(format!("the task has no readable {REFERENCE_PATCH}"));
+  };
+  let expected = renamed_old_lines(&patch, rename.old_name(), &rename.new_name);
+  if expected.is_empty() {
+    return unavailable(format!("{REFERENCE_PATCH} replaces `{}` by `{}` on no line", rename.old_name(), rename.new_name));
+  }
+  let request = DryRunRequest {
+    target: rename.symbol.clone(),
+    new_name: rename.new_name.clone(),
+    cross_repo: CrossRepo::Report,
+  };
+  let settings = rename_settings(&RenameOptions::from_env());
+  let run = match dry_run_rename(&indexed.engine, Arc::new(DiscoveryLauncher), settings, &request) {
+    Ok(run) => run,
+    Err(DryRunError::NoServer(reason)) => return unavailable(format!("no language server: {reason}")),
+    Err(DryRunError::Failed { reason, .. }) => return unavailable(format!("the dry run failed: {reason}")),
+  };
+  let observed = match observe(&indexed.project, &run.plan, Some(rename.old_name())) {
+    Ok(observed) => observed,
+    Err(reason) => return unavailable(reason),
+  };
+  let planned: BTreeSet<(String, u32)> = observed
+    .edits
+    .iter()
+    .filter_map(|edit| Some((tree_path(&indexed.prefixes, &edit.repo, &edit.path)?, edit.line)))
+    .collect();
+  RenameRetrieval::Scored {
+    target: rename.symbol.clone(),
+    new_name: rename.new_name.clone(),
+    servers: run.servers.iter().map(|server| format!("{} {}", server.server, server.version)).collect(),
+    score: score_rename_sites(&expected, &planned),
+  }
 }
 
 fn pack_sections(context: &ContextAnswer) -> [&[ContextItem]; 7] {

@@ -60,6 +60,96 @@ pub fn old_side_changes(patch: &str, path: &str) -> BTreeSet<OldLineChange> {
   changes
 }
 
+fn is_identifier_char(character: char) -> bool {
+  character.is_alphanumeric() || character == '_' || character == '$'
+}
+
+fn word_spans<'a>(text: &'a str, word: &'a str) -> impl Iterator<Item = usize> + 'a {
+  text.match_indices(word).map(|(at, _)| at).filter(move |at| {
+    let before = text[..*at].chars().next_back();
+    let after = text[at + word.len()..].chars().next();
+    !before.is_some_and(is_identifier_char) && !after.is_some_and(is_identifier_char)
+  })
+}
+
+fn has_word(text: &str, word: &str) -> bool {
+  word_spans(text, word).next().is_some()
+}
+
+fn replace_word(text: &str, old: &str, new: &str) -> String {
+  let mut out = String::with_capacity(text.len());
+  let mut cursor = 0;
+  for at in word_spans(text, old) {
+    out.push_str(&text[cursor..at]);
+    out.push_str(new);
+    cursor = at + old.len();
+  }
+  out.push_str(&text[cursor..]);
+  out
+}
+
+pub fn renamed_old_lines(patch: &str, old: &str, new: &str) -> BTreeSet<(String, u32)> {
+  let mut sites = BTreeSet::new();
+  let mut path: Option<String> = None;
+  let mut old_line: Option<u32> = None;
+  let mut removed: Vec<(u32, &str)> = Vec::new();
+  let mut added: Vec<&str> = Vec::new();
+  let mut flush = |path: &Option<String>, removed: &mut Vec<(u32, &str)>, added: &mut Vec<&str>| {
+    let mut used = vec![false; added.len()];
+    for (index, (line, text)) in removed.iter().enumerate() {
+      if !has_word(text, old) {
+        continue;
+      }
+      let rewritten = replace_word(text, old, new);
+      let exact = added.iter().enumerate().position(|(at, candidate)| !used[at] && **candidate == *rewritten);
+      let positional = Some(index).filter(|at| added.get(*at).is_some_and(|candidate| !used[*at] && has_word(candidate, new) && !has_word(candidate, old)));
+      if let (Some(at), Some(path)) = (exact.or(positional), path) {
+        used[at] = true;
+        sites.insert((path.clone(), *line));
+      }
+    }
+    removed.clear();
+    added.clear();
+  };
+  for line in patch.lines() {
+    if line.starts_with("diff --git ") {
+      flush(&path, &mut removed, &mut added);
+      path = None;
+      old_line = None;
+      continue;
+    }
+    if let Some(old_path) = line.strip_prefix("--- ").filter(|_| old_line.is_none()) {
+      path = old_path.strip_prefix("a/").map(str::to_owned);
+      continue;
+    }
+    if line.starts_with("+++ ") && old_line.is_none() {
+      continue;
+    }
+    if let Some(header) = line.strip_prefix("@@ ") {
+      flush(&path, &mut removed, &mut added);
+      old_line = old_hunk_start(header);
+      continue;
+    }
+    let Some(current) = old_line.as_mut() else {
+      continue;
+    };
+    match line.chars().next() {
+      Some('-') => {
+        removed.push((*current, &line[1..]));
+        *current += 1;
+      }
+      Some('+') => added.push(&line[1..]),
+      Some(' ') | None => {
+        flush(&path, &mut removed, &mut added);
+        *current += 1;
+      }
+      _ => {}
+    }
+  }
+  flush(&path, &mut removed, &mut added);
+  sites
+}
+
 fn old_hunk_start(header: &str) -> Option<u32> {
   let old = header.strip_prefix('-')?.split_whitespace().next()?;
   old.split(',').next()?.parse().ok()
@@ -119,6 +209,47 @@ diff --git a/src/other.rs b/src/other.rs
         OldLineChange::InsertedBetween { before: 4, after: 5 },
       ]
     );
+  }
+
+  const RENAME_PATCH: &str = "diff --git a/src/a.ts b/src/a.ts
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -5,6 +5,6 @@
+ import x from 'x';
+-import { OldName } from './b';
++import { NewName } from './b';
+ const keep = OldNameExtra;
+-const a = new OldName(), b = OldName.make();
++const a = new NewName(), b = NewName.make();
+-const c = OldName;
++const c = somethingElse;
+ end
+diff --git a/src/b.ts b/src/b.ts
+--- a/src/b.ts
++++ b/src/b.ts
+@@ -1,3 +1,4 @@
+-export class OldName {}
+-// OldName is gone
++export class NewName {}
++// the old class is gone
++export const extra = 1;
+";
+
+  #[test]
+  fn should_keep_only_old_side_lines_where_the_old_identifier_becomes_the_new_one() {
+    let sites: Vec<(String, u32)> = renamed_old_lines(RENAME_PATCH, "OldName", "NewName").into_iter().collect();
+    assert_eq!(sites, vec![("src/a.ts".to_owned(), 6), ("src/a.ts".to_owned(), 8), ("src/b.ts".to_owned(), 1)]);
+  }
+
+  #[test]
+  fn should_not_match_longer_identifiers_or_other_files() {
+    assert_eq!(renamed_old_lines(RENAME_PATCH, "Old", "New"), BTreeSet::new());
+    assert_eq!(renamed_old_lines(RENAME_PATCH, "Missing", "NewName"), BTreeSet::new());
+  }
+
+  #[test]
+  fn should_replace_whole_words_only() {
+    assert_eq!(replace_word("OldName OldNameExtra _OldName OldName.x", "OldName", "N"), "N OldNameExtra _OldName N.x");
   }
 
   #[test]

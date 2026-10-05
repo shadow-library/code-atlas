@@ -1371,3 +1371,102 @@ must_include = [{ repo = "acme-billing", path = "src/handlers.rs", symbol = "per
 may_include = [{ repo = "acme-billing", path = "tests/invoices.rs", symbol = "stored_invoice_is_returned" }, { kind = "api_endpoint", repo = "acme-billing", method = "POST", route = "/invoices" }]
 must_not_include = [{ repo = "acme-api", path = "src/orders/orders.service.ts", symbol = "OrdersService.create" }, { repo = "acme-billing", path = "src/money.rs", symbol = "to_cents" }]
 note = "trait method signature change impacts every impl and every dyn caller"
+
+[[rename_sites]]
+id = "format-money"
+target = { repo = "acme-api", path = "src/common/money.ts", symbol = "formatMoney" }
+new_name = "formatCents"
+edit = [
+  { repo = "acme-api", path = "src/common/money.ts", line = 1 },
+  { repo = "acme-api", path = "src/orders/orders.service.ts", line = 7 },
+  { repo = "acme-api", path = "src/orders/orders.service.ts", line = 26 },
+  { repo = "acme-api", path = "src/reports/reports.service.ts", line = 6 },
+  { repo = "acme-api", path = "src/reports/reports.service.ts", line = 15 },
+  { repo = "acme-api", path = "src/reports/reports.service.ts", line = 17 },
+]
+
+[[rename_sites]]
+id = "users-service-find-one"
+target = { repo = "acme-api", path = "src/users/users.service.ts", symbol = "UsersService.findOne" }
+new_name = "getById"
+edit = [
+  { repo = "acme-api", path = "src/users/users.service.ts", line = 18 },
+  { repo = "acme-api", path = "src/users/users.service.ts", line = 29 },
+  { repo = "acme-api", path = "src/users/users.controller.ts", line = 16 },
+  { repo = "acme-api", path = "src/users/users.service.spec.ts", line = 15 },
+  { repo = "acme-api", path = "src/users/users.service.spec.ts", line = 20 },
+]
+untouched = [
+  { repo = "acme-api", path = "src/users/users.service.ts", line = 19 },
+  { repo = "acme-api", path = "src/users/users.controller.ts", line = 15 },
+  { repo = "acme-api", path = "src/users/users.service.spec.ts", line = 12 },
+  { repo = "acme-api", path = "src/users/users.service.spec.ts", line = 14 },
+]
+
+[[rename_sites]]
+id = "orders-service-find-one"
+target = { repo = "acme-api", path = "src/orders/orders.service.ts", symbol = "OrdersService.findOne" }
+new_name = "fetchOne"
+edit = [
+  { repo = "acme-api", path = "src/orders/orders.service.ts", line = 23 },
+  { repo = "acme-api", path = "src/orders/orders.controller.ts", line = 16 },
+]
+report = [
+  { repo = "acme-api", path = "src/orders/orders.controller.spec.ts", line = 5, column = 27, reason = "mock" },
+  { repo = "acme-api", path = "src/orders/orders.controller.spec.ts", line = 11, column = 19, reason = "mock" },
+  { repo = "acme-api", path = "src/orders/orders.controller.spec.ts", line = 13, column = 26, reason = "mock" },
+]
+untouched = [
+  { repo = "acme-api", path = "src/orders/orders.controller.spec.ts", line = 10 },
+  { repo = "acme-api", path = "src/orders/orders.controller.spec.ts", line = 12 },
+  { repo = "acme-api", path = "src/orders/orders.controller.ts", line = 15 },
+  { repo = "acme-api", path = "src/orders/orders.service.ts", line = 24 },
+]
+note = "the spec mocks findOne as an object literal cast to OrdersService; controller.findOne('o1') on line 12 calls the controller's own method"
+
+[[rename_sites]]
+id = "to-cents"
+target = { repo = "acme-sdk", path = "src/money.ts", symbol = "toCents" }
+new_name = "toMinorUnits"
+edit = [
+  { repo = "acme-sdk", path = "src/money.ts", line = 1 },
+  { repo = "acme-sdk", path = "src/index.ts", line = 3 },
+  { repo = "acme-sdk", path = "src/money.test.ts", line = 3 },
+  { repo = "acme-sdk", path = "src/money.test.ts", line = 7 },
+  { repo = "acme-sdk", path = "src/money.test.ts", line = 8 },
+  { repo = "acme-sdk", path = "src/money.test.ts", line = 9 },
+  { repo = "acme-sdk", path = "src/money.test.ts", line = 13 },
+]
+report = [
+  { repo = "acme-web", path = "src/components/OrderForm.tsx", line = 1, column = 10, reason = "outside_language_server" },
+  { repo = "acme-web", path = "src/components/OrderForm.tsx", line = 15, column = 44, reason = "outside_language_server" },
+]
+untouched = [
+  { repo = "acme-sdk", path = "src/money.test.ts", line = 5 },
+]
+note = "acme-web imports toCents through the package name @acme/sdk, which resolves to dist/ and is outside the language server's project"
+
+[[rename_sites]]
+id = "to-cents-apply"
+target = { repo = "acme-sdk", path = "src/money.ts", symbol = "toCents" }
+new_name = "toMinorUnits"
+cross_repo = "apply"
+setup = [
+  { repo = "acme-sdk", path = "package.json", replace = "dist/index.js", with = "src/index.ts" },
+  { repo = "acme-sdk", path = "package.json", replace = "dist/index.d.ts", with = "src/index.ts" },
+  { repo = "acme-sdk", path = "src/index.ts", replace = "export { toCents } from './money';", with = "export * from './money';" },
+]
+edit = [
+  { repo = "acme-sdk", path = "src/money.ts", line = 1 },
+  { repo = "acme-sdk", path = "src/money.test.ts", line = 3 },
+  { repo = "acme-sdk", path = "src/money.test.ts", line = 7 },
+  { repo = "acme-sdk", path = "src/money.test.ts", line = 8 },
+  { repo = "acme-sdk", path = "src/money.test.ts", line = 9 },
+  { repo = "acme-sdk", path = "src/money.test.ts", line = 13 },
+  { repo = "acme-web", path = "src/components/OrderForm.tsx", line = 1 },
+  { repo = "acme-web", path = "src/components/OrderForm.tsx", line = 15 },
+]
+untouched = [
+  { repo = "acme-sdk", path = "src/money.test.ts", line = 5 },
+]
+note = "after the setup the package entry is src/index.ts and re-exports with export *, so acme-web's import is an authoritative graph site that cross_repo = apply may edit"

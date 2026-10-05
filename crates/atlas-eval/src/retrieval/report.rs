@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::error::{RetrievalError, RetrievalResult};
 use super::phrases::Phrase;
-use super::score::{FileScore, MetricMean, ReuseScore, mean_of};
+use super::score::{FileScore, MetricMean, RenameSiteScore, ReuseScore, mean_of};
 use crate::quality::SetOverlap;
 
 pub const DEV_SET_CAVEAT: &str = "Dev set, same authors: the tasks, their ground truth and Code Atlas were written by the same people, and the tasks were \
@@ -99,6 +99,29 @@ enum ImpactView {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum RenameRetrieval {
+  Unavailable {
+    reason: String,
+  },
+  Scored {
+    target: String,
+    new_name: String,
+    servers: Vec<String>,
+    score: RenameSiteScore,
+  },
+}
+
+impl RenameRetrieval {
+  fn score(&self) -> Option<&RenameSiteScore> {
+    match self {
+      Self::Scored { score, .. } => Some(score),
+      Self::Unavailable { .. } => None,
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TaskRetrieval {
   pub index: IndexSummary,
   pub queries: QueryLog,
@@ -108,6 +131,8 @@ pub struct TaskRetrieval {
   pub must_consider: FileScore,
   pub reuse: Option<ReuseScore>,
   pub blast_radius: Option<BlastRadius>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub rename: Option<RenameRetrieval>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -146,6 +171,7 @@ pub struct RetrievalReport {
 type FileSelector = fn(&TaskRetrieval) -> &FileScore;
 type OverlapSelector = fn(&FileScore) -> &SetOverlap;
 type ReuseSelector = fn(&ReuseScore) -> Option<f64>;
+type RenameSelector = fn(&RenameSiteScore) -> Option<f64>;
 
 const FILE_SETS: [(&str, FileSelector); 3] = [
   ("must_change", |task| &task.must_change),
@@ -192,6 +218,15 @@ pub fn aggregate(tasks: &[TaskEntry]) -> Vec<MetricMean> {
       &format!("blast_radius.recall.{name}"),
       scored.iter().map(|task| task.blast_radius.as_ref().and_then(|blast| blast.recall(view))),
     ));
+  }
+  if scored.iter().any(|task| task.rename.is_some()) {
+    let sites: [(&str, RenameSelector); 2] = [("recall", |score| score.sites.recall), ("precision", |score| score.sites.precision)];
+    for (name, value) in sites {
+      means.push(mean_of(
+        &format!("rename.{name}"),
+        scored.iter().map(|task| task.rename.as_ref().and_then(RenameRetrieval::score).and_then(value)),
+      ));
+    }
   }
   means.push(mean_of("pack.bytes", scored.iter().map(|task| Some(task.pack.bytes as f64))));
   means.push(mean_of("pack.estimated_tokens", scored.iter().map(|task| Some(task.pack.estimated_tokens as f64))));
@@ -296,6 +331,34 @@ fn render_task(out: &mut String, task: &TaskEntry) {
   }
   if let Some(blast) = &retrieval.blast_radius {
     render_blast(out, blast);
+  }
+  if let Some(rename) = &retrieval.rename {
+    render_rename(out, rename);
+  }
+}
+
+fn render_rename(out: &mut String, rename: &RenameRetrieval) {
+  match rename {
+    RenameRetrieval::Unavailable { reason } => {
+      let _ = writeln!(out, "Rename: not scored ({reason}).\n");
+    }
+    RenameRetrieval::Scored { target, new_name, servers, score } => {
+      let _ = writeln!(
+        out,
+        "Rename `{target}` -> `{new_name}` as a dry run ({}) against the old-side lines of `reference.patch` where the old name becomes the new one: recall {} ({}), precision {}.",
+        if servers.is_empty() { "no server".to_owned() } else { servers.join(", ") },
+        number(score.sites.recall),
+        hits(&score.sites),
+        number(score.sites.precision)
+      );
+      if !score.missed.is_empty() {
+        let _ = writeln!(out, "- patch sites the plan does not edit: {}", code_list(&score.missed));
+      }
+      if !score.unexpected.is_empty() {
+        let _ = writeln!(out, "- planned edits the patch does not make: {}", code_list(&score.unexpected));
+      }
+      let _ = writeln!(out);
+    }
   }
 }
 
@@ -446,6 +509,7 @@ mod tests {
       must_consider: score_files(&retrieved, &[], |_| BaseFile::Indexed),
       reuse: None,
       blast_radius,
+      rename: None,
     }
   }
 
@@ -553,5 +617,63 @@ mod tests {
       "{markdown}"
     );
     assert!(markdown.contains("## Aggregate (mean over the 1 of 2 tasks that define each metric)"), "{markdown}");
+  }
+
+  fn rename_task(rename: RenameRetrieval) -> TaskRetrieval {
+    TaskRetrieval {
+      rename: Some(rename),
+      ..scored_task(None)
+    }
+  }
+
+  fn site_score(expected: &[(&str, u32)], planned: &[(&str, u32)]) -> RenameSiteScore {
+    let sites = |items: &[(&str, u32)]| items.iter().map(|(path, line)| ((*path).to_owned(), *line)).collect();
+    crate::retrieval::score::score_rename_sites(&sites(expected), &sites(planned))
+  }
+
+  #[test]
+  fn should_aggregate_and_render_rename_scores_and_skip_unavailable_ones() {
+    let scored = RenameRetrieval::Scored {
+      target: "UsersService.findOne".to_owned(),
+      new_name: "getById".to_owned(),
+      servers: vec!["typescript-language-server 5.1.3".to_owned()],
+      score: site_score(&[("a.ts", 1), ("a.ts", 2), ("b.ts", 3), ("c.ts", 4)], &[("a.ts", 1), ("a.ts", 2), ("b.ts", 3), ("d.ts", 9)]),
+    };
+    let tasks = vec![
+      entry("t1", TaskOutcome::Scored(Box::new(rename_task(scored)))),
+      entry(
+        "t2",
+        TaskOutcome::Scored(Box::new(rename_task(RenameRetrieval::Unavailable {
+          reason: "no language server: typescript-language-server is unavailable".to_owned(),
+        }))),
+      ),
+      entry("t3", TaskOutcome::Scored(Box::new(scored_task(None)))),
+    ];
+
+    let means = aggregate(&tasks);
+
+    assert_eq!((mean(&means, "rename.recall").tasks, mean(&means, "rename.recall").mean), (1, Some(0.75)));
+    assert_eq!((mean(&means, "rename.precision").tasks, mean(&means, "rename.precision").mean), (1, Some(0.75)));
+    let mut markdown = String::new();
+    render_task(&mut markdown, &tasks[0]);
+    render_task(&mut markdown, &tasks[1]);
+    assert!(
+      markdown.contains("Rename `UsersService.findOne` -> `getById` as a dry run (typescript-language-server 5.1.3) against the old-side lines of `reference.patch` where the old name becomes the new one: recall 0.75 (3/4), precision 0.75.\n"),
+      "{markdown}"
+    );
+    assert!(
+      markdown.contains("- patch sites the plan does not edit: `c.ts:4`\n- planned edits the patch does not make: `d.ts:9`\n"),
+      "{markdown}"
+    );
+    assert!(
+      markdown.contains("Rename: not scored (no language server: typescript-language-server is unavailable).\n"),
+      "{markdown}"
+    );
+  }
+
+  #[test]
+  fn should_not_add_rename_metrics_when_no_task_renames() {
+    let means = aggregate(&[entry("t1", TaskOutcome::Scored(Box::new(scored_task(None))))]);
+    assert!(means.iter().all(|mean| !mean.metric.starts_with("rename.")));
   }
 }

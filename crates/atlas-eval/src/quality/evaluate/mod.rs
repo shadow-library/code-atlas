@@ -3,6 +3,7 @@ mod domains;
 mod edges;
 mod entities;
 mod queries;
+mod rename;
 mod unresolved;
 
 use std::collections::BTreeMap;
@@ -10,6 +11,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 pub use self::context::Ctx;
+pub use self::rename::*;
 use super::corpus::{Corpus, IndexedProject};
 use super::error::QualityResult;
 use super::metrics::{Calibration, Prohibition, Recall};

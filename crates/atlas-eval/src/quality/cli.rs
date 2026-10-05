@@ -5,12 +5,13 @@ use std::time::Duration;
 use clap::Args;
 
 use super::context::{ContextReport, evaluate_context, load_context_tasks};
-use super::corpus::{Corpus, IndexedProject, discover};
+use super::corpus::{Corpus, FixtureGroup, IndexedProject, discover};
 use super::error::{QualityError, QualityResult};
-use super::evaluate::evaluate_fixture;
+use super::evaluate::{RenameOptions, RenameReport, evaluate_fixture, run_rename};
 use super::metrics::Comparison;
 use super::oracle::{IndexerState, OracleOptions, OracleReport, run_oracle};
 use super::refactor::{RefactorReport, run_refactors};
+use super::rename_report::{RenameDocument, write_rename_report};
 use super::report::{Environment, QualityReport, assemble, compare_reports, read_report, render_comparison, write_report};
 
 const DEFAULT_SCIP_TIMEOUT_SECS: u64 = 1_800;
@@ -41,6 +42,15 @@ pub struct QualityArgs {
   pub scip_timeout_secs: u64,
   #[arg(long, help = "Skip the scripted refactor scenarios")]
   pub no_refactors: bool,
+  #[arg(long, help = "Skip the rename dry-run scenarios ([[rename_sites]] truth through the language servers)")]
+  pub no_rename: bool,
+  #[arg(long, help = "Run only the rename scenarios and write <out dir>/rename.md and rename.json")]
+  pub rename_only: bool,
+  #[arg(
+    long,
+    help = "typescript-language-server entry (cli.mjs or a binary) for the rename scenarios (default: ATLAS_TEST_TS_LSP, then discovery)"
+  )]
+  pub ts_lsp: Option<PathBuf>,
   #[arg(long, help = "Directory of task specs with ground_truth.relevant_files / relevant_symbols; scores the context query")]
   pub context_tasks: Option<PathBuf>,
 }
@@ -85,13 +95,30 @@ pub fn run_quality(args: &QualityArgs, repo_root: &Path, date: &str) -> QualityR
     false => run_refactors(&fixtures.join("acme"))?,
   };
   let context = context_report(args, &fixtures, &corpus)?;
+  let rename = rename_report(args, &corpus.groups)?;
   let environment = Environment {
     date: date.to_owned(),
     rust_analyzer: oracle.rust_analyzer.clone(),
     scip_typescript: oracle.scip_typescript.clone(),
     notes,
   };
-  Ok(assemble(environment, reports, oracle, refactors, context))
+  Ok(assemble(environment, reports, oracle, refactors, context, rename))
+}
+
+fn rename_options(args: &QualityArgs) -> RenameOptions {
+  match &args.ts_lsp {
+    Some(path) => RenameOptions {
+      typescript_server: Some(path.clone()),
+    },
+    None => RenameOptions::from_env(),
+  }
+}
+
+fn rename_report(args: &QualityArgs, groups: &[FixtureGroup]) -> QualityResult<RenameReport> {
+  if args.no_rename {
+    return Ok(RenameReport::NotRequested { reason: "--no-rename".to_owned() });
+  }
+  run_rename(groups, &rename_options(args))
 }
 
 fn oracle_report(args: &QualityArgs, repo_root: &Path, corpus: &Corpus, notes: &mut Vec<String>) -> QualityResult<OracleReport> {
@@ -141,9 +168,31 @@ fn context_report(args: &QualityArgs, fixtures: &Path, corpus: &Corpus) -> Quali
   evaluate_context(&tasks, skipped, &projects)
 }
 
+fn execute_rename_only(args: &QualityArgs, repo_root: &Path, date: &str) -> QualityResult<QualityOutcome> {
+  if args.no_rename {
+    return Err(QualityError::InvalidArgument("--rename-only conflicts with --no-rename".to_owned()));
+  }
+  let groups = discover(&repo_root.join("fixtures"), &args.only)?;
+  let document = RenameDocument {
+    date: date.to_owned(),
+    rename: run_rename(&groups, &rename_options(args))?,
+  };
+  let out = args.out.clone().unwrap_or_else(|| PathBuf::from("eval").join("reports").join(date).join("rename"));
+  let (markdown, json) = write_rename_report(&document, &out)?;
+  Ok(QualityOutcome {
+    markdown,
+    json,
+    comparison: None,
+    regressions: 0,
+  })
+}
+
 pub fn execute(args: &QualityArgs) -> QualityResult<QualityOutcome> {
   let repo_root = locate_repo_root(args.repo_root.as_deref())?;
   let date = args.date.clone().unwrap_or_else(crate::agent::today_utc);
+  if args.rename_only {
+    return execute_rename_only(args, &repo_root, &date);
+  }
   let report = run_quality(args, &repo_root, &date)?;
   let comparison: Option<Comparison> = match &args.compare {
     Some(path) => Some(compare_reports(&read_report(path)?, &report)),

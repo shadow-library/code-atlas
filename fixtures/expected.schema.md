@@ -87,6 +87,19 @@ A client call that must produce an `api_client_call` entity but no `calls_endpoi
 ### `[[isolation]]`
 `project` (the project a query is scoped to), `must_not_return = [selectors]`, `note`. Queries scoped to `project` must never surface these, even for identical names, routes or env vars.
 
+### `[[rename_sites]]`
+Eval truth for rename dry runs (`atlas-eval quality`; no producer reads it, so no pin changes). One scenario per table.
+
+- `id` (unique per file), `new_name`, `note`.
+- `target = { repo, path, symbol }` names the symbol to rename, using the symbol forms above. When a name is ambiguous, give `line` (and optionally `column`) for a position target, or `key` for an entity key; `key` wins over `line`, which wins over `symbol`.
+- `cross_repo = "report" | "apply"` (default `report`) is passed to the rename.
+- `setup = [{ repo, path, replace, with }]` rewrites the evaluator's fixture copy before indexing (every occurrence of `replace`; a missing `replace` text fails the scenario). Lines in the truth below refer to the files after the setup.
+- `edit = [{ repo, path, line, column? }]` lists every site the plan must edit. Lines and columns are 1-based. Without `column` a site matches any edit on that line; two entries on one line need two distinct edits. Each edit must be backed by a read of the file: the line holds the old name as a reference to the target.
+- `report = [{ repo, path, line, column?, reason }]` lists sites the plan must list as not renamed. `reason` is one of `language_server`, `outside_language_server`, `mock`, `heuristic`, `http`, `dynamic`, `token_mismatch`.
+- `untouched = [{ repo, path, line, column? }]` lists lines that mention the name (a string, an unrelated method of the same name, a longer identifier) and must not be edited. An `untouched` line may not also be an `edit` or `report` site.
+
+Scores per scenario and in total: edit recall (expected sites planned / expected), edit precision (planned edits that are expected / planned), report recall (expected report sites listed with the expected reason / expected) and violations (`untouched` lines edited). A scenario without a language server is `skipped`, never zero; a scenario that fails counts its expected sites as missed.
+
 ## Validation
 
 Every `expected.toml` must parse with `tomllib`, every selector `path` must exist under its repo, and every `symbol` (or `suite`) must textually occur in that file. Selectors in `forbidden_edge` / `isolation` / `blast_radius` may point at other repos of the fixture tree (for example `globex-api` from `acme/expected.toml`).

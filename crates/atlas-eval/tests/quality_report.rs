@@ -1,8 +1,11 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use atlas_eval::quality::{
-  ContextReport, Corpus, FixtureGroup, QualityArgs, QualityReport, RepoSource, compare_reports, evaluate_fixture, execute, load_truth, read_report, run_quality,
+  ContextReport, Corpus, FixtureGroup, QualityArgs, QualityReport, RenameDocument, RenameOutcome, RenameReport, RepoSource, compare_reports, discover, evaluate_fixture, execute,
+  load_truth, read_report, run_quality, run_rename_with, write_rename_report,
 };
+use atlas_ide::{IdeError, IdeResult, IdeSettings, LaunchRequest, LaunchSpec, Launcher};
 
 fn repo_root() -> PathBuf {
   Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap()
@@ -22,6 +25,9 @@ fn args(out: Option<PathBuf>, compare: Option<PathBuf>) -> QualityArgs {
     scip_only: Vec::new(),
     scip_timeout_secs: 1,
     no_refactors: true,
+    no_rename: true,
+    rename_only: false,
+    ts_lsp: None,
     context_tasks: None,
   }
 }
@@ -74,6 +80,8 @@ fn should_report_every_adversarial_fixture_with_the_documented_structure() {
   assert!(report.oracle.targets.is_empty());
   assert!(report.refactors.scenarios.is_empty());
   assert!(matches!(report.context, ContextReport::NotRequested { .. }));
+  assert_eq!(report.rename, RenameReport::NotRequested { reason: "--no-rename".to_owned() });
+  assert!(report.metrics.keys().all(|name| !name.starts_with("rename/")));
   assert!(
     report
       .calibration
@@ -81,6 +89,74 @@ fn should_report_every_adversarial_fixture_with_the_documented_structure() {
       .values()
       .all(|cell| cell.judged == cell.correct + cell.overclaimed + cell.underclaimed + cell.false_edges)
   );
+}
+
+struct NoServer;
+
+impl Launcher for NoServer {
+  fn launch(&self, request: &LaunchRequest<'_>) -> IdeResult<LaunchSpec> {
+    Err(IdeError::Unavailable {
+      server: request.kind.name().to_owned(),
+      reason: "not installed".to_owned(),
+      alternative: None,
+    })
+  }
+}
+
+#[test]
+fn should_skip_and_write_a_standalone_rename_report_when_no_server_is_found() {
+  let scratch = tempfile::tempdir().unwrap();
+  let groups = discover(&repo_root().join("fixtures"), &["trait-dispatch-rust".to_owned()]).unwrap();
+
+  let rename = run_rename_with(&groups, Arc::new(NoServer), IdeSettings::default()).unwrap();
+  let document = RenameDocument {
+    date: "2026-01-01".to_owned(),
+    rename,
+  };
+  let (markdown, json) = write_rename_report(&document, &scratch.path().join("rename")).unwrap();
+
+  let reread: RenameDocument = serde_json::from_str(&std::fs::read_to_string(json).unwrap()).unwrap();
+  assert_eq!(reread, document);
+  let RenameReport::Run { scenarios, aggregate, .. } = reread.rename else {
+    panic!("expected a rename run");
+  };
+  assert_eq!(scenarios.len(), 1);
+  assert!(matches!(&scenarios[0].outcome, RenameOutcome::Skipped { reason } if reason.starts_with("no language server: ")));
+  assert_eq!((aggregate.skipped, aggregate.edit.expected), (1, 0));
+  let text = std::fs::read_to_string(markdown).unwrap();
+  assert!(text.starts_with("# Code Atlas rename evaluation\n\nDate: 2026-01-01.\n"), "{text}");
+}
+
+#[test]
+fn should_score_store_get_with_the_real_rust_analyzer_when_asked_to() {
+  if std::env::var_os("ATLAS_TEST_RENAME_REAL").is_none() {
+    eprintln!("SKIPPED should_score_store_get_with_the_real_rust_analyzer_when_asked_to: set ATLAS_TEST_RENAME_REAL=1");
+    return;
+  }
+  let scratch = tempfile::tempdir().unwrap();
+  let mut options = args(Some(scratch.path().join("rename")), None);
+  options.rename_only = true;
+  options.no_rename = false;
+  options.only = vec!["trait-dispatch-rust".to_owned()];
+
+  let outcome = execute(&options).unwrap();
+
+  let document: RenameDocument = serde_json::from_str(&std::fs::read_to_string(&outcome.json).unwrap()).unwrap();
+  let RenameReport::Run { scenarios, .. } = document.rename else {
+    panic!("expected a rename run");
+  };
+  match &scenarios[0].outcome {
+    RenameOutcome::Scored { score, .. } => assert_eq!((score.edit.correct, score.edit.expected, score.edit.predicted), (7, 7, 7)),
+    other => panic!("store-get was not scored: {other:?}"),
+  }
+}
+
+#[test]
+fn should_refuse_rename_only_together_with_no_rename() {
+  let mut options = args(None, None);
+  options.rename_only = true;
+
+  assert!(execute(&options).unwrap_err().to_string().contains("--rename-only conflicts with --no-rename"));
 }
 
 #[test]

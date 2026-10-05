@@ -268,6 +268,61 @@ pub struct IsolationTruth {
   pub must_not_return: Vec<Selector>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct RenameTarget {
+  pub repo: String,
+  pub path: String,
+  pub symbol: Option<String>,
+  pub key: Option<String>,
+  pub line: Option<u32>,
+  pub column: Option<u32>,
+}
+
+impl RenameTarget {
+  pub fn spec(&self) -> Option<String> {
+    match (&self.key, self.line, &self.symbol) {
+      (Some(key), _, _) => Some(key.clone()),
+      (None, Some(line), _) => Some(format!("{}:{}:{line}:{}", self.repo, self.path, self.column.unwrap_or(1))),
+      (None, None, Some(symbol)) => Some(symbol.clone()),
+      (None, None, None) => None,
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct RenameSite {
+  pub repo: String,
+  pub path: String,
+  pub line: u32,
+  pub column: Option<u32>,
+  pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct RenameSetup {
+  pub repo: String,
+  pub path: String,
+  pub replace: String,
+  pub with: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct RenameTruth {
+  pub id: String,
+  pub target: RenameTarget,
+  pub new_name: String,
+  #[serde(default)]
+  pub cross_repo: Option<String>,
+  #[serde(default)]
+  pub setup: Vec<RenameSetup>,
+  #[serde(default)]
+  pub edit: Vec<RenameSite>,
+  #[serde(default)]
+  pub report: Vec<RenameSite>,
+  #[serde(default)]
+  pub untouched: Vec<RenameSite>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Truth {
   pub project: ProjectTruth,
@@ -301,6 +356,8 @@ pub struct Truth {
   pub blast_radius: Vec<BlastRadiusTruth>,
   #[serde(default)]
   pub isolation: Vec<IsolationTruth>,
+  #[serde(default)]
+  pub rename_sites: Vec<RenameTruth>,
 }
 
 pub fn parse_truth(text: &str, file: &str) -> QualityResult<Truth> {
@@ -336,9 +393,63 @@ fn validate(truth: &Truth, file: &str) -> QualityResult<()> {
       }
     }
   }
+  validate_renames(&truth.rename_sites, file)?;
   for flag in &truth.file_flag {
     if !matches!(flag.flag.as_str(), "generated" | "partial_syntax") {
       return Err(QualityError::truth(file, format!("unknown file flag `{}`", flag.flag)));
+    }
+  }
+  Ok(())
+}
+
+const REPORT_REASONS: [&str; 7] = ["language_server", "outside_language_server", "mock", "heuristic", "http", "dynamic", "token_mismatch"];
+
+fn validate_renames(renames: &[RenameTruth], file: &str) -> QualityResult<()> {
+  let mut seen = std::collections::BTreeSet::new();
+  for rename in renames {
+    let id = &rename.id;
+    if !seen.insert(id.as_str()) {
+      return Err(QualityError::truth(file, format!("duplicate rename_sites id `{id}`")));
+    }
+    if rename.target.spec().is_none() {
+      return Err(QualityError::truth(file, format!("rename_sites `{id}` target needs a symbol, key or line")));
+    }
+    if rename.edit.is_empty() && rename.report.is_empty() {
+      return Err(QualityError::truth(file, format!("rename_sites `{id}` expects no edit and no report site")));
+    }
+    if let Some(mode) = &rename.cross_repo
+      && !matches!(mode.as_str(), "report" | "apply")
+    {
+      return Err(QualityError::truth(file, format!("rename_sites `{id}` has unknown cross_repo `{mode}`")));
+    }
+    for site in &rename.report {
+      if !site.reason.as_deref().is_some_and(|reason| REPORT_REASONS.contains(&reason)) {
+        return Err(QualityError::truth(
+          file,
+          format!(
+            "rename_sites `{id}` report site {}:{}:{} needs a reason, one of {}",
+            site.repo,
+            site.path,
+            site.line,
+            REPORT_REASONS.join(", ")
+          ),
+        ));
+      }
+    }
+    let listed = rename.edit.iter().chain(&rename.report);
+    for untouched in &rename.untouched {
+      if listed
+        .clone()
+        .any(|site| (&site.repo, &site.path, site.line) == (&untouched.repo, &untouched.path, untouched.line))
+      {
+        return Err(QualityError::truth(
+          file,
+          format!(
+            "rename_sites `{id}` lists {}:{}:{} as both a site and untouched",
+            untouched.repo, untouched.path, untouched.line
+          ),
+        ));
+      }
     }
   }
   Ok(())

@@ -1,0 +1,289 @@
+{
+  "date": "2026-10-06",
+  "rename": {
+    "state": "run",
+    "servers": [
+      {
+        "server": "typescript-language-server",
+        "version": "5.1.3",
+        "typescript": "5.9.3"
+      },
+      {
+        "server": "rust-analyzer",
+        "version": "1.97.1 (8bab26f4 2026-07-14)",
+        "typescript": null
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "format-money",
+        "fixture": "acme",
+        "target": "formatMoney",
+        "new_name": "formatCents",
+        "cross_repo": "report",
+        "outcome": {
+          "state": "scored",
+          "score": {
+            "edit": {
+              "expected": 6,
+              "predicted": 6,
+              "correct": 6
+            },
+            "report": {
+              "expected": 0,
+              "found": 0,
+              "wrong_reason": 0,
+              "missing": 0
+            },
+            "untouched": {
+              "checked": 0,
+              "violations": 0,
+              "unbound": 0,
+              "vacuous": 0
+            },
+            "missed_edits": [],
+            "unexpected_edits": [],
+            "report_problems": [],
+            "violations": [],
+            "extra_reports": []
+          },
+          "caveats": []
+        }
+      },
+      {
+        "id": "users-service-find-one",
+        "fixture": "acme",
+        "target": "UsersService.findOne",
+        "new_name": "getById",
+        "cross_repo": "report",
+        "outcome": {
+          "state": "scored",
+          "score": {
+            "edit": {
+              "expected": 5,
+              "predicted": 5,
+              "correct": 5
+            },
+            "report": {
+              "expected": 0,
+              "found": 0,
+              "wrong_reason": 0,
+              "missing": 0
+            },
+            "untouched": {
+              "checked": 4,
+              "violations": 0,
+              "unbound": 0,
+              "vacuous": 0
+            },
+            "missed_edits": [],
+            "unexpected_edits": [],
+            "report_problems": [],
+            "violations": [],
+            "extra_reports": []
+          },
+          "caveats": []
+        }
+      },
+      {
+        "id": "orders-service-find-one",
+        "fixture": "acme",
+        "target": "OrdersService.findOne",
+        "new_name": "fetchOne",
+        "cross_repo": "report",
+        "outcome": {
+          "state": "scored",
+          "score": {
+            "edit": {
+              "expected": 2,
+              "predicted": 2,
+              "correct": 2
+            },
+            "report": {
+              "expected": 3,
+              "found": 3,
+              "wrong_reason": 0,
+              "missing": 0
+            },
+            "untouched": {
+              "checked": 4,
+              "violations": 0,
+              "unbound": 0,
+              "vacuous": 0
+            },
+            "missed_edits": [],
+            "unexpected_edits": [],
+            "report_problems": [],
+            "violations": [],
+            "extra_reports": []
+          },
+          "caveats": []
+        }
+      },
+      {
+        "id": "to-cents",
+        "fixture": "acme",
+        "target": "toCents",
+        "new_name": "toMinorUnits",
+        "cross_repo": "report",
+        "outcome": {
+          "state": "scored",
+          "score": {
+            "edit": {
+              "expected": 7,
+              "predicted": 7,
+              "correct": 7
+            },
+            "report": {
+              "expected": 2,
+              "found": 2,
+              "wrong_reason": 0,
+              "missing": 0
+            },
+            "untouched": {
+              "checked": 1,
+              "violations": 0,
+              "unbound": 0,
+              "vacuous": 0
+            },
+            "missed_edits": [],
+            "unexpected_edits": [],
+            "report_problems": [],
+            "violations": [],
+            "extra_reports": []
+          },
+          "caveats": [
+            "the language server kept the old name toCents at acme-sdk:src/index.ts:3:10 (\"toMinorUnits as toCents\"); code that reaches it through those places keeps working under the old name"
+          ]
+        }
+      },
+      {
+        "id": "to-cents-apply",
+        "fixture": "acme",
+        "target": "toCents",
+        "new_name": "toMinorUnits",
+        "cross_repo": "apply",
+        "outcome": {
+          "state": "scored",
+          "score": {
+            "edit": {
+              "expected": 8,
+              "predicted": 8,
+              "correct": 8
+            },
+            "report": {
+              "expected": 0,
+              "found": 0,
+              "wrong_reason": 0,
+              "missing": 0
+            },
+            "untouched": {
+              "checked": 1,
+              "violations": 0,
+              "unbound": 0,
+              "vacuous": 0
+            },
+            "missed_edits": [],
+            "unexpected_edits": [],
+            "report_problems": [],
+            "violations": [],
+            "extra_reports": []
+          },
+          "caveats": []
+        }
+      },
+      {
+        "id": "store-get",
+        "fixture": "adversarial/trait-dispatch-rust",
+        "target": "Store::get",
+        "new_name": "fetch",
+        "cross_repo": "report",
+        "outcome": {
+          "state": "scored",
+          "score": {
+            "edit": {
+              "expected": 7,
+              "predicted": 7,
+              "correct": 7
+            },
+            "report": {
+              "expected": 0,
+              "found": 0,
+              "wrong_reason": 0,
+              "missing": 0
+            },
+            "untouched": {
+              "checked": 1,
+              "violations": 0,
+              "unbound": 0,
+              "vacuous": 0
+            },
+            "missed_edits": [],
+            "unexpected_edits": [],
+            "report_problems": [],
+            "violations": [],
+            "extra_reports": []
+          },
+          "caveats": []
+        }
+      },
+      {
+        "id": "payment-provider-charge",
+        "fixture": "adversarial/ts-overrides",
+        "target": "PaymentProvider.charge",
+        "new_name": "capture",
+        "cross_repo": "report",
+        "outcome": {
+          "state": "scored",
+          "score": {
+            "edit": {
+              "expected": 6,
+              "predicted": 6,
+              "correct": 6
+            },
+            "report": {
+              "expected": 1,
+              "found": 1,
+              "wrong_reason": 0,
+              "missing": 0
+            },
+            "untouched": {
+              "checked": 2,
+              "violations": 0,
+              "unbound": 0,
+              "vacuous": 0
+            },
+            "missed_edits": [],
+            "unexpected_edits": [],
+            "report_problems": [],
+            "violations": [],
+            "extra_reports": []
+          },
+          "caveats": []
+        }
+      }
+    ],
+    "aggregate": {
+      "scored": 7,
+      "failed": 0,
+      "skipped": 0,
+      "edit": {
+        "expected": 41,
+        "predicted": 41,
+        "correct": 41
+      },
+      "report": {
+        "expected": 6,
+        "found": 6,
+        "wrong_reason": 0,
+        "missing": 0
+      },
+      "untouched": {
+        "checked": 13,
+        "violations": 0,
+        "unbound": 0,
+        "vacuous": 0
+      }
+    }
+  }
+}

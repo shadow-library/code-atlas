@@ -124,6 +124,24 @@ pub fn score_reuse(retrieved: &Retrieved, targets: &[String]) -> ReuseScore {
   }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RenameSiteScore {
+  pub sites: SetOverlap,
+  pub missed: Vec<String>,
+  pub unexpected: Vec<String>,
+}
+
+pub fn score_rename_sites(expected: &BTreeSet<(String, u32)>, planned: &BTreeSet<(String, u32)>) -> RenameSiteScore {
+  let label = |(path, line): &(String, u32)| format!("{path}:{line}");
+  let expected_labels: BTreeSet<String> = expected.iter().map(label).collect();
+  let planned_labels: BTreeSet<String> = planned.iter().map(label).collect();
+  RenameSiteScore {
+    sites: overlap(&planned_labels, &expected_labels),
+    missed: expected_labels.difference(&planned_labels).cloned().collect(),
+    unexpected: planned_labels.difference(&expected_labels).cloned().collect(),
+  }
+}
+
 pub fn fraction(hits: usize, total: usize) -> Option<f64> {
   (total > 0).then(|| hits as f64 / total as f64)
 }
@@ -236,6 +254,24 @@ mod tests {
       (Some(1.0 / 3.0), Some(1.0 / 3.0), Some(1.0 / 3.0), Some(2.0 / 3.0))
     );
     assert_eq!(score_reuse(&retrieved(), &[]).any, None);
+  }
+
+  #[test]
+  fn should_score_planned_rename_sites_against_the_patch_sites() {
+    let site = |path: &str, line: u32| (path.to_owned(), line);
+    let expected = BTreeSet::from([site("a.ts", 1), site("a.ts", 7), site("b.ts", 3), site("c.ts", 9)]);
+    let planned = BTreeSet::from([site("a.ts", 1), site("a.ts", 7), site("b.ts", 3), site("b.ts", 4), site("d.ts", 1)]);
+    let score = score_rename_sites(&expected, &planned);
+    assert_eq!((score.sites.relevant, score.sites.retrieved, score.sites.hits), (4, 5, 3));
+    assert_eq!((score.sites.recall, score.sites.precision), (Some(0.75), Some(0.6)));
+    assert_eq!(score.missed, vec!["c.ts:9"]);
+    assert_eq!(score.unexpected, vec!["b.ts:4", "d.ts:1"]);
+  }
+
+  #[test]
+  fn should_leave_rename_precision_undefined_without_expected_sites() {
+    let score = score_rename_sites(&BTreeSet::new(), &BTreeSet::from([("a.ts".to_owned(), 1)]));
+    assert_eq!((score.sites.recall, score.sites.precision), (None, None));
   }
 
   #[test]

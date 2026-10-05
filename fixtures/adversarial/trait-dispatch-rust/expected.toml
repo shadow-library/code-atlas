@@ -260,3 +260,21 @@ note = "different type"
 [[not_unused]]
 sym = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "<DiskStore as Store>::put" }
 reason = "trait impl method reachable via write_boxed dyn dispatch"
+
+[[rename_sites]]
+id = "store-get"
+target = { repo = "trait-dispatch-rust", path = "src/lib.rs", symbol = "Store::get" }
+new_name = "fetch"
+edit = [
+  { repo = "trait-dispatch-rust", path = "src/lib.rs", line = 4 },
+  { repo = "trait-dispatch-rust", path = "src/lib.rs", line = 28 },
+  { repo = "trait-dispatch-rust", path = "src/lib.rs", line = 38 },
+  { repo = "trait-dispatch-rust", path = "src/lib.rs", line = 48 },
+  { repo = "trait-dispatch-rust", path = "src/lib.rs", line = 52 },
+  { repo = "trait-dispatch-rust", path = "src/lib.rs", line = 56 },
+  { repo = "trait-dispatch-rust", path = "src/lib.rs", line = 60 },
+]
+untouched = [
+  { repo = "trait-dispatch-rust", path = "src/lib.rs", line = 29 },
+]
+note = "line 29 calls HashMap::get on the entries field, a different method"

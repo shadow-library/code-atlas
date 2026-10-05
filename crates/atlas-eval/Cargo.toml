@@ -23,6 +23,7 @@ atlas-link.workspace = true
 atlas-project.workspace = true
 atlas-engine.workspace = true
 atlas-query.workspace = true
+atlas-ide.workspace = true
 atlas-similarity.workspace = true
 atlas-lang-rust.workspace = true
 atlas-lang-ts.workspace = true

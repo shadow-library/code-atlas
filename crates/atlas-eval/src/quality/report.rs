@@ -6,10 +6,13 @@ use serde::{Deserialize, Serialize};
 
 use super::context::{ContextReport, MeanOverlap};
 use super::error::{QualityError, QualityResult};
-use super::evaluate::{AuthScore, BlastScore, EdgeKindScore, EntityScore, FixtureReport, IsolationScore, SetScore, SimilarScore, UnresolvedScore, UnusedScore};
+use super::evaluate::{
+  AuthScore, BlastScore, EdgeKindScore, EntityScore, FixtureReport, IsolationScore, RenameOutcome, RenameReport, SetScore, SimilarScore, UnresolvedScore, UnusedScore,
+};
 use super::metrics::{Better, Calibration, Comparison, Metric, Prohibition, Recall, bucket_label, compare_metrics};
 use super::oracle::{IndexerState, OracleReport, Tally};
 use super::refactor::RefactorReport;
+use super::rename_report::render_rename_section;
 use super::selector::BindingError;
 
 pub const SCHEMA_VERSION: u32 = 1;
@@ -53,6 +56,8 @@ pub struct QualityReport {
   pub oracle: OracleReport,
   pub refactors: RefactorReport,
   pub context: ContextReport,
+  #[serde(default)]
+  pub rename: RenameReport,
   pub metrics: BTreeMap<String, Metric>,
 }
 
@@ -275,10 +280,36 @@ pub fn metrics_of(report: &QualityReport) -> BTreeMap<String, Metric> {
     mean_metrics(&mut metrics, "context/skim/symbols", &aggregate.skim_symbols);
     mean_metrics(&mut metrics, "context/combined/symbols", &aggregate.combined_symbols);
   }
+  rename_metrics(&mut metrics, &report.rename);
   metrics
 }
 
-pub fn assemble(environment: Environment, fixtures: Vec<FixtureReport>, oracle: OracleReport, refactors: RefactorReport, context: ContextReport) -> QualityReport {
+fn rename_metrics(metrics: &mut BTreeMap<String, Metric>, rename: &RenameReport) {
+  let RenameReport::Run { scenarios, aggregate, .. } = rename else { return };
+  for scenario in scenarios {
+    let (RenameOutcome::Scored { score, .. } | RenameOutcome::Failed { score, .. }) = &scenario.outcome else {
+      continue;
+    };
+    let prefix = format!("rename/{}", scenario.id);
+    put(metrics, format!("{prefix}/edit/recall"), higher(score.edit.correct, score.edit.expected));
+    put(metrics, format!("{prefix}/edit/precision"), higher(score.edit.correct, score.edit.predicted));
+    put(metrics, format!("{prefix}/report/recall"), higher(score.report.found, score.report.expected));
+    prohibition_metrics(metrics, &format!("{prefix}/untouched"), &score.untouched);
+  }
+  put(metrics, "rename/total/edit/recall".to_owned(), higher(aggregate.edit.correct, aggregate.edit.expected));
+  put(metrics, "rename/total/edit/precision".to_owned(), higher(aggregate.edit.correct, aggregate.edit.predicted));
+  put(metrics, "rename/total/report/recall".to_owned(), higher(aggregate.report.found, aggregate.report.expected));
+  prohibition_metrics(metrics, "rename/total/untouched", &aggregate.untouched);
+}
+
+pub fn assemble(
+  environment: Environment,
+  fixtures: Vec<FixtureReport>,
+  oracle: OracleReport,
+  refactors: RefactorReport,
+  context: ContextReport,
+  rename: RenameReport,
+) -> QualityReport {
   let totals = totals_of(&fixtures);
   let calibration = calibration_of(&fixtures);
   let mut report = QualityReport {
@@ -290,6 +321,7 @@ pub fn assemble(environment: Environment, fixtures: Vec<FixtureReport>, oracle: 
     oracle,
     refactors,
     context,
+    rename,
     metrics: BTreeMap::new(),
   };
   report.metrics = metrics_of(&report);
@@ -321,7 +353,7 @@ pub fn write_report(report: &QualityReport, out: &Path, comparison: Option<&Comp
   Ok((markdown, json))
 }
 
-fn pct(value: Option<f64>) -> String {
+pub(super) fn pct(value: Option<f64>) -> String {
   value.map_or_else(|| "n/a".to_owned(), |value| format!("{:.1}%", value * 100.0))
 }
 
@@ -329,7 +361,7 @@ fn frac(numerator: u64, denominator: u64) -> String {
   format!("{numerator}/{denominator}")
 }
 
-fn table(headers: &[&str], rows: &[Vec<String>]) -> String {
+pub(super) fn table(headers: &[&str], rows: &[Vec<String>]) -> String {
   let mut out = format!("| {} |\n|{}|\n", headers.join(" | "), headers.iter().map(|_| "---").collect::<Vec<_>>().join("|"));
   for row in rows {
     out.push_str(&format!(
@@ -397,6 +429,7 @@ pub fn render_markdown(report: &QualityReport, comparison: Option<&Comparison>) 
   out.push_str(&oracle_section(&report.oracle));
   out.push_str(&refactor_section(&report.refactors));
   out.push_str(&context_section(&report.context));
+  out.push_str(&render_rename_section(&report.rename));
   if let Some(comparison) = comparison {
     out.push_str("## Comparison with the previous report\n\n");
     out.push_str(&render_comparison(comparison));

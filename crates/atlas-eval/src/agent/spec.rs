@@ -75,6 +75,19 @@ pub struct GroundTruth {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct RenameSpec {
+  pub symbol: String,
+  pub new_name: String,
+}
+
+impl RenameSpec {
+  pub fn old_name(&self) -> &str {
+    self.symbol.rsplit(['.', ':']).next().unwrap_or(&self.symbol)
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TaskSpec {
   pub id: String,
   pub title: String,
@@ -96,6 +109,8 @@ pub struct TaskSpec {
   pub validation: ValidationSpec,
   #[serde(default)]
   pub ground_truth: GroundTruth,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub rename: Option<RenameSpec>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -213,10 +228,29 @@ fn validate(spec: &TaskSpec) -> Result<(), String> {
   if spec.setup.iter().any(|command| command.trim().is_empty()) {
     return Err("setup commands must not be empty".to_owned());
   }
+  if let Some(rename) = &spec.rename {
+    validate_rename(rename)?;
+  }
   let truth = &spec.ground_truth;
   let paths = truth.relevant_files.iter().chain(&truth.must_change).chain(&truth.must_consider).chain(&spec.atlas_repos);
   if let Some(bad) = paths.into_iter().find(|path| !is_relative_inside(path)) {
     return Err(format!("path `{bad}` must be relative to the tree root without `..`"));
+  }
+  Ok(())
+}
+
+fn validate_rename(rename: &RenameSpec) -> Result<(), String> {
+  let identifier = |text: &str| {
+    text.chars().next().is_some_and(|first| first.is_alphabetic() || first == '_' || first == '$') && text.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+  };
+  if !identifier(rename.old_name()) {
+    return Err(format!("rename symbol `{}` must end in an identifier", rename.symbol));
+  }
+  if !identifier(&rename.new_name) {
+    return Err(format!("rename new_name `{}` must be an identifier", rename.new_name));
+  }
+  if rename.old_name() == rename.new_name {
+    return Err("rename new_name equals the old name".to_owned());
   }
   Ok(())
 }
@@ -308,6 +342,30 @@ reuse_targets = ["UsersService.findOne"]
     assert!(parse(&SPEC.replace("hidden/acme-api/check.mjs", "acme-api/check.mjs")).is_err());
     assert!(parse(&SPEC.replace("hidden/acme-api/check.mjs", "hidden/../x.mjs")).is_err());
     assert!(parse(&SPEC.replace(r#"relevant_files = ["acme-api"#, r#"relevant_files = ["../acme-api"#)).is_err());
+  }
+
+  #[test]
+  fn should_parse_a_rename_section_and_derive_the_old_name_from_the_symbol() {
+    let spec = parse(&format!("{SPEC}\n[rename]\nsymbol = \"atlas_query::TargetFilter\"\nnew_name = \"TargetConstraint\"\n")).unwrap();
+    let rename = spec.rename.unwrap();
+    assert_eq!((rename.old_name(), rename.new_name.as_str()), ("TargetFilter", "TargetConstraint"));
+    let dotted = RenameSpec {
+      symbol: "UsersService.findOne".to_owned(),
+      new_name: "getById".to_owned(),
+    };
+    assert_eq!(dotted.old_name(), "findOne");
+    assert_eq!(parse(SPEC).unwrap().rename, None);
+  }
+
+  #[test]
+  fn should_reject_a_rename_that_is_not_an_identifier_or_changes_nothing() {
+    for section in [
+      "symbol = \"A.b\"\nnew_name = \"not valid\"",
+      "symbol = \"A.b\"\nnew_name = \"b\"",
+      "symbol = \"A.\"\nnew_name = \"c\"",
+    ] {
+      assert!(parse(&format!("{SPEC}\n[rename]\n{section}\n")).is_err(), "{section}");
+    }
   }
 
   #[test]
