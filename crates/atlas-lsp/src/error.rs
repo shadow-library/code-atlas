@@ -27,6 +27,29 @@ pub enum LspError {
   Encode { method: String, message: String },
   #[error("language server chose position encoding {encoding:?}, which code-atlas does not support")]
   UnsupportedEncoding { encoding: String },
+  #[error(
+    "{server} was not ready after {}s ({status}); check it with `code-atlas lsp check`, and on a large workspace raise lsp.ready_timeout_secs in the project config",
+    waited.as_secs_f64()
+  )]
+  NotReady { server: String, waited: Duration, status: String },
+  #[error("{server} reports an unhealthy workspace: {message}; fix the workspace (rust-analyzer needs `cargo metadata` to succeed) and check it with `code-atlas lsp check`")]
+  Unhealthy { server: String, message: String },
+  #[error("{server} failed {failures} times within {}s; not restarting it for another {}s; last failure: {last_failure}", window.as_secs(), retry_in.as_secs())]
+  CrashLoop {
+    server: String,
+    failures: usize,
+    window: Duration,
+    retry_in: Duration,
+    last_failure: String,
+  },
+  #[error("invalid language server unit: {reason}")]
+  InvalidUnit { reason: String },
+  #[error("the language server pool is shut down")]
+  PoolShutDown,
+  #[error("all {max_servers} language server slots stayed in use for {}s; retry when a running operation finishes", waited.as_secs_f64())]
+  PoolBusy { max_servers: usize, waited: Duration },
+  #[error("{server} could not be brought in sync with the files on disk for an exact operation: {reason}; retry once the server settles")]
+  SyncIncomplete { server: String, reason: String },
   #[error(transparent)]
   Uri(#[from] UriError),
   #[error(transparent)]

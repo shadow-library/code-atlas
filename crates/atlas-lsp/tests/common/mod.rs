@@ -46,3 +46,5 @@ impl ClientHandler for Recorder {
     self.changed.notify_all();
   }
 }
+
+pub mod fake;

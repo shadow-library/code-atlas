@@ -1,5 +1,5 @@
 use std::collections::{HashMap, VecDeque};
-use std::fs;
+use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
@@ -52,6 +52,7 @@ enum Step {
     inherit_stdout: bool,
   },
   Hang,
+  Record(PathBuf),
   Canned {
     method: String,
     #[serde(default)]
@@ -65,6 +66,7 @@ struct Server {
   input: FrameReader<io::Stdin>,
   pending: VecDeque<(RequestId, String)>,
   canned: HashMap<String, Result<Value, ResponseError>>,
+  record: Option<File>,
 }
 
 fn main() {
@@ -81,6 +83,7 @@ fn main() {
     input: FrameReader::new(io::stdin()),
     pending: VecDeque::new(),
     canned: HashMap::new(),
+    record: None,
   };
   for step in steps {
     server.run(step);
@@ -110,6 +113,10 @@ impl Server {
       Step::Canned { method, result, error } => {
         self.canned.insert(method, error.map_or(Ok(result), Err));
       }
+      Step::Record(path) => {
+        let file = File::create(&path).unwrap_or_else(|error| fail(&format!("cannot create the record file: {error}")));
+        self.record = Some(file);
+      }
       Step::Hang => loop {
         thread::sleep(Duration::from_secs(3600));
       },
@@ -118,7 +125,12 @@ impl Server {
 
   fn next(&mut self) -> Option<Message> {
     match self.input.read_frame() {
-      Ok(Some(body)) => Some(Message::parse(&body).unwrap_or_else(|error| fail(&format!("client sent a malformed message: {error}")))),
+      Ok(Some(body)) => {
+        if let Some(record) = &mut self.record {
+          let _ = record.write_all(&body).and_then(|()| record.write_all(b"\n")).and_then(|()| record.flush());
+        }
+        Some(Message::parse(&body).unwrap_or_else(|error| fail(&format!("client sent a malformed message: {error}"))))
+      }
       Ok(None) => None,
       Err(error) => fail(&format!("client framing error: {error}")),
     }
