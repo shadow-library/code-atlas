@@ -261,6 +261,7 @@ mod tests {
           repo: repo.to_owned(),
           path: path.to_owned(),
           line: Some(1),
+          column: None,
         }),
         certainty: None,
       },

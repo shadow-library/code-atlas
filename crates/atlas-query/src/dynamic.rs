@@ -76,6 +76,7 @@ fn computed_site(repo: &RepoName, path: &RelPath, reference: &UnresolvedRef) -> 
       repo: repo.to_string(),
       path: path.to_string(),
       line: Some(reference.span.start_line),
+      column: None,
     },
     path: reference.path.join("."),
     reason: "computed property access".to_owned(),

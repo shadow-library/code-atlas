@@ -11,13 +11,17 @@ pub struct Location {
   pub repo: String,
   pub path: String,
   pub line: Option<u32>,
+  /// 1-based UTF-8 byte column
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub column: Option<u32>,
 }
 
 impl fmt::Display for Location {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self.line {
-      Some(line) => write!(f, "{}:{}:{line}", self.repo, self.path),
-      None => write!(f, "{}:{}", self.repo, self.path),
+    match (self.line, self.column) {
+      (Some(line), Some(column)) => write!(f, "{}:{}:{line}:{column}", self.repo, self.path),
+      (Some(line), None) => write!(f, "{}:{}:{line}", self.repo, self.path),
+      (None, _) => write!(f, "{}:{}", self.repo, self.path),
     }
   }
 }
@@ -87,6 +91,7 @@ pub(crate) fn location_of(entity: &Entity) -> Option<Location> {
     repo: repo.to_string(),
     path,
     line: entity.span.map(|span| span.start_line),
+    column: None,
   })
 }
 

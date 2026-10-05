@@ -115,6 +115,7 @@ impl QueryEngine {
               repo: record.repo.to_string(),
               path: record.path.to_string(),
               line: None,
+              column: None,
             },
             status,
           });
@@ -149,6 +150,7 @@ pub(crate) fn unresolved_risk(graph: &Graph<'_, '_>, target: EntityId, name: &st
         repo: reference.repo.to_string(),
         path: reference.file.to_string(),
         line: Some(reference.span.start_line),
+        column: None,
       },
       path: reference.path.join("."),
       reason: reason.to_owned(),
@@ -184,6 +186,7 @@ pub(crate) fn macro_generated_refs(graph: &Graph<'_, '_>, target: &Entity, owner
         repo: reference.repo.to_string(),
         path: reference.file.to_string(),
         line: Some(reference.span.start_line),
+        column: None,
       },
       path: reference.path.join("."),
       reason: "macro generated".to_owned(),

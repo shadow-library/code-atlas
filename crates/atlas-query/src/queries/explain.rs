@@ -164,6 +164,7 @@ fn evidence_view(collected: &mut Collected, assertion: usize, evidence: &Evidenc
       repo: evidence.repo.to_string(),
       path: evidence.path.to_string(),
       line: Some(evidence.span.start_line),
+      column: None,
     },
     producer: evidence.producer.to_string(),
     note: evidence.note.clone(),

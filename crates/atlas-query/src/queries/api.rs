@@ -525,6 +525,7 @@ fn unmatched_calls(graph: &Graph<'_, '_>, calls_missing: bool, hidden: &mut Link
             repo: evidence.repo.to_string(),
             path: evidence.path.to_string(),
             line: Some(evidence.span.start_line),
+            column: None,
           }),
           reason: reason.to_owned(),
           unmatched_reason: graph.entity_attrs(call.id, &["unmatched_reason"])?.into_iter().next(),
