@@ -12,6 +12,14 @@ use crate::auto_scip::AutoScipStatus;
 pub const SKIPPED_SAMPLE: usize = 10;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct BudgetRetryStatus {
+  pub repo: RepoName,
+  pub path: RelPath,
+  pub attempts: u32,
+  pub retry_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FailedFile {
   pub repo: RepoName,
   pub path: Option<RelPath>,
@@ -192,4 +200,5 @@ pub struct IndexStatus {
   pub dangling_detector_edges_dropped: u64,
   pub repos_missing: Vec<FailedFile>,
   pub skipped: SkippedSummary,
+  pub budget_retries: Vec<BudgetRetryStatus>,
 }

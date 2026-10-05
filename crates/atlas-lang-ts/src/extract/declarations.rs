@@ -10,7 +10,16 @@ use crate::signature::{decorator_ranges, doc_comment, signature};
 use crate::syntax::{ChainHead, children, field_children, first_child, has_token, is_function_value, member_chain, snippet, span_of, string_value, text, token, unwrap_expression};
 
 impl<'s, 't> Extractor<'s, 't> {
-  pub(super) fn declaration(&mut self, node: Node<'t>, site: Site<'t>, decorators: Vec<Node<'t>>) {
+  pub(super) fn declaration(&mut self, mut node: Node<'t>, mut site: Site<'t>, mut decorators: Vec<Node<'t>>) {
+    while node.kind() == "ambient_declaration" {
+      site = Site { ambient: true, ..site };
+      if let Some(global) = token(node, "global") {
+        let body = children(node).into_iter().find(|child| child.kind() == "statement_block");
+        return self.namespace_with(vec!["global".to_owned()], global, node, body, site);
+      }
+      let Some(inner) = first_child(node) else { return };
+      (node, decorators) = (inner, Vec::new());
+    }
     match node.kind() {
       "function_declaration" | "generator_function_declaration" | "function_signature" => self.function_symbol(node, site),
       "class_declaration" | "abstract_class_declaration" | "class" => self.class_symbol(node, site, decorators),
@@ -19,19 +28,7 @@ impl<'s, 't> Extractor<'s, 't> {
       "enum_declaration" => self.enum_symbol(node, site),
       "internal_module" | "module" => self.namespace_symbol(node, site),
       "lexical_declaration" | "variable_declaration" => self.variable_symbols(node, site),
-      "ambient_declaration" => self.ambient(node, site),
       _ => self.push_except_name(node),
-    }
-  }
-
-  fn ambient(&mut self, node: Node<'t>, site: Site<'t>) {
-    let site = Site { ambient: true, ..site };
-    if let Some(global) = token(node, "global") {
-      let body = children(node).into_iter().find(|child| child.kind() == "statement_block");
-      return self.namespace_with(vec!["global".to_owned()], global, node, body, site);
-    }
-    if let Some(inner) = first_child(node) {
-      self.declaration(inner, site, Vec::new());
     }
   }
 

@@ -12,7 +12,7 @@ pub fn analyze(path: &str, source: &str) -> FileFacts {
 
 pub fn analyze_in(repo: &str, path: &str, source: &str) -> FileFacts {
   let file = FileRef::detect(RepoName::new(repo).unwrap(), RelPath::new(path).unwrap(), ContentHash::of(source.as_bytes())).unwrap();
-  let facts = TsAnalyzer.analyze(&AnalysisInput { file: &file, source }).unwrap();
+  let facts = TsAnalyzer::new().analyze(&AnalysisInput { file: &file, source }).unwrap();
   facts.check_invariants(source.len()).unwrap();
   facts
 }

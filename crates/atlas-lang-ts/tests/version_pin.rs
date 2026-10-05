@@ -56,7 +56,7 @@ fn digests() -> (String, String) {
       }
       let source = fs::read_to_string(&file).unwrap();
       let file_ref = FileRef::detect(repo.clone(), RelPath::new(&path).unwrap(), ContentHash::of(source.as_bytes())).unwrap();
-      let facts = TsAnalyzer.analyze(&AnalysisInput { file: &file_ref, source: &source }).unwrap();
+      let facts = TsAnalyzer::new().analyze(&AnalysisInput { file: &file_ref, source: &source }).unwrap();
       inputs.extend(serde_json::to_vec(&file_ref).unwrap());
       inputs.push(b'\n');
       output.extend(serde_json::to_vec(&facts).unwrap());

@@ -63,6 +63,15 @@ pub struct AutoScipView {
   pub backoff: Vec<ScipBackoff>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BudgetRetryView {
+  pub repo: String,
+  pub path: String,
+  pub attempts: u32,
+  pub retry_at_ms: Option<i64>,
+  pub retry_in_secs: Option<u64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct StatusAnswer {
   pub project: String,
@@ -88,13 +97,27 @@ pub struct StatusAnswer {
   pub dangling_detector_edges_dropped: u64,
   pub skipped_total: u64,
   pub skipped_files: Vec<SkippedFileView>,
+  pub budget_retries: Vec<BudgetRetryView>,
+}
+
+fn now_ms() -> i64 {
+  std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .map_or(0, |elapsed| i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX))
 }
 
 fn age_secs(at_ms: i64) -> u64 {
-  let now_ms = std::time::SystemTime::now()
-    .duration_since(std::time::UNIX_EPOCH)
-    .map_or(0, |elapsed| i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX));
-  u64::try_from(now_ms.saturating_sub(at_ms) / 1000).unwrap_or(0)
+  u64::try_from(now_ms().saturating_sub(at_ms) / 1000).unwrap_or(0)
+}
+
+fn budget_retry(retry: &atlas_engine::BudgetRetryStatus) -> BudgetRetryView {
+  BudgetRetryView {
+    repo: retry.repo.to_string(),
+    path: retry.path.to_string(),
+    attempts: retry.attempts,
+    retry_at_ms: retry.retry_at_ms,
+    retry_in_secs: retry.retry_at_ms.map(|at| u64::try_from(at.saturating_sub(now_ms()) / 1000).unwrap_or(0)),
+  }
 }
 
 fn failed(file: &atlas_engine::FailedFile) -> FailedFileView {
@@ -153,6 +176,7 @@ impl QueryEngine {
           reason: file.cause.to_string(),
         })
         .collect(),
+      budget_retries: status.budget_retries.iter().map(budget_retry).collect(),
     };
     Ok(Response { freshness, answer })
   }

@@ -18,6 +18,7 @@ use crate::passes::is_reserved_pass_name;
 use crate::report::{FailedFile, FreshnessHeader, FreshnessReport, RunOutcomeKind, RunSummary, ScanKind, ScipLag, SkippedSummary};
 use crate::run::{RunEnv, execute, key_label};
 use crate::scan::{RepoScan, ScanOutcome, scan_repo};
+use crate::scip::now_ms;
 use crate::similarity::{SIMILARITY_BLOB, SIMILARITY_BLOB_VERSION, encode_persisted};
 use crate::state::{
   DIRTY_BLOB, EngineMeta, EngineState, RepoHealth, SCIP_BLOB, SCIP_BLOB_VERSION, ScipMeta, all_skipped, load_state, project_fingerprint, read_project_fingerprint,
@@ -110,7 +111,7 @@ impl Engine {
     std::fs::create_dir_all(&data_dir).map_err(|source| EngineError::io(&data_dir, source))?;
     let db_path = home.db_path(&project.name);
     let store = Store::open_with(&db_path, options.store.clone())?;
-    let toolchain = Toolchain::new(&options.extra_detectors);
+    let toolchain = Toolchain::new(&options.extra_detectors, options.parse_budget);
     let fingerprint = project_fingerprint(project);
     adopt_project(&store, &fingerprint)?;
     let loaded = load_state(&store, project, &toolchain, &options)?;
@@ -332,7 +333,7 @@ impl Engine {
 
   fn barrier(&self, inner: &mut Inner, started: Instant) -> EngineResult<FreshnessReport> {
     let in_progress = self.sync(inner)?;
-    if !in_progress && self.watch.is_clean(self.options.full_scan_interval) && inner.state.pending.is_empty() {
+    if !in_progress && self.watch.is_clean(self.options.full_scan_interval) && !inner.state.needs_run(now_ms()) {
       return Ok(self.settled(&inner.state, None, 0, started, ScanKind::WatcherClean, Vec::new()));
     }
     let token = self.watch.begin_scan();
@@ -529,7 +530,7 @@ impl Engine {
 
   fn plan(&self, state: &EngineState) -> Plan {
     let scans = self.scan_all(state);
-    let needs_run = !state.pending.is_empty() || scans.iter().any(|scan| state.repos.get(&scan.repo).is_some_and(|repo| scan.needs_run(repo)));
+    let needs_run = state.needs_run(now_ms()) || scans.iter().any(|scan| state.repos.get(&scan.repo).is_some_and(|repo| scan.needs_run(repo)));
     match needs_run {
       true => Plan::Run(scans),
       false => Plan::Clean(scans),

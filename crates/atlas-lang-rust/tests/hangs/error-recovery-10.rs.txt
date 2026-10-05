@@ -1,0 +1,1 @@
+impl S { async fn p(&self, x: Arc<Mutex<A>>) { let x: A = a; enum E { let y = xytrait pub(crate) |z| zstruct S { .n(a, &b)ylet x: A = ?pub(crate) impl { impl )match x { _ => .m()Self::new() match x { _ => , [0].h::<Vec<u8>>()} */#[cfg(x)] .1.2b'x' .gextern "C" vec![1]..=let y = ;f('\''impl X { fn s(&self) 'a.awaitFoo::<u8>::make(.go(); } }

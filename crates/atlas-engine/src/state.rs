@@ -47,6 +47,26 @@ pub(crate) struct ScipMeta {
   pub dropped_in: BTreeMap<String, i64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct BudgetRetry {
+  pub attempts: u32,
+  pub retry_at_ms: Option<i64>,
+}
+
+impl BudgetRetry {
+  pub fn is_due(&self, now_ms: i64) -> bool {
+    self.retry_at_ms.is_some_and(|at| at <= now_ms)
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct BudgetRetryMeta {
+  pub repo: String,
+  pub path: String,
+  #[serde(flatten)]
+  pub retry: BudgetRetry,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct EngineMeta {
   pub facts_version: u32,
@@ -56,6 +76,8 @@ pub(crate) struct EngineMeta {
   pub repos: BTreeMap<String, RepoMeta>,
   #[serde(default)]
   pub pass_versions: BTreeMap<String, u32>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub budget_retries: Vec<BudgetRetryMeta>,
 }
 
 impl ScipMeta {
@@ -145,6 +167,25 @@ fn indexed_repos(tx: &ReadTx<'_>) -> EngineResult<BTreeSet<RepoName>> {
   Ok(repos)
 }
 
+fn budget_retries_of(meta: &EngineMeta) -> BTreeMap<FileKey, BudgetRetry> {
+  meta
+    .budget_retries
+    .iter()
+    .filter_map(|entry| Some(((RepoName::new(&entry.repo).ok()?, RelPath::new(&entry.path).ok()?), entry.retry)))
+    .collect()
+}
+
+pub(crate) fn budget_retry_meta(retries: &BTreeMap<FileKey, BudgetRetry>) -> Vec<BudgetRetryMeta> {
+  retries
+    .iter()
+    .map(|((repo, path), retry)| BudgetRetryMeta {
+      repo: repo.to_string(),
+      path: path.to_string(),
+      retry: *retry,
+    })
+    .collect()
+}
+
 impl EngineMeta {
   pub fn read(tx: &ReadTx<'_>) -> EngineResult<Option<Self>> {
     let Some(blob) = tx.blob(META_BLOB)? else { return Ok(None) };
@@ -215,9 +256,18 @@ pub(crate) struct EngineState {
   pub stale_inferred: u64,
   pub scip: ScipMeta,
   pub similarity_persisted: Option<RunId>,
+  pub budget_retries: BTreeMap<FileKey, BudgetRetry>,
 }
 
 impl EngineState {
+  pub fn has_due_budget_retry(&self, now_ms: i64) -> bool {
+    self.budget_retries.values().any(|retry| retry.is_due(now_ms))
+  }
+
+  pub fn needs_run(&self, now_ms: i64) -> bool {
+    !self.pending.is_empty() || self.has_due_budget_retry(now_ms)
+  }
+
   pub fn set_file(&mut self, key: FileKey, state: FileState) {
     self.unlink_wanted(&key);
     for id in &state.wanted {
@@ -408,6 +458,7 @@ pub(crate) fn load_state(store: &Store, project: &Project, toolchain: &Toolchain
     stale_inferred,
     scip,
     similarity_persisted: None,
+    budget_retries: meta.as_ref().map(budget_retries_of).unwrap_or_default(),
   };
   let persisted_similarity = match dirty {
     true => None,

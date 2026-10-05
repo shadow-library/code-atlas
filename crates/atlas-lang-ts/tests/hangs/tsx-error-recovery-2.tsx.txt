@@ -1,0 +1,2 @@
+export function f<T>(x: T) { return 0x1ninterface 1=>{} export , as  'm'catch (e)  enum ( <div>abstract  <T>keyof import  & ... ... []?/re/g =declare  if ( <a b={c}> await function* declare label:  readonly for (const x of y)  namespace  typeof 
+<div>y<! export default  private </div>it('x', () => { this this function* from  `a${b}c`... </div> class é: <export  y"s"<<[) interface  describe(.5<<?===,catch (e)  try { function @dec  describe(satisfies  ,enum | jest.fn()from [; }

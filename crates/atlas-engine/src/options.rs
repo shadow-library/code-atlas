@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use atlas_core::{RelPath, RepoName};
+use atlas_core::{ParseBudget, RelPath, RepoName};
 use atlas_detect::DiagnosingDetector;
 use atlas_semantic::TaskProviders;
 use atlas_similarity::SimilarityConfig;
@@ -88,6 +88,8 @@ pub struct EngineOptions {
   pub llm_providers: Option<Arc<TaskProviders>>,
   pub similarity_persist_idle: Duration,
   pub auto_scip: AutoScipOptions,
+  pub parse_budget: ParseBudget,
+  pub budget_retry_backoff: Vec<Duration>,
   #[doc(hidden)]
   pub extra_detectors: Vec<Arc<dyn DiagnosingDetector>>,
   #[doc(hidden)]
@@ -107,6 +109,8 @@ impl Default for EngineOptions {
       llm_providers: None,
       similarity_persist_idle: Duration::from_secs(30),
       auto_scip: AutoScipOptions::default(),
+      parse_budget: ParseBudget::default(),
+      budget_retry_backoff: vec![Duration::from_secs(60), Duration::from_secs(600), Duration::from_secs(3_600)],
       extra_detectors: Vec::new(),
       fault_injection: FaultInjection::default(),
     }
@@ -126,6 +130,8 @@ impl fmt::Debug for EngineOptions {
       .field("llm_providers", &self.llm_providers.is_some())
       .field("similarity_persist_idle", &self.similarity_persist_idle)
       .field("auto_scip", &self.auto_scip)
+      .field("parse_budget", &self.parse_budget)
+      .field("budget_retry_backoff", &self.budget_retry_backoff)
       .field("extra_detectors", &self.extra_detectors.len())
       .field("fault_injection", &self.fault_injection)
       .finish()

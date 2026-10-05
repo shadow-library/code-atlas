@@ -75,7 +75,7 @@ fn analyzed_fixtures() -> Vec<Analyzed> {
       let input = AnalysisInput { file: &file_ref, source: &source };
       let facts = match language.family() {
         LanguageFamily::Rust => RustAnalyzer::new().analyze(&input),
-        _ => TsAnalyzer.analyze(&input),
+        _ => TsAnalyzer::new().analyze(&input),
       }
       .unwrap();
       analyzed.push(Analyzed { facts, source });

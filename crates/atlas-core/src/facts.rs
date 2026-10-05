@@ -62,6 +62,13 @@ pub enum ParseStatus {
   Failed { reason: String },
 }
 
+impl ParseStatus {
+  // Matched by reason prefix: stored artifacts serialize `ParseStatus`, so a new variant would change their encoding.
+  pub fn is_budget_exceeded(&self) -> bool {
+    matches!(self, Self::Failed { reason } if reason.starts_with(crate::PARSE_BUDGET_EXCEEDED))
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ParseErrorFact {
   pub span: Span,

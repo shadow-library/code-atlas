@@ -1,0 +1,1 @@
+impl S { async fn p(&self, x: Arc<Mutex<A>>) { let x: A = a; (let y =  r#type .awaity&($x:expr) => impl  .f (pub(crate) 'a'\''.go(); } }

@@ -7,8 +7,9 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use atlas_core::{Certainty, Confidence, ContentHash, EdgeKind, Entity, EntityKind, Evidence, Freshness, Owner, Producer, RelPath, RepoName, Span};
-use atlas_engine::{Engine, EngineOptions, FaultInjection, FreshnessReport, IndexMode, ScanKind, ScipLag};
+use atlas_core::{Certainty, Confidence, ContentHash, EdgeKind, Entity, EntityKind, Evidence, Freshness, Owner, ParseBudget, Producer, RelPath, RepoName, Span};
+use atlas_engine::{Engine, EngineOptions, FailedFile, FaultInjection, FreshnessReport, IndexMode, ScanKind, ScipLag};
+use atlas_project::Project;
 use atlas_store::{EdgeFilter, EntityFilter, FreshnessPolicy, InferredQuery, NewInferredFact, RunStatus};
 use common::edits::replace_word;
 use common::{acme_copy, copy_dir, digest, fixtures_root, fresh, import_lineage, open, open_with, project, repo_config};
@@ -266,6 +267,206 @@ fn should_index_other_files_and_report_the_failure_when_an_analyzer_panics() {
   let quiet = fresh(&engine);
   assert_eq!(quiet.header().run, None);
   assert_eq!(quiet.header().files_failed_analysis, 1);
+}
+
+#[test]
+fn should_index_other_files_and_keep_a_file_failed_while_its_parse_outlasts_the_budget() {
+  let scratch = tempfile::tempdir().unwrap();
+  let tree = scratch.path().join("tree");
+  let project = acme_copy(&tree);
+  let hang = tree.join("acme-billing/src/hang.rs");
+  fs::copy(Path::new(env!("CARGO_MANIFEST_DIR")).join("../atlas-lang-rust/tests/hangs/error-recovery-1.rs.txt"), &hang).unwrap();
+  let options = EngineOptions {
+    parse_budget: ParseBudget::default().with_stall_limit(Duration::from_millis(100)),
+    ..EngineOptions::default()
+  };
+  let engine = open_with(&project, &scratch.path().join("home"), options);
+
+  let report = fresh(&engine);
+
+  let FreshnessReport::Degraded { failed_files, header, .. } = &report else {
+    panic!("expected a degraded report: {report:?}")
+  };
+  let expected = FailedFile {
+    repo: repo("acme-billing"),
+    path: Some(rel("src/hang.rs")),
+    reason: "parse budget exceeded (2003 ms, 352 bytes)".to_owned(),
+  };
+  assert_eq!(failed_files, &[expected]);
+  assert_eq!(header.files_failed_analysis, 1);
+  assert_eq!(single(&engine, "to_cents", "acme-billing", EntityKind::Function).name, "to_cents");
+  let started = Instant::now();
+  let quiet = fresh(&engine);
+  assert!(matches!(quiet, FreshnessReport::Fresh(_)), "{quiet:?}");
+  assert_eq!(quiet.header().run, None);
+  assert_eq!(quiet.header().files_failed_analysis, 1);
+  assert!(started.elapsed() < Duration::from_secs(2), "an unchanged failed file was parsed again");
+  fs::write(&hang, "pub fn recovered() {}\n").unwrap();
+
+  let repaired = fresh(&engine);
+
+  assert!(matches!(repaired, FreshnessReport::Fresh(_)), "{repaired:?}");
+  assert_eq!(repaired.header().files_failed_analysis, 0);
+  assert_eq!(single(&engine, "recovered", "acme-billing", EntityKind::Function).name, "recovered");
+}
+
+fn budget_repo(root: &Path) -> (Project, std::path::PathBuf) {
+  let repo_dir = root.join("solo");
+  fs::create_dir_all(repo_dir.join("src")).unwrap();
+  let lib = repo_dir.join("src/lib.rs");
+  let functions: String = (0..200).map(|index| format!("pub fn f{index}(x: u32) -> u32 {{ x + {index} }}\n")).collect();
+  fs::write(&lib, functions).unwrap();
+  (project("solo", vec![repo_config("solo", &repo_dir)]), lib)
+}
+
+fn exhausted(backoff: Vec<Duration>) -> EngineOptions {
+  EngineOptions {
+    parse_budget: ParseBudget::fixed(Duration::ZERO),
+    budget_retry_backoff: backoff,
+    ..EngineOptions::default()
+  }
+}
+
+fn budget_retries(engine: &Engine) -> Vec<(String, u32, Option<i64>)> {
+  let status = engine.status().unwrap();
+  status
+    .budget_retries
+    .iter()
+    .map(|retry| (retry.path.to_string(), retry.attempts, retry.retry_at_ms))
+    .collect()
+}
+
+fn retry_attempts(engine: &Engine) -> Vec<(String, u32)> {
+  budget_retries(engine).into_iter().map(|(path, attempts, _)| (path, attempts)).collect()
+}
+
+fn last_run_count(engine: &Engine, name: &str) -> Option<u64> {
+  let run = engine.store().read(|tx| tx.runs(1)).unwrap().remove(0);
+  run.report.counts.get(name).copied().filter(|count| *count > 0)
+}
+
+fn now_ms() -> i64 {
+  i64::try_from(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()).unwrap()
+}
+
+#[test]
+fn should_retry_a_file_that_outlasted_its_parse_budget_once_due_and_index_it_when_it_fits() {
+  let scratch = tempfile::tempdir().unwrap();
+  let (project, lib) = budget_repo(&scratch.path().join("tree"));
+  let home = scratch.path().join("home");
+  let reason = format!("parse budget exceeded (0 ms, {} bytes)", fs::metadata(&lib).unwrap().len());
+  {
+    let starved = open_with(&project, &home, exhausted(vec![Duration::ZERO; 3]));
+    let first = fresh(&starved);
+    assert!(
+      matches!(&first, FreshnessReport::Degraded { failed_files, .. } if failed_files[0].reason == reason),
+      "{first:?}"
+    );
+    assert_eq!(retry_attempts(&starved), [("src/lib.rs".to_owned(), 1)]);
+    assert_eq!(last_run_count(&starved, "files_budget_retried_in_run"), Some(1));
+
+    let retried = fresh(&starved);
+
+    assert!(retried.header().run.is_some(), "a due retry must run without any file change: {retried:?}");
+    assert!(matches!(retried, FreshnessReport::Degraded { .. }), "{retried:?}");
+    assert_eq!(retry_attempts(&starved), [("src/lib.rs".to_owned(), 2)]);
+    assert_eq!(last_run_count(&starved, "files_budget_retried"), Some(1));
+    assert_eq!(last_run_count(&starved, "files_budget_retried_in_run"), None);
+  }
+  let engine = open(&project, &home);
+
+  let recovered = fresh(&engine);
+
+  assert!(matches!(recovered, FreshnessReport::Fresh(_)), "{recovered:?}");
+  assert_eq!(recovered.header().files_failed_analysis, 0);
+  assert_eq!(single(&engine, "f199", "solo", EntityKind::Function).name, "f199");
+  assert_eq!(budget_retries(&engine), []);
+}
+
+#[test]
+fn should_not_retry_a_budget_failure_before_it_is_due_and_restart_the_backoff_when_the_file_changes() {
+  let scratch = tempfile::tempdir().unwrap();
+  let (project, lib) = budget_repo(&scratch.path().join("tree"));
+  let engine = open_with(&project, &scratch.path().join("home"), exhausted(vec![Duration::ZERO, Duration::from_secs(3_600)]));
+  fresh(&engine);
+  assert!(fresh(&engine).header().run.is_some());
+  let before = now_ms();
+
+  let quiet = fresh(&engine);
+
+  assert_eq!(quiet.header().run, None);
+  assert_eq!(quiet.header().files_failed_analysis, 1);
+  let retries = budget_retries(&engine);
+  let [(path, attempts, Some(retry_at))] = retries.as_slice() else {
+    panic!("expected one scheduled retry: {retries:?}")
+  };
+  assert_eq!((path.as_str(), *attempts), ("src/lib.rs", 2));
+  assert!(*retry_at > before + 3_500_000 && *retry_at <= before + 3_600_000, "{retry_at} vs {before}");
+  append(&lib, "pub fn changed() {}\n");
+  let changed = fresh(&engine);
+  assert!(changed.header().run.is_some());
+  assert_eq!(retry_attempts(&engine), [("src/lib.rs".to_owned(), 1)]);
+}
+
+fn hang_repo(root: &Path, hangs: usize) -> Project {
+  let repo_dir = root.join("hangs");
+  fs::create_dir_all(repo_dir.join("src")).unwrap();
+  fs::write(repo_dir.join("src/lib.rs"), "pub fn fine() {}\n").unwrap();
+  let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../atlas-lang-rust/tests/hangs/error-recovery-1.rs.txt");
+  for index in 0..hangs {
+    fs::copy(&source, repo_dir.join(format!("src/hang{index}.rs"))).unwrap();
+  }
+  project("hangs", vec![repo_config("hangs", &repo_dir)])
+}
+
+fn first_run_with_hangs(hangs: usize, budget_retry_backoff: Vec<Duration>) -> (Engine, Duration, tempfile::TempDir) {
+  let scratch = tempfile::tempdir().unwrap();
+  let project = hang_repo(&scratch.path().join("tree"), hangs);
+  let options = EngineOptions {
+    parse_budget: ParseBudget::fixed(Duration::from_millis(100)).with_stall_limit(Duration::from_millis(50)),
+    budget_retry_backoff,
+    ..EngineOptions::default()
+  };
+  let engine = open_with(&project, &scratch.path().join("home"), options);
+  let started = Instant::now();
+  let report = fresh(&engine);
+  let elapsed = started.elapsed();
+  assert!(
+    matches!(&report, FreshnessReport::Degraded { failed_files, .. } if failed_files.len() == hangs),
+    "{report:?}"
+  );
+  (engine, elapsed, scratch)
+}
+
+#[test]
+fn should_bound_the_serial_budget_retry_pass_whatever_the_number_of_failures() {
+  let parallelism = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
+  for hangs in [1, parallelism] {
+    let (engine, elapsed, _scratch) = first_run_with_hangs(hangs, EngineOptions::default().budget_retry_backoff);
+
+    let retried = last_run_count(&engine, "files_budget_retried_in_run").unwrap_or(0);
+    assert!((1..=3).contains(&retried), "{hangs} failures, {retried} serial retries");
+    assert_eq!(last_run_count(&engine, "files_budget_retry_deferred").unwrap_or(0), hangs as u64 - retried);
+    assert!(elapsed < Duration::from_secs(5), "{hangs} failures took {elapsed:?}");
+    assert_eq!(retry_attempts(&engine).len(), hangs);
+  }
+}
+
+#[test]
+fn should_skip_the_serial_budget_retry_pass_when_more_files_fail_than_threads_exist_and_cap_due_retries_per_barrier() {
+  let parallelism = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
+  let hangs = parallelism + 1;
+
+  let (engine, _, _scratch) = first_run_with_hangs(hangs, vec![Duration::ZERO; 3]);
+
+  assert_eq!(last_run_count(&engine, "files_budget_retried_in_run"), None);
+  assert_eq!(last_run_count(&engine, "files_budget_retry_deferred"), Some(hangs as u64));
+  assert!(retry_attempts(&engine).iter().all(|(_, attempts)| *attempts == 1));
+  assert_eq!(retry_attempts(&engine).len(), hangs);
+  let due = fresh(&engine);
+  assert!(due.header().run.is_some());
+  assert_eq!(last_run_count(&engine, "files_budget_retried"), Some(parallelism as u64));
+  assert_eq!(retry_attempts(&engine).iter().filter(|(_, attempts)| *attempts == 2).count(), parallelism);
 }
 
 #[test]

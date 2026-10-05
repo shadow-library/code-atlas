@@ -33,7 +33,7 @@ pub fn analyze(repo: &str, path: &str, source: &str) -> Analyzed {
   let facts = if file.language.family() == LanguageFamily::Rust {
     RustAnalyzer::new().analyze(&input)
   } else {
-    TsAnalyzer.analyze(&input)
+    TsAnalyzer::new().analyze(&input)
   }
   .unwrap();
   Analyzed { facts, source: source.to_owned() }

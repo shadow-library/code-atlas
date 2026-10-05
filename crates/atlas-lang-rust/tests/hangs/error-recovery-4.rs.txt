@@ -1,0 +1,3 @@
+* => "s".n(a, &b)selflet y =  
+b'x'pub(crate) // */ (r#type * ($x:expr) => 'a m!(self */; '\''dyn impl unsafe Self::new()pub(crate)  macro_rules! m { 
+* T::new( T::new(self*/ ::yimpl async struct S {  ::Foo::<u8>::make(*/& <A as B>::c() .awaitx.h::<Vec<u8>>()T::new(.m() &extern "C"  ; ;& macro_rules! m { .1.2b'x'y xmatch x { _ => dyn .g f(.m() <A as B>::c()>.h::<Vec<u8>>()"s"&mut  ($x:expr) => extern "C" 

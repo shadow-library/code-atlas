@@ -6,8 +6,8 @@ mod test_symbols;
 use std::collections::{HashMap, HashSet};
 
 use atlas_core::{
-  ArgSummary, AttributeFact, EntityKind, ExportFact, FileFacts, FileRef, ImportBinding, ImportFact, LocalSymbolId, Producer, ReceiverHint, RefKind, RefOrigin, ReferenceFact, Span,
-  SymbolFact, Visibility, is_test_path,
+  ArgSummary, AttributeFact, Deadline, EntityKind, ExportFact, FileFacts, FileRef, ImportBinding, ImportFact, LocalSymbolId, Producer, ReceiverHint, RefKind, RefOrigin,
+  ReferenceFact, Span, SymbolFact, Visibility, is_test_path,
 };
 use tree_sitter::Node;
 
@@ -173,7 +173,7 @@ pub(crate) struct Extractor<'s, 't> {
 }
 
 impl<'s, 't> Extractor<'s, 't> {
-  pub(crate) fn run(file: FileRef, producer: Producer, source: &'s str, root: Node<'t>) -> FileFacts {
+  pub(crate) fn run(file: FileRef, producer: Producer, source: &'s str, root: Node<'t>, deadline: &Deadline) -> Option<FileFacts> {
     let module = ModuleInfo::scan(root, source);
     let tests_enabled = is_test_path(file.path.as_str()) || module.framework.is_some();
     let mut extractor = Self {
@@ -193,6 +193,9 @@ impl<'s, 't> Extractor<'s, 't> {
       seen_values: HashMap::new(),
     };
     while let Some(step) = extractor.stack.pop() {
+      if deadline.tick().is_break() {
+        return None;
+      }
       match step {
         Step::Visit(node) => extractor.visit(node),
         Step::Member { node, parent, decorators } => extractor.member(node, parent, decorators),
@@ -200,7 +203,7 @@ impl<'s, 't> Extractor<'s, 't> {
         Step::Restore(saved) => extractor.restore(saved),
       }
     }
-    extractor.finish()
+    Some(extractor.finish())
   }
 
   fn visit(&mut self, node: Node<'t>) {

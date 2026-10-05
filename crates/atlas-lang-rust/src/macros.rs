@@ -5,6 +5,7 @@ use crate::analyzer::{ParseMode, parse_rust};
 use crate::source::{Doc, short_text};
 use crate::summary::{capped, expression_children, summarize};
 use crate::tokens::{inner_tokens, split_top_level, word};
+use atlas_core::Deadline;
 
 const PREFIX: &str = "fn __atlas_macro() { [";
 const SUFFIX: &str = "]; }";
@@ -39,7 +40,7 @@ const MAX_PIECE_PARSES: usize = 32;
 
 pub(crate) enum MacroArgs<'t> {
   Empty,
-  Expressions(ParsedMacro),
+  Expressions(ParsedMacro<'t>),
   Pieces(Vec<Piece<'t>>),
   Opaque(String),
 }
@@ -51,14 +52,15 @@ pub(crate) struct Piece<'t> {
 }
 
 pub(crate) enum PieceBody<'t> {
-  Parsed(ParsedMacro),
+  Parsed(ParsedMacro<'t>),
   Unparsed(Vec<Node<'t>>),
 }
 
-pub(crate) struct ParsedMacro {
+pub(crate) struct ParsedMacro<'t> {
   text: String,
   base: usize,
   tree: Tree,
+  deadline: &'t Deadline,
 }
 
 impl<'t> MacroArgs<'t> {
@@ -186,20 +188,21 @@ fn strip_sigil<'a, 't>(tokens: &'a [Node<'t>]) -> &'a [Node<'t>] {
   }
 }
 
-impl ParsedMacro {
-  fn parse(doc: Doc<'_>, start: usize, end: usize) -> Option<Self> {
+impl<'t> ParsedMacro<'t> {
+  fn parse(doc: Doc<'t>, start: usize, end: usize) -> Option<Self> {
     let text = format!("{PREFIX}{}{SUFFIX}", doc.slice(start, end));
-    let tree = parse_rust(&text, ParseMode::StopAtFirstError).ok().flatten()?;
+    let tree = parse_rust(&text, ParseMode::StopAtFirstError, doc.deadline()).ok().flatten()?;
     let parsed = Self {
       base: doc.absolute(start),
       tree,
       text,
+      deadline: doc.deadline(),
     };
     parsed.array().is_some().then_some(parsed)
   }
 
   pub(crate) fn doc(&self) -> Doc<'_> {
-    Doc::embedded(&self.text, self.base, PREFIX.len())
+    Doc::embedded(&self.text, self.base, PREFIX.len(), self.deadline)
   }
 
   pub(crate) fn elements(&self) -> Vec<Node<'_>> {
@@ -260,5 +263,28 @@ fn is_operand(doc: Doc<'_>, token: Node<'_>) -> bool {
       kind,
       "string_literal" | "raw_string_literal" | "integer_literal" | "float_literal" | "char_literal" | "boolean_literal" | "self" | "crate" | "super" | "primitive_type"
     ),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::time::Duration;
+
+  use atlas_core::ParseBudget;
+
+  use super::ParsedMacro;
+  use crate::source::Doc;
+
+  #[test]
+  fn should_charge_macro_reparses_to_the_file_deadline() {
+    let text = (0..400).map(|index| index.to_string()).collect::<Vec<_>>().join(", ");
+    let generous = ParseBudget::fixed(Duration::from_secs(60)).start(text.len());
+    let expired = ParseBudget::fixed(Duration::ZERO).start(text.len());
+
+    let parsed = ParsedMacro::parse(Doc::root(&text, &generous), 0, text.len()).map(|parsed| parsed.elements().len());
+    let cancelled = ParsedMacro::parse(Doc::root(&text, &expired), 0, text.len()).map(|parsed| parsed.elements().len());
+
+    assert_eq!((parsed, generous.exceeded()), (Some(400), false));
+    assert_eq!((cancelled, expired.exceeded()), (None, true));
   }
 }

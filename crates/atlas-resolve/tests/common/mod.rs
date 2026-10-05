@@ -36,7 +36,7 @@ pub fn analyze(repo: &RepoName, path: &str, source: &str) -> FileFacts {
   let input = AnalysisInput { file: &file, source };
   let facts = match file.language.family() {
     LanguageFamily::Rust => RustAnalyzer::new().analyze(&input).unwrap(),
-    _ => TsAnalyzer.analyze(&input).unwrap(),
+    _ => TsAnalyzer::new().analyze(&input).unwrap(),
   };
   facts.check_invariants(source.len()).unwrap();
   facts

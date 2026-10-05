@@ -1,0 +1,1 @@
+const C = () => <div>type  ?type  !'m' <T,> <<label: catch (e)  => <import it('x', () => { interface (a, b) => try {||=jest.fn()import </div>from  as { satisfies  )<div>()x`[)private  implements for (const x of y) ()<<x/re/g: {implements :private ] vi.mock(async <<T,>| -export default @dec() y-enum  ]interface <if (</div>;

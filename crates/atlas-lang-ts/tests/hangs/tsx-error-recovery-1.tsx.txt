@@ -1,0 +1,1 @@
+export class S { async p(x: A, y?: B) { const z: C = x; @dec  async  static #p catch (e)  obj = { a: 1, b() {}, [k]: v }typeof  }abstract keyof switch (x) { case 1:  {|if ( <T extends U>+get ?? satisfies export default switch (x) { case 1: **class satisfies 'm' ><T> export  ] ) extends <function* <a b={c}> vi.mock( extends /for (const x of y)  } }

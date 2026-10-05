@@ -24,10 +24,11 @@ use crate::packages::{clone_graph, default_context, graph_fingerprint, package_c
 use crate::passes::{PASS_LINEAGE, PASS_REPOS, PassContext, PassError, PassOutput, pass_versions, project_passes, repos_pass};
 use crate::report::{FailedFile, RunOutcomeKind, RunSummary};
 use crate::scan::{RepoScan, ScanOutcome, ScannedRepo, is_code_file, is_manifest};
+use crate::scip::now_ms;
 use crate::similarity::{replace_symbols, symbol_docs};
 use crate::state::{
-  DIRTY_BLOB, EngineMeta, EngineState, FACTS_VERSION, FileState, META_BLOB, META_BLOB_VERSION, RepoHealth, RepoMeta, ScipMeta, all_skipped, count_inferred_stale, read_known_repos,
-  symbols_of, write_known_repos, write_skipped,
+  BudgetRetry, DIRTY_BLOB, EngineMeta, EngineState, FACTS_VERSION, FileState, META_BLOB, META_BLOB_VERSION, RepoHealth, RepoMeta, ScipMeta, all_skipped, budget_retry_meta,
+  count_inferred_stale, read_known_repos, symbols_of, write_known_repos, write_skipped,
 };
 
 const MAX_RESOLVE_ROUNDS: usize = 4;
@@ -290,6 +291,7 @@ struct Pipeline<'a, 'e> {
   purged: BTreeMap<RepoName, Vec<FileRecord>>,
   events: Events,
   converged: Convergence,
+  budget_due: BTreeMap<FileKey, u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -313,6 +315,7 @@ impl<'a, 'e> Pipeline<'a, 'e> {
       purged: BTreeMap::new(),
       events: Events::default(),
       converged: Convergence::Converged,
+      budget_due: BTreeMap::new(),
     }
   }
 
@@ -483,6 +486,22 @@ impl<'a, 'e> Pipeline<'a, 'e> {
         to_analyze.insert(key, stamp.hash);
       }
     }
+    let now = now_ms();
+    let mut due: Vec<(i64, &FileKey, u32)> = self
+      .state
+      .budget_retries
+      .iter()
+      .filter(|(key, retry)| retry.is_due(now) && !to_analyze.contains_key(*key) && !self.deleted.contains(*key))
+      .filter_map(|(key, retry)| Some((retry.retry_at_ms?, key, retry.attempts)))
+      .collect();
+    due.sort();
+    for (_, key, attempts) in due.into_iter().take(analysis_parallelism()) {
+      if let Some(stamp) = self.plans.get(&key.0).and_then(|plan| plan.stamps.get(&key.1)) {
+        to_analyze.insert(key.clone(), stamp.hash);
+        self.budget_due.insert(key.clone(), attempts);
+      }
+    }
+    ledger.add("files_budget_retried", self.budget_due.len() as u64);
     let empty = PackageGraph::default();
     let repackaged: Vec<(FileKey, ContentHash)> = self
       .state
@@ -519,7 +538,41 @@ impl<'a, 'e> Pipeline<'a, 'e> {
       .collect();
     let toolchain = self.env.toolchain;
     let faults = &self.env.options.fault_injection;
-    let outcomes: Vec<(FileKey, AnalysisOutcome)> = jobs.par_iter().map(|job| (job.key.clone(), toolchain.analyze(job, faults))).collect();
+    let budget = toolchain.budget();
+    let due = &self.budget_due;
+    let first_budget = |key: &FileKey| due.get(key).map_or(budget, |attempts| budget.escalated(1 << attempts.saturating_add(1).min(30)));
+    let mut outcomes: Vec<(FileKey, AnalysisOutcome)> = jobs
+      .par_iter()
+      .map(|job| (job.key.clone(), toolchain.analyze_with_budget(job, faults, first_budget(&job.key))))
+      .collect();
+    let failed: Vec<usize> = outcomes
+      .iter()
+      .enumerate()
+      .filter(|(_, (key, outcome))| !due.contains_key(key) && budget_exceeded(outcome))
+      .map(|(index, _)| index)
+      .collect();
+    let pass_cap = failed
+      .iter()
+      .filter_map(|index| analyzed_size(&outcomes[*index].1))
+      .map(|size| budget.base_limit_for(size).saturating_mul(2))
+      .max()
+      .unwrap_or_default();
+    let serial = match failed.len() <= analysis_parallelism() {
+      true => failed.as_slice(),
+      false => &[],
+    };
+    let started = Instant::now();
+    let mut retried = 0;
+    for index in serial {
+      outcomes[*index].1 = toolchain.analyze_with_budget(&jobs[*index], faults, budget.escalated(2));
+      retried += 1;
+      if started.elapsed() > pass_cap {
+        break;
+      }
+    }
+    ledger.add("files_budget_retried_in_run", retried as u64);
+    ledger.add("files_budget_retry_deferred", (failed.len() - retried) as u64);
+    self.record_budget_retries(&outcomes);
     let mut analyzed = BTreeMap::new();
     for (key, outcome) in outcomes {
       match outcome {
@@ -545,6 +598,20 @@ impl<'a, 'e> Pipeline<'a, 'e> {
       }
     }
     analyzed
+  }
+
+  fn record_budget_retries(&mut self, outcomes: &[(FileKey, AnalysisOutcome)]) {
+    let now = now_ms();
+    for (key, outcome) in outcomes {
+      if !budget_exceeded(outcome) {
+        self.state.budget_retries.remove(key);
+        continue;
+      }
+      let attempts = self.budget_due.get(key).map_or(1, |attempts| attempts.saturating_add(1));
+      let backoff = self.env.options.budget_retry_backoff.get(attempts as usize - 1);
+      let retry_at_ms = backoff.map(|delay| now.saturating_add(i64::try_from(delay.as_millis()).unwrap_or(i64::MAX)));
+      self.state.budget_retries.insert(key.clone(), BudgetRetry { attempts, retry_at_ms });
+    }
   }
 
   #[allow(clippy::type_complexity)]
@@ -1199,6 +1266,8 @@ impl<'a, 'e> Pipeline<'a, 'e> {
   }
 
   fn finish(&mut self, ledger: &mut Ledger, analyzed: &BTreeSet<FileKey>) -> EngineResult<()> {
+    let (deleted, purged) = (&self.deleted, &self.purged);
+    self.state.budget_retries.retain(|key, _| !deleted.contains(key) && !purged.contains_key(&key.0));
     let mut meta = EngineMeta {
       facts_version: FACTS_VERSION,
       resolver_version: atlas_resolve::RESOLVER_VERSION,
@@ -1206,6 +1275,7 @@ impl<'a, 'e> Pipeline<'a, 'e> {
       generation: Some(self.run.0),
       repos: BTreeMap::new(),
       pass_versions: pass_versions(&self.env.options.passes),
+      budget_retries: budget_retry_meta(&self.state.budget_retries),
     };
     for (repo, plan) in &self.plans {
       meta.repos.insert(
@@ -1367,4 +1437,19 @@ fn migrate_inferred(tx: &mut WriteTx<'_>, pairs: &[RenamePair], run: RunId) -> E
     }
   }
   Ok(())
+}
+
+fn analysis_parallelism() -> usize {
+  std::thread::available_parallelism().map_or(1, std::num::NonZero::get)
+}
+
+fn analyzed_size(outcome: &AnalysisOutcome) -> Option<usize> {
+  match outcome {
+    AnalysisOutcome::Analyzed(artifact) => usize::try_from(artifact.size).ok(),
+    AnalysisOutcome::Vanished => None,
+  }
+}
+
+fn budget_exceeded(outcome: &AnalysisOutcome) -> bool {
+  matches!(outcome, AnalysisOutcome::Analyzed(artifact) if artifact.facts.parse_status.is_budget_exceeded())
 }

@@ -527,5 +527,5 @@ fn should_use_the_toolchain_analyzer_producer_for_buffer_facts() {
   let facts = engine.analyze_text(Language::Rust, "fn a() {}\n").unwrap();
   assert_eq!(facts.analyzer, atlas_lang_rust::RustAnalyzer::new().producer());
   let facts = engine.analyze_text(Language::TypeScript, "function a() {}\n").unwrap();
-  assert_eq!(facts.analyzer, atlas_lang_ts::TsAnalyzer.producer());
+  assert_eq!(facts.analyzer, atlas_lang_ts::TsAnalyzer::new().producer());
 }

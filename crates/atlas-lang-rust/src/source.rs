@@ -1,6 +1,8 @@
 use atlas_core::{ARG_MAX_TEXT, Span, truncate_text};
 use tree_sitter::Node;
 
+use atlas_core::Deadline;
+
 const MAX_SIGNATURE_BYTES: usize = 512;
 const SCAN_FACTOR: usize = 4;
 
@@ -46,15 +48,25 @@ pub(crate) struct Doc<'t> {
   text: &'t str,
   base: usize,
   offset: usize,
+  deadline: &'t Deadline,
 }
 
 impl<'t> Doc<'t> {
-  pub(crate) fn root(text: &'t str) -> Self {
-    Self { text, base: 0, offset: 0 }
+  pub(crate) fn root(text: &'t str, deadline: &'t Deadline) -> Self {
+    Self {
+      text,
+      base: 0,
+      offset: 0,
+      deadline,
+    }
   }
 
-  pub(crate) fn embedded(text: &'t str, base: usize, offset: usize) -> Self {
-    Self { text, base, offset }
+  pub(crate) fn embedded(text: &'t str, base: usize, offset: usize, deadline: &'t Deadline) -> Self {
+    Self { text, base, offset, deadline }
+  }
+
+  pub(crate) fn deadline(&self) -> &'t Deadline {
+    self.deadline
   }
 
   pub(crate) fn text(&self, node: Node<'_>) -> &'t str {

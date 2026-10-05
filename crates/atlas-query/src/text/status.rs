@@ -1,7 +1,7 @@
 use atlas_engine::{AutoScipOutcome, AutoScipSetting};
 
 use crate::freshness::ScipState;
-use crate::queries::{AutoScipView, ChangesAnswer, ReadAnswer, StatusAnswer};
+use crate::queries::{AutoScipView, BudgetRetryView, ChangesAnswer, ReadAnswer, StatusAnswer};
 use crate::text::{RenderText, TextOut, entity_line, snippet};
 
 fn counts(map: &std::collections::BTreeMap<String, u64>) -> String {
@@ -50,13 +50,27 @@ fn render_auto_scip(project: &str, view: &AutoScipView, out: &mut TextOut) {
   }
 }
 
+fn budget_retry_note(retry: &BudgetRetryView) -> String {
+  match retry.retry_in_secs {
+    Some(0) => format!(" (budget retry {} due now)", retry.attempts + 1),
+    Some(secs) => format!(" (budget retry {} in {secs}s)", retry.attempts + 1),
+    None => format!(" (no budget retry left after {} attempts; retried when the file changes)", retry.attempts),
+  }
+}
+
 impl RenderText for StatusAnswer {
   fn render_text(&self, out: &mut TextOut) {
     out.line(0, format!("project {} repos {}", self.project, self.repos.join(", ")));
     out.line(0, format!("files {}", counts(&self.files_by_language)));
     out.line(0, format!("parse {}", counts(&self.files_by_parse_status)));
     for file in self.failed_files.iter().chain(&self.repos_missing) {
-      out.line(1, format!("failed {}:{} {}", file.repo, file.path.as_deref().unwrap_or("-"), file.reason));
+      let retry = self
+        .budget_retries
+        .iter()
+        .find(|retry| retry.repo == file.repo && file.path.as_deref() == Some(retry.path.as_str()))
+        .map(budget_retry_note)
+        .unwrap_or_default();
+      out.line(1, format!("failed {}:{} {}{retry}", file.repo, file.path.as_deref().unwrap_or("-"), file.reason));
     }
     out.line(0, format!("unresolved {}", counts(&self.unresolved_by_reason)));
     out.line(0, "edges by certainty");
@@ -184,6 +198,7 @@ mod tests {
       dangling_detector_edges_dropped: 0,
       skipped_total,
       skipped_files,
+      budget_retries: Vec::new(),
     }
   }
 

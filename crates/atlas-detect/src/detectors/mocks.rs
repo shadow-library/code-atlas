@@ -797,7 +797,7 @@ mod tests {
       atlas_core::ContentHash::of(source.as_bytes()),
     )
     .unwrap();
-    let facts = atlas_core::LanguageAnalyzer::analyze(&atlas_lang_ts::TsAnalyzer, &atlas_core::AnalysisInput { file: &file, source }).unwrap();
+    let facts = atlas_core::LanguageAnalyzer::analyze(&atlas_lang_ts::TsAnalyzer::new(), &atlas_core::AnalysisInput { file: &file, source }).unwrap();
     let input = atlas_core::DetectInput {
       facts: &facts,
       source,

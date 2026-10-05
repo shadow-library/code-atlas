@@ -1,0 +1,4 @@
+impl S { async fn p(&self, x: Arc<Mutex<A>>) { let x: A = a; pub(crate) .f ($x:expr) => ($x:expr) => trait |z| zasync  .0 struct S { 
+r#type
+match x { _ => Self::new()enum E {  macro_rules! m { .g#[cfg(x)]
+y where T: .await impl X { fn s(&self) /*.h::<Vec<u8>>()<A as B>::c()pub(crate) y::<T> enum E { macro_rules! m { where T: ::<T>|z| zFoo::<u8>::make('af( :: "s"#[cfg(x)] Foo::<u8>::make( ::<T>..=.h::<Vec<u8>>() ( .0self ($x:expr) => match x { _ => .g ; { &mut y, */ impl X { fn s(&self) |z| z.h::<Vec<u8>>()where T: x.n(a, &b); Foo::<u8>::make(.g(.go(); } }

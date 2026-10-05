@@ -87,7 +87,9 @@ fn mutate(random: &mut XorShift, source: &str) -> String {
 
 fn analyze_checked(path: &str, source: &str) {
   let file = FileRef::detect(RepoName::new("mutant").unwrap(), RelPath::new(path).unwrap(), ContentHash::of(source.as_bytes())).unwrap();
-  let facts = TsAnalyzer.analyze(&AnalysisInput { file: &file, source }).unwrap_or_else(|error| panic!("{path}: {error}"));
+  let facts = TsAnalyzer::new()
+    .analyze(&AnalysisInput { file: &file, source })
+    .unwrap_or_else(|error| panic!("{path}: {error}"));
   facts.check_invariants(source.len()).unwrap_or_else(|error| panic!("{path}: {error}\n{source}"));
   assert!(!matches!(facts.parse_status, ParseStatus::Failed { .. }), "{path} fell back to failed facts:\n{source}");
 }
@@ -119,6 +121,7 @@ fn should_survive_pathologically_deep_nesting_on_a_small_stack() {
     format!("const g = {}1{};", "(".repeat(depth), ")".repeat(depth)),
     format!("let h = <div>{}</div>;", "<a>".repeat(depth / 4)),
     "\u{feff}#!/usr/bin/env node\n\0\0\u{fffd}export {".to_owned(),
+    format!("{}const i = 1;", "declare ".repeat(depth)),
   ];
   let worker = std::thread::Builder::new()
     .stack_size(1024 * 1024)

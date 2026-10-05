@@ -1,0 +1,3 @@
+impl S { async fn p(&self, x: Arc<Mutex<A>>) { let x: A = a; *.m()::let x: A = *impl X { fn s(&self) {}
+&Foo::<u8>::make(.n(a, &b)async self"s"(.1.2"s"impl X { fn s(&self) impl X { fn s(&self) ,|z| z[0]lock(&b)fn q(x: &Box<dyn T>) 
+as u8async as u8::&mut self,selfasync .m()>impl X { fn s(&self) &éselfxT::new(y.h::<Vec<u8>>()::<T>[0].0|z| z.go(); } }

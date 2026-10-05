@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::ops::ControlFlow;
 
-use atlas_core::{AnalysisError, AnalysisInput, FileFacts, LanguageAnalyzer, LanguageFamily, Producer};
+use atlas_core::{AnalysisError, AnalysisInput, Deadline, FileFacts, LanguageAnalyzer, LanguageFamily, ParseBudget, Producer};
 use tree_sitter::{ParseOptions, ParseState, Parser, Tree};
 
 use crate::extract::Extractor;
@@ -17,6 +17,7 @@ thread_local! {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RustAnalyzer {
   max_source_bytes: usize,
+  parse_budget: ParseBudget,
 }
 
 impl Default for RustAnalyzer {
@@ -29,11 +30,22 @@ impl RustAnalyzer {
   pub fn new() -> Self {
     Self {
       max_source_bytes: DEFAULT_MAX_SOURCE_BYTES,
+      parse_budget: ParseBudget::default(),
     }
   }
 
   pub fn with_max_source_bytes(self, max_source_bytes: usize) -> Self {
-    Self { max_source_bytes }
+    Self { max_source_bytes, ..self }
+  }
+
+  pub fn with_parse_budget(self, parse_budget: ParseBudget) -> Self {
+    Self { parse_budget, ..self }
+  }
+
+  fn cancelled(&self, input: &AnalysisInput<'_>, deadline: &Deadline, phase: &'static str) -> FileFacts {
+    let reason = self.parse_budget.failure_reason(input.source.len());
+    tracing::warn!(path = %input.file.path, phase, overrun = ?deadline.overrun(), factor = self.parse_budget.factor(), "rust analysis cancelled");
+    FileFacts::failed(input.file.clone(), self.producer(), reason)
   }
 }
 
@@ -56,11 +68,18 @@ impl LanguageAnalyzer for RustAnalyzer {
         limit: self.max_source_bytes,
       });
     }
-    let Some(tree) = parse_rust(input.source, ParseMode::Recover)? else {
+    let deadline = self.parse_budget.start(input.source.len());
+    let Some(tree) = parse_rust(input.source, ParseMode::Recover, &deadline)? else {
+      if deadline.exceeded() {
+        return Ok(self.cancelled(input, &deadline, "parse"));
+      }
       tracing::warn!(path = %input.file.path, "tree-sitter produced no tree for a rust file");
       return Ok(FileFacts::failed(input.file.clone(), self.producer(), "tree-sitter produced no syntax tree"));
     };
-    Ok(Extractor::new(input.file, input.source, self.producer()).run(&tree))
+    match Extractor::new(input.file, input.source, self.producer()).run(&tree, &deadline) {
+      Some(facts) => Ok(facts),
+      None => Ok(self.cancelled(input, &deadline, "extraction")),
+    }
   }
 }
 
@@ -70,26 +89,27 @@ pub(crate) enum ParseMode {
   StopAtFirstError,
 }
 
-pub(crate) fn parse_rust(text: &str, mode: ParseMode) -> Result<Option<Tree>, AnalysisError> {
+pub(crate) fn parse_rust(text: &str, mode: ParseMode, deadline: &Deadline) -> Result<Option<Tree>, AnalysisError> {
   PARSER.with(|slot| match slot.try_borrow_mut() {
     Ok(mut slot) => {
       let parser = match slot.as_mut() {
         Some(parser) => parser,
         None => slot.insert(new_parser()?),
       };
-      Ok(parse_with(parser, text, mode))
+      Ok(parse_with(parser, text, mode, deadline))
     }
-    Err(_) => Ok(parse_with(&mut new_parser()?, text, mode)),
+    Err(_) => Ok(parse_with(&mut new_parser()?, text, mode, deadline)),
   })
 }
 
-fn parse_with(parser: &mut Parser, text: &str, mode: ParseMode) -> Option<Tree> {
-  if mode == ParseMode::Recover {
-    return parser.parse(text, None);
-  }
+fn parse_with(parser: &mut Parser, text: &str, mode: ParseMode, deadline: &Deadline) -> Option<Tree> {
   let bytes = text.as_bytes();
-  let mut stop_at_error = |state: &ParseState| if state.has_error() { ControlFlow::Break(()) } else { ControlFlow::Continue(()) };
-  let options = ParseOptions::new().progress_callback(&mut stop_at_error);
+  let mut watch = deadline.parse_progress();
+  let mut progress = |state: &ParseState| match mode {
+    ParseMode::StopAtFirstError if state.has_error() => ControlFlow::Break(()),
+    ParseMode::Recover | ParseMode::StopAtFirstError => watch.observe(state.current_byte_offset()),
+  };
+  let options = ParseOptions::new().progress_callback(&mut progress);
   let tree = parser.parse_with_options(&mut |offset, _| bytes.get(offset..).unwrap_or_default(), None, Some(options));
   if tree.is_none() {
     // A halted tree-sitter parse resumes on the next call unless the parser is reset.

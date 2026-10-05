@@ -159,6 +159,7 @@ impl<'s> Scopes<'s> {
   }
 
   fn declare_statement(&mut self, statement: Node<'_>, source: &'s str) {
+    let Some(statement) = unwrap_declaration(statement) else { return };
     let name = statement.child_by_field_name("name").map(|name| text(name, source));
     match statement.kind() {
       "lexical_declaration" | "variable_declaration" => {
@@ -183,15 +184,19 @@ impl<'s> Scopes<'s> {
           self.bind(name, Namespace::Type, None);
         }
       }
-      "ambient_declaration" | "export_statement" => {
-        let inner = statement.child_by_field_name("declaration").or_else(|| children(statement).into_iter().next());
-        if let Some(inner) = inner.filter(|inner| inner.kind() != "statement_block") {
-          self.declare_statement(inner, source);
-        }
-      }
       _ => {}
     }
   }
+}
+
+fn unwrap_declaration(mut statement: Node<'_>) -> Option<Node<'_>> {
+  while matches!(statement.kind(), "ambient_declaration" | "export_statement") {
+    statement = statement
+      .child_by_field_name("declaration")
+      .or_else(|| children(statement).into_iter().next())
+      .filter(|inner| inner.kind() != "statement_block")?;
+  }
+  Some(statement)
 }
 
 pub(crate) fn declarator_type_hint(declarator: Node<'_>, source: &str) -> Option<Vec<String>> {

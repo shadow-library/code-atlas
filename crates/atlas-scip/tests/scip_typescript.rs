@@ -55,7 +55,7 @@ fn should_resolve_the_alias_chain_reference_to_the_original_definition() {
   for path in SOURCES {
     let source = fs::read_to_string(package.join(path)).unwrap();
     let file = FileRef::detect(repo.clone(), rel(path), ContentHash::of(source.as_bytes())).unwrap();
-    let facts = TsAnalyzer.analyze(&AnalysisInput { file: &file, source: &source }).unwrap();
+    let facts = TsAnalyzer::new().analyze(&AnalysisInput { file: &file, source: &source }).unwrap();
     let module_path = ts_module_path(&rel(path), None).unwrap();
     let keys = facts
       .symbol_keys(&KeyContext {

@@ -1,0 +1,1 @@
+impl S { async fn p(&self, x: Arc<Mutex<A>>) { let x: A = a; */x.fT::new( |z| z.0.m()fn q(x: &Box<dyn T>) ::*; */y<A as B>::c() where T: yT::new(as u8 ..= trait .n(a, &b).1.2 }..=lock(&b) * .n(a, &b)y"s"|z| zé.1.2(impl .m() let x: A = lock(&b).go(); } }

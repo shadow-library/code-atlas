@@ -155,6 +155,7 @@ Correctness rule: **no query ever answers from an index known to be older than t
 
 - SQLite runs in WAL mode with one writer and many readers. An `fd-lock` on `<db>.lock` serialises writers across processes, so a CLI and an MCP server can share a database safely. `busy_timeout` is set.
 - Analyzer panics are caught per file with `catch_unwind`. The file is recorded as `parse_status=failed` with the error, and the rest of the index proceeds.
+- Each file's analysis runs under a size-scaled parse budget charged in thread CPU time (`2 s + 1 s per 100 KiB`, capped at 30 s, plus a 2 s no-progress limit on the parse and a 10× wall-clock backstop) that covers the tree-sitter parse, macro re-parses and the extraction walk. A file that exceeds it is recorded as `parse_status=failed` with `parse budget exceeded (<ms> ms, <bytes> bytes)`, so a pathological file never stalls the barrier. Budget failures are retried in the same run at 2× (bounded), then with backoff (1 min, 10 min, 1 h) at a growing budget.
 - Schema migrations are versioned. A mismatched analyzer version triggers a re-derive of only the facts that analyzer produced.
 - LLM is unavailable → semantic tasks are skipped and recorded as `skipped` in the run. Inferred facts already stored keep their stored certainty and staleness. They are never upgraded.
 

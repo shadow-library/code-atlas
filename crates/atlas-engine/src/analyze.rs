@@ -6,7 +6,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use atlas_core::{
-  AnalysisInput, ContentHash, DetectInput, Detection, Detector, Diagnostic, FileFacts, FileRef, Language, LanguageAnalyzer, LanguageFamily, PackageContext, ParseStatus, Producer,
+  AnalysisInput, ContentHash, DetectInput, Detection, Detector, Diagnostic, FileFacts, FileRef, Language, LanguageAnalyzer, LanguageFamily, PackageContext, ParseBudget,
+  ParseStatus, Producer,
 };
 use atlas_detect::{DetectorRegistry, DiagnosingDetector};
 use atlas_lang_rust::RustAnalyzer;
@@ -21,6 +22,7 @@ const UNSUPPORTED_ANALYZER: &str = "unsupported";
 pub(crate) struct Toolchain {
   rust: RustAnalyzer,
   ts: TsAnalyzer,
+  budget: ParseBudget,
   detectors: DetectorRegistry,
   extra: DetectorRegistry,
   detector_producers: Vec<Producer>,
@@ -39,7 +41,7 @@ pub(crate) enum AnalysisOutcome {
 }
 
 impl Toolchain {
-  pub fn new(extra: &[Arc<dyn DiagnosingDetector>]) -> Self {
+  pub fn new(extra: &[Arc<dyn DiagnosingDetector>], budget: ParseBudget) -> Self {
     let detectors = DetectorRegistry::default();
     let extra = DetectorRegistry::new(
       extra
@@ -49,8 +51,9 @@ impl Toolchain {
     );
     let detector_producers = detectors.producers().into_iter().chain(extra.producers()).collect();
     Self {
-      rust: RustAnalyzer::new(),
-      ts: TsAnalyzer,
+      rust: RustAnalyzer::new().with_parse_budget(budget),
+      ts: TsAnalyzer::new().with_parse_budget(budget),
+      budget,
       detectors,
       extra,
       detector_producers,
@@ -75,7 +78,11 @@ impl Toolchain {
     artifact.facts.analyzer == self.producer(artifact.facts.file.language) && artifact.detectors == self.detector_producers && artifact.package.as_ref() == package
   }
 
-  pub fn analyze(&self, job: &AnalysisJob, faults: &FaultInjection) -> AnalysisOutcome {
+  pub fn budget(&self) -> ParseBudget {
+    self.budget
+  }
+
+  pub fn analyze_with_budget(&self, job: &AnalysisJob, faults: &FaultInjection, budget: ParseBudget) -> AnalysisOutcome {
     let (repo, path) = &job.key;
     let bytes = match fs::read(&job.absolute) {
       Ok(bytes) => bytes,
@@ -95,7 +102,7 @@ impl Toolchain {
       if faults.should_panic(repo, path) {
         panic!("injected analyzer fault");
       }
-      self.analyze_source(&file, &source, job.package.as_ref())
+      self.analyze_source(&file, &source, job.package.as_ref(), budget)
     }));
     let (facts, detections) = match outcome {
       Ok(Ok(analyzed)) => analyzed,
@@ -116,10 +123,14 @@ impl Toolchain {
     }))
   }
 
-  fn analyze_source(&self, file: &FileRef, source: &str, package: Option<&PackageContext>) -> Result<(FileFacts, Vec<DetectorOutput>), String> {
+  fn analyze_source(&self, file: &FileRef, source: &str, package: Option<&PackageContext>, budget: ParseBudget) -> Result<(FileFacts, Vec<DetectorOutput>), String> {
     let input = AnalysisInput { file, source };
-    let analyzer = self.analyzer(file.language).ok_or_else(|| format!("no analyzer supports {}", file.language))?;
-    let facts = analyzer.analyze(&input).map_err(|error| error.to_string())?;
+    let analyzed = match file.language.family() {
+      LanguageFamily::Rust => self.rust.clone().with_parse_budget(budget).analyze(&input),
+      LanguageFamily::Ts => self.ts.with_parse_budget(budget).analyze(&input),
+      _ => return Err(format!("no analyzer supports {}", file.language)),
+    };
+    let facts = analyzed.map_err(|error| error.to_string())?;
     facts.check_invariants(source.len()).map_err(|error| error.to_string())?;
     if matches!(facts.parse_status, ParseStatus::Failed { .. }) {
       return Ok((facts, Vec::new()));

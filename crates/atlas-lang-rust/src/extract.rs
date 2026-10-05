@@ -15,6 +15,7 @@ use crate::syntax::{
   walk_tree,
 };
 use crate::tokens::token_tree_args;
+use atlas_core::Deadline;
 
 const MAX_ITEM_NESTING: u32 = 64;
 const MAX_USE_NESTING: u32 = 32;
@@ -114,8 +115,8 @@ impl<'s> Extractor<'s> {
     }
   }
 
-  pub(crate) fn run(mut self, tree: &Tree) -> FileFacts {
-    let doc = Doc::root(self.source);
+  pub(crate) fn run(mut self, tree: &Tree, deadline: &Deadline) -> Option<FileFacts> {
+    let doc = Doc::root(self.source, deadline);
     let root = tree.root_node();
     self.local_types = declared_type_names(doc, root);
     self.facts.parse_status = parse_status(root, &self.lines);
@@ -126,7 +127,10 @@ impl<'s> Extractor<'s> {
     };
     self.facts.file_doc = self.file_doc(doc, root);
     self.items(doc, root, &file);
-    self.link_impls();
+    self.link_impls(deadline);
+    if deadline.exceeded() {
+      return None;
+    }
     self.dedupe_refs();
     if self.depth_exceeded {
       tracing::debug!(path = %self.facts.file.path, "rust analyzer skipped syntax nested beyond its depth limit");
@@ -137,7 +141,7 @@ impl<'s> Extractor<'s> {
         span: None,
       });
     }
-    self.facts
+    Some(self.facts)
   }
 
   pub(crate) fn span(&self, doc: Doc<'_>, node: Node<'_>) -> Span {
@@ -162,6 +166,9 @@ impl<'s> Extractor<'s> {
     }
     let module = Scope::module(container, Role::Module);
     for decorated in decorated_children(container_node) {
+      if doc.deadline().check().is_break() {
+        return;
+      }
       let node = decorated.node;
       match node.kind() {
         "function_item" => self.function(doc, &decorated, container, &module),
@@ -642,7 +649,7 @@ impl<'s> Extractor<'s> {
     });
   }
 
-  fn link_impls(&mut self) {
+  fn link_impls(&mut self, deadline: &Deadline) {
     let mut implementors: HashMap<(&[String], &str), Vec<usize>> = HashMap::new();
     for (index, symbol) in self.facts.symbols.iter().enumerate() {
       if let ([name], EntityKind::Struct | EntityKind::Enum | EntityKind::TypeAlias) = (symbol.item_path.as_slice(), &symbol.kind) {
@@ -651,6 +658,9 @@ impl<'s> Extractor<'s> {
     }
     let mut links = Vec::new();
     for implementation in &self.facts.impls {
+      if deadline.check().is_break() {
+        return;
+      }
       let (Some(trait_ref), [self_name]) = (&implementation.trait_ref, implementation.self_type.segments.as_slice()) else {
         continue;
       };
@@ -665,9 +675,11 @@ impl<'s> Extractor<'s> {
         links.push((*index, trait_ref.segments.clone()));
       }
     }
+    let mut known: HashMap<usize, HashSet<Vec<String>>> = HashMap::new();
     for (index, trait_path) in links {
       let implements = &mut self.facts.symbols[index].implements;
-      if !implements.contains(&trait_path) {
+      let seen = known.entry(index).or_insert_with(|| implements.iter().cloned().collect());
+      if seen.insert(trait_path.clone()) {
         implements.push(trait_path);
       }
     }

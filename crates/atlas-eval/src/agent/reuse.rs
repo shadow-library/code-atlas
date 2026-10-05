@@ -145,7 +145,7 @@ pub fn analyze_source(path: &str, source: &str) -> Option<FileFacts> {
   let input = AnalysisInput { file: &file, source };
   let result = match file.language.family() {
     LanguageFamily::Rust => RustAnalyzer::new().analyze(&input),
-    LanguageFamily::Ts => TsAnalyzer.analyze(&input),
+    LanguageFamily::Ts => TsAnalyzer::new().analyze(&input),
     _ => return None,
   };
   match result {

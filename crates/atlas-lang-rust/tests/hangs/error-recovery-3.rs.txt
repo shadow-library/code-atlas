@@ -1,0 +1,1 @@
+impl S { async fn p(&self, x: Arc<Mutex<A>>) { let x: A = a; &mut .g let x: A =  ..= }r#"raw"# .await (as u8'\''Foo::<u8>::make(}selfwhere T: |z| zéé'\''let y =  impl X { fn s(&self) ::Foo::<u8>::make( ;éwhere T: /*Self::new()//*/struct S { r#"raw"#let y =  |z| zimpl b'x' * trait dyn }r#"raw"#(<A as B>::c()( .go(); } }

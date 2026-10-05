@@ -50,7 +50,7 @@ fn should_report_analysis_throughput_over_a_local_corpus() {
     let Ok(relative) = RelPath::new(&relative) else { continue };
     let file = FileRef::detect(repo.clone(), relative, ContentHash::of(source.as_bytes())).unwrap();
     let started = Instant::now();
-    let facts = TsAnalyzer.analyze(&AnalysisInput { file: &file, source: &source }).unwrap();
+    let facts = TsAnalyzer::new().analyze(&AnalysisInput { file: &file, source: &source }).unwrap();
     elapsed += started.elapsed();
     facts.check_invariants(source.len()).unwrap();
     partial += usize::from(matches!(facts.parse_status, atlas_core::ParseStatus::Partial { .. }));
@@ -92,7 +92,7 @@ fn should_report_analysis_time_for_a_large_generated_bundle() {
   )
   .unwrap();
   let started = Instant::now();
-  let facts = TsAnalyzer.analyze(&AnalysisInput { file: &file, source: &source }).unwrap();
+  let facts = TsAnalyzer::new().analyze(&AnalysisInput { file: &file, source: &source }).unwrap();
   let elapsed = started.elapsed();
   facts.check_invariants(source.len()).unwrap();
   println!(

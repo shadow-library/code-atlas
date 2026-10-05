@@ -1,0 +1,1 @@
+impl S { async fn p(&self, x: Arc<Mutex<A>>) { let x: A = a; ::<T> (r#"raw"# let x: A = .0impl X { fn s(&self)  struct S {  (< [0] vec![1];let y = b'x' ?async trait vec![1].n(a, &b)ylock(&b)( .m()..=self "s".n(a, &b) é .g |z| z  =>  .1.2'\''é <A as B>::c()T::new(.go(); } }

@@ -240,6 +240,44 @@ fn should_index_a_hostile_repo_partially_with_an_accurate_status() {
 }
 
 #[test]
+fn should_answer_a_query_when_a_file_parse_outlasts_its_budget() {
+  let sandbox = Sandbox::new();
+  let repo = sandbox.work().join("stalling");
+  let src = repo.join("src");
+  fs::create_dir_all(&src).unwrap();
+  fs::write(repo.join("Cargo.toml"), "[package]\nname = \"stalling\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
+  fs::write(
+    src.join("lib.rs"),
+    "mod hang;\n\npub fn helper() -> u32 {\n  1\n}\n\npub fn entry() -> u32 {\n  helper()\n}\n",
+  )
+  .unwrap();
+  fs::copy(
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../atlas-lang-rust/tests/hangs/error-recovery-1.rs.txt"),
+    src.join("hang.rs"),
+  )
+  .unwrap();
+  sandbox.create_project("stalling", std::slice::from_ref(&repo));
+
+  let callers = sandbox.run(&repo, &["callers", "helper"]).expect(3);
+  let again = sandbox.run(&repo, &["callers", "helper"]).ok();
+
+  let failure = "stalling:src/hang.rs: parse budget exceeded (2003 ms, 352 bytes)";
+  assert!(callers.stdout.contains(&format!("affected {failure}")), "{callers}");
+  assert!(callers.stdout.contains("entry function stalling:src/lib.rs:7  calls helper [resolved]"), "{callers}");
+  let header = again.stdout.lines().next().unwrap_or_default();
+  assert!(header.starts_with("fresh run=1 (+0 files, ") && header.ends_with(" | 1 files failed analysis"), "{again}");
+  assert!(again.stdout.contains("stalling:src/hang.rs failed: parse budget exceeded (2003 ms, 352 bytes)"), "{again}");
+  assert!(again.stderr.is_empty(), "the unchanged file was analysed again: {again}");
+  let status = sandbox.run(&repo, &["status"]).ok();
+  assert!(
+    status
+      .stdout
+      .contains("failed stalling:src/hang.rs parse budget exceeded (2003 ms, 352 bytes) (budget retry 2 in "),
+    "{status}"
+  );
+}
+
+#[test]
 fn should_report_an_oversized_file_as_skipped() {
   let Hostile { sandbox, repo, .. } = hostile_repo();
 

@@ -1,0 +1,1 @@
+impl S { async fn p(&self, x: Arc<Mutex<A>>) { let x: A = a; extern "C" ? *..=..=r#"raw"# >selfunsafe  self*/ impl  éf(impl .n(a, &b)& & ;unsafe Self::new()[0]?)"s" */'\''y> &mut  }match x { _ =>  ywhere T: dyn .fb'x'<.n(a, &b)enum E { let y = as u8 where T: fn q(x: &Box<dyn T>)  >|z| z <A as B>::c()Foo::<u8>::make(.m().go(); } }

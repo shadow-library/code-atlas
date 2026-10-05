@@ -1,4 +1,6 @@
-use atlas_core::{AnalysisError, AnalysisInput, FileFacts, LanguageAnalyzer, LanguageFamily, MAX_REPORTED_PARSE_ERRORS, ParseErrorFact, ParseStatus, Producer};
+use atlas_core::{
+  AnalysisError, AnalysisInput, Deadline, FileFacts, LanguageAnalyzer, LanguageFamily, MAX_REPORTED_PARSE_ERRORS, ParseBudget, ParseErrorFact, ParseStatus, Producer,
+};
 use tree_sitter::Node;
 
 use crate::extract::Extractor;
@@ -9,8 +11,26 @@ pub const ANALYZER_NAME: &str = "atlas-lang-ts";
 pub const ANALYZER_VERSION: u32 = 2;
 pub const MAX_SOURCE_BYTES: usize = 2 * 1024 * 1024;
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct TsAnalyzer;
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct TsAnalyzer {
+  parse_budget: ParseBudget,
+}
+
+impl TsAnalyzer {
+  pub fn new() -> Self {
+    Self::default()
+  }
+
+  pub fn with_parse_budget(self, parse_budget: ParseBudget) -> Self {
+    Self { parse_budget }
+  }
+
+  fn cancelled(&self, input: &AnalysisInput<'_>, deadline: &Deadline, phase: &'static str) -> FileFacts {
+    let reason = self.parse_budget.failure_reason(input.source.len());
+    tracing::warn!(path = %input.file.path, phase, overrun = ?deadline.overrun(), factor = self.parse_budget.factor(), "ts analysis cancelled");
+    FileFacts::failed(input.file.clone(), self.producer(), reason)
+  }
+}
 
 impl LanguageAnalyzer for TsAnalyzer {
   fn language_family(&self) -> LanguageFamily {
@@ -30,9 +50,14 @@ impl LanguageAnalyzer for TsAnalyzer {
         limit: MAX_SOURCE_BYTES,
       });
     }
-    let tree = parse(grammar, input.source)?;
+    let deadline = self.parse_budget.start(input.source.len());
+    let Some(tree) = parse(grammar, input.source, &deadline)? else {
+      return Ok(self.cancelled(input, &deadline, "parse"));
+    };
     let root = tree.root_node();
-    let mut facts = Extractor::run(input.file.clone(), self.producer(), input.source, root);
+    let Some(mut facts) = Extractor::run(input.file.clone(), self.producer(), input.source, root, &deadline) else {
+      return Ok(self.cancelled(input, &deadline, "extraction"));
+    };
     facts.parse_status = parse_status(root, input.source);
     if let Err(violation) = facts.check_invariants(input.source.len()) {
       tracing::error!(path = %input.file.path, %violation, "ts analyzer produced facts that violate invariants");

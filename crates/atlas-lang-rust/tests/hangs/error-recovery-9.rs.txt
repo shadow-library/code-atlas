@@ -1,0 +1,2 @@
+impl S { async fn p(&self, x: Arc<Mutex<A>>) { let x: A = a; <A as B>::c()( ,match x { _ =>  |z| z.n(a, &b) fn q(x: &Box<dyn T>) (&mut .0.0fn q(x: &Box<dyn T>)  .m()let y = [0]y struct S { ><A as B>::c()x.gimpl 
+Foo::<u8>::make( .go(); } }

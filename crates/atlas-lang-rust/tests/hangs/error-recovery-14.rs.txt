@@ -1,0 +1,2 @@
+impl S { async fn p(&self, x: Arc<Mutex<A>>) { let x: A = a; ? <A as B>::c() &&mut ::async #[cfg(x)]é impl X { fn s(&self)  '\'' 
+extern "C" enum E { vec![1]T::new( .gT::new(let y =  struct S { {Self::new() .f let y = }<A as B>::c()*.h::<Vec<u8>>()b'x'f(.go(); } }

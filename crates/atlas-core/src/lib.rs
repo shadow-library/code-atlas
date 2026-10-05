@@ -1,4 +1,5 @@
 mod args;
+mod budget;
 mod error;
 mod facts;
 mod graph;
@@ -12,6 +13,7 @@ mod testing;
 mod traits;
 
 pub use args::*;
+pub use budget::*;
 pub use error::*;
 pub use facts::*;
 pub use graph::*;

@@ -41,7 +41,7 @@ fn should_parse_each_extension_with_its_grammar() {
 fn should_reject_unsupported_languages_and_oversized_sources() {
   let rust = file("src/lib.rs");
   assert_eq!(
-    TsAnalyzer.analyze(&AnalysisInput {
+    TsAnalyzer::new().analyze(&AnalysisInput {
       file: &rust,
       source: "fn main() {}"
     }),
@@ -50,14 +50,14 @@ fn should_reject_unsupported_languages_and_oversized_sources() {
   let big = "a".repeat(MAX_SOURCE_BYTES + 1);
   let ts = file("src/big.ts");
   assert_eq!(
-    TsAnalyzer.analyze(&AnalysisInput { file: &ts, source: &big }),
+    TsAnalyzer::new().analyze(&AnalysisInput { file: &ts, source: &big }),
     Err(AnalysisError::SourceTooLarge {
       bytes: MAX_SOURCE_BYTES + 1,
       limit: MAX_SOURCE_BYTES
     })
   );
-  assert!(TsAnalyzer.supports(atlas_core::Language::Jsx));
-  assert!(!TsAnalyzer.supports(atlas_core::Language::Rust));
+  assert!(TsAnalyzer::new().supports(atlas_core::Language::Jsx));
+  assert!(!TsAnalyzer::new().supports(atlas_core::Language::Rust));
 }
 
 #[test]

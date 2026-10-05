@@ -1,0 +1,2 @@
+fn p(x: &A, y: Option<B>) { .0T::new( r#type'\''é .0
+,Foo::<u8>::make(.m()? }|z| z let y = } "s" & where T: |z| zasync  b'x'dyn y::<T><A as B>::c()r#type(  =>  .n(a, &b);; .gextern "C" enum E { r#"raw"# &mut )> ( where T:  .h::<Vec<u8>>() &*/ self  => */ } => )lock(&b)($x:expr) =>   }

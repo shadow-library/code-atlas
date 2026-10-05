@@ -1,0 +1,10 @@
+mmends Workers withprivate  ( martRouter', () => {
+  runTest({
+    newRouter: () =>
+      n dler'
+im satisfies  **
+ * @module
+ * Cloudflare Workers Adapter for Ho </>function*  'pic)]function  export th resolutiodeclare export /re/g ame: string
+  match: (routexpect(res[0].handleunique symbol TEXT_PLAIN } from '../../context'
+imwhile ( ble-next-line @typescript-eslint/no-explicit-any
+    Conte
