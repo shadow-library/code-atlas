@@ -37,12 +37,13 @@ Blocking stdio JSON-RPC client for language servers, hand-written lenient LSP ty
 
 ## Readiness
 
-- rust-analyzer is ready when `experimental/serverStatus` is quiescent, health is not `error`, and no `$/progress` token is active apart from flycheck and cache priming. A quiescent `error` fails fast (`Unhealthy`). After 300 s, `NotReady` reports the last status and says how to check.
+- rust-analyzer is ready when `experimental/serverStatus` is quiescent and no `$/progress` token is active apart from flycheck and cache priming, whatever its health. A quiescent `error` health is ready too; `Lease::health_error()` returns the server's message (it names the projects that failed to load) so callers can caveat reads and refuse edits. After 300 s, `NotReady` reports the last status and says how to check.
 - TypeScript is ready once `$/typescriptVersion` arrives (or `Timeouts::announcement` after initialize) and no progress is active. The first request gets `first_request` (120 s), because tsserver loads the project then.
 - The tracker (`ClientHandler`) only records state and notifies its condvar. It never takes the pool or sync lock, and the pool never holds its lock while shutting down or dropping a server.
 
 ## Pool
 
+- `LspPool::live(unit)` returns a lease only for a running server that needs no replacement; it never starts, waits for or replaces one. `LspPool::sync_live(lease, …)` syncs that lease and fails with `SyncIncomplete` where `sync` would restart the server.
 - One server per `UnitKey` (project, kind, scope). `UnitScope::Repo` units (for `lsp.unit = "repo"`) never replace each other. `get` is single-flight per unit, and waiters share the start result, including an error. A pending restart cause is kept per unit, so every caller sees it.
 - On the next `get`, a server is replaced if it exited, if its sync was lost, or if the unit configuration changed (command, sorted folders, settings; timeouts excluded).
 - Three failures within 10 min put the unit in backoff for 10 min (`CrashLoop`). Failures are crashes and failed starts; spawn and invalid-unit errors do not count.

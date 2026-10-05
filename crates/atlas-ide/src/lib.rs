@@ -1,5 +1,6 @@
 mod declaration;
 mod diagnostics;
+mod edit;
 mod error;
 mod map;
 mod outline;
@@ -12,6 +13,10 @@ mod target;
 
 pub use declaration::{DeclarationRequest, ExactDeclaration, ExactImplementations};
 pub use diagnostics::{Collection, DiagnosticItem, DiagnosticsRequest, ExactDiagnostics, Flycheck, LineRange, Severity, SeverityGroup, SymbolDiagnostics, Unsettled};
+pub use edit::{
+  ChangedFile, CrossRepo, DiagnosticsDelta, DryRunReason, EditOperation, EditOutcome, EditRequest, EditStatus, IdePlan, NewDiagnostic, OperationView, PlanGuard, REGEX_NOTE,
+  REPLACE_BODY_NOTE, REPLACE_IN_FILES_NOTE, VerifyReason, VerifySite,
+};
 pub use error::{GRAPH_ALTERNATIVE, IdeError, IdeResult};
 pub use map::{Enclosing, Site, SitePlace};
 pub use outline::{ExactOutline, MAX_OUTLINE_DEPTH, Outline, OutlineRequest, OutlineSymbol, ReadSource};

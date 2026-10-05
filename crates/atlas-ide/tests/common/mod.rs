@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -44,6 +46,7 @@ pub struct Fixture {
   pub scratch: TempDir,
   pub launcher: Arc<ScriptedLauncher>,
   pub ide: IdeService,
+  pub project: Project,
 }
 
 pub fn settings() -> IdeSettings {
@@ -65,18 +68,7 @@ pub fn limits() -> SyncLimits {
 impl Fixture {
   pub fn new(repos: &[(&str, &[(&str, &str)])]) -> Self {
     let scratch = tempfile::tempdir().unwrap();
-    let configs = repos
-      .iter()
-      .map(|(name, files)| {
-        let root = scratch.path().join("tree").join(name);
-        for (path, content) in *files {
-          let target = root.join(path);
-          fs::create_dir_all(target.parent().unwrap()).unwrap();
-          fs::write(target, content).unwrap();
-        }
-        repo_config(name, root)
-      })
-      .collect();
+    let configs = Self::write_repos(&scratch, repos);
     Self::open(scratch, configs, settings())
   }
 
@@ -94,6 +86,37 @@ impl Fixture {
   }
 
   pub fn open(scratch: TempDir, repos: Vec<RepoConfig>, settings: IdeSettings) -> Self {
+    Self::open_with(scratch, repos, settings, |options| options)
+  }
+
+  pub fn with_options(repos: &[(&str, &[(&str, &str)])], adjust: impl FnOnce(IdeOptions) -> IdeOptions) -> Self {
+    let scratch = tempfile::tempdir().unwrap();
+    let configs = Self::write_repos(&scratch, repos);
+    Self::open_with(scratch, configs, settings(), adjust)
+  }
+
+  pub fn with_plan_ttl(repos: &[(&str, &[(&str, &str)])], plan_ttl: Duration) -> Self {
+    let scratch = tempfile::tempdir().unwrap();
+    let configs = Self::write_repos(&scratch, repos);
+    Self::open_with(scratch, configs, settings(), |options| IdeOptions { plan_ttl, ..options })
+  }
+
+  fn write_repos(scratch: &TempDir, repos: &[(&str, &[(&str, &str)])]) -> Vec<RepoConfig> {
+    repos
+      .iter()
+      .map(|(name, files)| {
+        let root = scratch.path().join("tree").join(name);
+        for (path, content) in *files {
+          let target = root.join(path);
+          fs::create_dir_all(target.parent().unwrap()).unwrap();
+          fs::write(target, content).unwrap();
+        }
+        repo_config(name, root)
+      })
+      .collect()
+  }
+
+  pub fn open_with(scratch: TempDir, repos: Vec<RepoConfig>, settings: IdeSettings, adjust: impl FnOnce(IdeOptions) -> IdeOptions) -> Self {
     let project = Project {
       name: ProjectName::new("demo").unwrap(),
       settings: ProjectSettings::default(),
@@ -101,12 +124,16 @@ impl Fixture {
     };
     let engine = Engine::open(&project, &AtlasHome::rooted_at(scratch.path().join("home")), EngineOptions::default()).unwrap();
     let launcher = Arc::new(ScriptedLauncher::default());
-    let options = IdeOptions {
+    let options = adjust(IdeOptions {
       sync: limits(),
       ..IdeOptions::new(IdeMode::OneShot, settings, scratch.path().join("cache"))
-    };
+    });
     let ide = IdeService::new(Arc::new(engine), launcher.clone(), options);
-    Self { scratch, launcher, ide }
+    Self { scratch, launcher, ide, project }
+  }
+
+  pub fn second_engine(&self) -> Engine {
+    Engine::open(&self.project, &AtlasHome::rooted_at(self.scratch.path().join("home")), EngineOptions::default()).unwrap()
   }
 
   pub fn root(&self, repo: &str) -> PathBuf {
@@ -289,4 +316,83 @@ pub fn wait_until(mut done: impl FnMut() -> bool) -> bool {
 
 pub fn methods(recorded: &[Value]) -> Vec<String> {
   recorded.iter().filter_map(|message| message["method"].as_str().map(str::to_owned)).collect()
+}
+
+fn runs(command: &ServerCommand) -> bool {
+  let mut probe = Command::new(&command.program);
+  probe.args(command.args.iter().filter(|arg| *arg != "--stdio")).arg("--version");
+  probe.output().is_ok_and(|output| output.status.success())
+}
+
+fn command_for(entry: PathBuf) -> ServerCommand {
+  match entry.extension().and_then(|extension| extension.to_str()) {
+    Some("mjs" | "js") => ServerCommand::new("node").arg(entry).arg("--stdio"),
+    _ => ServerCommand::new(entry).arg("--stdio"),
+  }
+}
+
+fn npx_cache_entries() -> Vec<PathBuf> {
+  let Some(home) = env::var_os("HOME") else { return Vec::new() };
+  let Ok(caches) = fs::read_dir(Path::new(&home).join(".npm/_npx")) else {
+    return Vec::new();
+  };
+  caches
+    .flatten()
+    .map(|cache| cache.path().join("node_modules/typescript-language-server/lib/cli.mjs"))
+    .filter(|entry| entry.is_file())
+    .collect()
+}
+
+pub fn typescript_language_server() -> Result<ServerCommand, String> {
+  let configured = env::var_os("ATLAS_TEST_TS_LSP").map(PathBuf::from);
+  let on_path = env::var_os("PATH").and_then(|paths| {
+    env::split_paths(&paths)
+      .map(|directory| directory.join("typescript-language-server"))
+      .find(|candidate| candidate.is_file())
+  });
+  configured
+    .into_iter()
+    .chain(on_path)
+    .chain(npx_cache_entries())
+    .map(command_for)
+    .find(runs)
+    .ok_or_else(|| "set ATLAS_TEST_TS_LSP, put typescript-language-server on PATH, or cache it with npx; tests never download it".to_owned())
+}
+
+pub fn rust_analyzer() -> Result<PathBuf, String> {
+  let on_path = env::var_os("PATH").and_then(|paths| {
+    env::split_paths(&paths)
+      .map(|directory| directory.join("rust-analyzer"))
+      .find(|candidate| candidate.is_file())
+  });
+  let from_rustup = Command::new("rustup")
+    .args(["which", "rust-analyzer"])
+    .output()
+    .ok()
+    .filter(|output| output.status.success())
+    .map(|output| PathBuf::from(String::from_utf8_lossy(&output.stdout).trim()));
+  [on_path, from_rustup]
+    .into_iter()
+    .flatten()
+    .find(|binary| Command::new(binary).arg("--version").output().is_ok_and(|output| output.status.success()))
+    .ok_or_else(|| "rust-analyzer is not on PATH and `rustup which rust-analyzer` found nothing that runs".to_owned())
+}
+
+pub fn typescript_fixture(test: &str, group: &str, repos: &[&str]) -> Option<Fixture> {
+  let command = match typescript_language_server() {
+    Ok(command) => command,
+    Err(reason) => {
+      eprintln!("SKIPPED {test}: typescript-language-server unavailable ({reason})");
+      return None;
+    }
+  };
+  let fixture = Fixture::copied(group, repos);
+  fixture.launcher.set(
+    ServerKind::TypeScript,
+    LaunchSpec {
+      tsserver: None,
+      ..launch(ServerKind::TypeScript, command)
+    },
+  );
+  Some(fixture)
 }

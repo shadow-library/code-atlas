@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use atlas_edit::EditError;
 use atlas_engine::EngineError;
 use atlas_lsp::LspError;
 use atlas_query::QueryError;
@@ -68,6 +69,14 @@ pub enum IdeError {
   Engine(#[from] EngineError),
   #[error(transparent)]
   Store(#[from] StoreError),
+  #[error(transparent)]
+  Edit(#[from] EditError),
+  #[error("{server} is not running; code-atlas does not start it for this")]
+  NotRunning { server: String },
+  #[error("plan {id} expired after {age_secs}s (plans are kept for {ttl_secs}s); run the dry run again")]
+  PlanExpired { id: String, age_secs: u64, ttl_secs: u64 },
+  #[error("unknown plan {id}: it was never made by this process, was already applied, or was evicted (the last {capacity} plans are kept); run the dry run again")]
+  UnknownPlan { id: String, capacity: usize },
 }
 
 pub type IdeResult<T> = Result<T, IdeError>;

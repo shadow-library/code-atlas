@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use atlas_lsp::protocol::{Diagnostic, DiagnosticSeverity, DocumentDiagnosticParams, DocumentDiagnosticReport, Location, PublishDiagnosticsParams, TextDocumentIdentifier};
@@ -13,12 +13,13 @@ use crate::render::ServerView;
 use crate::service::{IdeService, Session};
 use crate::target::FileRef;
 
-const PUSH_TIMEOUT: Duration = Duration::from_secs(10);
-const PUSH_QUIET: Duration = Duration::from_millis(300);
+pub(crate) const PUSH_TIMEOUT: Duration = Duration::from_secs(10);
+pub(crate) const PUSH_QUIET: Duration = Duration::from_millis(300);
+const CLOSE_PUBLISH: Duration = Duration::from_secs(1);
 const FLYCHECK: &str = "rust-analyzer/flycheck";
 const FLYCHECK_START: Duration = Duration::from_secs(5);
 const FLYCHECK_PUBLISH: Duration = Duration::from_millis(500);
-const NATIVE_SOURCE: &str = "rust-analyzer";
+pub(crate) const NATIVE_SOURCE: &str = "rust-analyzer";
 const CANNOT_FIND_MODULE: &str = "2307";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -31,7 +32,7 @@ pub enum Severity {
 }
 
 impl Severity {
-  fn of(severity: Option<DiagnosticSeverity>) -> Self {
+  pub(crate) fn of(severity: Option<DiagnosticSeverity>) -> Self {
     match severity {
       Some(DiagnosticSeverity::Error) | None => Self::Error,
       Some(DiagnosticSeverity::Warning) => Self::Warning,
@@ -224,23 +225,81 @@ impl IdeService {
   }
 }
 
-fn collect(session: &Session<'_>, path: &Path) -> IdeResult<Collected> {
-  let lease = &session.lease;
+pub(crate) struct Republished {
+  pub after: u64,
+  pub version: i32,
+  pub quiet: Quiet,
+}
+
+pub(crate) fn republish(session: &mut Session<'_>, paths: &[PathBuf]) -> IdeResult<Vec<(PathBuf, Result<Republished, String>)>> {
+  if session.kind != ServerKind::TypeScript {
+    return Ok(
+      paths
+        .iter()
+        .map(|path| {
+          let after = session.lease.diagnostics_sequence();
+          let touched = match session.lease.touch_document(path) {
+            Ok(Some(version)) => Ok(Republished {
+              after,
+              version,
+              quiet: ANY_PUBLISH,
+            }),
+            Ok(None) => Err("the file is not open in the server or changed while checking".to_owned()),
+            Err(error) => Err(format!("re-sending the file failed: {error}")),
+          };
+          (path.clone(), touched)
+        })
+        .collect(),
+    );
+  }
+  let before = session.lease.diagnostics_sequence();
+  let closed = session.lease.close_documents(paths)?;
+  let deadline = Instant::now() + CLOSE_PUBLISH;
+  for path in &closed {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if !remaining.is_zero() {
+      session.lease.wait_diagnostics(path, before, remaining);
+    }
+  }
+  let after = session.lease.diagnostics_sequence();
+  let generation = session.lease.synced_generation();
+  session.resync(generation, SyncDemand::Best, paths)?;
+  Ok(
+    paths
+      .iter()
+      .map(|path| {
+        let reopened = match session.lease.open_document(path) {
+          Some(document) => Ok(Republished {
+            after,
+            version: document.version,
+            quiet: TYPESCRIPT_REOPEN,
+          }),
+          None => Err("the file could not be reopened in the server".to_owned()),
+        };
+        (path.clone(), reopened)
+      })
+      .collect(),
+  )
+}
+
+fn collect(session: &mut Session<'_>, path: &Path) -> IdeResult<Collected> {
   let mut caveats = Vec::new();
   let mut partial = Vec::new();
-  let (mut diagnostics, collection, version) = match &session.capabilities().diagnostic_provider {
+  let (mut diagnostics, collection, version) = match session.capabilities().diagnostic_provider.clone() {
     Some(options) => (pull(session, path, options.identifier.clone())?, Collection::Pulled, None),
     None => {
-      if lease.open_document(path).is_none() {
+      if session.lease.open_document(path).is_none() {
         return Err(IdeError::NotOpened {
           file: path.display().to_string(),
           server: session.server_name().to_owned(),
           reason: "it is not open after syncing (too large or unreadable)".to_owned(),
         });
       }
-      let after = lease.diagnostics_sequence();
-      let version = lease.touch_document(path)?.ok_or_else(|| IdeError::SourceChanged { file: path.display().to_string() })?;
-      let (published, collection) = wait_published(lease, path, after, version)?;
+      let republished = republish(session, &[path.to_path_buf()])?.into_iter().next().map(|(_, republished)| republished);
+      let Some(Ok(Republished { after, version, quiet })) = republished else {
+        return Err(IdeError::SourceChanged { file: path.display().to_string() });
+      };
+      let (published, collection) = wait_published(&session.lease, path, after, version, Instant::now() + session.diagnostics_timeout(), quiet)?;
       if let Collection::TimedOut { published, .. } = &collection {
         partial.push(match published {
           Unsettled::StillChanging => "diagnostics were still changing when the 10 s wait ended".to_owned(),
@@ -250,6 +309,7 @@ fn collect(session: &Session<'_>, path: &Path) -> IdeResult<Collected> {
       (published.map(|params| params.diagnostics).unwrap_or_default(), collection, Some(version))
     }
   };
+  let lease = &session.lease;
   let flycheck = match session.kind {
     ServerKind::RustAnalyzer => Some(flycheck(session, path)?),
     ServerKind::TypeScript => None,
@@ -282,7 +342,7 @@ fn collect(session: &Session<'_>, path: &Path) -> IdeResult<Collected> {
   })
 }
 
-fn pull(session: &Session<'_>, path: &Path, identifier: Option<String>) -> IdeResult<Vec<Diagnostic>> {
+pub(crate) fn pull(session: &Session<'_>, path: &Path, identifier: Option<String>) -> IdeResult<Vec<Diagnostic>> {
   let report: DocumentDiagnosticReport = session.request(
     "textDocument/diagnostic",
     DocumentDiagnosticParams {
@@ -302,19 +362,36 @@ fn pull(session: &Session<'_>, path: &Path, identifier: Option<String>) -> IdeRe
   }
 }
 
-fn accepts(params: &PublishDiagnosticsParams, version: i32) -> bool {
+pub(crate) fn accepts(params: &PublishDiagnosticsParams, version: i32) -> bool {
   params.version.is_none_or(|published| published >= version)
 }
 
-fn wait_published(lease: &Lease, path: &Path, after: u64, version: i32) -> IdeResult<(Option<PublishDiagnosticsParams>, Collection)> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Quiet {
+  pub publishes: usize,
+  pub lone: Duration,
+}
+
+pub(crate) const ANY_PUBLISH: Quiet = Quiet { publishes: 1, lone: PUSH_QUIET };
+
+pub(crate) const TYPESCRIPT_REOPEN: Quiet = Quiet {
+  publishes: 2,
+  lone: Duration::from_millis(1500),
+};
+
+pub(crate) fn wait_published(lease: &Lease, path: &Path, after: u64, version: i32, deadline: Instant, quiet: Quiet) -> IdeResult<(Option<PublishDiagnosticsParams>, Collection)> {
   let started = Instant::now();
-  let deadline = started + PUSH_TIMEOUT;
   let mut cursor = after;
   let mut accepted: Option<PublishDiagnosticsParams> = None;
+  let mut count = 0;
   loop {
     let remaining = deadline.saturating_duration_since(Instant::now());
+    let required = match count >= quiet.publishes {
+      true => PUSH_QUIET,
+      false => quiet.lone,
+    };
     let window = match accepted {
-      Some(_) => PUSH_QUIET.min(remaining),
+      Some(_) => required.min(remaining),
       None => remaining,
     };
     let arrived = match window.is_zero() {
@@ -330,7 +407,7 @@ fn wait_published(lease: &Lease, path: &Path, after: u64, version: i32) -> IdeRe
         });
       }
       let waited_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-      let collection = match (&accepted, window >= PUSH_QUIET) {
+      let collection = match (&accepted, window >= required) {
         (Some(_), true) => Collection::Settled,
         (Some(_), false) => Collection::TimedOut {
           waited_ms,
@@ -347,6 +424,7 @@ fn wait_published(lease: &Lease, path: &Path, after: u64, version: i32) -> IdeRe
     cursor = sequence;
     if accepts(&params, version) {
       accepted = Some(params);
+      count += 1;
     }
   }
 }

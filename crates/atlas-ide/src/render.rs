@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use crate::declaration::{ExactDeclaration, ExactImplementations};
 use crate::diagnostics::{Collection, ExactDiagnostics, NOTHING_PUBLISHED, Unsettled};
+use crate::edit::{ChangedFile, DiagnosticsDelta, DryRunReason, EditOutcome, EditStatus, OperationView};
 use crate::map::{Site, SitePlace};
 use crate::outline::{ExactOutline, Outline, OutlineSymbol};
 use crate::references::{ExactReferences, GraphExtra, References, TargetView};
@@ -423,5 +424,327 @@ impl RenderText for StatusAnswer {
         out.line(2, format!("warning: {warning}"));
       }
     }
+  }
+}
+
+impl ServerView {
+  pub fn versions(&self) -> String {
+    match &self.typescript {
+      Some(typescript) => format!("{} {}, TypeScript {typescript}", self.server, self.version),
+      None => format!("{} {}", self.server, self.version),
+    }
+  }
+}
+
+fn servers_suffix(servers: &[ServerView]) -> String {
+  match servers.is_empty() {
+    true => String::new(),
+    false => format!("  ({})", servers.iter().map(ServerView::versions).collect::<Vec<_>>().join("; ")),
+  }
+}
+
+fn edit_counts(files: &[ChangedFile]) -> String {
+  let edits: usize = files.iter().map(|file| file.edits).sum();
+  format!("{} file(s), {edits} edit(s)", files.len())
+}
+
+impl RenderText for EditOutcome {
+  fn render_text(&self, out: &mut TextOut) {
+    let operation = self.operation.to_string();
+    let servers = servers_suffix(&self.servers);
+    match &self.status {
+      EditStatus::Applied => out.line(0, format!("{operation}  applied{servers}")),
+      EditStatus::DryRun { plan_id, valid_secs, reason } => {
+        let why = match reason {
+          DryRunReason::Requested => "dry run",
+          DryRunReason::NeedsSelection => "dry run (no occurrences or expected_count given)",
+        };
+        out.line(0, format!("{operation}  {why}, plan {plan_id} (apply within {} min){servers}", valid_secs / 60));
+      }
+      EditStatus::Refused { reason } => out.line(0, format!("REFUSED: {operation}: {reason}{servers}")),
+      EditStatus::RolledBack { cause } => out.line(0, format!("FAILED: {operation} was rolled back ({cause}); no file was changed{servers}")),
+      EditStatus::PartiallyApplied {
+        cause,
+        still_changed,
+        rollback_errors,
+      } => out.line(
+        0,
+        format!(
+          "DEGRADED: {operation} was partially applied and the rollback failed ({cause}); still changed: {}; rollback errors: {}{servers}",
+          still_changed.join(", "),
+          rollback_errors.join("; ")
+        ),
+      ),
+    }
+    if !self.unloaded_projects.is_empty() {
+      let consequence = match (&self.status, self.allow_unverified) {
+        (EditStatus::DryRun { .. }, false) => "; applying this plan refuses unless allow_unverified is set",
+        _ => "",
+      };
+      out.line(
+        0,
+        format!(
+          "UNLOADED: the language server could not load {}, so sites there were not checked{consequence}",
+          self.unloaded_projects.join(", ")
+        ),
+      );
+    }
+    if !self.unverified.is_empty() {
+      let consequence = match (&self.status, self.allow_unverified) {
+        (EditStatus::DryRun { .. }, false) => "; applying this plan refuses unless allow_unverified is set",
+        (EditStatus::DryRun { .. }, true) => "; allow_unverified is set, so applying this plan leaves them as they are",
+        _ => "",
+      };
+      out.line(
+        0,
+        format!(
+          "UNVERIFIED: {} site(s) the index resolves to this symbol in the same repo were not renamed by the language server{consequence}:",
+          self.unverified.len()
+        ),
+      );
+      for site in &self.unverified {
+        out.line(1, site.to_string());
+      }
+    }
+    let heading = match &self.status {
+      EditStatus::Applied => "changed",
+      EditStatus::DryRun { .. } => "would change",
+      EditStatus::Refused { .. } | EditStatus::RolledBack { .. } => "planned, not written:",
+      EditStatus::PartiallyApplied { .. } => "planned:",
+    };
+    if !self.files.is_empty() || !self.resources.is_empty() {
+      match heading.ends_with(':') {
+        true => out.line(0, format!("{heading} {}", edit_counts(&self.files))),
+        false => out.line(0, format!("{heading} {}:", edit_counts(&self.files))),
+      }
+    }
+    let width = self.files.iter().map(|file| file.label().len()).max().unwrap_or(0);
+    for file in &self.files {
+      out.line(1, format!("{:width$}  {}", file.label(), file.edits));
+      if let EditStatus::DryRun { .. } = self.status {
+        for hunk in &file.hunks {
+          for line in hunk.lines() {
+            out.line(2, line);
+          }
+        }
+      }
+    }
+    for resource in &self.resources {
+      out.line(1, resource);
+    }
+    if !self.candidates.is_empty() {
+      out.line(0, "candidates:");
+      for candidate in &self.candidates {
+        out.line(1, format!("{}  {}", entity_text(candidate), candidate.key));
+      }
+    }
+    if !self.blockers.is_empty() {
+      out.line(0, format!("blocked by {} reference(s):", self.blockers.len()));
+      for blocker in &self.blockers {
+        out.line(1, blocker.to_string());
+      }
+    }
+    if let OperationView::Rename { .. } = self.operation
+      && !matches!(self.status, EditStatus::Refused { .. })
+    {
+      out.line(0, "not renamed, verify:");
+      if self.not_renamed.is_empty() {
+        out.line(1, "(none)");
+      }
+      for site in &self.not_renamed {
+        out.line(1, site.to_string());
+      }
+    }
+    if !self.applied_from_graph.is_empty() {
+      out.line(0, "applied from the graph:");
+      for site in &self.applied_from_graph {
+        out.line(1, site.to_string());
+      }
+    }
+    if !self.skipped.is_empty() {
+      out.line(0, "skipped files:");
+      for skipped in &self.skipped {
+        out.line(1, skipped);
+      }
+    }
+    if let Some(diagnostics) = &self.diagnostics {
+      render_delta(out, diagnostics);
+    }
+    let mut caveats: Vec<&String> = self.caveats.iter().collect();
+    let mut warnings: Vec<String> = self.warnings.clone();
+    for server in &self.servers {
+      caveats.extend(&server.caveats);
+      warnings.extend(server.warnings.iter().cloned());
+      if let Completeness::Partial { reason } = &server.completeness {
+        warnings.push(format!("{} is in a partial state after the edit: {reason}", server.server));
+      }
+    }
+    if !caveats.is_empty() {
+      out.line(0, "caveats:");
+      for caveat in caveats {
+        out.line(1, caveat);
+      }
+    }
+    if !warnings.is_empty() {
+      out.line(0, "warnings:");
+      for warning in warnings {
+        out.line(1, warning);
+      }
+    }
+  }
+}
+
+fn render_delta(out: &mut TextOut, delta: &DiagnosticsDelta) {
+  match delta {
+    DiagnosticsDelta::Unavailable { reason } => out.line(0, format!("diagnostics after edit: not checked ({reason})")),
+    DiagnosticsDelta::Checked {
+      files,
+      checked,
+      new_errors,
+      unsettled,
+      native_only,
+    } => {
+      let state = match unsettled.is_empty() {
+        true => "settled".to_owned(),
+        false => format!("{} of {checked} checked file(s) not known", unsettled.len()),
+      };
+      let (kind, suffix) = match native_only {
+        true => ("native errors", format!("{state}; cargo check not run")),
+        false => ("errors", state),
+      };
+      let scope = match files > checked {
+        true => format!("in the {checked} checked file(s) ({} of {files} edited files not checked)", files - checked),
+        false => format!("in the {files} edited file(s)"),
+      };
+      match new_errors.is_empty() {
+        true => out.line(0, format!("diagnostics after edit: no new {kind} {scope} ({suffix})")),
+        false => out.line(0, format!("diagnostics after edit: {} new {kind} {scope} ({suffix}):", new_errors.len())),
+      }
+      for error in new_errors {
+        let place = match error.column {
+          Some(column) => format!("{}:{}:{column}", error.file, error.line),
+          None => format!("{}:{}", error.file, error.line),
+        };
+        let code = error.code.as_ref().map_or_else(String::new, |code| format!(" {code}"));
+        out.line(1, format!("{place}{code} {}", error.message));
+      }
+      if !unsettled.is_empty() {
+        out.line(0, "PARTIAL: nothing is known about new errors in:");
+        for file in unsettled {
+          out.line(1, file);
+        }
+      }
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::edit::CrossRepo;
+
+  fn rendered(outcome: &EditOutcome) -> String {
+    let mut out = TextOut::default();
+    outcome.render_text(&mut out);
+    out.finish()
+  }
+
+  fn outcome(status: EditStatus) -> EditOutcome {
+    let mut outcome = EditOutcome::new(
+      OperationView::Rename {
+        target: "toCents".to_owned(),
+        new_name: "cents".to_owned(),
+        cross_repo: CrossRepo::Report,
+      },
+      status,
+    );
+    outcome.files = vec![ChangedFile {
+      repo: "web".to_owned(),
+      path: "src/money.ts".to_owned(),
+      edits: 1,
+      before: "a".to_owned(),
+      after: "b".to_owned(),
+      hunks: Vec::new(),
+    }];
+    outcome
+  }
+
+  #[test]
+  fn should_say_how_many_edited_files_were_checked_and_what_allow_unverified_means() {
+    let mut applied = outcome(EditStatus::Applied);
+    applied.diagnostics = Some(DiagnosticsDelta::Checked {
+      files: 256,
+      checked: 20,
+      new_errors: Vec::new(),
+      unsettled: Vec::new(),
+      native_only: false,
+    });
+    let mut dry = outcome(EditStatus::DryRun {
+      plan_id: "p-1".to_owned(),
+      valid_secs: 900,
+      reason: DryRunReason::Requested,
+    });
+    dry.allow_unverified = true;
+    dry.unverified = vec![crate::edit::VerifySite {
+      reason: crate::edit::VerifyReason::OutsideLanguageServer,
+      repo: "web".to_owned(),
+      path: "src/a.ts".to_owned(),
+      line: Some(3),
+      column: Some(5),
+      from: None,
+      edge_kind: None,
+      certainty: Some("[resolved]".to_owned()),
+      authoritative: true,
+      snippet: None,
+      note: None,
+    }];
+
+    assert!(
+      rendered(&applied).contains("diagnostics after edit: no new errors in the 20 checked file(s) (236 of 256 edited files not checked) (settled)\n"),
+      "{}",
+      rendered(&applied)
+    );
+    assert!(
+      rendered(&dry).contains(
+        "UNVERIFIED: 1 site(s) the index resolves to this symbol in the same repo were not renamed by the language server; allow_unverified is set, so applying this plan leaves them as they are:\n"
+      ),
+      "{}",
+      rendered(&dry)
+    );
+  }
+
+  #[test]
+  fn should_lead_with_a_degraded_line_naming_the_files_a_failed_rollback_left_changed() {
+    let partial = outcome(EditStatus::PartiallyApplied {
+      cause: "replace web:src/use.ts: permission denied".to_owned(),
+      still_changed: vec!["web:src/money.ts".to_owned()],
+      rollback_errors: vec!["web:src/money.ts: disk full".to_owned()],
+    });
+    let rolled_back = outcome(EditStatus::RolledBack {
+      cause: "changed since planning: web:src/use.ts".to_owned(),
+    });
+
+    assert_eq!(
+      rendered(&partial),
+      concat!(
+        "DEGRADED: rename toCents -> cents was partially applied and the rollback failed (replace web:src/use.ts: permission denied); ",
+        "still changed: web:src/money.ts; rollback errors: web:src/money.ts: disk full\n",
+        "planned: 1 file(s), 1 edit(s)\n",
+        "  web:src/money.ts  1\n",
+        "not renamed, verify:\n",
+        "  (none)\n",
+      )
+    );
+    assert_eq!(
+      rendered(&rolled_back),
+      concat!(
+        "FAILED: rename toCents -> cents was rolled back (changed since planning: web:src/use.ts); no file was changed\n",
+        "planned, not written: 1 file(s), 1 edit(s)\n",
+        "  web:src/money.ts  1\n",
+        "not renamed, verify:\n",
+        "  (none)\n",
+      )
+    );
+    assert!(!rolled_back.status.wrote_anything() && partial.status.wrote_anything());
   }
 }

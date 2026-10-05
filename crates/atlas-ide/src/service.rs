@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
 use std::time::{Duration, Instant};
 
-use atlas_core::RunId;
+use atlas_core::{RepoName, RunId};
 use atlas_engine::Engine;
 use atlas_lsp::protocol::ServerCapabilities;
 use atlas_lsp::{ChangeList, Lease, LspError, LspPool, RestartReason, ServerKind, SyncDemand, SyncLimits, UnitKey, UnitPhase, UnitScope, resident_kib};
@@ -13,6 +13,8 @@ use atlas_query::{FindAnswer, FindRequest, Freshness, HierarchyAnswer, Hierarchy
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+use crate::diagnostics::PUSH_TIMEOUT;
+use crate::edit::{PLAN_TTL, PlanCache};
 use crate::error::{IdeError, IdeResult};
 use crate::render::{ServerView, StatusAnswer, UnitView};
 use crate::servers::{IdeMode, IdeSettings, LaunchRequest, LaunchSpec, Launcher, TsServer, TsServerOrigin, UnitInputs, UnitMode, UnitPlan, kind_of, unavailable};
@@ -29,6 +31,8 @@ pub struct IdeOptions {
   pub settings: IdeSettings,
   pub cache_dir: PathBuf,
   pub sync: SyncLimits,
+  pub plan_ttl: Duration,
+  pub diagnostics_timeout: Duration,
 }
 
 impl IdeOptions {
@@ -42,6 +46,8 @@ impl IdeOptions {
       settings,
       cache_dir: cache_dir.into(),
       sync: SyncLimits::default(),
+      plan_ttl: PLAN_TTL,
+      diagnostics_timeout: PUSH_TIMEOUT,
     }
   }
 }
@@ -67,6 +73,43 @@ pub struct IdeService {
   lockfiles: Mutex<BTreeMap<UnitKey, Vec<String>>>,
   manifests: Mutex<HashMap<UnitKey, (Option<u32>, Manifests)>>,
   package_dirs: Mutex<HashMap<UnitKey, PackageDirs>>,
+  pub(crate) edits: Mutex<()>,
+  pub(crate) plans: Mutex<PlanCache>,
+  diagnostics_timeout: Duration,
+}
+
+impl Unit {
+  pub(crate) fn covers(&self, path: &std::path::Path) -> bool {
+    self.plan.covers(path).is_ok()
+  }
+}
+
+pub(crate) struct Unit {
+  plan: UnitPlan,
+  launch: LaunchSpec,
+  launch_key: LaunchKey,
+  pub kind: ServerKind,
+  settings: IdeSettings,
+  pub lock: Arc<Mutex<()>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Start {
+  Spawn,
+  LiveOnly,
+}
+
+struct SyncTarget<'a> {
+  plan: &'a UnitPlan,
+  launch: &'a LaunchSpec,
+  launch_key: &'a LaunchKey,
+  start: Start,
+}
+
+struct SessionUnit {
+  plan: UnitPlan,
+  launch_key: LaunchKey,
+  start: Start,
 }
 
 pub(crate) struct Session<'a> {
@@ -77,9 +120,11 @@ pub(crate) struct Session<'a> {
   pub notes: SyncNotes,
   pub settings: IdeSettings,
   launch: LaunchSpec,
+  service: &'a IdeService,
+  unit: SessionUnit,
 }
 
-fn guard<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(crate) fn guard<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
   mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
@@ -106,7 +151,42 @@ impl Session<'_> {
     self.kind.name()
   }
 
-  fn view(&mut self) -> ServerView {
+  pub(crate) fn resync(&mut self, generation: Option<RunId>, demand: SyncDemand, open: &[PathBuf]) -> IdeResult<()> {
+    let target = SyncTarget {
+      plan: &self.unit.plan,
+      launch: &self.launch,
+      launch_key: &self.unit.launch_key,
+      start: self.unit.start,
+    };
+    let (lease, notes) = self.service.synchronise(&target, generation, self.files, demand, open)?;
+    self.lease = lease;
+    self.notes.absorb(notes);
+    Ok(())
+  }
+
+  pub(crate) fn covers(&self, path: &std::path::Path) -> bool {
+    self.unit.plan.covers(path).is_ok()
+  }
+
+  pub(crate) fn diagnostics_timeout(&self) -> Duration {
+    self.service.diagnostics_timeout
+  }
+
+  pub(crate) fn settle_projects(&self) -> IdeResult<()> {
+    if self.kind != ServerKind::TypeScript {
+      return Ok(());
+    }
+    Ok(self.lease.wait_ready(Duration::from_secs(self.settings.ready_timeout_secs))?)
+  }
+
+  pub(crate) fn finish(mut self) -> ServerView {
+    let view = self.view();
+    let lockfiles = self.lease.lockfile_changes().iter().map(|path| display_path(path, self.files)).collect();
+    self.service.remember_lockfiles(&self.unit.plan.unit.key(), lockfiles);
+    view
+  }
+
+  pub(crate) fn view(&mut self) -> ServerView {
     self.notes.lease_state(&self.lease, self.files);
     let version = self
       .lease
@@ -142,6 +222,9 @@ impl IdeService {
       lockfiles: Mutex::new(BTreeMap::new()),
       manifests: Mutex::new(HashMap::new()),
       package_dirs: Mutex::new(HashMap::new()),
+      edits: Mutex::new(()),
+      plans: Mutex::new(PlanCache::new(options.plan_ttl)),
+      diagnostics_timeout: options.diagnostics_timeout,
     }
   }
 
@@ -218,12 +301,19 @@ impl IdeService {
     open: &[PathBuf],
     op: impl FnOnce(&mut Session<'_>) -> IdeResult<T>,
   ) -> IdeResult<(ServerView, T)> {
+    let unit = self.unit(file)?;
+    let open: Vec<PathBuf> = open.iter().filter(|path| unit.covers(path)).cloned().collect();
+    let lock = Arc::clone(&unit.lock);
+    let _serialised = guard(&lock);
+    let mut session = self.connect(&unit, freshness.run.map(RunId), files, demand, &open)?;
+    let result = op(&mut session)?;
+    Ok((session.finish(), result))
+  }
+
+  pub(crate) fn unit(&self, file: &FileRef) -> IdeResult<Unit> {
     let settings = self.ensure_enabled()?;
     let kind = kind_of(&file.absolute).ok_or_else(|| IdeError::UnsupportedFile { path: file.to_string() })?;
-    let scope = match settings.unit {
-      UnitMode::Project => UnitScope::Project,
-      UnitMode::Repo => UnitScope::Repo(file.repo.to_string()),
-    };
+    let scope = unit_scope(&settings, &file.repo);
     let (plan, launch, launch_key) = self.plan(kind, &scope, &settings)?;
     if guard(&self.refusals).get(&launch_key).is_some_and(|refused| refused.elapsed() < REFUSAL_MEMORY) {
       return Err(unavailable(kind, TYPESCRIPT_7));
@@ -233,14 +323,107 @@ impl IdeService {
       server: kind.name().to_owned(),
       reason,
     })?;
-    let unit_lock = self.unit_lock(&plan.unit.key());
-    let _serialised = guard(&unit_lock);
-    let generation = freshness.run.map(RunId);
+    let lock = self.unit_lock(&plan.unit.key());
+    Ok(Unit {
+      plan,
+      launch,
+      launch_key,
+      kind,
+      settings,
+      lock,
+    })
+  }
+
+  pub(crate) fn warm_unit(&self, file: &FileRef) -> Option<Unit> {
+    let settings = self.settings();
+    let kind = kind_of(&file.absolute)?;
+    if !settings.enabled {
+      return None;
+    }
+    let scope = unit_scope(&settings, &file.repo);
+    let units = self.query.engine().language_units().ok()?;
+    let project = self.query.engine().project().name.to_string();
+    let inputs = UnitInputs {
+      project: &project,
+      kind,
+      scope: &scope,
+      units: &units,
+      settings: &settings,
+      cache_dir: &self.cache_dir,
+    };
+    let roots: Vec<PathBuf> = inputs.folders().into_iter().map(|folder| folder.root).collect();
+    let launch_key = (kind, scope.clone(), roots);
+    let launch = guard(&self.launches).get(&launch_key).cloned()?;
+    let plan = inputs.plan(&launch).ok()?;
+    plan.covers(&file.absolute).ok()?;
+    let key = plan.unit.key();
+    let running = self
+      .pool()
+      .status()
+      .into_iter()
+      .any(|status| status.key == key && matches!(status.phase, UnitPhase::Running(_)));
+    if !running {
+      return None;
+    }
+    let lock = self.unit_lock(&key);
+    Some(Unit {
+      plan,
+      launch,
+      launch_key,
+      kind,
+      settings,
+      lock,
+    })
+  }
+
+  pub(crate) fn connect<'a>(&'a self, unit: &Unit, generation: Option<RunId>, files: &'a ProjectFiles, demand: SyncDemand, open: &[PathBuf]) -> IdeResult<Session<'a>> {
+    self.attach(unit, Start::Spawn, generation, files, demand, open)
+  }
+
+  pub(crate) fn connect_live<'a>(&'a self, unit: &Unit, generation: Option<RunId>, files: &'a ProjectFiles, open: &[PathBuf]) -> IdeResult<Session<'a>> {
+    self.attach(unit, Start::LiveOnly, generation, files, SyncDemand::Best, open)
+  }
+
+  fn attach<'a>(&'a self, unit: &Unit, start: Start, generation: Option<RunId>, files: &'a ProjectFiles, demand: SyncDemand, open: &[PathBuf]) -> IdeResult<Session<'a>> {
+    let target = SyncTarget {
+      plan: &unit.plan,
+      launch: &unit.launch,
+      launch_key: &unit.launch_key,
+      start,
+    };
+    let (lease, notes) = self.synchronise(&target, generation, files, demand, open)?;
+    Ok(Session {
+      notes,
+      lease,
+      kind: unit.kind,
+      query: &self.query,
+      files,
+      settings: unit.settings.clone(),
+      launch: unit.launch.clone(),
+      service: self,
+      unit: SessionUnit {
+        plan: unit.plan.clone(),
+        launch_key: unit.launch_key.clone(),
+        start,
+      },
+    })
+  }
+
+  fn synchronise(&self, target: &SyncTarget<'_>, generation: Option<RunId>, files: &ProjectFiles, demand: SyncDemand, open: &[PathBuf]) -> IdeResult<(Lease, SyncNotes)> {
+    let plan = target.plan;
+    let kind = plan.unit.kind();
     let store = self.query.engine().store();
     let pool = self.pool();
     let key = plan.unit.key();
-    let manifest_dirs = self.manifest_dirs(&key, generation, files, &plan)?;
-    let pid = pool.get(&plan.unit, generation)?.pid();
+    let manifest_dirs = self.manifest_dirs(&key, generation, files, plan)?;
+    let live = match target.start {
+      Start::Spawn => None,
+      Start::LiveOnly => Some(pool.live(&plan.unit).ok_or_else(|| IdeError::NotRunning { server: kind.name().to_owned() })?),
+    };
+    let pid = match &live {
+      Some(lease) => lease.pid(),
+      None => pool.get(&plan.unit, generation)?.pid(),
+    };
     let baseline = guard(&self.manifests).get(&key).filter(|(known, _)| *known == pid).map(|(_, manifests)| manifests.clone());
     let current = manifests(&manifest_dirs);
     let announced = Cell::new(false);
@@ -255,7 +438,10 @@ impl IdeService {
         (list, _) => list,
       }
     };
-    let synced = pool.sync(&plan.unit, generation, demand, changes, open)?;
+    let synced = match live {
+      Some(lease) => pool.sync_live(lease, generation, demand, changes, open)?,
+      None => pool.sync(&plan.unit, generation, demand, changes, open)?,
+    };
     let restarted = synced.lease.pid() != pid;
     let snapshot = match (baseline, announced.get() || restarted) {
       (Some(baseline), false) => baseline,
@@ -263,14 +449,21 @@ impl IdeService {
     };
     guard(&self.manifests).insert(key, (synced.lease.pid(), snapshot));
     let mut notes = SyncNotes::of(&synced.report, files);
-    let graphs_changed = ledger.into_inner().graphs_changed;
+    let unit_repos: Vec<&str> = plan.unit.folders.iter().map(|folder| folder.name.as_str()).collect();
+    let graphs_changed: Vec<String> = ledger
+      .into_inner()
+      .graphs_changed
+      .iter()
+      .filter(|repo| unit_repos.contains(&repo.as_str()))
+      .map(ToString::to_string)
+      .collect();
     if !graphs_changed.is_empty() {
       notes.caveats.push(format!(
         "project configuration changed in {} since the server last synced; the server reloads it on its own and may not have finished",
-        graphs_changed.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ")
+        graphs_changed.join(", ")
       ));
     }
-    match typescript_report(&synced.lease, &launch) {
+    match typescript_report(&synced.lease, target.launch) {
       TypeScriptReport::Supported => {}
       TypeScriptReport::Unreported => notes
         .caveats
@@ -285,24 +478,11 @@ impl IdeService {
             reason: format!("it loaded TypeScript {version}"),
           },
         );
-        guard(&self.refusals).insert(launch_key, Instant::now());
+        guard(&self.refusals).insert(target.launch_key.clone(), Instant::now());
         return Err(unavailable(kind, TYPESCRIPT_7));
       }
     }
-    let mut session = Session {
-      notes,
-      lease: synced.lease,
-      kind,
-      query: &self.query,
-      files,
-      settings,
-      launch,
-    };
-    let result = op(&mut session)?;
-    let view = session.view();
-    let lockfiles = session.lease.lockfile_changes().iter().map(|path| display_path(path, files)).collect();
-    self.remember_lockfiles(&plan.unit.key(), lockfiles);
-    Ok((view, result))
+    Ok((synced.lease, notes))
   }
 
   fn plan(&self, kind: ServerKind, scope: &UnitScope, settings: &IdeSettings) -> IdeResult<(UnitPlan, LaunchSpec, LaunchKey)> {
@@ -350,7 +530,7 @@ impl IdeService {
     Arc::clone(guard(&self.unit_locks).entry(key.clone()).or_default())
   }
 
-  fn remember_lockfiles(&self, key: &UnitKey, changed: Vec<String>) {
+  pub(crate) fn remember_lockfiles(&self, key: &UnitKey, changed: Vec<String>) {
     let mut lockfiles = guard(&self.lockfiles);
     match changed.is_empty() {
       true => lockfiles.remove(key),
@@ -409,6 +589,13 @@ fn typescript_report(lease: &Lease, launch: &LaunchSpec) -> TypeScriptReport {
       repo_root.display()
     )),
     _ => TypeScriptReport::Supported,
+  }
+}
+
+fn unit_scope(settings: &IdeSettings, repo: &RepoName) -> UnitScope {
+  match settings.unit {
+    UnitMode::Project => UnitScope::Project,
+    UnitMode::Repo => UnitScope::Repo(repo.to_string()),
   }
 }
 

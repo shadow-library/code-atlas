@@ -45,6 +45,7 @@ atlas-engine = { path = "crates/atlas-engine" }
 atlas-query = { path = "crates/atlas-query" }
 atlas-mcp = { path = "crates/atlas-mcp" }
 atlas-lsp = { path = "crates/atlas-lsp" }
+atlas-edit = { path = "crates/atlas-edit" }
 
 tree-sitter = "0.27"
 tree-sitter-rust = "0.24"

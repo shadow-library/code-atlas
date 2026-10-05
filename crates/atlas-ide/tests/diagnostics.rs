@@ -36,11 +36,14 @@ fn should_wait_for_pushed_diagnostics_of_the_current_version_and_group_them() {
       ts_ready(capabilities(json!({}))),
       [
         json!({"recv": {"method": "textDocument/didOpen"}}),
-        json!({"recv": {"method": "textDocument/didChange", "params": {"textDocument": {"version": 2}}}}),
+        json!({"recv": {"method": "textDocument/didClose"}}),
+        publish(&uri, 1, json!([])),
+        json!({"recv": {"method": "textDocument/didOpen", "params": {"textDocument": {"version": 2}}}}),
         publish(&uri, 1, json!([stale])),
         json!({"sleep_ms": 100}),
         publish(&uri, 2, json!([unused.clone(), missing.clone()])),
-        json!({"recv": {"method": "textDocument/didChange", "params": {"textDocument": {"version": 3}}}}),
+        json!({"recv": {"method": "textDocument/didClose"}}),
+        json!({"recv": {"method": "textDocument/didOpen", "params": {"textDocument": {"version": 3}}}}),
         publish(&uri, 3, json!([unused, missing])),
       ],
     ),
@@ -166,10 +169,11 @@ fn should_answer_partial_and_never_clean_when_diagnostics_do_not_settle() {
   let busy_uri = fixture.uri("web", "src/busy.ts");
   let unused = diagnostic((2, 8), (2, 14), 4, json!(6133), "typescript", "'unused' is declared but its value is never read.");
   let mut steps = ts_ready(capabilities(json!({})));
-  steps.push(json!({"recv": {"method": "textDocument/didOpen"}}));
-  steps.push(json!({"recv": {"method": "textDocument/didChange"}}));
-  steps.push(json!({"recv": {"method": "textDocument/didOpen"}}));
-  steps.push(json!({"recv": {"method": "textDocument/didChange"}}));
+  for _ in 0..2 {
+    steps.push(json!({"recv": {"method": "textDocument/didOpen"}}));
+    steps.push(json!({"recv": {"method": "textDocument/didClose"}}));
+    steps.push(json!({"recv": {"method": "textDocument/didOpen"}}));
+  }
   for _ in 0..60 {
     steps.push(publish(&busy_uri, 4, json!([unused.clone()])));
     steps.push(json!({"sleep_ms": 200}));
@@ -192,5 +196,40 @@ fn should_answer_partial_and_never_clean_when_diagnostics_do_not_settle() {
   assert!(
     changing.contains("\nPARTIAL: diagnostics were still changing when the 10 s wait ended; the answer may be incomplete\nhint (1)\n"),
     "{changing}"
+  );
+}
+
+#[test]
+fn should_wait_for_the_semantic_publish_after_reopening_a_typescript_file() {
+  let fixture = Fixture::new(&[("web", &[("package.json", "{\"name\": \"web\"}\n"), ("src/use.ts", USE)])]);
+  let uri = fixture.uri("web", "src/use.ts");
+  let semantic = diagnostic((3, 9), (3, 16), 1, json!(2304), "typescript", "Cannot find name 'toCents'.");
+  let command = fixture.script(
+    "ts",
+    &with(
+      ts_ready(capabilities(json!({}))),
+      [
+        json!({"recv": {"method": "textDocument/didOpen"}}),
+        json!({"recv": {"method": "textDocument/didClose"}}),
+        json!({"notify": {"method": "textDocument/publishDiagnostics", "params": {"uri": uri, "diagnostics": []}}}),
+        json!({"recv": {"method": "textDocument/didOpen"}}),
+        json!({"notify": {"method": "textDocument/publishDiagnostics", "params": {"uri": uri, "diagnostics": []}}}),
+        json!({"sleep_ms": 700}),
+        json!({"notify": {"method": "textDocument/publishDiagnostics", "params": {"uri": uri, "diagnostics": [semantic]}}}),
+      ],
+    ),
+  );
+  fixture.serve(ServerKind::TypeScript, command);
+
+  let response = fixture.ide.diagnostics(&DiagnosticsRequest::new("src/use.ts")).unwrap();
+
+  assert_eq!(
+    text(&response),
+    concat!(
+      "diagnostics web:src/use.ts  [settled]  (typescript-language-server 5.1.3, TypeScript 5.9.3) [compiler]\n",
+      "error (1)\n",
+      "  total\n",
+      "    4:10 2304 Cannot find name 'toCents'.\n",
+    )
   );
 }

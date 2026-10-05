@@ -144,9 +144,12 @@ pub(crate) fn manifests(dirs: &[PathBuf]) -> Manifests {
 }
 
 pub(crate) fn manifest_changes(before: &Manifests, now: &Manifests) -> Vec<FileChange> {
+  let none = BTreeMap::new();
+  let dirs: BTreeSet<&PathBuf> = before.keys().chain(now.keys()).collect();
   let mut changes = Vec::new();
-  for (dir, current) in now {
-    let Some(previous) = before.get(dir) else { continue };
+  for dir in dirs {
+    let previous = before.get(dir).unwrap_or(&none);
+    let current = now.get(dir).unwrap_or(&none);
     for (path, hash) in current {
       if previous.get(path) != Some(hash) {
         changes.push(FileChange::new(path.clone(), ChangeKind::Changed(*hash)));
@@ -181,6 +184,7 @@ pub(crate) struct SyncNotes {
   pub partial: Vec<String>,
   pub caveats: Vec<String>,
   pub warnings: Vec<String>,
+  pub drifted: Vec<String>,
 }
 
 impl SyncNotes {
@@ -197,6 +201,7 @@ impl SyncNotes {
     if let Some(reason) = &report.restarted {
       notes.warnings.push(format!("the language server was restarted: {reason}"));
     }
+    notes.drifted = report.drifted.iter().map(|path| display_path(path, files)).collect();
     if !report.drifted.is_empty() {
       notes.warnings.push(format!(
         "{} changed on disk after indexing; the language server was sent the disk text",
@@ -216,6 +221,15 @@ impl SyncNotes {
   }
 
   pub(crate) fn lease_state(&mut self, lease: &Lease, files: &ProjectFiles) {
+    if let Some(health) = lease.health_error() {
+      let partial = format!(
+        "{} reports an unhealthy workspace and code-atlas cannot tell whether this file's project loaded ({health})",
+        lease.kind().name()
+      );
+      if !self.partial.contains(&partial) {
+        self.partial.push(partial);
+      }
+    }
     if let Some(reason) = lease.sync_lost() {
       self
         .partial
@@ -227,6 +241,22 @@ impl SyncNotes {
         "rust-analyzer rewrote {} since it started (cargo updated the lock file); code-atlas does not restore it",
         shown(&lockfiles, files)
       ));
+    }
+  }
+
+  pub(crate) fn absorb(&mut self, later: SyncNotes) {
+    let lists = [
+      (&mut self.partial, later.partial),
+      (&mut self.caveats, later.caveats),
+      (&mut self.warnings, later.warnings),
+      (&mut self.drifted, later.drifted),
+    ];
+    for (into, from) in lists {
+      for note in from {
+        if !into.contains(&note) {
+          into.push(note);
+        }
+      }
     }
   }
 
@@ -282,17 +312,20 @@ mod tests {
   }
 
   #[test]
-  fn should_recognise_manifests_and_report_their_changes_per_known_directory() {
+  fn should_recognise_manifests_and_report_their_changes_across_old_and_new_directories() {
     let work = tempfile::tempdir().unwrap();
     let dir = work.path().join("pkg");
     let fresh = work.path().join("fresh");
+    let gone = work.path().join("gone");
     std::fs::create_dir_all(dir.join(".cargo")).unwrap();
     std::fs::create_dir_all(&fresh).unwrap();
+    std::fs::create_dir_all(&gone).unwrap();
+    std::fs::write(gone.join("package.json"), "{}").unwrap();
     std::fs::write(dir.join("tsconfig.build.json"), "{}").unwrap();
     std::fs::write(dir.join("Cargo.toml"), "[package]").unwrap();
     std::fs::write(dir.join(".cargo/config.toml"), "").unwrap();
     std::fs::write(dir.join("README.md"), "").unwrap();
-    let before = manifests(std::slice::from_ref(&dir));
+    let before = manifests(&[dir.clone(), gone]);
     std::fs::write(dir.join("tsconfig.build.json"), "{\"x\": 1}").unwrap();
     std::fs::remove_file(dir.join("Cargo.toml")).unwrap();
     std::fs::write(dir.join("jsconfig.json"), "{}").unwrap();
@@ -303,15 +336,17 @@ mod tests {
     assert_eq!(before[&dir].len(), 3);
     let mut summary: Vec<(String, bool)> = changes
       .iter()
-      .map(|change| (change.path.strip_prefix(&dir).unwrap().display().to_string(), change.kind == ChangeKind::Deleted))
+      .map(|change| (change.path.strip_prefix(work.path()).unwrap().display().to_string(), change.kind == ChangeKind::Deleted))
       .collect();
     summary.sort();
     assert_eq!(
       summary,
       vec![
-        ("Cargo.toml".to_owned(), true),
-        ("jsconfig.json".to_owned(), false),
-        ("tsconfig.build.json".to_owned(), false)
+        ("fresh/package.json".to_owned(), false),
+        ("gone/package.json".to_owned(), true),
+        ("pkg/Cargo.toml".to_owned(), true),
+        ("pkg/jsconfig.json".to_owned(), false),
+        ("pkg/tsconfig.build.json".to_owned(), false)
       ]
     );
     assert!(is_manifest("tsconfig.app.json") && is_manifest("build.rs") && !is_manifest("tsconfig.txt"));

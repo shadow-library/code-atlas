@@ -245,6 +245,7 @@ name = "atlas-ide"
 version = "0.1.0"
 dependencies = [
  "atlas-core",
+ "atlas-edit",
  "atlas-engine",
  "atlas-lsp",
  "atlas-project",

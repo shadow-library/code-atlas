@@ -7,7 +7,7 @@ use atlas_lsp::{
   Launch, LspError, PoolOptions, RustAnalyzerSettings, ServerCommand, ServerKind, ServerUnit, SyncLimits, TsServerSource, TypeScriptDiscovery, TypeScriptSettings, UnitFolder,
   UnitScope, UnitSettings, canonical_path, discover_typescript, rust_analyzer_server,
 };
-use atlas_project::{LspSettings, LspUnit};
+use atlas_project::{LspSettings, LspUnit, PathGlobs};
 use atlas_scip::locate_rust_analyzer;
 use serde::Serialize;
 
@@ -29,6 +29,7 @@ pub struct IdeSettings {
   pub idle_secs: u64,
   pub ready_timeout_secs: u64,
   pub check_timeout_secs: u64,
+  pub exclude: Vec<String>,
 }
 
 impl Default for IdeSettings {
@@ -42,6 +43,7 @@ impl Default for IdeSettings {
       idle_secs: 600,
       ready_timeout_secs: 300,
       check_timeout_secs: 120,
+      exclude: Vec::new(),
     }
   }
 }
@@ -113,6 +115,7 @@ impl From<&LspSettings> for IdeSettings {
       idle_secs: settings.idle_secs,
       ready_timeout_secs: settings.ready_timeout_secs,
       check_timeout_secs: settings.check_timeout_secs,
+      exclude: settings.exclude.clone(),
     }
   }
 }
@@ -169,6 +172,7 @@ pub(crate) struct UnitPlan {
   pub unit: ServerUnit,
   pub roots: Vec<PathBuf>,
   pub cargo_dirs: Vec<PathBuf>,
+  pub exclude: Option<PathGlobs>,
 }
 
 pub(crate) struct UnitInputs<'a> {
@@ -201,12 +205,27 @@ impl UnitInputs<'_> {
       .collect()
   }
 
+  fn exclude(&self) -> Option<PathGlobs> {
+    if self.settings.exclude.is_empty() {
+      return None;
+    }
+    match PathGlobs::new(&self.settings.exclude) {
+      Ok(globs) => Some(globs),
+      Err(error) => {
+        tracing::warn!(%error, "lsp.exclude is invalid; nothing is excluded from the language servers");
+        None
+      }
+    }
+  }
+
   fn linked_projects(&self) -> Vec<PathBuf> {
+    let exclude = self.exclude();
     let projects = self.units.rust.as_ref().map(|unit| &unit.linked_projects);
     projects
       .into_iter()
       .flatten()
       .filter(|project| self.admits(&project.repo))
+      .filter(|project| exclude.as_ref().is_none_or(|globs| !excluded(globs, project.manifest.as_str())))
       .map(|project| project.path.clone())
       .collect()
   }
@@ -232,8 +251,17 @@ impl UnitInputs<'_> {
     let mut unit = ServerUnit::new(self.project, folders, settings, launch.command.clone(), launch.launch);
     unit.scope = self.scope.clone();
     unit.timeouts.ready = Duration::from_secs(self.settings.ready_timeout_secs);
-    Ok(UnitPlan { unit, roots, cargo_dirs })
+    Ok(UnitPlan {
+      unit,
+      roots,
+      cargo_dirs,
+      exclude: self.exclude(),
+    })
   }
+}
+
+fn excluded(globs: &PathGlobs, relative: &str) -> bool {
+  globs.matches_within(relative, false)
 }
 
 fn canonical(path: impl AsRef<Path>) -> IdeResult<PathBuf> {
@@ -248,8 +276,12 @@ fn fingerprint(roots: &[PathBuf], linked: &[PathBuf]) -> String {
 
 impl UnitPlan {
   pub(crate) fn covers(&self, file: &Path) -> Result<(), String> {
-    if !self.roots.iter().any(|root| file.starts_with(root)) {
+    let Some(root) = self.roots.iter().filter(|root| file.starts_with(root)).max_by_key(|root| root.components().count()) else {
       return Err("its repo is not one of the server's workspace folders (the index has no files of this language there)".to_owned());
+    };
+    let relative = file.strip_prefix(root).ok().and_then(Path::to_str).unwrap_or_default();
+    if self.exclude.as_ref().is_some_and(|globs| excluded(globs, relative)) {
+      return Err("it is excluded from the language servers by lsp.exclude".to_owned());
     }
     if self.unit.kind() == ServerKind::RustAnalyzer && !self.cargo_dirs.iter().any(|dir| file.starts_with(dir)) {
       return Err("no Cargo workspace or package found by the index contains it".to_owned());
@@ -358,6 +390,45 @@ mod tests {
   }
 
   #[test]
+  fn should_drop_excluded_cargo_projects_and_refuse_their_files() {
+    let work = tempfile::tempdir().unwrap();
+    let root = canonical_path(work.path()).unwrap();
+    let mut units = units(&root);
+    if let Some(rust) = units.rust.as_mut() {
+      rust.linked_projects.push(CargoProject {
+        repo: repo("core"),
+        manifest: atlas_core::RelPath::new("fixtures/demo/Cargo.toml").unwrap(),
+        path: root.join("core/fixtures/demo/Cargo.toml"),
+      });
+    }
+    let settings = IdeSettings {
+      exclude: vec!["fixtures/**".to_owned()],
+      ..IdeSettings::default()
+    };
+    let cache = root.join("cache");
+    let inputs = UnitInputs {
+      project: "demo",
+      kind: ServerKind::RustAnalyzer,
+      scope: &UnitScope::Project,
+      units: &units,
+      settings: &settings,
+      cache_dir: &cache,
+    };
+
+    let plan = inputs.plan(&launch()).unwrap();
+
+    let UnitSettings::RustAnalyzer(rust) = &plan.unit.settings else {
+      panic!("expected rust-analyzer settings")
+    };
+    assert_eq!(rust.linked_projects, vec![root.join("core/Cargo.toml"), root.join("api/Cargo.toml")]);
+    assert_eq!(plan.covers(&root.join("core/src/lib.rs")), Ok(()));
+    assert_eq!(
+      plan.covers(&root.join("core/fixtures/demo/src/lib.rs")),
+      Err("it is excluded from the language servers by lsp.exclude".to_owned())
+    );
+  }
+
+  #[test]
   fn should_scope_a_repo_unit_to_that_repo_and_pass_the_chosen_tsserver() {
     let work = tempfile::tempdir().unwrap();
     let root = canonical_path(work.path()).unwrap();
@@ -413,6 +484,7 @@ mod tests {
       idle_secs: 60,
       ready_timeout_secs: 90,
       check_timeout_secs: 30,
+      exclude: vec!["fixtures/**".to_owned()],
     };
 
     assert_eq!(
@@ -426,6 +498,7 @@ mod tests {
         idle_secs: 60,
         ready_timeout_secs: 90,
         check_timeout_secs: 30,
+        exclude: vec!["fixtures/**".to_owned()],
       }
     );
     assert_eq!(IdeSettings::from(&LspSettings::default()), IdeSettings::default());

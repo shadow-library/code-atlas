@@ -1,73 +1,8 @@
 mod common;
 
-use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-
 use atlas_ide::{DeclarationRequest, LaunchSpec, OutlineRequest, ReferencesRequest};
 use atlas_lsp::{Launch, ServerCommand, ServerKind};
 use common::*;
-
-fn runs(command: &ServerCommand) -> bool {
-  let mut probe = Command::new(&command.program);
-  probe.args(command.args.iter().filter(|arg| *arg != "--stdio")).arg("--version");
-  probe.output().is_ok_and(|output| output.status.success())
-}
-
-fn command_for(entry: PathBuf) -> ServerCommand {
-  match entry.extension().and_then(|extension| extension.to_str()) {
-    Some("mjs" | "js") => ServerCommand::new("node").arg(entry).arg("--stdio"),
-    _ => ServerCommand::new(entry).arg("--stdio"),
-  }
-}
-
-fn npx_cache_entries() -> Vec<PathBuf> {
-  let Some(home) = env::var_os("HOME") else { return Vec::new() };
-  let Ok(caches) = fs::read_dir(Path::new(&home).join(".npm/_npx")) else {
-    return Vec::new();
-  };
-  caches
-    .flatten()
-    .map(|cache| cache.path().join("node_modules/typescript-language-server/lib/cli.mjs"))
-    .filter(|entry| entry.is_file())
-    .collect()
-}
-
-fn typescript_language_server() -> Result<ServerCommand, String> {
-  let configured = env::var_os("ATLAS_TEST_TS_LSP").map(PathBuf::from);
-  let on_path = env::var_os("PATH").and_then(|paths| {
-    env::split_paths(&paths)
-      .map(|directory| directory.join("typescript-language-server"))
-      .find(|candidate| candidate.is_file())
-  });
-  configured
-    .into_iter()
-    .chain(on_path)
-    .chain(npx_cache_entries())
-    .map(command_for)
-    .find(runs)
-    .ok_or_else(|| "set ATLAS_TEST_TS_LSP, put typescript-language-server on PATH, or cache it with npx; tests never download it".to_owned())
-}
-
-fn rust_analyzer() -> Result<PathBuf, String> {
-  let on_path = env::var_os("PATH").and_then(|paths| {
-    env::split_paths(&paths)
-      .map(|directory| directory.join("rust-analyzer"))
-      .find(|candidate| candidate.is_file())
-  });
-  let from_rustup = Command::new("rustup")
-    .args(["which", "rust-analyzer"])
-    .output()
-    .ok()
-    .filter(|output| output.status.success())
-    .map(|output| PathBuf::from(String::from_utf8_lossy(&output.stdout).trim()));
-  [on_path, from_rustup]
-    .into_iter()
-    .flatten()
-    .find(|binary| Command::new(binary).arg("--version").output().is_ok_and(|output| output.status.success()))
-    .ok_or_else(|| "rust-analyzer is not on PATH and `rustup which rust-analyzer` found nothing that runs".to_owned())
-}
 
 fn body(text: &str) -> String {
   text.lines().skip(1).map(|line| format!("{line}\n")).collect()
@@ -77,28 +12,9 @@ fn head(text: &str) -> &str {
   text.lines().next().unwrap_or_default()
 }
 
-fn typescript(test: &str, group: &str, repos: &[&str]) -> Option<Fixture> {
-  let command = match typescript_language_server() {
-    Ok(command) => command,
-    Err(reason) => {
-      eprintln!("SKIPPED {test}: typescript-language-server unavailable ({reason})");
-      return None;
-    }
-  };
-  let fixture = Fixture::copied(group, repos);
-  fixture.launcher.set(
-    ServerKind::TypeScript,
-    LaunchSpec {
-      tsserver: None,
-      ..launch(ServerKind::TypeScript, command)
-    },
-  );
-  Some(fixture)
-}
-
 #[test]
 fn should_find_users_service_find_one_references_with_typescript_language_server() {
-  let Some(fixture) = typescript(
+  let Some(fixture) = typescript_fixture(
     "should_find_users_service_find_one_references_with_typescript_language_server",
     "acme",
     &["acme-api", "acme-sdk", "acme-web"],
@@ -186,7 +102,7 @@ fn should_find_users_service_find_one_references_with_typescript_language_server
 
 #[test]
 fn should_list_payment_provider_charge_implementations_with_typescript_language_server() {
-  let Some(fixture) = typescript(
+  let Some(fixture) = typescript_fixture(
     "should_list_payment_provider_charge_implementations_with_typescript_language_server",
     "adversarial",
     &["ts-overrides"],
@@ -220,6 +136,10 @@ fn should_find_store_get_references_with_rust_analyzer() {
     }
   };
   let fixture = Fixture::copied("adversarial", &["trait-dispatch-rust"]);
+  fixture.ide.reload_settings(atlas_ide::IdeSettings {
+    ready_timeout_secs: 300,
+    ..settings()
+  });
   fixture.launcher.set(
     ServerKind::RustAnalyzer,
     LaunchSpec {

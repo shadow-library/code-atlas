@@ -415,6 +415,10 @@ impl Lease {
     self.server.tracker.wait_diagnostics(&canonical_path(path).ok()?, after, timeout)
   }
 
+  pub fn health_error(&self) -> Option<String> {
+    self.server.tracker.health_error()
+  }
+
   pub fn lockfile_changes(&self) -> Vec<PathBuf> {
     self
       .server
@@ -1052,6 +1056,56 @@ impl LspPool {
       tracing::debug!(server = unit.kind().name(), project = unit.project, %reason, "restarting the language server to resynchronise");
       lease = self.restart(unit, lease, generation, reason.clone())?;
       restarted = Some(reason);
+    }
+  }
+
+  pub fn live(&self, unit: &ServerUnit) -> Option<Lease> {
+    let state = lock(&self.inner.state);
+    if state.phase == PoolPhase::Closed {
+      return None;
+    }
+    match state.slots.get(&unit.key()) {
+      Some(Slot::Live(server)) if server.replacement(unit).is_none() => Some(Lease::new(Arc::clone(server), &self.inner)),
+      _ => None,
+    }
+  }
+
+  pub fn sync_live(
+    &self,
+    lease: Lease,
+    generation: Option<RunId>,
+    demand: SyncDemand,
+    mut changes_since: impl FnMut(Option<RunId>) -> ChangeList,
+    open: &[PathBuf],
+  ) -> LspResult<Synced> {
+    let limits = self.inner.options.sync;
+    loop {
+      let since = lease.synced_generation();
+      let changes = match since >= generation {
+        true => ChangeList::Known(Vec::new()),
+        false => changes_since(since),
+      };
+      let applied = match lease.server.plan(&changes, &limits)? {
+        SyncPlan::Restart(reason) => Applied::Restart(reason),
+        SyncPlan::Apply(changes) => lease.server.apply(&SyncRequest {
+          since,
+          generation,
+          changes: &changes,
+          open,
+          demand,
+          limits: &limits,
+        })?,
+      };
+      match applied {
+        Applied::Synced(report) => return Ok(Synced { lease, report }),
+        Applied::Stale => continue,
+        Applied::Restart(reason) => {
+          return Err(LspError::SyncIncomplete {
+            server: lease.kind().name().to_owned(),
+            reason: format!("the running server would have to be restarted ({reason})"),
+          });
+        }
+      }
     }
   }
 

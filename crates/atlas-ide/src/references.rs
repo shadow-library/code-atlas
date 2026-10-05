@@ -5,6 +5,7 @@ use atlas_query::{CertaintyTag, EntityRef, GraphReference, GraphReferences, Loca
 use atlas_store::{EdgeFilter, InferredPolicy};
 use serde::Serialize;
 
+use crate::edit::Reach;
 use crate::error::{IdeError, IdeResult};
 use crate::map::{Enclosing, Site, SiteMapper, SitePlace, line_text};
 use crate::outline::ReadSource;
@@ -117,8 +118,20 @@ impl IdeService {
       Targeted::Ambiguous { spec, candidates } => return Ok(not_targeted(freshness, Targeted::Ambiguous { spec, candidates })),
     };
     let anchor = resolver.anchor(&target)?;
+    let mut caveats = Vec::new();
+    let graph_target = self.graph_target(&target, &mut caveats)?;
+    let sites = match &graph_target {
+      Some(entity) => self.graph_sites(entity, Reach::TargetOnly)?.sites,
+      None => Vec::new(),
+    };
+    let candidates = self.exact_candidates(&files, &sites, &anchor.file, |_| true)?;
+    caveats.extend(candidates.caveats);
+    let open = candidates.open;
     let (server, sites) = self
-      .exact(&freshness, &files, &anchor.file, SyncDemand::Best, std::slice::from_ref(&anchor.file.absolute), |session| {
+      .exact(&freshness, &files, &anchor.file, SyncDemand::Best, &open, |session| {
+        if let Err(error) = session.settle_projects() {
+          session.notes.partial.push(format!("the language server was still loading projects ({error})"));
+        }
         if !session.capabilities().references_provider.is_supported() {
           return Err(unsupported(session, "textDocument/references"));
         }
@@ -134,8 +147,6 @@ impl IdeService {
         })
       })
       .map_err(IdeError::with_graph_alternative)?;
-    let mut caveats = Vec::new();
-    let graph_target = self.graph_target(&target, &mut caveats)?;
     let mut outside_server_view = Vec::new();
     if let Some(entity) = &graph_target {
       let graph = self.query.graph_references(entity)?;
@@ -170,7 +181,7 @@ impl IdeService {
     })
   }
 
-  fn graph_target(&self, target: &Target, caveats: &mut Vec<String>) -> IdeResult<Option<Entity>> {
+  pub(crate) fn graph_target(&self, target: &Target, caveats: &mut Vec<String>) -> IdeResult<Option<Entity>> {
     let (file, line, column) = match target {
       Target::Symbol { entity, .. } => return Ok(Some(entity.as_ref().clone())),
       Target::Position { file, line, column } => (file, *line, *column),
@@ -188,7 +199,7 @@ impl IdeService {
     Ok(on_name)
   }
 
-  fn http_consumers(&self, target: &Entity) -> IdeResult<Vec<GraphExtra>> {
+  pub(crate) fn http_consumers(&self, target: &Entity) -> IdeResult<Vec<GraphExtra>> {
     let exposes = EdgeFilter {
       kinds: vec![EdgeKind::ExposesEndpoint],
       ..EdgeFilter::default()

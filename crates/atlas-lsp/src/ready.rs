@@ -97,7 +97,6 @@ struct TrackerState {
 enum Verdict {
   Ready,
   Waiting { state: ServerState, wake: Option<Instant> },
-  Unhealthy(String),
   Exited(LspError),
 }
 
@@ -133,9 +132,14 @@ impl Tracker {
     match self.evaluate(&lock(&self.state), Instant::now()) {
       Verdict::Ready => ServerState::Ready,
       Verdict::Waiting { state, .. } => state,
-      Verdict::Unhealthy(reason) => ServerState::Failed { reason },
       Verdict::Exited(error) => ServerState::Exited { reason: error.to_string() },
     }
+  }
+
+  pub(crate) fn health_error(&self) -> Option<String> {
+    let state = lock(&self.state);
+    let status = state.status.as_ref().filter(|status| status.health == Health::Error)?;
+    Some(status.message.clone().unwrap_or_else(|| "health error without a message".to_owned()))
   }
 
   pub(crate) fn disconnected(&self) -> Option<LspError> {
@@ -159,12 +163,6 @@ impl Tracker {
       match self.evaluate(&state, now) {
         Verdict::Ready => return Ok(()),
         Verdict::Exited(error) => return Err(error),
-        Verdict::Unhealthy(message) => {
-          return Err(LspError::Unhealthy {
-            server: self.server.to_owned(),
-            message,
-          });
-        }
         Verdict::Waiting { state: waiting, wake } => {
           if now >= deadline {
             return Err(LspError::NotReady {
@@ -315,10 +313,9 @@ fn quiescence(state: &TrackerState, ignored_progress: &[&str]) -> Verdict {
   };
   let blocking = state.progress.iter().filter(|active| !ignored(&active.token, ignored_progress));
   let busy = summary(blocking);
-  match (status.quiescent, status.health, busy) {
-    (true, Health::Error, _) => Verdict::Unhealthy(status.message.clone().unwrap_or_else(|| "health error without a message".to_owned())),
-    (true, _, None) => Verdict::Ready,
-    (_, _, busy) => Verdict::Waiting {
+  match (status.quiescent, busy) {
+    (true, None) => Verdict::Ready,
+    (_, busy) => Verdict::Waiting {
       state: ServerState::Indexing {
         message: busy.or_else(|| status.message.clone()),
       },
@@ -494,7 +491,7 @@ mod tests {
   }
 
   #[test]
-  fn should_fail_fast_on_a_quiescent_server_with_an_error_health() {
+  fn should_become_ready_on_quiescence_with_an_error_health_and_keep_the_message() {
     let tracker = rust_tracker();
     tracker.on_event(status(false, "error", Some("cargo metadata failed")));
     assert_eq!(
@@ -506,10 +503,10 @@ mod tests {
 
     tracker.on_event(status(true, "error", Some("cargo metadata failed")));
 
-    assert_eq!(
-      tracker.wait_ready(Duration::from_secs(60)).unwrap_err().to_string(),
-      "rust-analyzer reports an unhealthy workspace: cargo metadata failed; fix the workspace (rust-analyzer needs `cargo metadata` to succeed) and check it with `code-atlas lsp check`"
-    );
+    tracker.wait_ready(Duration::ZERO).unwrap();
+    assert_eq!(tracker.health_error(), Some("cargo metadata failed".to_owned()));
+    tracker.on_event(status(true, "ok", None));
+    assert_eq!(tracker.health_error(), None);
   }
 
   #[test]

@@ -20,6 +20,7 @@ atlas-project.workspace = true
 atlas-engine.workspace = true
 atlas-query.workspace = true
 atlas-lsp.workspace = true
+atlas-edit.workspace = true
 atlas-scip.workspace = true
 regex.workspace = true
 serde.workspace = true

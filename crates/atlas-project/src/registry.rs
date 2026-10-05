@@ -69,6 +69,8 @@ pub struct LspSettings {
   pub idle_secs: u64,
   pub ready_timeout_secs: u64,
   pub check_timeout_secs: u64,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  pub exclude: Vec<String>,
 }
 
 impl Default for LspSettings {
@@ -82,6 +84,7 @@ impl Default for LspSettings {
       idle_secs: 600,
       ready_timeout_secs: 300,
       check_timeout_secs: 120,
+      exclude: Vec::new(),
     }
   }
 }
@@ -90,6 +93,9 @@ impl LspSettings {
   pub fn validate(&self) -> Result<(), String> {
     if self.max_servers < 1 {
       return Err("lsp.max_servers must be at least 1".to_owned());
+    }
+    if let Err(error) = crate::PathGlobs::new(&self.exclude) {
+      return Err(format!("lsp.exclude: {error}"));
     }
     let Some(command) = &self.typescript_command else {
       return Ok(());
@@ -794,6 +800,7 @@ mod tests {
         typescript_command: Some(vec!["/opt/ts server/bin/tls".to_owned(), "--flag".to_owned()]),
         unit: LspUnit::Repo,
         max_servers: 3,
+        exclude: vec!["fixtures/**".to_owned()],
         ..LspSettings::default()
       },
       max_file_bytes: 42,
@@ -828,6 +835,7 @@ mod tests {
         idle_secs: 600,
         ready_timeout_secs: 300,
         check_timeout_secs: 120,
+        exclude: Vec::new(),
       }
     );
     registry.set_settings("acme", settings).unwrap();
