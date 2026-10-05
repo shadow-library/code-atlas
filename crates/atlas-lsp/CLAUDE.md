@@ -52,6 +52,8 @@ Blocking stdio JSON-RPC client for language servers, hand-written lenient LSP ty
 - `shutdown()` also kills servers that are still starting, so their callers return `PoolShutDown` promptly.
 - Memory: rust-analyzer takes 2–3 GB RSS on large workspaces, tsserver 0.3–1.5 GB (capped by `maxTsServerMemory`). Each MCP process owns its servers, so N sessions cost N times that (no shared daemon). `resident_kib` sums RSS over the server's process group (tsserver children, proc-macro-srv).
 - `Lease::lockfile_changes()` lists `Cargo.lock` files rewritten since rust-analyzer started. Callers warn; nothing restores them.
+- `LspPool::retire(unit, lease, reason)` shuts a server down without starting a replacement (`RestartReason::Refused` when the caller rejects what the server loaded); `restart` is `retire` plus `get`.
+- `Lease::progress(prefix)` counts begun and ended `$/progress` tokens with that prefix and the active ones; `wait_progress` waits for a predicate on that count (flycheck tracking).
 
 ## Document sync
 
@@ -67,6 +69,7 @@ Blocking stdio JSON-RPC client for language servers, hand-written lenient LSP ty
   - rust-analyzer waits for quiescence (≤ 30 s): `Ready`, `Quiet` or `Busy`. The 500 ms window for the server to react is skipped when every announced file was overlaid and none is `Cargo.toml`, `Cargo.lock`, `build.rs` or `.cargo/config*`.
   - typescript-language-server 5.x ignores `didChangeWatchedFiles`; tsserver relies on its own watchers. Announced files of the server's language and `tsconfig*.json`/`jsconfig*.json`/`package.json` that were not overlaid stay in a per-server unconfirmed set until they are overlaid or the server restarts, and every sync reports them as `Unconfirmed { paths }`. rust-analyzer never fills this set.
   - A deleted TypeScript file is confirmed by `didOpen` (empty text) then `didClose`: tsserver's `closeOpenFile` sees the file is gone and drops the script at once (`handleDeletedFile`). Project configuration changes stay unconfirmed; atlas-ide restarts the TS server on a sticky `Unconfirmed` when it needs exact answers.
+- `Lease::touch_document(path)` re-sends an open document under a new version when its disk text still equals what the server has (`None` otherwise), so push-only servers publish diagnostics for a known version.
 - `SyncDemand::Exact` is for rename and safe_delete (atlas-ide must use it for both). Every changed file of the server's language is overlaid regardless of the 64-file limit.
   - TypeScript: if anything stays unconfirmed (project configuration, files over the budget), the server is restarted and re-synced (`RestartReason::Unconfirmed`).
   - rust-analyzer: the sync fails with `SyncIncomplete` when the server is not quiescent afterwards or a changed `.rs` file could not be overlaid.

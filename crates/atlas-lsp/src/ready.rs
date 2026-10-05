@@ -38,6 +38,13 @@ impl fmt::Display for ServerState {
   }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ProgressCount {
+  pub begun: u64,
+  pub ended: u64,
+  pub active: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Settle {
   NotNeeded,
@@ -78,6 +85,7 @@ struct Published {
 struct TrackerState {
   status: Option<ServerStatusParams>,
   progress: Vec<ActiveProgress>,
+  progress_totals: HashMap<String, (u64, u64)>,
   announcement: Option<Value>,
   initialized_at: Option<Instant>,
   disconnected: Option<LspError>,
@@ -193,6 +201,19 @@ impl Tracker {
     }
   }
 
+  pub(crate) fn progress(&self, prefix: &str) -> ProgressCount {
+    progress_count(&lock(&self.state), prefix)
+  }
+
+  pub(crate) fn wait_progress(&self, prefix: &str, timeout: Duration, until: impl Fn(&ProgressCount) -> bool) -> ProgressCount {
+    let state = lock(&self.state);
+    let (state, _) = self
+      .changed
+      .wait_timeout_while(state, timeout, |state| !until(&progress_count(state, prefix)) && state.disconnected.is_none())
+      .unwrap_or_else(PoisonError::into_inner);
+    progress_count(&state, prefix)
+  }
+
   pub(crate) fn diagnostics(&self, path: &Path) -> Option<(u64, PublishDiagnosticsParams)> {
     lock(&self.state).diagnostics.get(path).map(|published| (published.sequence, published.params.clone()))
   }
@@ -253,6 +274,12 @@ impl Tracker {
       return;
     };
     let existing = state.progress.iter().position(|active| active.token == params.token);
+    let totals = state.progress_totals.entry(params.token.to_string()).or_default();
+    match (&progress, existing) {
+      (WorkDoneProgress::Begin(_), _) => totals.0 += 1,
+      (WorkDoneProgress::End(_), Some(_)) => totals.1 += 1,
+      _ => {}
+    }
     match (progress, existing) {
       (WorkDoneProgress::Begin(begin), existing) => {
         let active = ActiveProgress {
@@ -297,6 +324,19 @@ fn quiescence(state: &TrackerState, ignored_progress: &[&str]) -> Verdict {
       },
       wake: None,
     },
+  }
+}
+
+fn progress_count(state: &TrackerState, prefix: &str) -> ProgressCount {
+  let (begun, ended) = state
+    .progress_totals
+    .iter()
+    .filter(|(token, _)| token.starts_with(prefix))
+    .fold((0, 0), |(begun, ended), (_, totals)| (begun + totals.0, ended + totals.1));
+  ProgressCount {
+    begun,
+    ended,
+    active: state.progress.iter().filter(|active| active.token.to_string().starts_with(prefix)).count(),
   }
 }
 
@@ -393,6 +433,28 @@ mod tests {
 
   fn status(quiescent: bool, health: &str, message: Option<&str>) -> ServerEvent {
     ServerEvent::ServerStatus(serde_json::from_value(json!({"quiescent": quiescent, "health": health, "message": message})).unwrap())
+  }
+
+  #[test]
+  fn should_count_begun_and_ended_progress_by_token_prefix() {
+    let tracker = rust_tracker();
+    tracker.on_event(progress("rust-analyzer/flycheck/0", json!({"kind": "begin", "title": "cargo check"})));
+    tracker.on_event(progress("rust-analyzer/flycheck/1", json!({"kind": "begin", "title": "cargo check"})));
+    tracker.on_event(progress("rustAnalyzer/Indexing", json!({"kind": "begin", "title": "Indexing"})));
+    tracker.on_event(progress("rust-analyzer/flycheck/0", json!({"kind": "end"})));
+    tracker.on_event(progress("rust-analyzer/flycheck/9", json!({"kind": "end"})));
+
+    assert_eq!(tracker.progress("rust-analyzer/flycheck"), ProgressCount { begun: 2, ended: 1, active: 1 });
+    assert_eq!(
+      tracker.wait_progress("rust-analyzer/flycheck", Duration::from_millis(10), |count| count.ended == 2),
+      ProgressCount { begun: 2, ended: 1, active: 1 }
+    );
+    tracker.on_event(progress("rust-analyzer/flycheck/1", json!({"kind": "end"})));
+    assert_eq!(
+      tracker.wait_progress("rust-analyzer/flycheck", Duration::from_secs(5), |count| count.ended == 2),
+      ProgressCount { begun: 2, ended: 2, active: 0 }
+    );
+    assert_eq!(tracker.progress("rustAnalyzer"), ProgressCount { begun: 1, ended: 0, active: 1 });
   }
 
   #[test]

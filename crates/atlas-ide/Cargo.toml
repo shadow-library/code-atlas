@@ -8,5 +8,24 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[[bin]]
+name = "atlas-ide-fake-lsp"
+path = "src/bin/atlas-ide-fake-lsp.rs"
+test = false
+
 [dependencies]
+atlas-core.workspace = true
+atlas-store.workspace = true
+atlas-project.workspace = true
+atlas-engine.workspace = true
+atlas-query.workspace = true
+atlas-lsp.workspace = true
+atlas-scip.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

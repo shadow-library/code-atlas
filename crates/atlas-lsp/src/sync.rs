@@ -103,6 +103,7 @@ pub enum RestartReason {
   TooManyChanges { count: usize, limit: usize },
   Unconfirmed { count: usize },
   NeverReady { waited: Duration },
+  Refused { reason: String },
 }
 
 impl RestartReason {
@@ -121,6 +122,7 @@ impl fmt::Display for RestartReason {
       Self::TooManyChanges { count, limit } => write!(formatter, "{count} files changed (more than {limit})"),
       Self::Unconfirmed { count } => write!(formatter, "the server cannot confirm {count} changed files"),
       Self::NeverReady { waited } => write!(formatter, "the server was still not ready after {}s", waited.as_secs_f64()),
+      Self::Refused { reason } => write!(formatter, "the previous server was refused: {reason}"),
     }
   }
 }
@@ -406,6 +408,31 @@ impl Server {
       Some(skipped) => Err(incomplete(format!("{} could not be sent as an overlay ({:?})", skipped.path.display(), skipped.reason))),
       None => Ok(()),
     }
+  }
+
+  pub(crate) fn touch_document(&self, path: &Path) -> LspResult<Option<i32>> {
+    let path = canonical_path(path)?;
+    let mut sync = lock(&self.sync);
+    let Some(open) = sync.docs.get(&path).cloned() else { return Ok(None) };
+    let Disk::Present(stamp, bytes) = read_disk(&path) else { return Ok(None) };
+    if ContentHash::of(&bytes) != open.hash {
+      return Ok(None);
+    }
+    let Ok(text) = String::from_utf8(bytes) else { return Ok(None) };
+    let version = sync.docs.next_version();
+    let bytes = text.len();
+    self.notify(
+      "textDocument/didChange",
+      DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier {
+          uri: uri_from_path(&path)?,
+          version,
+        },
+        content_changes: vec![TextDocumentContentChangeEvent { range: None, text }],
+      },
+    )?;
+    sync.docs.record(&path, version, open.hash, bytes, stamp);
+    Ok(Some(version))
   }
 
   pub(crate) fn close_documents(&self, paths: &[PathBuf]) -> LspResult<Vec<PathBuf>> {

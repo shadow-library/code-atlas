@@ -639,3 +639,29 @@ fn should_confirm_a_typescript_deletion_by_opening_and_closing_the_document() {
     json!({"textDocument": {"uri": uri(&gone), "languageId": "typescript", "version": 1, "text": ""}})
   );
 }
+
+#[test]
+fn should_resend_an_unchanged_open_document_under_a_new_version_when_touched() {
+  let workspace = Workspace::new();
+  let file = workspace.write("src/a.rs", "fn a() {}\n");
+  let closed = workspace.write("src/b.rs", "fn b() {}\n");
+  let unit = recording_unit(&workspace);
+  let pool = pool(limits());
+  sync(&pool, &unit, 1, vec![], std::slice::from_ref(&file));
+  let lease = pool.get(&unit, Some(RunId(1))).unwrap();
+
+  let touched = lease.touch_document(&file).unwrap();
+  let untouched = lease.touch_document(&closed).unwrap();
+  fs::write(&file, "fn a() { 2; }\n").unwrap();
+  let drifted = lease.touch_document(&file).unwrap();
+  drop(lease);
+  flush(&pool, &unit, 1);
+
+  assert_eq!((touched, untouched, drifted), (Some(2), None, None));
+  let recorded = workspace.recorded("ra");
+  assert_eq!(methods(&recorded), vec!["textDocument/didOpen", "textDocument/didChange", "fake/flush"]);
+  assert_eq!(
+    recorded[1]["params"],
+    json!({"textDocument": {"uri": uri(&file), "version": 2}, "contentChanges": [{"text": "fn a() {}\n"}]})
+  );
+}

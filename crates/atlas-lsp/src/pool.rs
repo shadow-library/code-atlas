@@ -17,7 +17,7 @@ use crate::docs::OpenDoc;
 use crate::error::{LspError, LspResult};
 use crate::position::{LineBreaks, PositionEncoding};
 use crate::protocol::{InitializeResult, PublishDiagnosticsParams, ServerInfo};
-use crate::ready::{ServerState, Tracker};
+use crate::ready::{ProgressCount, ServerState, Tracker};
 use crate::spec::{ServerKind, ServerSpec, ServerUnit, UnitKey, UnitSettings};
 use crate::sync::{Applied, ChangeList, RestartReason, SyncDemand, SyncLimits, SyncPlan, SyncReport, SyncRequest, SyncState};
 use crate::typescript::TypeScriptVersion;
@@ -371,6 +371,10 @@ impl Lease {
     lock(&self.server.sync).docs.get(&path).cloned()
   }
 
+  pub fn touch_document(&self, path: &Path) -> LspResult<Option<i32>> {
+    self.server.touch_document(path)
+  }
+
   pub fn close_documents(&self, paths: &[PathBuf]) -> LspResult<Vec<PathBuf>> {
     self.server.close_documents(paths)
   }
@@ -393,6 +397,14 @@ impl Lease {
 
   pub fn diagnostics(&self, path: &Path) -> Option<(u64, PublishDiagnosticsParams)> {
     self.server.tracker.diagnostics(&canonical_path(path).ok()?)
+  }
+
+  pub fn progress(&self, token_prefix: &str) -> ProgressCount {
+    self.server.tracker.progress(token_prefix)
+  }
+
+  pub fn wait_progress(&self, token_prefix: &str, timeout: Duration, until: impl Fn(&ProgressCount) -> bool) -> ProgressCount {
+    self.server.tracker.wait_progress(token_prefix, timeout, until)
   }
 
   pub fn diagnostics_sequence(&self) -> u64 {
@@ -1044,6 +1056,11 @@ impl LspPool {
   }
 
   pub fn restart(&self, unit: &ServerUnit, stale: Lease, generation: Option<RunId>, reason: RestartReason) -> LspResult<Lease> {
+    self.retire(unit, stale, reason);
+    self.get(unit, generation)
+  }
+
+  pub fn retire(&self, unit: &ServerUnit, stale: Lease, reason: RestartReason) {
     let server = Arc::clone(&stale.server);
     drop(stale);
     let key = unit.key();
@@ -1063,7 +1080,6 @@ impl LspPool {
       server.shutdown();
       self.inner.retired(1);
     }
-    self.get(unit, generation)
   }
 
   pub fn reap_idle(&self) -> usize {

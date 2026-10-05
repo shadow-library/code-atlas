@@ -25,7 +25,7 @@ pub use error::{Disconnect, LspError, LspResult};
 pub use pool::{Clock, Lease, LspPool, ManualClock, PoolMode, PoolOptions, RestartPolicy, ServerSummary, Synced, SystemClock, UnitPhase, UnitStatus, resident_kib};
 pub use position::{LineBreaks, LineIndex, PositionEncoding, PositionError, negotiate_encoding};
 pub use process::{ProcessExit, STDERR_TAIL_BYTES, ServerCommand, ServerProcess, StderrTail};
-pub use ready::{ServerState, Settle};
+pub use ready::{ProgressCount, ServerState, Settle};
 pub use rust_analyzer::{CheckOnSave, RustAnalyzerSettings};
 pub use spec::{Launch, Readiness, ServerKind, ServerSpec, ServerUnit, Timeouts, UnitFolder, UnitKey, UnitScope, UnitSettings};
 pub use sync::{ChangeKind, ChangeList, FileChange, RestartReason, SkipReason, Skipped, SyncDemand, SyncLimits, SyncReport};

@@ -1,3 +1,22 @@
+mod declaration;
+mod diagnostics;
 mod error;
+mod map;
+mod outline;
+mod references;
+mod render;
+mod servers;
+mod service;
+mod sync;
+mod target;
 
-pub use error::{IdeError, IdeResult};
+pub use declaration::{DeclarationRequest, ExactDeclaration, ExactImplementations};
+pub use diagnostics::{Collection, DiagnosticItem, DiagnosticsRequest, ExactDiagnostics, Flycheck, LineRange, Severity, SeverityGroup, SymbolDiagnostics, Unsettled};
+pub use error::{GRAPH_ALTERNATIVE, IdeError, IdeResult};
+pub use map::{Enclosing, Site, SitePlace};
+pub use outline::{ExactOutline, MAX_OUTLINE_DEPTH, Outline, OutlineRequest, OutlineSymbol, ReadSource};
+pub use references::{ExactReferences, ExtraReason, GraphExtra, References, ReferencesRequest, RepoGroup, SymbolGroup, TargetView};
+pub use render::{Completeness, ExactCertainty, ServerView, StatusAnswer, UnitView};
+pub use servers::{DiscoveryLauncher, IdeMode, IdeSettings, LaunchRequest, LaunchSpec, Launcher, TsServer, TsServerOrigin, UnitMode};
+pub use service::{IdeOptions, IdeService};
+pub use target::FileRef;
