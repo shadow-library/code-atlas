@@ -60,7 +60,7 @@
 - After a write: only servers that took part (or were warm) are told; up to 20 edited files per server, pull or touch-and-wait with one 10 s deadline per phase, native diagnostics only. New errors are the after-errors not matched by (code, message) in the baseline; files without a settled baseline and result are listed under `PARTIAL`, never reported clean. The text says "no new errors in the N edited file(s)", or "in the C checked file(s) (U of N edited files not checked)" beyond the 20-file cap, and "native errors … cargo check not run" when rust-analyzer took part; it never claims a clean project. A server that does not hold the written hash is a warning.
 - Failures: `RolledBack` renders a `FAILED:` first line, `PartiallyApplied` a `DEGRADED:` first line with the files still changed and the rollback errors; the server is re-synced and `write_then_refresh` re-indexes in every case.
 - `IdeOptions::diagnostics_timeout` (10 s) bounds each diagnostics phase; tests under load may raise it.
-- Tool descriptions for C1: `REPLACE_BODY_NOTE`, `REGEX_NOTE`, `REPLACE_IN_FILES_NOTE`.
+- `REPLACE_BODY_NOTE`, `REGEX_NOTE` and `REPLACE_IN_FILES_NOTE` are appended to the `atlas_edit` description by `atlas-mcp`; keep their meaning in sync with `docs/agent-integration.md`.
 
 ## Testing
 

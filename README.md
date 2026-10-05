@@ -1,6 +1,6 @@
 # Code Atlas
 
-Code Atlas indexes a group of Rust and TypeScript/JavaScript repositories (a *project*) into one SQLite knowledge graph and serves it to coding agents over a CLI (`code-atlas`) and an MCP stdio server. The graph holds symbols, calls, references, imports, HTTP endpoints and their cross-repo clients, auth schemes, env/config reads, tests, and a few experimental domains (events, jobs, database tables). Queries answer questions such as "what breaks if I change this", "which tests cover it", "does something like this already exist" and "which repos call this endpoint".
+Code Atlas indexes a group of Rust and TypeScript/JavaScript repositories (a *project*) into one SQLite knowledge graph and serves it to coding agents over a CLI (`code-atlas`) and an MCP stdio server. Exact IDE operations (references, declaration, implementations, diagnostics, renames, symbol and text edits) run through rust-analyzer and typescript-language-server, with the graph adding cross-repo, HTTP, mock and reuse context. The graph holds symbols, calls, references, imports, HTTP endpoints and their cross-repo clients, auth schemes, env/config reads, tests, and a few experimental domains (events, jobs, database tables). Queries answer questions such as "what breaks if I change this", "which tests cover it", "does something like this already exist" and "which repos call this endpoint".
 
 Every fact carries exactly one certainty class and evidence (file, span, content hash, producer). Queries run a freshness barrier first, so an answer reflects the working tree at the time of the call; when the index cannot be brought up to date the answer says `DEGRADED`. Facts that are not exact derivations are tagged and hedged (`possibly calls`, `[heuristic 0.72]`), and an empty result comes with the caveats that could hide relations. LLM use is optional, off by default, and only ever produces facts tagged `inferred`.
 
@@ -23,7 +23,7 @@ Losing the flag costs throughput, never correctness. `code-atlas doctor` reports
 
 ## Quickstart
 
-Requires a Rust toolchain (edition 2024 in `Cargo.toml`; `rust-toolchain.toml` pins the stable channel). `rust-analyzer`, `npx` and the `claude` CLI are optional (SCIP and `connect claude`).
+Requires a Rust toolchain (edition 2024 in `Cargo.toml`; `rust-toolchain.toml` pins the stable channel). `rust-analyzer`, `npx` and the `claude` CLI are optional (SCIP, `connect claude`). Exact IDE operations need rust-analyzer (`rustup component add rust-analyzer`) for Rust and typescript-language-server with TypeScript 5 for TypeScript; language servers and the TypeScript download through `npx` are **on by default** (`project config <p> --lsp off`, `--lsp-download off`).
 
 ```sh
 cargo build --release
@@ -46,6 +46,14 @@ code-atlas connect claude
 
 Inside a registered repo the `-p acme` flag is inferred from the working directory. Set `CODE_ATLAS_HOME=/tmp/atlas-scratch` to keep experiments out of your real registry and databases. `connect claude` writes `.mcp.json` and a guidance block into `AGENTS.md` (or an existing `CLAUDE.md`); `--scope user` registers the server with `claude mcp add-json` instead. Nothing else is needed to use the index: there is no separate reindex step, because every query refreshes it.
 
+Exact reads and edits (the first call per language starts a server: 2 to 5 s for TypeScript, 20 to 65 s cold for rust-analyzer; the MCP server keeps it warm):
+
+```sh
+code-atlas -p acme refs UsersService.findOne
+code-atlas -p acme edit rename UsersService.findOne findUser --dry-run --plan-out plan.json
+code-atlas -p acme edit apply plan.json
+```
+
 Optional accuracy upgrade: `code-atlas -p acme scip` runs rust-analyzer and scip-typescript and promotes matching edges to `compiler_verified`. Cargo workspaces are indexed at the workspace root, so cross-crate references are verified too. With `project config acme --scip on`, SCIP also runs automatically while `watch` or `mcp --watch` is active.
 
 ## Trust model
@@ -54,12 +62,13 @@ A fact may be stated as known only if its certainty is authoritative: `compiler_
 
 ## Evaluation results
 
-Measured 2026-10-04/05; full results, sources and caveats are in [docs/evaluation/results.md](docs/evaluation/results.md).
+Measured 2026-10-04 to 2026-10-06; full results, sources and caveats are in [docs/evaluation/results.md](docs/evaluation/results.md).
 
 - **Knowledge quality.** On the hand-written fixtures, 98/98 expected edges and 184/184 entities were found, with 0 of 63 forbidden edges. Against the compiler (SCIP), `resolved` edges are 97.6% precise over confirmable edges (95.9% all-in), but they reproduce only 53.3% of the compiler's edges.
 - **Performance.** This repository (116k LOC) indexes in 1.1 s, and the per-query freshness barrier costs 6 ms (p50). At 1M synthetic LOC, indexing takes 5.6 s with 2.21 GiB peak RSS, and mixed read and write throughput is weak: 8 to 26 qps, with p95 up to 974 ms.
 - **Agent A/B (primary).** All 44 runs passed their hidden tests in both conditions (ceiling). The agent made 2 Code Atlas calls in 22 sessions, yet used 18.7% more tokens, because the tool definitions add about 6,300 tokens to every request.
 - **Agent A/B (exploratory, directed preamble).** 21 of 22 sessions called `atlas_context`, and they read 23% fewer bytes. Tokens still rose by 24.8% and correctness did not change.
+- **IDE operations (2026-10-05/06).** Fixture rename eval: 41/41 edits, 0 `untouched` lines edited (a regression check on the fixtures used to build it, not held-out). On hono 4.13.13, 7 of 10 first-round TypeScript renames broke test compilation until the language server was made to load the right projects; afterwards 19 symbols (plus 2 variants) produced 0 added `tsc` errors (manual reviewer trials, tabulated in `eval/reports/2026-10-06/review-trials.md`). `similar` from draft code found 0 of 16 realistic re-implementations structurally (it finds copies, not re-implementations), and lexical reuse suggestions from task prompts were tried and dropped (about 5% precision). No agent evaluation of `atlas_edit` exists.
 - **Conclusion.** These tasks give no evidence that Code Atlas improves an agent's correctness or cost.
 
 ## Documentation
@@ -69,10 +78,10 @@ Measured 2026-10-04/05; full results, sources and caveats are in [docs/evaluatio
 | [docs/architecture.md](docs/architecture.md) | crates, pipeline, storage, freshness contract, concurrency, failure handling, project isolation |
 | [docs/knowledge-model.md](docs/knowledge-model.md) | entity and edge kinds, keys, certainty classes, evidence, inferred facts, lineage, per-attribute provenance |
 | [docs/trust-and-limitations.md](docs/trust-and-limitations.md) | what is deterministic, heuristic or inferred; where conclusions are not authoritative; known limitations; failure modes |
-| [docs/agent-integration.md](docs/agent-integration.md) | MCP tools, recommended workflow, reading certainty tags, `connect claude`, other agents |
+| [docs/agent-integration.md](docs/agent-integration.md) | MCP tools (`atlas_symbol` modes, `atlas_edit`), recommended workflow, reading certainty tags, `connect claude`, other agents |
 | [docs/languages-and-frameworks.md](docs/languages-and-frameworks.md) | Rust and TS/JS depth, supported frameworks, experimental detectors |
 | [docs/extending.md](docs/extending.md) | adding an analyzer, detector, project pass or LLM provider |
-| [docs/operations.md](docs/operations.md) | CLI reference, exit codes, home directories, project settings, watch, SCIP, enrichment, doctor |
+| [docs/operations.md](docs/operations.md) | CLI reference, exit codes, home directories, project settings, language servers, parse budget, watch, SCIP, enrichment, doctor |
 | [docs/evaluation/methodology.md](docs/evaluation/methodology.md) | quality eval, performance bench, agent A/B harness |
 | [docs/evaluation/dogfooding.md](docs/evaluation/dogfooding.md) | dated findings from using Code Atlas on itself |
 | [docs/evaluation/results.md](docs/evaluation/results.md) | measured knowledge quality, performance and agent A/B results |
@@ -80,7 +89,7 @@ Measured 2026-10-04/05; full results, sources and caveats are in [docs/evaluatio
 | [eval/README.md](eval/README.md), [eval/tasks/README.md](eval/tasks/README.md) | agent A/B harness reference and task catalogue |
 | [CLAUDE.md](CLAUDE.md) | contributor rules and engine contracts |
 
-`docs/plan/` is the original implementation plan and is historical.
+`docs/plan/` holds the original implementation plan (historical) and the approved IDE operations plan.
 
 ## Status
 
@@ -95,7 +104,9 @@ State as of this documentation pass. "Implemented" means covered by tests and th
 | HTTP clients: fetch, axios, reqwest, Nest `HttpService` | Implemented | base-URL and route matching is heuristic, never above `heuristic` |
 | Cross-repo linking: packages, API to client, auth, env/config | Implemented | link-derived facts are `heuristic` unless backed by manifests |
 | Auth schemes, permissions, env/config reads, tests (jest, vitest, `#[test]`) | Implemented | guard to scheme mapping is name- and library-based |
-| CLI and MCP server (16 tools) | Implemented | shared query layer; `--json` and MCP `format: "json"` |
+| CLI and MCP server (15 tools) | Implemented | shared query layer; `--json` and MCP `format: "json"`; `atlas_edit` makes the MCP server writable |
+| Exact IDE operations (references, declaration, implementations, outline, diagnostics) | Implemented, needs a language server | rust-analyzer and typescript-language-server 5.x (TypeScript 7 refused); answers are live `[compiler]`, never stored; `PARTIAL` when the server's view is incomplete |
+| Exact edits (rename, safe delete, symbol and text edits, plan files) | Implemented | atomic with rollback, refuses stale or unverified plans (exit codes 5 to 7); rename determinism is scoped (see limitations); no agent evaluation |
 | SCIP ingestion (`compiler_verified`) | Implemented, opt-in | manual `code-atlas scip`; never runs inside a query |
 | Near-duplicate and lexical search | Implemented | similarity is evidence, never equivalence |
 | Events, jobs, DB tables/queries | Experimental | entities and edges carry an `experimental` attribute (not shown in text output); heuristic only; project-scoped assumptions |

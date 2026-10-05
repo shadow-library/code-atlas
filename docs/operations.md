@@ -2,6 +2,8 @@
 
 All commands below were run against `fixtures/acme` with a scratch `CODE_ATLAS_HOME` at commit `a03744e`.
 
+The language-server, edit-command and parse-budget material was not part of that run; numbers there say where they come from.
+
 ## Building and the SQLite flag
 
 ```sh
@@ -43,9 +45,15 @@ Project resolution (for commands without `-p`): the `.code-atlas.toml` marker fo
 | 1 | runtime error |
 | 2 | usage or config error (bad flags, ambiguous or no project, invalid values) |
 | 3 | degraded: results were printed but the index is stale, partial or incomplete (also an `enrich` run that skipped tasks) |
-| 4 | answered, but nothing matched (target not found or ambiguous, run or file not found) |
+| 4 | answered, but nothing matched (read commands only: target not found or ambiguous, run or file not found) |
+| 5 | edit refused, nothing written: stale, foreign or unversioned plan, safe-delete blockers, ambiguous target, a missing file or a file given as a symbol target, no or several matches, scope violation, unverified sites, server refusal. Edit commands never exit 4; an endpoint given as an edit target is an invalid target and exits 2 |
+| 6 | edit failed and was rolled back, nothing changed |
+| 7 | edit partially applied: some files changed and the rollback failed; the output lists them. Never exits 0 |
+| 130 | interrupted; a write in progress finishes first so no file is left half written. If the edit then turns out refused, rolled back or partially applied, the exit is 5, 6 or 7 instead; any other outcome exits 130, never 0 |
 
-Verified: `index` and queries on a healthy index exit 0; `symbol Nope` exits 4; running outside any project exits 2; `enrich` with LLM disabled exits 3.
+An applied or dry-run edit whose index freshness is degraded exits 3. `lsp check` exits 1 when a server failed to start or become ready, 3 when a server is ready but reports an unhealthy workspace. `doctor` exits 3 on warnings and 1 on failures. A language server that is unavailable or disabled exits 1 with an install hint.
+
+Verified: `index` and queries on a healthy index exit 0; `symbol Nope` exits 4; running outside any project exits 2; `enrich` with LLM disabled exits 3. Exit codes 5 to 7 are read from the code (`crates/atlas-cli/src/error.rs`) and the `--help` text; they were not re-run for this page.
 
 ## CLI reference
 
@@ -64,12 +72,22 @@ Global flags: `-p, --project <NAME>`, `--log-level <FILTER>` (overrides `RUST_LO
 | `watch` | keep the index fresh in the foreground until Ctrl-C; reloads on registry changes, persists similarity on exit |
 | `scip` | run compiler-grade indexers now |
 | `enrich [--budget-calls N] [--budget-tokens N] [--summaries] [--dry-run]` | opt-in LLM enrichment; `--dry-run` lists each task's candidates without calling the LLM or writing facts; `--summaries` adds module capability summaries |
-| `query overview\|search\|symbol\|callers\|callees\|dependents\|dependencies\|impact\|tests-for\|api\|similar\|unused\|patterns\|context\|explain\|read\|changes` | the query surface; all accept `--json` |
+| `query overview\|search\|symbol\|callers\|callees\|dependents\|dependencies\|impact\|tests-for\|api\|similar\|unused\|patterns\|context\|explain\|read\|changes` | the graph query surface; all accept `--json`. The CLI keeps `read` and `changes`; MCP folded them into `atlas_symbol mode=source` and `atlas_status since_run` |
+| `find <NAME_PATH> [--path P] [--depth N] [--body] [--substring] [--kind K]... [--exclude-kind K]... [--max N]` | name-path symbol search in the graph (no server) |
+| `outline <[REPO:]PATH> [--depth N] [--source lsp\|graph]`, `refs <TARGET> [--source lsp\|graph]`, `decl <[REPO:]PATH:LINE:COL>` or `decl --path P --regex R`, `impls <TARGET>`, `diagnostics <[REPO:]PATH> [--lines A-B] [--min-severity error\|warning\|info\|hint]` | exact answers from the language servers (`--source graph` for graph results where offered); `decl --regex` needs exactly one match in the file |
+| `hierarchy <TARGET> [--depth N]` | supertypes and subtypes from the graph |
+| `edit rename <TARGET> <NEW> [--cross-repo report\|apply] [--allow-unverified]` | exact rename |
+| `edit replace-body\|insert-before\|insert-after <TARGET> (--text T \| --text-file FILE\|-)` | symbol edits (no language server needed) |
+| `edit safe-delete <TARGET>` | delete only when nothing references the symbol |
+| `edit replace <[REPO:]PATH> --pattern P (--text T \| --text-file F) [--regex] [--all]` | text edit in one file; exactly one match unless `--all` |
+| `edit replace-in-files --pattern P (--text T \| --text-file F) [--regex] [--include G]... [--exclude G]... [--occurrence ID]... [--expected-count N]` | text edit across files; a dry run unless `--occurrence` or `--expected-count` is given |
+| `edit apply <PLAN.json> [--json]` | apply a plan file written by `--dry-run --plan-out` |
+| `lsp check [--json]` | start each language server once and report discovery, versions, readiness time and workspace health |
 | `search`, `impact`, `context`, `callers`, `callees`, `symbol`, `api`, `explain`, `read`, `tests-for` | shortcuts for the same `query` subcommands (none for `similar`, `unused`, `patterns`, `changes`, `overview`, `dependents`, `dependencies`) |
 | `connect claude [--scope project\|user] [-y]` | wire into Claude Code, see [agent integration](agent-integration.md) |
 | `mcp [--watch]` | serve MCP on stdio |
 | `debug run <ID>`, `debug explain-context <TASK>`, `debug dump-file <REPO:PATH>` | per-run phase timings and counts, context scoring, raw facts of a file |
-| `doctor` | check home, registry, repos, database integrity, index lock, `rust-analyzer`, `npx`, `claude`, SQLite build |
+| `doctor [--lsp]` | check home, registry, repos, database integrity, index lock, `rust-analyzer`, `typescript-language-server` discovery (one line per candidate), TypeScript 7 repos, `npx`, `claude`, SQLite build; `--lsp` also starts each language server and reports its health (slow) |
 
 Every query accepts `--json`. Other flags are per command (`code-atlas query <command> --help` is authoritative):
 
@@ -77,10 +95,10 @@ Every query accepts `--json`. Other flags are per command (`code-atlas query <co
 |---|---|
 | `search` | `--kind`, `--repo`, `--limit`, `--include-stale` |
 | `symbol` | `--body`, `--kind`, `--repo` |
-| `callers`, `callees`, `dependents`, `dependencies`, `impact` | `--depth`, `--limit`, `--min-confidence`, `--kind`, `--repo` |
+| `callers`, `callees`, `dependents`, `dependencies`, `impact` | `--depth`, `--limit`, `--min-confidence`, `--kind`, `--repo`; `callers` and `callees` also `--via-http` |
 | `tests-for` | `--limit`, `--min-confidence`, `--kind`, `--repo` |
 | `api` | `--repo`, `--endpoint "GET /x"`, `--limit`, `--min-confidence` |
-| `similar` | target or `--snippet FILE:START-END`, `--limit`, `--threshold`, `--include-stale`, `--kind`, `--repo` |
+| `similar` | target, `--snippet FILE:START-END` or `--code FILE\|- --language rust\|ts\|tsx\|js` (draft code), `--limit`, `--threshold`, `--include-stale`, `--kind`, `--repo` |
 | `unused` | `--kind`, `--repo`, `--limit` |
 | `patterns` | `--limit`, `--no-excerpts` |
 | `context` | `--budget`, `--seed`, `--explain`, `--min-confidence` |
@@ -89,6 +107,8 @@ Every query accepts `--json`. Other flags are per command (`code-atlas query <co
 | `changes` | `--since-run`, `--limit` |
 
 `--snippet` takes a path relative to the working directory (resolved to a file inside a registered repo) or an explicit `repo:path:START-END`.
+
+Every edit subcommand takes `--dry-run` (diffs and a plan id, nothing written), `--plan-out FILE` (with `--dry-run`: write the plan as JSON) and `--json`. A plan file is versioned (`version: 1`); a plan with a missing or different version, another project's plan, or one whose files changed since planning is refused (exit 5). Rename and safe-delete plans are also refused when the index recorded any file change since the plan was made. Targets are names, name paths (`A/b`), keys, `[repo:]path:LINE[:COL]` (1-based line, UTF-8 byte column) or `[repo:]path`.
 
 Quickstart output (acme): `indexed acme: run 1, 58 files updated`; `status` shows `fresh run=1`, `parse ok 58`, `scip: never run`.
 
@@ -104,8 +124,17 @@ Quickstart output (acme): `indexed acme: run 1, 58 files updated`; `status` show
 | `scip.enabled` | `--scip on\|off` | off; when on, SCIP runs automatically while `watch` or `mcp --watch` is active |
 | `scip.debounce_secs` | `--scip-debounce <SECS>` | 30; quiet time before an automatic run |
 | `max_file_bytes` | `--max-file-bytes <BYTES>` | 1048576 |
+| `lsp.enabled` | `--lsp on\|off` | **on**: exact operations may start language servers |
+| `lsp.download` | `--lsp-download on\|off` | **on**: a missing typescript-language-server is fetched through `npx` (pinned `typescript-language-server@5` and `typescript@5`) |
+| `lsp.typescript_command` | `--lsp-ts-command <WORD>` repeated per argv word (first an absolute path; `--stdio` is added), `--lsp-ts-command-clear` | none |
+| `lsp.exclude` | `--lsp-exclude <GLOB>` (repeatable, replaces the list; repo-relative), `--lsp-exclude-clear` | none |
+| `lsp.unit` | `--lsp-unit project\|repo` | project: one server per language |
+| `lsp.max_servers` | `--lsp-max-servers <N>` | 2 |
+| `lsp.idle_secs` | `--lsp-idle-secs <SECS>` | 600; a warm server idle this long is stopped |
+| `lsp.ready_timeout_secs` | `--lsp-ready-timeout-secs <SECS>` | 300 |
+| `lsp.check_timeout_secs` | `--lsp-check-timeout-secs <SECS>` | 120; how long `lsp check` and flychecks wait |
 
-Changing `max_file_bytes` changes the project fingerprint; running engines reload. Per-repo `include`, `exclude` (gitignore-style globs) and `languages` (`rust`, `ts`) are set with `project add-repo` / `project set-repo` or by editing `projects.toml`:
+Changing `max_file_bytes` changes the project fingerprint; running engines reload. A long-lived MCP server adopts changed `lsp` settings without a restart. Per-repo `include`, `exclude` (gitignore-style globs) and `languages` (`rust`, `ts`) are set with `project add-repo` / `project set-repo` or by editing `projects.toml`:
 
 ```toml
 [[project.repo]]
@@ -116,6 +145,47 @@ languages = ["typescript"]
 ```
 
 The registry denies unknown fields. Default excluded directories: `node_modules target dist build .git .next coverage vendor` (an `include` pattern naming one re-enables it); hidden files and `.gitignore`d files are skipped; symlinks and files above `max_file_bytes` are skipped and listed in `status`.
+
+## Language servers
+
+Exact reads (`outline`, `refs`, `decl`, `impls`, `diagnostics`) and exact edits (`rename`, `safe-delete`) come from rust-analyzer and typescript-language-server. Their answers are never stored in the graph and carry `[compiler]` with the server and version.
+
+**Defaults and consent.** `lsp.enabled` and `lsp.download` are both on by default (decision 2026-10-05), so the first exact TypeScript call in a project with no installed server downloads packages through `npx`. `project config <p> --lsp off` disables servers (exact operations then fail with a message saying so), and `--lsp-download off` stops downloads. rust-analyzer is never downloaded: install it with `rustup component add rust-analyzer`.
+
+**Discovery order.**
+
+- rust-analyzer: `PATH`, then `rustup which rust-analyzer`.
+- typescript-language-server: the configured `lsp.typescript_command`, `PATH`, `<repo root>/node_modules/.bin` for each TypeScript repo root, the npx cache (`npx --no-install`), then the download (only after `npm ping` answers). Each candidate is probed with `--version`; a broken candidate is skipped with its reason, except that a configured `lsp.typescript_command` that fails stops discovery rather than falling through to another server. `doctor` and `lsp check` print one line per step.
+- tsserver: the first repo root whose `node_modules/typescript` is below version 7 and has `lib/tsserver.js`; otherwise the TypeScript bundled with the server, if it can be verified below 7.
+- **TypeScript 7 is refused.** It ships no `tsserver.js`. A server reporting TypeScript 7 or later is retired and the call fails as unavailable (the unit refuses for 60 s without spawning); install `typescript@5` beside the server or use the bundled one. `doctor` warns for each repo whose `node_modules` holds TypeScript 7.
+
+**Lifecycle.**
+
+- MCP (`code-atlas mcp`): servers are started by the first exact call, kept warm and shared across calls, at most `lsp.max_servers` (2: one per language by default), the least recently used evicted over the cap, idle ones stopped after `lsp.idle_secs`. There is no prewarm, so the first call per language pays the cold start. A server that crashes is restarted on the next call; three failures within 10 minutes pause that server for 10 minutes. Servers are stopped on SIGTERM and SIGINT.
+- CLI: one-shot. `outline`, `refs`, `decl`, `impls`, `diagnostics`, `edit rename`, `edit safe-delete` and `lsp check` start a server, wait for readiness, answer and stop it. `edit replace-body`, `insert-before` and `insert-after` start none (they cross-check against a server only when one is already warm, which a one-shot process never has). Cold start, measured: 2 to 5 s for TypeScript on fixtures; 20 to 65 s for rust-analyzer (22 s for a 2-crate workspace, 64 s for `acme-billing`, from the `--help` text), longer on large workspaces. Measured in review, not in a checked-in report: about 58 s cold and 6 s warm on this workspace, with about 2.1 GB resident. Use the MCP server, not repeated CLI calls, for interactive work.
+- Servers sync to the working tree before every call from the index run ledger. An unknown change set (a gap in the ledger, more than 1,000 changed files) restarts the server.
+
+**Settings that matter.**
+
+- `lsp.exclude` drops matching Cargo projects from rust-analyzer's `linkedProjects` and refuses exact operations on files under them (for TypeScript it only refuses files, since workspace folders are repo roots). A repository that contains fixture crates needs it: rust-analyzer reported `health = error` on a full copy of this repository until the fixtures were excluded. For this repository: `code-atlas project config <p> --lsp-exclude 'fixtures/**' --lsp-exclude 'crates/*/tests/pin-corpus/**' --lsp-exclude 'eval/**'`. While a server reports `health = error`, reads are answered `PARTIAL` with its message and edits refuse.
+- `lsp.unit = repo` runs one server per repo instead of per language.
+
+**Side effects and limits.**
+
+- rust-analyzer can rewrite `Cargo.lock`. Code Atlas does not restore it; the answer carries a warning naming the file (`was rewritten by rust-analyzer since it started`), unlike SCIP, which restores it.
+- rust-analyzer builds the workspace (build scripts, proc macros) in a cargo target directory outside the repo, so a first call is slow and uses disk.
+- Edit results report native diagnostics only: for Rust, rust-analyzer's own errors with `cargo check` not run.
+- Manifest edits (`Cargo.toml`, `package.json`, `tsconfig*.json`) are not in the engine's change set. atlas-ide compares the root and package manifests on every sync and restarts or caveats the server; this is a workaround, tracked as ENGINE-1.
+
+**Checking.** `code-atlas doctor` shows discovery without starting anything (it does not probe the npm registry); `code-atlas doctor --lsp` and `code-atlas lsp check` start each server once and report versions, readiness time and workspace health; `atlas_status` lists running servers with phase, uptime, idle time and resident memory.
+
+## Parse budget
+
+tree-sitter error recovery can loop forever on some malformed Rust and TSX inputs. Every analysis therefore runs under a budget of 2 s plus 1 s per 100 KiB of source, capped at 30 s, charged in the analysing thread's CPU time (a 10x wall-clock backstop applies, and a parse that makes no progress for 2 s of CPU is stopped early). A file that overruns becomes a failed file (`parse budget exceeded (...)`), its facts are removed and the run is `DEGRADED`.
+
+Because overruns depend on machine load, they are retried: once in the same run at 2x the budget (serially, when at most `available_parallelism` files failed), then in later runs after 1 minute, 10 minutes and 1 hour at 4x, 8x and 16x (capped at 30 s). After that the file waits for a change. `status` lists each budget-failed file with its next retry.
+
+Latency costs: a run that first meets K hung files adds about 6 to 10 s to the query that triggers it for small files, whatever K is (review, 24 hung files: first query 100 s under the first revision with uncapped serial retries, 4.6 s with the final capped retries). A due retry adds up to about 10 s to the barrier that runs it (a hang stops at the 8 s stall limit; a file that keeps advancing may use up to 30 s of CPU). Under extreme starvation the wall time grows with the slowdown, up to the 10x backstop: an escalated retry of a large file can take up to 300 s. These review measurements are not in a checked-in report.
 
 ## Watch and freshness
 
@@ -150,7 +220,7 @@ code-atlas -p acme enrich --budget-calls 50 --budget-tokens 200000
 
 ## Doctor
 
-`code-atlas doctor` prints one line per check (`ok`, `warn`, `fail`) and a summary (`0 failures, 0 warnings`): home paths, registry parse, whether the working directory is in a project, every repo path, database integrity (`PRAGMA integrity_check`), index lock state, `rust-analyzer`, `npx`, `claude` versions, and the SQLite build flags. Run it first when something looks wrong; follow with `status` and `debug run <id>`.
+`code-atlas doctor` prints one line per check (`ok`, `warn`, `fail`) and a summary (`0 failures, 0 warnings`): home paths, registry parse, whether the working directory is in a project, every repo path, database integrity (`PRAGMA integrity_check`), index lock state, `rust-analyzer`, `typescript-language-server` discovery and TypeScript 7 repos, `npx`, `claude` versions, and the SQLite build flags. With `--lsp` it also starts each language server of the project in scope and reports its readiness and health. It exits 3 when there are warnings and 1 on failures. Run it first when something looks wrong; follow with `status` and `debug run <id>`.
 
 ## Logging
 

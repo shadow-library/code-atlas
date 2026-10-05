@@ -669,6 +669,7 @@ code-atlas project config <p> --lsp on|off --lsp-download on|off --lsp-ts-comman
   - `should_convert_utf16_columns_around_astral_characters`
   - `should_round_trip_file_uris_with_spaces_and_unicode`
 - **Fake server process.**
+  - *As built:* the binary lives in the unpublished test crate `atlas-test-lsp`, and tests locate it with `atlas_test_lsp::fake_lsp_path()` instead of `CARGO_BIN_EXE_atlas-fake-lsp`.
   - `crates/atlas-lsp/src/bin/atlas-fake-lsp.rs`, driven by a JSON scenario: canned responses per method, delays, `crash_after`, progress and status sequences, a grandchild sleeper.
   - It is a real `[[bin]]`, so integration tests get `CARGO_BIN_EXE_atlas-fake-lsp`. libtest helpers cannot be used: they print to stdout and would corrupt the framing.
   - Names:

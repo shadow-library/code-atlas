@@ -12,6 +12,10 @@ use crate::error::{CliError, CliResult};
 use crate::output::{Outcome, emit};
 
 pub fn run(ctx: &Context, command: EditCommand) -> CliResult<Outcome> {
+  dispatch(ctx, command).map_err(CliError::for_edit)
+}
+
+fn dispatch(ctx: &Context, command: EditCommand) -> CliResult<Outcome> {
   match command {
     EditCommand::Apply(args) => apply(ctx, args),
     EditCommand::Rename(args) => rename(ctx, args),

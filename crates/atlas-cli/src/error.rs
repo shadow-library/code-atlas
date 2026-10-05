@@ -78,6 +78,8 @@ pub enum CliError {
   InvalidSetting(String),
   #[error(transparent)]
   Ide(#[from] IdeError),
+  #[error(transparent)]
+  EditRefused(Box<CliError>),
   #[error("invalid plan file {}: {message}", .path.display())]
   InvalidPlan { path: PathBuf, message: String },
   #[error("{0}")]
@@ -107,6 +109,18 @@ impl CliError {
     }
   }
 
+  pub fn for_edit(self) -> Self {
+    let unmatched = match &self {
+      Self::Ide(IdeError::FileNotFound { .. } | IdeError::EndpointTarget { .. } | IdeError::NotASymbol { .. }) => true,
+      Self::Ide(IdeError::Edit(EditError::Io { source, .. })) => source.kind() == io::ErrorKind::NotFound,
+      _ => false,
+    };
+    match unmatched {
+      true => Self::EditRefused(Box::new(self)),
+      false => self,
+    }
+  }
+
   pub fn exit(&self) -> Exit {
     match self {
       Self::Project(error) => project_exit(error),
@@ -126,6 +140,7 @@ impl CliError {
       | Self::InvalidInput(_)
       | Self::ClaudeUnavailable { .. } => Exit::Usage,
       Self::Ide(error) => ide_exit(error),
+      Self::EditRefused(_) => Exit::Refused,
       Self::RunNotFound(_) | Self::FileNotIndexed { .. } => Exit::NoMatch,
       _ => Exit::Failure,
     }
@@ -148,6 +163,7 @@ impl CliError {
       Self::RunNotFound(_) => Some("list recent runs with `code-atlas status`"),
       Self::FileNotIndexed { .. } => Some("check the repo name with `code-atlas project show` and the path relative to the repo root"),
       Self::Ide(error) => ide_hint(error),
+      Self::EditRefused(error) => error.hint(),
       Self::InvalidPlan { .. } => Some("make a plan with `code-atlas edit <operation> --dry-run --plan-out plan.json`"),
       Self::MalformedGuidance(_) => Some("fix or delete the code-atlas:begin / code-atlas:end markers, then rerun"),
       Self::InvalidConfig { .. } => Some("fix the file by hand; Code Atlas will not overwrite it"),

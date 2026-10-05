@@ -1,6 +1,6 @@
 # Evaluation methodology
 
-Four harnesses measure four different things. None replaces the others.
+Four harnesses measure four different things, plus a rename scenario run inside the quality eval. None replaces the others.
 
 | Harness | Question | Binary | Output |
 |---|---|---|---|
@@ -35,6 +35,18 @@ target/release/atlas-eval quality --only acme --no-scip --no-refactors --out /tm
 ```
 
 Other flags: `--repo-root`, `--date`, `--scip-work`, `--scip-only`, `--scip-timeout-secs` (1800), `--context-tasks`. The full run with SCIP needs `rust-analyzer`, `npx` and network or a warm npm cache, and takes minutes.
+
+## Rename eval (inside the quality eval)
+
+**Question.** Does a rename plan edit exactly the sites that reference the symbol, and list the ones it cannot see?
+
+**Method.** `[[rename_sites]]` tables in a fixture's `expected.toml` (format in `fixtures/expected.schema.md`) give, per scenario, the symbol, the new name, every site the plan must edit, the sites it must list as not renamed with a reason, and lines that mention the name but must not be edited. The evaluator copies the fixture to a temporary directory, indexes it, plans the rename as a dry run through `IdeService` with one-shot language servers, and scores edit recall, edit precision, report recall and violations. A planned edit whose original text is not the old name never counts as a hit. A scenario without a language server is skipped, never scored as zero; a failed scenario counts its expected sites as missed. `atlas-eval quality` runs it by default (`--no-rename` skips, `--rename-only` writes `rename.md` and `rename.json`); a test that uses the real rust-analyzer runs only with `ATLAS_TEST_RENAME_REAL=1`.
+
+**Limits.**
+
+- The fixtures were used while rename was built, so the scores are a regression check, not a held-out evaluation. The report says so at the top.
+- It scores plans, not applied edits, and does not compile the result.
+- Real-repository evidence (hono, this repository; compile before and after) comes from review trials, not from this harness, and has no checked-in report.
 
 ## Retrieval eval
 

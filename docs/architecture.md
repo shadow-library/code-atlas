@@ -1,6 +1,6 @@
 # Architecture
 
-Code Atlas is a Cargo workspace of 17 crates. One *project* (a named set of repos) owns one SQLite database. The engine keeps that database equal to the working tree; the query layer reads it; the CLI and MCP server are thin front ends over the query layer.
+Code Atlas is a Cargo workspace of 20 product crates plus the unpublished test crate `atlas-test-lsp`. One *project* (a named set of repos) owns one SQLite database. The engine keeps that database equal to the working tree; the query layer reads it; the CLI and MCP server are thin front ends over the query layer.
 
 ## Crates
 
@@ -17,12 +17,16 @@ Code Atlas is a Cargo workspace of 17 crates. One *project* (a named set of repo
 | `atlas-scip` | runs rust-analyzer and scip-typescript, ingests SCIP as `compiler_verified` edges, reconciles with our edges |
 | `atlas-semantic` | `LlmProvider` backends (claude CLI, Anthropic HTTP, OpenAI-compatible), prompts, budget, call cache, inferred facts, revalidation |
 | `atlas-engine` | full and incremental pipeline, freshness barrier, lineage, locks, watcher, SCIP and enrich orchestration, `ProjectPass` |
-| `atlas-query` | the query surface shared by CLI and MCP: context packs, impact, callers, API, unused, similar, patterns, explain, status |
-| `atlas-mcp` | MCP stdio server (16 tools) |
+| `atlas-query` | the query surface shared by CLI and MCP: context packs, impact, callers, API, unused, similar, patterns, explain, status, and the graph-side symbol modes (find, hierarchy, source, graph outline and references) |
+| `atlas-lsp` | blocking stdio JSON-RPC client for language servers, hand-written LSP types, server processes and pool, document sync, TypeScript server discovery. Depends on `atlas-core` only |
+| `atlas-edit` | edit plans, path-guarded atomic application with rollback, text operations, symbol regions. No LSP, no engine; depends on `atlas-core` and `atlas-project` |
+| `atlas-ide` | `IdeService`: exact operations over language servers (references, declaration, implementations, outline, diagnostics, rename, safe delete) plus graph extras, symbol and text edits, plan files. Shared by CLI and MCP |
+| `atlas-mcp` | MCP stdio server (15 tools) |
 | `atlas-cli` | the `code-atlas` binary |
+| `atlas-test-lsp` | unpublished (`publish = false`) test crate that owns the only fake language-server binary; tests locate it with `atlas_test_lsp::fake_lsp_path()`; it is a dev-dependency only, so no product build includes it |
 | `atlas-bench`, `atlas-eval` | performance harness and evaluation harness (quality and agent A/B) |
 
-Dependency direction: `core` at the bottom; analyzers depend on `core` only; `engine` depends on everything below it; `query` on `engine`; `mcp` and `cli` on `query`. `atlas-link` cannot implement `ProjectPass` itself because `atlas-engine` depends on it; the engine registers it as the pass `link`.
+Dependency direction: `core` at the bottom; analyzers and `atlas-lsp` depend on `core` only; `engine` depends on everything below it; `query` on `engine`; `atlas-ide` on `query`, `engine`, `atlas-lsp`, `atlas-edit` and `atlas-scip` (to locate rust-analyzer); `mcp` and `cli` on `query` and `atlas-ide`. `atlas-link` cannot implement `ProjectPass` itself because `atlas-engine` depends on it; the engine registers it as the pass `link`.
 
 ## Data flow
 
@@ -51,6 +55,8 @@ Dependency direction: `core` at the bottom; analyzers depend on `core` only; `en
         |                                          code-atlas enrich -> inferred facts (LLM)
         +-- file owners, project-pass owners, SCIP owners, inferred facts, blobs, run ledger
 ```
+
+Language servers sit beside this flow, not in it. `atlas-ide` runs the barrier first, syncs a server (one per language by default, started by the first exact call, kept warm under MCP and one-shot under the CLI) to the working tree from the run ledger, then asks it. Exact answers are rendered `[compiler]` and are never written to the store. Edits go through `Engine::write_then_refresh`, which holds the engine mutex and the index lock across the atomic write and an incremental refresh, so no barrier in any process indexes a half-applied edit. Lock order is IDE edit mutex, barrier, language-server unit mutex, then engine mutex, index lock and `<db>.edit.lock`. See `crates/atlas-ide/CLAUDE.md` and the [operations](operations.md#language-servers) page.
 
 Pipeline phases as reported by `code-atlas debug run <id>`: `plan, analyze, symbols, load, resolve, manifests, existence, lineage_inputs, encode, persist, dependents, similarity, lineage, passes, finish`.
 
@@ -96,6 +102,7 @@ SCIP and LLM enrichment never run inside the barrier (automatic SCIP runs on the
 | In-flight marker | `engine:dirty` exists while a run is in flight; a barrier that sees it first tries the index lock without waiting: if the lock is free the previous run crashed and the barrier recovers; if it is busy, a run is live and the barrier waits for the lock (up to the lock timeout) |
 | Store | one writer at a time; re-entering the store from a thread already holding a transaction fails with `StoreError::Reentrant` |
 | Watcher | notify events mark the watcher dirty and are debounced (200 ms); similarity is persisted after 30 s idle |
+| Edits and language servers | one edit per process at a time (dry runs included); a per-server mutex serialises requests; `<db>.edit.lock` is taken only inside the write; at most `lsp.max_servers` (2) servers per process |
 | Registry | `projects.toml` is read-modify-written under `projects.toml.lock` |
 
 Several processes (CLI, MCP server, `watch`) can use one project at once. The MCP server serves one project; it reloads the registry when the project configuration changes and persists the similarity index on SIGTERM and SIGINT.
@@ -108,6 +115,9 @@ Several processes (CLI, MCP server, `watch`) can use one project at once. The MC
 | Syntax errors | tree-sitter partial parse: facts around the error are extracted, file marked `partial` with up to 8 reported errors; surfaced as a caveat on queries that touch it |
 | File above `max_file_bytes` (default 1 MiB), symlink, non-UTF-8 path | skipped, listed in `status` and as `skipped N files` in the query header; not an error |
 | Analyzer or pass panic | caught; the file or pass fails, the run is `partial` |
+| Analysis exceeds its parse budget | file recorded as failed (`parse budget exceeded`), its facts removed, run `Degraded`; retried in the same run and with backoff in later runs (see [operations](operations.md#parse-budget)) |
+| Language server missing, disabled, crashed or not ready | exact operations fail with a typed error and an install hint, or answer `PARTIAL`; the index is unaffected; three failures within 10 minutes pause the server for 10 minutes |
+| Edit write fails | rolled back (exit 6), or reported as partially applied with the files left changed (exit 7); the index is refreshed in both cases. There is no journal for a crash mid-write; the next apply sweeps leftover temp files |
 | Crash mid-run | `engine:dirty` found on next lock: orphaned runs marked `failed`, state reloaded, every file re-resolved |
 | Dependency rounds do not converge | run stays `partial` and keeps the dirty marker; next run re-resolves everything |
 | Registry changed under a long-lived engine | `Degraded("project configuration changed; reopen the engine")`; `watch` and the MCP server reload |

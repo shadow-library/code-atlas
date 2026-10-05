@@ -206,6 +206,9 @@ fn guidance_block(project: &str) -> String {
      - Start a task with `context`, giving it the task description.\n\
      - Before changing a shared symbol, endpoint or type, run `impact` on it.\n\
      - Before writing a new helper, run `search` and `similar` to find code to reuse.\n\
+     - Read only the code the results list. Use `atlas_symbol` with `mode=source` only for code you will not edit yourself; read files you will edit with your own tool.\n\
+     - To rename or rewrite a symbol, use `atlas_edit` (exact across files), not find-and-replace. After it changes a file, re-read that file before editing it yourself.\n\
+     - After editing, call `atlas_status` with `since_run`, or re-query; there is no reindex tool.\n\
      - When a relation drives a decision, run `explain` on it to see its evidence.\n\
      - Untagged entities and relations tagged `[resolved]`, `[syntactic]`, `[compiler]` or `[declared]` are reliable but not exhaustive; treat anything tagged `[heuristic]` or `[inferred]` as a lead to verify in the source. A tag after an entity name tags the entity; a tag in parentheses or in a `verb target [tag]` step tags the relation.\n\
      - If an answer's first line says DEGRADED, verify it against the files before relying on it.\n\

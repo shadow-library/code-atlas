@@ -17,12 +17,13 @@ Supported file extensions: `rs`; `ts mts cts`; `tsx`; `js mjs cjs`; `jsx` (`Lang
 | Similarity and lineage | body fingerprints (normalized token streams, capped at 4,096 tokens) | same |
 | Tests | `#[test]`, `rstest`, `test_case`, `<framework>::test` attributes (for example `tokio::test`); `#[cfg(test)]` modules; `tests/` integration directory | `describe`/`it`/`test` calls; frameworks identified: `jest` (globals and `@jest/globals`), `vitest`, `mocha`; `node:test` and `bun:test` recognised as unknown framework; `.spec.`/`.test.` files and `__tests__`/`test`/`tests` directories |
 | Compiler-grade verification | rust-analyzer SCIP | scip-typescript SCIP |
+| Exact operations (live, not stored) | rust-analyzer (PATH or `rustup which`; never downloaded) | typescript-language-server 5.x with TypeScript below 7 (installed, or fetched through `npx` when downloads are on); TypeScript 7 has no `tsserver` and is refused |
 
 `atlas-lang-rust` and `atlas-lang-ts` must never panic on any input; a failure becomes a failed-file record, not a crash. Details of resolver certainty rules are in [knowledge model](knowledge-model.md#certainty-classes) and `crates/atlas-resolve/CLAUDE.md`.
 
 ## Frameworks and detectors
 
-Ten detectors run on every analyzed file (`DetectorRegistry::default`). Each emits entities and edges with its own certainty, plus diagnostics (for example `route-dynamic`, `http.dynamic_url`).
+Eleven detectors run on every analyzed file (`DetectorRegistry::default`). Each emits entities and edges with its own certainty, plus diagnostics (for example `route-dynamic`, `http.dynamic_url`).
 
 | Detector | Detects | Libraries and conventions | Tested on fixtures |
 |---|---|---|---|
@@ -33,6 +34,7 @@ Ten detectors run on every analyzed file (`DetectorRegistry::default`). Each emi
 | `auth` | auth schemes and guards | Nest guards, `@nestjs/passport` (`AuthGuard`, `PassportStrategy`, strategies `passport-jwt` etc.), Nest and Express middleware, axum middleware, Rust extractors; header and cookie reads (`Authorization`, `x-api-key`, cookies) classify `bearer`, `api_key`, `basic`, `session_cookie` | acme-api |
 | `config-env` | env var and config reads | `process.env.X`, destructuring, `import.meta.env`, `std::env::var`/`var_os`, `dotenvy`, `ConfigService.get/getOrThrow` | acme, globex |
 | `tests` | test to file coverage | naming conventions (`foo.spec.ts` covers `foo.ts`; Rust `tests/` and `_test.rs`), `#[cfg(test)]` modules | acme |
+| `test-mocks` | jest and vitest mocks and spies in test code, linked to the mocked class or interface member | `jest.fn()`/`vi.fn()` properties, `createMock`/`jest.Mocked` bindings, `spyOn` and `mockImplementation`-style setups; edges are `heuristic 0.60` and carry `mock = replaced` or `spied`. `bun:test` and assignment mocks (`x.m = jest.fn()`) are not detected | unit tests and two real repositories (review) |
 | `events` (experimental) | publishers and subscribers | `EventEmitter`/`EventEmitter2`, receivers named like a bus (`events emitter bus broker queue producer consumer pubsub`) calling `emit publish send` / `on once subscribe listen`; `@OnEvent` from `@nestjs/event-emitter`; Kafka-style `topic` options | acme, globex |
 | `jobs` (experimental) | scheduled jobs | `@nestjs/schedule` (`@Cron`, `@Interval`, `@Timeout`), `node-cron`/`cron` `schedule`, top-level `setInterval`, `tokio_cron_scheduler::Job` | unit tests |
 | `db` (experimental) | tables, models, reads and writes | TypeORM `@Entity`, `sequelize-typescript` `@Table`, Prisma client model calls, SQL string literals (`select insert update delete with merge replace`), `sqlx` macros and `query_as`-style calls | acme (TypeORM), unit tests |

@@ -34,6 +34,7 @@ Notes:
 | `imports`, `re_exports` | resolver | `resolved`; `heuristic` when a hop went through `dist-to-src` |
 | `calls`, `references`, `instantiates`, `type_of` | resolver | `resolved` for unique results; `heuristic` for dispatch candidates, name-only matches, macro token scans; `compiler_verified` after SCIP |
 | `implements`, `extends` | resolver | `resolved`; `compiler_verified` after SCIP |
+| `references` with attr `mock` (`replaced` or `spied`) | `test-mocks` detector, from test code to the mocked member | `heuristic 0.60`; queries never count a mock edge as production use or as a test exercising its target |
 | `depends_on_package` | manifests; link pass adds `cross_repo`/`target_repo` | `syntactic`, `resolved` |
 | `exposes_endpoint` | endpoint detectors plus handler resolution | `syntactic`, `resolved`, `heuristic` (computed routes) |
 | `requires_guard`, `implements_auth`, `makes_request` | detectors only; consumed by the link pass | `resolved`, `heuristic` |
@@ -63,6 +64,8 @@ Every edge and derived entity has exactly one `Certainty`:
 | `declared` | `[declared]` | Asserted by configuration rather than code: registered repos, the link pass status entity | yes |
 | `heuristic` | `[heuristic 0.72]` | A named rule with a confidence in 0..1: dispatch candidates, name-only matches, macro token scans, route and base-URL matching, naming conventions, absence ("no detected client") | no |
 | `inferred` | `[inferred 0.81]` | Produced by an LLM with provider, model, rationale and evidence. Can go stale | no |
+
+The same `[compiler]` tag is rendered on live language-server answers (`atlas_symbol` references, declaration, implementations, diagnostics; `atlas_edit` plans), with `source = "lsp:<server> <version>"`. Those answers are not graph facts: they are never stored and are valid for the configuration the server loaded (features, target, loaded projects). A partial one is marked `PARTIAL`. Graph sites that the server did not return keep their own graph tags beside it.
 
 `is_authoritative()` is true for the four exact classes. "Authoritative" means exact under the class's derivation, not exhaustive. `is_llm_derived()` is true only for `inferred`.
 

@@ -354,6 +354,31 @@ fn should_refuse_an_ambiguous_edit_target_with_exit_5() {
 }
 
 #[test]
+fn should_exit_5_when_an_edit_names_a_missing_file() {
+  let demo = Demo::new();
+
+  let refused = demo.run(&["edit", "replace", "web:src/missing.ts", "--pattern", "x", "--text", "y"]).expect(5);
+
+  assert!(refused.stderr.contains("missing.ts"), "{refused}");
+}
+
+#[test]
+fn should_exit_5_for_a_file_target_and_2_for_an_endpoint_target_never_4() {
+  let demo = Demo::new();
+  fs::write(
+    demo.root.join("src/routes.ts"),
+    "import express from 'express';\nconst app = express();\napp.get('/ping', (req, res) => res.send('pong'));\n",
+  )
+  .unwrap();
+
+  let file = demo.run(&["edit", "rename", "web:src/money.ts", "other"]).expect(5);
+  let endpoint = demo.run(&["edit", "rename", "GET /ping", "other"]).expect(2);
+
+  assert!(file.stderr.contains("money.ts"), "{file}");
+  assert!(endpoint.stderr.contains("GET /ping"), "{endpoint}");
+}
+
+#[test]
 fn should_print_outline_and_references_with_the_documented_json_shape() {
   let demo = Demo::new();
   let mut steps = ts_ready();

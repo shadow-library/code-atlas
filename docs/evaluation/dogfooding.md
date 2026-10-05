@@ -25,7 +25,7 @@ Negative
 
 - Both conditions failed the same hidden check (a column name `deleted_at` not set): model capability, not the index.
 - The atlas run used more turns and about 5x the tokens of baseline (including cache reads) on a one-file task, and ran `npm install` on its own.
-- The agent called `atlas_read` on a file and then the native `Read` on the same file, because Claude Code requires a read before an edit. Context was duplicated, and `context` MUST READ bodies duplicated the following `Read` for files being edited. Status: fixed in `35ea452` (descriptions of `atlas_read`, `atlas_context` and the server instructions now say to read files you will edit natively; "likely to edit" items show an outline).
+- The agent called `atlas_read` on a file and then the native `Read` on the same file, because Claude Code requires a read before an edit. Context was duplicated, and `context` MUST READ bodies duplicated the following `Read` for files being edited. Status: fixed in `35ea452` (descriptions of `atlas_read`, `atlas_context` and the server instructions said to read files you will edit natively; "likely to edit" items show an outline). Superseded at `120acc2`: `atlas_read` is now `atlas_symbol mode=source` (view code you will not edit), renames and symbol rewrites go through `atlas_edit`, and the guidance says to re-read a file after `atlas_edit` changed it. The new rule has not been run with an agent.
 
 ## 2026-10-04 end-to-end and adversarial suite findings
 
@@ -81,3 +81,21 @@ Positive
 
 - **Accurate packs.** When a pack was relevant (`t05`, `t02`), the unblinded reviews found it accurate, and atlas runs read fewer bytes (`t05`: 13,655 against 30,614). Only 1 of 21 reviewed packs was judged misleading, for noise rather than wrong facts. These reviews are noisy, though: the identical `t00` r1 pack was judged not misleading.
 - **Clean harness runs.** The harness ran 88 sessions with 0 contaminated runs and recorded the binary's build commit and hash in each report.
+
+## 2026-10-05 to 2026-10-06 IDE operations (`21baaee` to `120acc2`)
+
+Findings from reviewing the rename, edit and language-server work on this repository, hono and fixtures. Numbers are in [results.md](results.md#ide-operations); none of the trials below is a checked-in report.
+
+Negative
+
+- **Rename broke tests on first contact with a real repository.** On hono, 7 of 10 TypeScript renames broke test compilation: tsserver searched only the projects it had loaded, and a solution-style `tsconfig.json` loads a project only when one of its files is opened. The fixtures had not shown it. Fixed by opening the graph's candidate files and one file per containing tsconfig project, and by refusing to apply when same-repo sites were not renamed; the guarantee is scoped to projects linked to the anchor (unlinked ones are not opened).
+- **rust-analyzer was unhealthy on a full copy of this repository** because the fixture and pin-corpus crates were in its `linkedProjects`. Status: `lsp.exclude` was added, and a server with `health = error` now answers `PARTIAL` and refuses edits. This repository needs `fixtures/**`, `crates/*/tests/pin-corpus/**` and `eval/**` excluded.
+- **TypeScript diagnostics never settled on clean files** (typescript-language-server 5.x does not republish an empty result for a file it already reported empty), adding about 20 s per edit and producing "nothing known". Status: close and reopen the document, then settle on two publishes; on heavy load the baseline can still time out and the result is `PARTIAL`.
+- **Silent wrong answers found in review, all fixed before merge:** a rename to an existing name applied silently with a false "no new errors"; `replace_body` on `export const x` wrote `export const export const x`; a decorator whose argument held an apostrophe-bearing comment was dropped by the region scan.
+- **Parse hang.** tree-sitter error recovery looped forever on a 352-byte Rust input; the barrier stalled behind it. Status: `59e357b` bounds parsing by CPU time and retries overruns.
+- **Lexical reuse from prompts did not work** (about 5% precision; dropped), and **`similar` on draft code finds copies but not re-implementations** (0 of 16 structural). See [results](results.md#ide-operations).
+
+Positive
+
+- The safety machinery held under review: stale-file refusal, external-write detection, rollback, lock ordering and the concurrency tests. Applied renames in the final trials added 0 `tsc` errors.
+

@@ -1,17 +1,20 @@
 # Evaluation results
 
-Measured 2026-10-04 and 2026-10-05. Method and harness limits are in [methodology.md](methodology.md). Every number below comes from a committed report under `eval/reports/2026-10-04/` or from a commit message, or was derived from the gitignored run artefacts under `eval/runs/<batch>/`. Each table or paragraph names its source. Derived numbers say how they were computed (see [Appendix](#appendix-derived-numbers)).
+Measured 2026-10-04 to 2026-10-06. Method and harness limits are in [methodology.md](methodology.md). Every number below comes from a committed report under `eval/reports/` or from a commit message, or was derived from the gitignored run artefacts under `eval/runs/<batch>/`, except where a paragraph says it comes from *manual reviewer trials* (independent reviewers' trials during development, with real servers, not reproducible by an `atlas-eval` command; tables checked in as [`review-trials.md`](../../eval/reports/2026-10-06/review-trials.md), raw logs not) or from a review whose numbers are not in that file (the adversarial review of an implementation task, run before its merge; its artefacts are not in the repository). Each table or paragraph names its source. Derived numbers say how they were computed (see [Appendix](#appendix-derived-numbers)).
 
 ## Summary
 
-Three evaluations, three different questions.
+Several evaluations, each asking a different question.
 
 - **Knowledge quality** (`quality.md`). On the hand-written fixtures, Code Atlas found every expected entity (184/184) and edge (98/98), produced none of the 63 checked forbidden edges, and passed 6/6 refactor scenarios with incremental output equal to a full index. Against the compiler oracle (SCIP), `resolved` edges were 97.6% precise over confirmable edges (95.9% all-in) and `heuristic` edges 92.6% (82.9% all-in). Recall is the weak side: our `resolved` edges reproduce 53.3% of SCIP's call, reference and instantiation edges, and all our edges together reproduce 60.8%. Context-pack selection could be scored on one task only, where it found 50% of the relevant files at 10% to 20% precision.
 - **Performance** (`perf-full/perf.md`). This repository (116k LOC) indexes cold in about 1.1 s, and a query's freshness barrier costs 6 ms (p50) when nothing changed. Real repositories index in 322 ms (ripgrep) and 421 ms (hono). A 1M LOC synthetic corpus indexes in 5.6 s with 2.21 GiB peak RSS. Mixed read and write concurrency at 1M LOC is weak: 8 to 26 queries per second, with p95 up to 974 ms. The machine was a loaded desktop.
 - **Agent A/B, batch 1** (primary, planned in advance in implementation plan §3.3, `agent.md`). Every one of the 44 runs passed its hidden tests in both conditions, so correctness was at ceiling and cannot separate the conditions. The agent ignored the offered tools: there were 2 Code Atlas calls in 22 atlas sessions, both in the smoke task. The atlas condition still used 18.7% more tokens. Nearly all of that is the fixed cost of the larger prompt: about 6,300 extra tokens on every model request, almost all of them the definitions of the 16 MCP tools and the server instructions.
 - **Agent A/B, batch 2** (exploratory, post hoc, `agent-directed.md`). With a directive preamble, 21 of 22 atlas sessions called `atlas_context` once. No session called any other Code Atlas tool. Atlas runs read 23% fewer bytes, but used 24.8% more tokens and about 2 more turns. Correctness was again at ceiling. Judge scores and files read differ by about as much as in batch 1's `t01`–`t10`, where the tools went unused. Only the bytes-read reduction exceeds that spread, and with 2 runs per task it is a lead, not a result.
 
-**Bottom line.** The knowledge graph is accurate where it makes claims, and its certainty classes separate more precise edges from less precise ones. On these 11 tasks, however, there is **no evidence that Code Atlas helps a coding agent**: correctness was identical, tokens and cost went up, and without explicit instruction the agent did not use the tools. Both A/B batches cost $18.35 in total ($8.53 + $9.82, from the reports).
+- **Retrieval** (`retrieval.md`, 2026-10-05, dev set, same authors). Deterministic and LLM-free: from the task prompt alone, the MUST READ section held 46.4% of the files to change, the whole pack 68.5%, and any of pack, search and similar 87.0%. See [Retrieval](#retrieval-before-the-agent-edits).
+- **IDE operations** (2026-10-05/06). Fixture rename eval: 7/7 scenarios, 41/41 edits, a regression check rather than a held-out result. On hono 4.13.13, 7 of 10 first-round TypeScript renames broke test compilation; after the fixes 19 symbols (plus 2 variants) added 0 `tsc` errors (manual reviewer trial). `similar` on draft code: structural match for 0 of 16 realistic re-implementations. Lexical reuse suggestions from task prompts were dropped (about 5% precision). Details and gaps: [IDE operations](#ide-operations).
+
+**Bottom line.** The knowledge graph is accurate where it makes claims, and its certainty classes separate more precise edges from less precise ones. On these 11 tasks, however, there is **no evidence that Code Atlas helps a coding agent**: correctness was identical, tokens and cost went up, and without explicit instruction the agent did not use the tools. Both A/B batches cost $18.35 in total ($8.53 + $9.82, from the reports). The IDE operations (`atlas_edit` and the exact reads) were built after these batches and have no agent evaluation.
 
 ## Knowledge quality
 
@@ -156,6 +159,90 @@ In the multi-project scenario, 3 projects index in 527 ms into 3 separate databa
 
 The synthetic corpora are a relative scale test (uniform bodies, fixed vocabulary). ripgrep and hono are the realistic data points.
 
+## Retrieval before the agent edits
+
+Source: `eval/reports/2026-10-05/retrieval.md` (commit `0f3557f`, `atlas-eval retrieval`, deterministic, no LLM). It is a dev set written by the same authors, so these are regression signals, not an estimate for unseen code. Mean over the 11 tasks, queried from the task prompt alone:
+
+| channel | `must_change` recall | `relevant_files` recall | `relevant_files` precision |
+|---|---|---|---|
+| MUST READ | 0.464 | 0.386 | 0.372 |
+| whole pack (6,000-token budget) | 0.685 | 0.535 | 0.232 |
+| search | 0.694 | 0.726 | 0.113 |
+| similar | 0.439 | 0.365 | 0.186 |
+| any of pack, search, similar | 0.870 | 0.842 | 0.097 |
+
+- `reuse_targets` (4 tasks): pack 0.40, search 0.60, similar 0.05, any 0.70. Blast radius (2 tasks): `impact` recall 1.0, but only once the changed symbol is given.
+- The MUST READ section holds fewer than half of the files to change. The pack is a starting point; the agent must still search.
+- Changes after this report (seed fixes, importability text) moved MUST READ `must_change` recall from 0.464 to 0.555 on this dev set (*review notes, not in `review-trials.md`; no new retrieval report was committed*). The same review found the gain of its first revision did not generalise to held-out tasks, and that lexical reuse suggestions from prompts were not worth keeping. See [IDE operations](#ide-operations) and [trust and limitations](../trust-and-limitations.md#negative-results-and-known-gaps-ide-operations-and-retrieval).
+
+## IDE operations
+
+Exact reads and edits through rust-analyzer and typescript-language-server (`atlas_symbol` modes, `atlas_edit`), and the retrieval features built next to them.
+
+### Rename: fixtures
+
+Source: `eval/reports/2026-10-06/rename.md` (`atlas-eval quality`, dry runs through one-shot servers, typescript-language-server 5.1.3 with TypeScript 5.9.3, rust-analyzer 1.97.1). Truth is hand-written `[[rename_sites]]` in the fixtures. **These fixtures were used while rename was built, so this is a regression check, not a held-out evaluation.**
+
+| scenario | fixture | edits found/expected | report sites found/expected | `untouched` lines edited |
+|---|---|---|---|---|
+| format-money | acme | 6/6 | 0/0 | 0/0 |
+| users-service-find-one | acme | 5/5 | 0/0 | 0/4 |
+| orders-service-find-one | acme | 2/2 | 3/3 | 0/4 |
+| to-cents | acme | 7/7 | 2/2 | 0/1 |
+| to-cents-apply | acme | 8/8 | 0/0 | 0/1 |
+| store-get | trait-dispatch-rust | 7/7 | 0/0 | 0/1 |
+| payment-provider-charge | ts-overrides | 6/6 | 1/1 | 0/2 |
+| **all (7 scored, 0 failed, 0 skipped)** | | **41/41** | **6/6** | **0/13** |
+
+A golden test suite (`crates/atlas-ide/tests/golden_rename.rs`: 7 rename scenarios plus 1 safe-delete, with exact expected sites, run against real servers and skipped with a `SKIPPED` line when a server is unavailable) checks the same kind of plans; it is also a regression check, not held-out.
+
+Edit precision is 100% in every scenario. In `to-cents` the server kept the old name as an alias (`toMinorUnits as toCents`), and the plan says so in a caveat.
+
+### Rename: real repositories (manual reviewer trials)
+
+Manual reviewer trials on hono 4.13.13 (compile before and after, build and spec TypeScript projects) and on this repository, run during the review of the rename task (commit `21baaee`, 2026-10-05). Per-symbol tables for all rounds are in [`review-trials.md`](../../eval/reports/2026-10-06/review-trials.md). Baseline `tsc --noEmit`: build 8 errors, spec 11,199; "added" means new errors:
+
+| round | what was measured | result |
+|---|---|---|
+| 0, before fixes | 10 TypeScript renames | **7 of 10 broke test compilation**: tsserver searched only loaded projects, and a solution-style `tsconfig.json` loads a project only when one of its files is opened, so plans depended on earlier reads |
+| implementer re-trial after fixes | 6 renames | 0 added `tsc` errors |
+| reviewer re-trial | 19 symbols (the 10 originals plus 9 new random ones), plus 2 variants of refused renames | every applied rename added 0 `tsc` errors in the build and spec projects; 1 nondeterministic plan (an object-literal property); 1 correct refusal (name conflict); 1 false refusal (a local binding); 1 rename refused through a kept alias that should have passed |
+| final delta check | all trials | 0 added `tsc` errors |
+| Rust, this repository | 5 renames | 5 of 5 pass `cargo check` (with `lsp.exclude` set; rust-analyzer was unhealthy on a full copy without it) |
+
+The review also found writes of broken code (`export const export const` from `replace_body`) and a silent rename onto an existing name; both were fixed before merge. Known gaps after the fixes: rename determinism covers projects in the anchor's repo that contain or reference the anchor, and projects with no link to it are not opened (object-literal sites there can be missed); the clean-file TypeScript diagnostics baseline can time out under heavy load (reported `PARTIAL`); tsconfig `extends` arrays and packages are ignored (safe over-selection); default exports addressed by position are refused.
+
+### `similar` from draft code (held-out, manual reviewer trial)
+
+Manual reviewer trial of `similar --code` (tables in [`review-trials.md`](../../eval/reports/2026-10-06/review-trials.md)): a held-out set of 16 functions sampled with a fixed seed (8 Rust from this repository at `f559c69`, 8 TypeScript from hono 4.13.13) against an index of 23,459 symbols, same-language, limit 10, default threshold 0.5.
+
+| draft | R@1 | R@5 | structural match |
+|---|---|---|---|
+| original, unchanged | 15/16 | 16/16 | 16/16 |
+| light paraphrase | 15/16 | 16/16 | 16/16 |
+| realistic re-implementation | 8/16 | 12/16 | **0/16** |
+| realistic, threshold 0.3 | 10/16 | 13/16 | 3/16 |
+
+Name-and-signature rows add 1.9 to 3.3 rows per query at 6% to 25% precision (13% / 6% / 25% for original / light / realistic at 0.5), with a floor and cap tuned on this same set (so not held-out). **Structure finds copies and light paraphrases, not independent re-implementations.** No LLM verdicts were produced.
+
+### Reuse suggestions from task prompts: negative result
+
+Matching a task prompt's prose against code to propose reuse candidates in `context` was tried and dropped (summary in [`review-trials.md`](../../eval/reports/2026-10-06/review-trials.md)). On a reviewer-owned held-out set of 17 tasks (the set size is (review notes, not in `review-trials.md`)): loose matching raised reuse recall from 0.54 to 0.70 at about 5% precision (4 of 73 lines were true hits) and fired on why and bug prompts; tight matching added 0 true hits among 7 new lines (0 of 3 on the dev set), with recall back at 0.54. About 780 lines were removed (review notes, not in `review-trials.md`). What shipped instead: seed fixes and importability text on structural REUSE entries (dev set, MUST READ `must_change` recall 0.464 to 0.555; REUSE recall unchanged at 0.4, (review notes, not in `review-trials.md`); no held-out confirmation recorded).
+
+### Unused test-only, mocks, receiver chains (measured in review)
+
+- **Unused, test-only class** (`385216d`): 28 of 28 on this repository and 57 of 57 on hono correct at merge, after a first version in which about 25% of this repository's test-only claims were wrong and a second whose recall collapsed. Those repositories were also the revision targets, so the figures are not held-out. Gaps: multi-line import and export blocks (about 7 hono symbols of recall), undeclared-dependency packages, classes called only through unresolved receivers, rustfmt `* ` continuation lines treated as comments.
+- **Mocks** (`6efdf50`): 38 of 38 stored mock edges correct on two real repositories. Gaps: path-insensitive call graph, coarse file-level mocks, `bun:test` and assignment mocks not detected.
+- **Rust receiver chains** (`4cedc6a`): declared types only; untyped `let` receivers are not inferred, extension traits on `Option` and `Result` stay `External(std)`, the inherent-versus-trait choice ignores receiver mode, and external globs still over-claim value-namespace names. In the implementer's run on this repository (before review fixes) it added 742 edges, upgraded 45 and lost none, with about 130 hand-checked correct.
+
+### Parse budget (measured in review)
+
+`59e357b` bounds every parse by a CPU-time budget (2 s plus 1 s per 100 KiB, cap 30 s) and retries overruns. Review, not a checked-in report: facts byte-identical on 1,266 files; a repository with 24 hung files had a 100 s first query under the first revision (wall-time budgets, uncapped serial retry) and 4.6 s with the final CPU-time budget and capped retries; under artificial starvation first-pass failures fell from 382 to 19, all recovered on a due retry; about 1% CPU overhead. Latency costs that remain: about 6 to 10 s on the query that first meets hung files, about 10 s for a due retry, and up to 300 s wall for an escalated retry under extreme starvation. Fuzzing (270k, later 736k cases) kept finding hanging inputs, which is why a budget rather than input fixes is the guard.
+
+### Tool surface size
+
+The MCP surface went from 16 to 15 tools and larger `atlas_symbol` and `atlas_edit` schemas. A test pins `tools/list` plus instructions at no more than 1.10 times the pre-change 15,140 bytes. The prompt-token cost per request has not been re-measured; the 6,300-token figure above is for the 16-tool binary `6a2854f`.
+
 ## Agent A/B
 
 Setup, from the report environments:
@@ -183,7 +270,8 @@ Means of per-task means over the 11 paired tasks:
 | judge blast-radius handling | 4.0 | 3.773 | −0.23 |
 | must_consider coverage | 0.452 | 0.479 | +0.03 |
 | reuse targets referenced (4 tasks) | 1 | 0.75 | −0.25 |
-| duplication introduced (5 tasks) | 0 | 0.2 | +0.2 (see below) |
+| duplication introduced (5 tasks) | 0 | 0 | none; the earlier 0.2 was a metric artefact (see below) |
+| lexical duplicate candidates (5 tasks) | 0 | 0.4 | lead only, a lower bound |
 | total tokens | 207,066 | 245,716 | **+18.7%** |
 | cache-read tokens | 184,424 | 222,074 | +20.4% |
 | cost (USD) | 0.153 | 0.164 | +7% |
@@ -200,7 +288,7 @@ Means of per-task means over the 11 paired tasks:
 
 **Time to first edit.** The aggregate row compares different task sets: baseline has values for {`t00`, `t03`, `t04`, `t05`, `t07`} and atlas for {`t00`, `t01`, `t03`, `t05`, `t07`}. The atlas set includes one `t01` run of 74.2 s. On the 4 tasks with a value in both conditions, the means are 15.3 s against 18.5 s (+21%). Only `t00` involved a tool call, so the difference is noise or prompt length, not tool latency.
 
-**Duplication** (0 vs 0.2) comes entirely from `t07`, where neither atlas run called Code Atlas. Both atlas runs wrote a named helper, while the baseline runs inlined the logic. All `t07` runs in both batches referenced the reuse target `parseAccept`. The finding is also an artefact of the metric (see [Threats to validity](#threats-to-validity)).
+**Duplication.** The first published version of these reports showed 0 against 0.2. It came entirely from `t07`, where neither atlas run called Code Atlas, and it was an artefact: the harness compared a lexical BM25 score with the 0.8 Jaccard threshold and labelled it structural (EVAL-7). Commit `88b4b68` fixed the metric and re-scored both batch reports: `duplication_introduced` is 0 in both conditions, and the former findings are listed as `lexical_duplicate_candidates` (batch 1: 0 against 0.4; both `t07` atlas runs wrote a named helper, the baseline runs inlined the logic). Those candidate counts are a lower bound, because the stored run files never kept matches below 0.8. All `t07` runs in both batches referenced the reuse target `parseAccept`.
 
 ### Batch 2: exploratory, post hoc (directed preamble v2)
 
@@ -221,7 +309,8 @@ Source: `eval/reports/2026-10-04/agent-directed.md` (runs `eval/runs/2026-10-05-
 | judge blast-radius handling | 4.091 | 3.864 | −0.23 |
 | must_consider coverage | 0.475 | 0.581 | +0.11 |
 | reuse targets referenced (4 tasks) | 1 | 0.875 | −0.125 |
-| duplication introduced (5 tasks) | 0 | 0.2 | +0.2 (`t07` again) |
+| duplication introduced (5 tasks) | 0 | 0 | none (re-scored, see batch 1) |
+| lexical duplicate candidates (5 tasks) | 0 | 0.2 | lead only, a lower bound (`t07` again) |
 | relevant files missed | 1.636 | 1.409 | −0.23 |
 | total tokens | 220,890 | 275,587 | **+24.8%** |
 | cost (USD) | 0.159 | 0.182 | +14% |
@@ -275,7 +364,7 @@ The following comparison covers `t01`–`t10` only (atlas vs baseline, per-task 
 - **Task authorship.** Tasks, ground truth and hidden tests were written by the same developers and tooling that built Code Atlas, so task selection and ground truth may favour what the graph models.
 - **Self-repository tasks.** Six tasks run on this repository at `327f4dc`, an older commit than the Code Atlas binary (`6a2854f`, 21 commits later). The binary indexes the frozen tree, so its own code cannot leak an answer, but its tool behaviour and descriptions are newer. The `t05` answer (MCP tools `atlas_dependents` and `atlas_dependencies`) was not in the offered tool list; the `init` events list 16 tools without them. The model may also have seen hono in pre-training.
 - **Judge.** The judge is the same model family as the agent (`claude-sonnet-5-5`), and five judge calls failed. Blinding removes tool names and paths, but the judge can still recognise style.
-- **Duplication metric.** When `query similar` returns no structural signal, the harness uses the lexical BM25 score instead (`crates/atlas-eval/src/agent/atlas_cli.rs`), compares it with the 0.8 Jaccard threshold and labels it `structural` (`reuse.rs`). Every duplication finding in both batches is this case, with scores of 5.24 to 8.36. The metric also inspects only added named functions, so inline code is never flagged. `duplication_introduced` is therefore weaker evidence than its name suggests.
+- **Duplication metric.** Fixed in `88b4b68` (EVAL-7): the harness used to compare the lexical BM25 score with the 0.8 Jaccard threshold and label it `structural`. Every earlier finding in both batches was this case, with scores of 5.24 to 8.36, so both reports were re-scored from 0.2 to 0. The metric still inspects only added named functions, so inline code is never flagged, and re-scored lexical candidate counts are a lower bound, not comparable with counts from new runs. `duplication_introduced` is weaker evidence than its name suggests.
 - **Atlas reviews.** The "did Code Atlas mislead?" reviews are unblinded and come from the same model family. They are also inconsistent: the two `t00` packs are identical apart from a timing figure, but one was judged misleading and the other was not. The "1 of 21 misleading" count is a weak signal.
 - **Claude configuration.** Both batches ran with `claude config = user`, and the isolation probe found 3 built-in plugins (`cc-plugin-agents-md`, `cc-plugin-telemetry`, `cc-plugin-plugin-authoring`) in both conditions. Implementation plan §3.3 specified an isolated config directory. The leak is identical across conditions, but it differs from the planned setup.
 - **Harness version.** The batches ran from different evaluation commits (`0dc8a96` and `3c54d92`). The only harness change between them is the preamble option (`--atlas-preamble`); the Code Atlas binary is identical.
@@ -299,6 +388,9 @@ Not supported:
 - That agents adopt the tools without being told to: 2 calls in 22 sessions.
 - Any benefit from `impact`, `search`, `similar` or the other 12 tools in agent use: they were never called.
 - Better reuse or blast-radius handling: the judged differences are within the spread observed with no tool use.
+- That the IDE operations help agents: no agent batch has used `atlas_edit` or the exact reads.
+- That rename is deterministic everywhere: unlinked TypeScript projects are not opened, and the real-repository trials are review measurements on one TypeScript repository (hono) and this repository.
+- That `similar` finds re-implementations: 0 of 16 realistic re-implementations matched structurally.
 - That the graph is complete: `resolved` edges reproduce 53.3% of SCIP's edges, and references only 40.4%.
 - That heuristic confidence values are calibrated. The fixture sample was 46/46 correct, but on the oracle the upper buckets hold 15 edges, and their conflicts are granularity cases. Calibration is neither shown nor refuted.
 - Interactive concurrent use at 1M LOC under edits.
@@ -307,8 +399,10 @@ Not supported:
 
 Grounded in these findings:
 
+- **Evaluate `atlas_edit` with agents.** Rename and symbol edits have fixture and review evidence only. Measure whether agents use them, and whether re-reading rules and refusals cost or save turns.
+- **Held-out evidence for rename and `similar`.** Commit the hono and self trials as a report, and score rename on fixtures that were not used to build it.
 - **Harder tasks.** Tasks where baseline agents fail: cross-repo blast radius, larger unfamiliar code bases, tasks whose hidden tests check what was *not* changed. These need repositories and authors independent of Code Atlas, and more runs per cell.
-- **Cheaper presence.** Offering the server costs about 6,300 tokens per request before any call. Exposing fewer tools by default (for example `atlas_context` and `atlas_impact`) or shortening the tool descriptions would cut the fixed cost, which is currently larger than any read savings.
+- **Cheaper presence.** Offering the server cost about 6,300 tokens per request before any call (measured for the 16-tool surface; the 15-tool surface with `atlas_edit` has not been re-measured). Exposing fewer tools by default (for example `atlas_context` and `atlas_impact`) or shortening the tool descriptions would cut the fixed cost, which is currently larger than any read savings.
 - **Adoption.** With the three-sentence standard preamble, which names the tools and says to use them before reading files, the agent called them in 2 of 22 sessions, both in the smoke task. Integration guidance (`connect claude`) should use directive wording, and the effect of that wording should be measured on tasks off the ceiling.
 - **Context packs.**
   - Rank graph neighbours of the seeds above keyword hits. Measured by `must_change`, the packs held none of the files to edit in 4 tasks (`t00`, `t03`, `t07`, and `t10` with its empty pack) and only some of them in 5 (`t02` 5/6, `t04` 2/5, `t06` 3/11, `t08` 5/8, `t09` 2/4). Only `t01` and `t05` held them all.
@@ -340,14 +434,12 @@ Open backlog (development follow-ups, tracked outside the repository):
 
 New items from this evaluation:
 
-- **EVAL-7.** Duplication metric.
-  - When `query similar` returns no structural signal, it falls back to the lexical BM25 score, compares it with the 0.8 Jaccard threshold and labels it `structural`.
-  - It ignores inline code.
-  - All 6 findings in both batches are lexical.
+- **EVAL-7.** Duplication metric. Fixed in `88b4b68` (lexical matches are separate candidates; both batch reports re-scored from 0.2 to 0). Still open: it ignores inline code.
 - **CTX-1.** Context packs miss edit targets.
   - `must_change` files were absent in 4 of 11 tasks and partly absent in 5.
-  - Ambiguous seeds are dropped.
+  - Ambiguous seeds are dropped (partly addressed: a name narrowed by a named repository is now seeded).
   - Empty packs offer no fallback.
+  - The retrieval eval now measures this without agents; the only checked-in report predates the seed fixes ([Retrieval](#retrieval-before-the-agent-edits)).
 - **CAL-1.** Calibration needs more oracle-judged heuristic edges in [0.6, 1.0], with granularity conflicts separated from wrong targets.
 
 ## Appendix: derived numbers
@@ -359,5 +451,5 @@ These figures were computed from the gitignored run artefacts, not read off a re
 - **Context packs:** the `atlas_context` tool results in the transcripts give the pack sizes (`~N of 6000 tokens` in the header), the section items and the files they name. These were compared with `ground_truth` in `eval/tasks/<task>/task.toml` and with the session's later Read calls. The "next call after `atlas_context`" counts come from the order of `tool_use` blocks.
 - **`t01`–`t10` and shared-task figures:** unweighted means of the per-task rows in `agent.md` and `agent-directed.md`. The `t01`–`t10` figures skip `t00`. The shared-task `first_edit_ms` figures use only the tasks with a value in both conditions.
 - **Pack coverage by `must_change`:** each `ground_truth.must_change` path was searched for in each run's `atlas_context` result text.
-- **Duplication findings:** `score.json` `duplication.findings` in every run of both batches.
+- **Duplication findings:** `score.json` `duplication.findings` in every run of both batches (the scores of 5.24 to 8.36 that identified the EVAL-7 artefact).
 - **Session-process RSS:** `perf-full/perf.json`, records with scenario `session_process`, field `peak_rss_bytes`.
