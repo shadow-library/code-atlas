@@ -51,12 +51,77 @@ impl Default for ScipSettings {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LspUnit {
+  Project,
+  Repo,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct LspSettings {
+  pub enabled: bool,
+  pub download: bool,
+  pub typescript_command: Option<Vec<String>>,
+  pub unit: LspUnit,
+  pub max_servers: usize,
+  pub idle_secs: u64,
+  pub ready_timeout_secs: u64,
+  pub check_timeout_secs: u64,
+}
+
+impl Default for LspSettings {
+  fn default() -> Self {
+    Self {
+      enabled: true,
+      download: true,
+      typescript_command: None,
+      unit: LspUnit::Project,
+      max_servers: 2,
+      idle_secs: 600,
+      ready_timeout_secs: 300,
+      check_timeout_secs: 120,
+    }
+  }
+}
+
+impl LspSettings {
+  pub fn validate(&self) -> Result<(), String> {
+    if self.max_servers < 1 {
+      return Err("lsp.max_servers must be at least 1".to_owned());
+    }
+    let Some(command) = &self.typescript_command else {
+      return Ok(());
+    };
+    let Some(program) = command.first() else {
+      return Err("lsp.typescript_command must not be empty".to_owned());
+    };
+    if !Path::new(program).is_absolute() {
+      return Err(format!("lsp.typescript_command must start with an absolute path, got {program:?}"));
+    }
+    Ok(())
+  }
+
+  fn is_default(&self) -> bool {
+    *self == Self::default()
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct ProjectSettings {
   pub llm: LlmSettings,
   pub scip: ScipSettings,
+  #[serde(skip_serializing_if = "LspSettings::is_default")]
+  pub lsp: LspSettings,
   pub max_file_bytes: u64,
+}
+
+impl ProjectSettings {
+  pub fn validate(&self) -> Result<(), String> {
+    self.lsp.validate()
+  }
 }
 
 impl Default for ProjectSettings {
@@ -64,6 +129,7 @@ impl Default for ProjectSettings {
     Self {
       llm: LlmSettings::default(),
       scip: ScipSettings::default(),
+      lsp: LspSettings::default(),
       max_file_bytes: 1024 * 1024,
     }
   }
@@ -244,6 +310,10 @@ impl Registry {
   }
 
   pub fn set_settings(&mut self, project: &str, settings: ProjectSettings) -> Result<(), ProjectError> {
+    settings.validate().map_err(|message| ProjectError::InvalidSettings {
+      project: project.to_owned(),
+      message,
+    })?;
     self.mutate(|projects| {
       find_project_mut(projects, project)?.settings = settings;
       Ok(())
@@ -407,6 +477,9 @@ fn read_projects(path: &Path) -> Result<Vec<Project>, ProjectError> {
 fn validate_loaded(path: &Path, projects: &[Project]) -> Result<(), ProjectError> {
   let invalid = |message: String| ProjectError::RegistryParse { path: path.to_owned(), message };
   for (index, project) in projects.iter().enumerate() {
+    if let Err(message) = project.settings.validate() {
+      return Err(invalid(format!("project {:?}: {message}", project.name.as_str())));
+    }
     if projects[..index].iter().any(|earlier| earlier.name == project.name) {
       return Err(invalid(format!("project {:?} is defined twice", project.name.as_str())));
     }
@@ -716,6 +789,13 @@ mod tests {
         enabled: true,
       },
       scip: ScipSettings { enabled: false, debounce_secs: 5 },
+      lsp: LspSettings {
+        download: false,
+        typescript_command: Some(vec!["/opt/ts server/bin/tls".to_owned(), "--flag".to_owned()]),
+        unit: LspUnit::Repo,
+        max_servers: 3,
+        ..LspSettings::default()
+      },
       max_file_bytes: 42,
     };
     registry.set_settings("acme", settings.clone()).unwrap();
@@ -725,6 +805,119 @@ mod tests {
     assert_eq!(project.repos[0].include, ["src/**"]);
     assert_eq!(project.repos[0].exclude, ["*.gen.ts"]);
     assert_eq!(project.repos[0].languages, Some(vec![Language::Rust, Language::TypeScript]));
+  }
+
+  #[test]
+  fn should_default_lsp_settings_for_a_registry_written_before_they_existed() {
+    let sandbox = Sandbox::new();
+    fs::create_dir_all(sandbox.home.config_dir()).unwrap();
+    let old = "[[project]]\nname = \"acme\"\n\n[project.settings]\nmax_file_bytes = 42\n\n[project.settings.llm]\nenabled = false\n\n[project.settings.scip]\nenabled = true\ndebounce_secs = 7\n";
+    fs::write(sandbox.home.registry_path(), old).unwrap();
+    let mut registry = Registry::load(&sandbox.home).unwrap();
+    let settings = registry.project("acme").unwrap().settings.clone();
+
+    assert_eq!(settings.lsp, LspSettings::default());
+    assert_eq!(
+      settings.lsp,
+      LspSettings {
+        enabled: true,
+        download: true,
+        typescript_command: None,
+        unit: LspUnit::Project,
+        max_servers: 2,
+        idle_secs: 600,
+        ready_timeout_secs: 300,
+        check_timeout_secs: 120,
+      }
+    );
+    registry.set_settings("acme", settings).unwrap();
+    let rewritten = fs::read_to_string(sandbox.home.registry_path()).unwrap();
+    assert!(!rewritten.contains("lsp"), "{rewritten}");
+    registry.set_settings("acme", registry.project("acme").unwrap().settings.clone()).unwrap();
+    assert_eq!(fs::read_to_string(sandbox.home.registry_path()).unwrap(), rewritten);
+  }
+
+  #[test]
+  fn should_serialise_default_lsp_settings_identically_to_the_previous_format() {
+    let sandbox = Sandbox::new();
+    let mut registry = sandbox.registry();
+    registry.create_project("acme", vec![]).unwrap();
+    let written = fs::read_to_string(sandbox.home.registry_path()).unwrap();
+
+    assert_eq!(
+      written,
+      "[[project]]\nname = \"acme\"\nrepo = []\n\n[project.settings]\nmax_file_bytes = 1048576\n\n[project.settings.llm]\nenabled = false\n\n[project.settings.scip]\nenabled = false\ndebounce_secs = 30\n"
+    );
+  }
+
+  #[test]
+  fn should_write_and_reload_non_default_lsp_settings_in_snake_case() {
+    let sandbox = Sandbox::new();
+    let mut registry = sandbox.registry();
+    registry.create_project("acme", vec![]).unwrap();
+    let mut settings = ProjectSettings::default();
+    settings.lsp.unit = LspUnit::Repo;
+    settings.lsp.enabled = false;
+    registry.set_settings("acme", settings.clone()).unwrap();
+    let written = fs::read_to_string(sandbox.home.registry_path()).unwrap();
+
+    assert!(written.contains("[project.settings.lsp]"), "{written}");
+    assert!(written.contains("unit = \"repo\""), "{written}");
+    assert_eq!(sandbox.registry().project("acme").unwrap().settings, settings);
+  }
+
+  #[test]
+  fn should_reject_invalid_lsp_settings_on_update_and_on_load() {
+    let sandbox = Sandbox::new();
+    let mut registry = sandbox.registry();
+    registry.create_project("acme", vec![]).unwrap();
+    let before = fs::read(sandbox.home.registry_path()).unwrap();
+    let invalid = [
+      (
+        LspSettings {
+          max_servers: 0,
+          ..LspSettings::default()
+        },
+        "lsp.max_servers must be at least 1",
+      ),
+      (
+        LspSettings {
+          typescript_command: Some(vec![]),
+          ..LspSettings::default()
+        },
+        "lsp.typescript_command must not be empty",
+      ),
+      (
+        LspSettings {
+          typescript_command: Some(vec!["tls".to_owned()]),
+          ..LspSettings::default()
+        },
+        "lsp.typescript_command must start with an absolute path, got \"tls\"",
+      ),
+      (
+        LspSettings {
+          typescript_command: Some(vec!["./bin/tls".to_owned()]),
+          ..LspSettings::default()
+        },
+        "lsp.typescript_command must start with an absolute path, got \"./bin/tls\"",
+      ),
+    ];
+    for (lsp, message) in invalid {
+      let settings = ProjectSettings {
+        lsp,
+        ..ProjectSettings::default()
+      };
+      let error = registry.set_settings("acme", settings).unwrap_err();
+      assert_eq!(error.to_string(), format!("invalid settings for project \"acme\": {message}"));
+    }
+    assert_eq!(fs::read(sandbox.home.registry_path()).unwrap(), before);
+
+    fs::write(sandbox.home.registry_path(), "[[project]]\nname = \"acme\"\n[project.settings.lsp]\nmax_servers = 0\n").unwrap();
+    assert!(matches!(Registry::load(&sandbox.home), Err(ProjectError::RegistryParse { message, .. }) if message.contains("lsp.max_servers must be at least 1")));
+    fs::write(sandbox.home.registry_path(), "[[project]]\nname = \"acme\"\n[project.settings.lsp]\nbogus = 1\n").unwrap();
+    assert!(matches!(Registry::load(&sandbox.home), Err(ProjectError::RegistryParse { .. })));
+    fs::write(sandbox.home.registry_path(), "[[project]]\nname = \"acme\"\n[project.settings.lsp]\nunit = \"galaxy\"\n").unwrap();
+    assert!(matches!(Registry::load(&sandbox.home), Err(ProjectError::RegistryParse { .. })));
   }
 
   #[test]

@@ -18,6 +18,8 @@ pub enum ProjectError {
   },
   #[error("invalid registry file {}: {message}", .path.display())]
   RegistryParse { path: PathBuf, message: String },
+  #[error("invalid settings for project {project:?}: {message}")]
+  InvalidSettings { project: String, message: String },
   #[error("cannot serialize the registry: {0}")]
   RegistrySerialize(String),
   #[error("project {0:?} already exists")]

@@ -1,4 +1,5 @@
 mod client;
+mod discover;
 mod docs;
 mod error;
 pub mod framing;
@@ -15,6 +16,10 @@ mod typescript;
 mod uri;
 
 pub use client::{Client, ClientHandler, ClientOptions, Initialized, NoopHandler, ServerEvent, ShutdownOutcome};
+pub use discover::{
+  Discovered, Discovery, DiscoveryStep, Probe, StepOutcome, TsServerChoice, TsServerSource, TypeScriptDiscovery, discover_typescript, discover_typescript_with,
+  rust_analyzer_server,
+};
 pub use docs::{FileStamp, OpenDoc, OpenDocs};
 pub use error::{Disconnect, LspError, LspResult};
 pub use pool::{Clock, Lease, LspPool, ManualClock, PoolMode, PoolOptions, RestartPolicy, ServerSummary, Synced, SystemClock, UnitPhase, UnitStatus, resident_kib};

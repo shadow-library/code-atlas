@@ -42,6 +42,8 @@ pub enum LspError {
     retry_in: Duration,
     last_failure: String,
   },
+  #[error("{0}")]
+  Unavailable(String),
   #[error("invalid language server unit: {reason}")]
   InvalidUnit { reason: String },
   #[error("the language server pool is shut down")]

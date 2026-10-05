@@ -46,29 +46,33 @@ impl RustAnalyzerScip {
     self
   }
 
-  fn candidates(&self) -> Vec<PathBuf> {
-    if let Some(binary) = &self.binary {
-      return vec![binary.clone()];
-    }
-    [find_on_path(), rustup_which()].into_iter().flatten().collect()
-  }
-
   fn resolve(&self) -> Result<Resolved, String> {
-    let candidates = self.candidates();
-    if candidates.is_empty() {
-      return Err("rust-analyzer is not on PATH and `rustup which rust-analyzer` found nothing".to_owned());
-    }
-    let mut failures = Vec::new();
-    for binary in candidates {
-      let mut command = Command::new(&binary);
-      command.arg("--version");
-      match probe_stdout(command) {
-        Ok(version) => return Ok(Resolved { binary, version }),
-        Err(reason) => failures.push(format!("{}: {reason}", binary.display())),
-      }
-    }
-    Err(format!("rust-analyzer --version failed ({})", failures.join("; ")))
+    let (binary, version) = match &self.binary {
+      Some(binary) => probe_candidates(vec![binary.clone()])?,
+      None => locate_rust_analyzer()?,
+    };
+    Ok(Resolved { binary, version })
   }
+}
+
+pub fn locate_rust_analyzer() -> Result<(PathBuf, String), String> {
+  probe_candidates([find_on_path(), rustup_which()].into_iter().flatten().collect())
+}
+
+fn probe_candidates(candidates: Vec<PathBuf>) -> Result<(PathBuf, String), String> {
+  if candidates.is_empty() {
+    return Err("rust-analyzer is not on PATH and `rustup which rust-analyzer` found nothing".to_owned());
+  }
+  let mut failures = Vec::new();
+  for binary in candidates {
+    let mut command = Command::new(&binary);
+    command.arg("--version");
+    match probe_stdout(command) {
+      Ok(version) => return Ok((binary, version)),
+      Err(reason) => failures.push(format!("{}: {reason}", binary.display())),
+    }
+  }
+  Err(format!("rust-analyzer --version failed ({})", failures.join("; ")))
 }
 
 fn find_on_path() -> Option<PathBuf> {
