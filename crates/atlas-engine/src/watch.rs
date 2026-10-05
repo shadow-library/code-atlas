@@ -102,7 +102,7 @@ impl WatchSignals {
     signals.events += 1;
   }
 
-  fn mark_event(&self) {
+  pub(crate) fn mark_event(&self) {
     let mut signals = self.lock();
     signals.events += 1;
     if let WatchState::Healthy { dirty } = &mut signals.state {

@@ -26,7 +26,9 @@ use crate::state::{
 use crate::watch::WatchSignals;
 
 const INTERRUPTED_RUN_SCAN: usize = 100;
-const INDEX_TRIGGERS: [&str; 2] = ["barrier", "index"];
+const INDEX_TRIGGERS: [&str; 3] = ["barrier", "index", WRITE_TRIGGER];
+const WRITE_TRIGGER: &str = "edit";
+const FORCE_REHASH_MTIME_NS: i64 = i64::MIN;
 pub(crate) const PROJECT_CHANGED: &str = "project configuration changed; reopen the engine";
 const BARRIER_SKIPPED: &str = "the freshness barrier was skipped (benchmark only); the answer may be stale";
 
@@ -80,6 +82,17 @@ struct PersistedView {
 struct DecodedScipMeta {
   bytes: Option<Vec<u8>>,
   meta: ScipMeta,
+}
+
+struct Written<R> {
+  written: std::thread::Result<R>,
+  started: Instant,
+  refreshed: EngineResult<FreshnessReport>,
+}
+
+enum Refreshed {
+  Ran(RunSummary),
+  Clean(Vec<FailedFile>),
 }
 
 enum Plan {
@@ -218,23 +231,80 @@ impl Engine {
     let started = Instant::now();
     let mut inner = lock_inner(&self.inner);
     let outcome = catch_panic(|| self.barrier(&mut inner, started));
-    match outcome {
-      Ok(report) => report,
-      Err(EngineError::ProjectConfigChanged) => FreshnessReport::Degraded {
-        header: self.header(&inner.state, None, 0, started.elapsed(), ScanKind::StatScan),
-        failed_files: Vec::new(),
-        reason: PROJECT_CHANGED.to_owned(),
-      },
-      Err(error) => {
+    outcome.unwrap_or_else(|error| self.failed_refresh(&mut inner, error, started))
+  }
+
+  fn failed_refresh(&self, inner: &mut Inner, error: EngineError, started: Instant) -> FreshnessReport {
+    let reason = match error {
+      EngineError::ProjectConfigChanged => PROJECT_CHANGED.to_owned(),
+      error => {
         tracing::error!(error = %error, "freshness barrier could not bring the index up to date");
         inner.health = StateHealth::NeedsReload { reason: error.to_string() };
-        FreshnessReport::Degraded {
-          header: self.header(&inner.state, None, 0, started.elapsed(), ScanKind::StatScan),
-          failed_files: Vec::new(),
-          reason: format!("index update failed: {error}"),
-        }
+        format!("index update failed: {error}")
       }
+    };
+    FreshnessReport::Degraded {
+      header: self.header(&inner.state, None, 0, started.elapsed(), ScanKind::StatScan),
+      failed_files: Vec::new(),
+      reason,
     }
+  }
+
+  /// `write` must not call back into this engine: it runs under the engine mutex, which is not reentrant.
+  pub fn write_then_refresh<R>(&self, files: &[(RepoName, RelPath)], write: impl FnOnce() -> R) -> EngineResult<(R, FreshnessReport)> {
+    let project = self.project();
+    if let Some((repo, _)) = files.iter().find(|(repo, _)| !project.repos.iter().any(|config| config.name == *repo)) {
+      return Err(EngineError::UnknownRepo(repo.clone()));
+    }
+    let span = tracing::info_span!("write_then_refresh", files = files.len());
+    let _entered = span.enter();
+    let timeout = self.options.store.lock_timeout;
+    let mut inner = lock_inner(&self.inner);
+    let Inner { state, lock, health } = &mut *inner;
+    let outcome = lock.hold(timeout, |_| -> EngineResult<Written<R>> {
+      catch_panic(|| self.sync_holding_lock(state, health))?;
+      let written = std::panic::catch_unwind(std::panic::AssertUnwindSafe(write));
+      self.watch.mark_event();
+      force_rehash(state, files);
+      let started = Instant::now();
+      let refreshed = catch_panic(|| self.refresh_holding_lock(state, started));
+      Ok(Written { written, started, refreshed })
+    });
+    let Written { written, started, refreshed } = match outcome.and_then(|held| held) {
+      Ok(written) => written,
+      Err(error) => {
+        if !matches!(error, EngineError::ProjectConfigChanged) {
+          inner.health = StateHealth::NeedsReload { reason: error.to_string() };
+        }
+        return Err(error);
+      }
+    };
+    let report = refreshed.unwrap_or_else(|error| self.failed_refresh(&mut inner, error, started));
+    drop(inner);
+    match written {
+      Ok(value) => Ok((value, report)),
+      Err(payload) => std::panic::resume_unwind(payload),
+    }
+  }
+
+  fn refresh_holding_lock(&self, state: &mut EngineState, started: Instant) -> EngineResult<FreshnessReport> {
+    let token = self.watch.begin_scan();
+    let refreshed = match self.plan(state) {
+      Plan::Clean(scans) => self.settle_clean(state, &scans).map(|()| Refreshed::Clean(scan_failures(&scans))),
+      Plan::Run(scans) => self.run(state, scans, IndexMode::Incremental, WRITE_TRIGGER).map(Refreshed::Ran),
+    };
+    let refreshed = match refreshed {
+      Ok(refreshed) => refreshed,
+      Err(error) => {
+        self.watch.abort_scan(token);
+        return Err(error);
+      }
+    };
+    self.watch.finish_scan(token);
+    Ok(match refreshed {
+      Refreshed::Ran(summary) => self.summarized(state, summary, started),
+      Refreshed::Clean(failures) => self.settled(state, None, 0, started, ScanKind::StatScan, failures),
+    })
   }
 
   pub fn index(&self, mode: IndexMode) -> EngineResult<RunSummary> {
@@ -301,18 +371,22 @@ impl Engine {
       }
     };
     self.watch.finish_scan(token);
-    let Some(summary) = summary else {
-      return Ok(self.settled(&inner.state, None, 0, started, ScanKind::StatScan, Vec::new()));
-    };
-    let mut failures = summary.failed_files.clone();
-    failures.extend(missing_repos(&inner.state));
+    Ok(match summary {
+      Some(summary) => self.summarized(&inner.state, summary, started),
+      None => self.settled(&inner.state, None, 0, started, ScanKind::StatScan, Vec::new()),
+    })
+  }
+
+  fn summarized(&self, state: &EngineState, summary: RunSummary, started: Instant) -> FreshnessReport {
+    let mut failures = summary.failed_files;
+    failures.extend(missing_repos(state));
     failures.sort();
     failures.dedup();
     let run = Some(summary.run);
-    Ok(match summary.outcome {
-      RunOutcomeKind::Ok if failures.is_empty() => FreshnessReport::Fresh(self.header(&inner.state, run, summary.files_updated, started.elapsed(), ScanKind::StatScan)),
+    match summary.outcome {
+      RunOutcomeKind::Ok if failures.is_empty() => FreshnessReport::Fresh(self.header(state, run, summary.files_updated, started.elapsed(), ScanKind::StatScan)),
       RunOutcomeKind::Ok => self.degraded(
-        &inner.state,
+        state,
         run,
         summary.files_updated,
         started,
@@ -320,8 +394,8 @@ impl Engine {
         failures,
         "some files or repositories could not be indexed".to_owned(),
       ),
-      RunOutcomeKind::Partial { reason } => self.degraded(&inner.state, run, summary.files_updated, started, ScanKind::StatScan, failures, reason),
-    })
+      RunOutcomeKind::Partial { reason } => self.degraded(state, run, summary.files_updated, started, ScanKind::StatScan, failures, reason),
+    }
   }
 
   fn settled(&self, state: &EngineState, run: Option<RunId>, files: u64, started: Instant, scan: ScanKind, mut failures: Vec<FailedFile>) -> FreshnessReport {
@@ -618,6 +692,14 @@ fn recover_interrupted(store: &Store, project: &Project, state: &mut EngineState
   })?;
   state.scip = scip;
   Ok(())
+}
+
+fn force_rehash(state: &mut EngineState, files: &[(RepoName, RelPath)]) {
+  for (repo, path) in files {
+    if let Some(stamp) = state.repos.get_mut(repo).and_then(|repo| repo.stamps.get_mut(path)) {
+      stamp.mtime_ns = FORCE_REHASH_MTIME_NS;
+    }
+  }
 }
 
 fn scan_failures(scans: &[RepoScan]) -> Vec<FailedFile> {

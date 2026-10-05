@@ -7,7 +7,9 @@ use common::edits::Tree;
 use common::{SplitMix, acme_copy, digest, fact_diff, fresh, import_lineage, open};
 
 const SEEDS: [u64; 3] = [0x00C0_DE47_1A55_0001, 0x5EED_0000_0000_0002, 0x5EED_0000_0000_0003];
+const WRITE_SEED: u64 = 0xB4_0000_0000_0004;
 const EDITS: usize = 60;
+const WRITE_EDITS: usize = 30;
 const REOPEN_EVERY: usize = 15;
 
 fn reference_digest(project: &atlas_project::Project, home: &Path, incremental: &Engine) -> (Engine, atlas_core::ContentHash) {
@@ -58,6 +60,25 @@ fn should_match_a_full_index_after_every_randomized_edit_with_the_second_seed() 
 #[test]
 fn should_match_a_full_index_after_every_randomized_edit_with_the_third_seed() {
   run_sequence(seed_or("ATLAS_EQUIVALENCE_SEED_3", SEEDS[2]), env_or("ATLAS_EQUIVALENCE_EDITS", EDITS));
+}
+
+#[test]
+fn should_match_a_full_index_after_every_edit_applied_through_write_then_refresh() {
+  let seed = seed_or("ATLAS_EQUIVALENCE_WRITE_SEED", WRITE_SEED);
+  let scratch = tempfile::tempdir().unwrap();
+  let tree_root = scratch.path().join("tree");
+  let project = acme_copy(&tree_root);
+  let tree = Tree { root: tree_root };
+  let engine = open(&project, &scratch.path().join("home"));
+  assert!(fresh(&engine).is_fresh());
+  let mut rng = SplitMix(seed);
+  for step in 1..=env_or("ATLAS_EQUIVALENCE_EDITS", WRITE_EDITS) {
+    let (description, report) = engine.write_then_refresh(&[], || tree.apply(&mut rng, step)).unwrap();
+    assert!(report.header().run.is_some(), "step {step} ({description}) did not trigger an update: {report:?}");
+    assert_equivalent(seed, step, &description, &project, &engine, scratch.path());
+    let quiet = fresh(&engine);
+    assert_eq!(quiet.header().run, None, "step {step} ({description}) left changes behind");
+  }
 }
 
 fn run_sequence(seed: u64, edits: usize) {

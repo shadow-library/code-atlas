@@ -57,7 +57,7 @@ impl Toolchain {
     }
   }
 
-  fn analyzer(&self, language: Language) -> Option<&dyn LanguageAnalyzer> {
+  pub(crate) fn analyzer(&self, language: Language) -> Option<&dyn LanguageAnalyzer> {
     match language.family() {
       LanguageFamily::Rust => Some(&self.rust),
       LanguageFamily::Ts => Some(&self.ts),

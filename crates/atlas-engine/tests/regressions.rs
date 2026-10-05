@@ -17,9 +17,9 @@ use atlas_detect::DiagnosingDetector;
 use atlas_engine::{Engine, EngineError, EngineOptions, FaultInjection, FreshnessReport, IndexMode, PassContext, PassError, PassOutput, ProjectPass, ScipIndexers, ScipLag};
 use atlas_project::Project;
 use atlas_scip::{CacheStatus, ScipFacts, ScipIndexer, ScipOutcome, ScipRequest, ScipRun};
-use atlas_store::{EdgeFilter, EntityFilter, FreshnessPolicy, InferredQuery, NewInferredFact, ReadTx};
+use atlas_store::{EdgeFilter, EntityFilter, FreshnessPolicy, InferredQuery, NewInferredFact, ReadTx, RunStatus};
 use common::edits::{Tree, replace_word};
-use common::{SplitMix, acme_copy, digest, fact_diff, fresh, import_lineage, open, open_with, project, repo_config};
+use common::{ACME_REPOS, SplitMix, acme_copy, digest, fact_diff, fresh, import_lineage, open, open_with, project, repo_config};
 use protobuf::{EnumOrUnknown, Message};
 use scip::types::{Document, Index, Metadata, Occurrence, PositionEncoding, SymbolRole, ToolInfo};
 
@@ -861,6 +861,70 @@ fn should_purge_a_repo_whose_first_index_crashed_after_it_was_removed() {
 
   assert!(reopened.store().read(|tx| tx.files_in_repo(&RepoName::new("acme-web").unwrap())).unwrap().is_empty());
   let diff = mismatch(&api_only, &reopened, scratch.path(), "crash-purge");
+  assert!(diff.is_none(), "{}", diff.unwrap_or_default());
+}
+
+const EDIT_CHILD_HELPER: &str = "should_abort_mid_edit_refresh_when_run_as_a_crash_child";
+const EDIT_BULK_FILES: usize = 300;
+
+fn acme_web_rows(db: &Path) -> i64 {
+  let conn = rusqlite::Connection::open_with_flags(db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+  conn.query_row("SELECT COUNT(*) FROM files WHERE repo = 'acme-web'", [], |row| row.get(0)).unwrap_or(0)
+}
+
+#[test]
+#[ignore = "helper: runs only as a child process of a crash regression test"]
+fn should_abort_mid_edit_refresh_when_run_as_a_crash_child() {
+  let (Ok(tree), Ok(home)) = (std::env::var("ATLAS_EDIT_CRASH_CHILD_TREE"), std::env::var("ATLAS_EDIT_CRASH_CHILD_HOME")) else {
+    return;
+  };
+  let tree = PathBuf::from(tree);
+  let options = EngineOptions {
+    batch_max_owners: 1,
+    ..EngineOptions::default()
+  };
+  let project = project("acme", ACME_REPOS.iter().map(|name| repo_config(name, &tree.join(name))).collect());
+  let engine = open_with(&project, Path::new(&home), options);
+  let db = engine.db_path();
+  let baseline = acme_web_rows(&db);
+  thread::spawn(move || {
+    loop {
+      if acme_web_rows(&db) >= baseline + 5 {
+        std::process::abort();
+      }
+    }
+  });
+  let bulk = tree.join("acme-web/src/bulk");
+  let _ = engine.write_then_refresh(&[], || {
+    fs::create_dir_all(&bulk).unwrap();
+    for index in 0..EDIT_BULK_FILES {
+      fs::write(bulk.join(format!("bulk{index}.ts")), format!("export function bulk{index}() {{\n  return {index};\n}}\n")).unwrap();
+    }
+  });
+}
+
+#[test]
+fn should_fail_an_interrupted_edit_run_and_reindex_its_writes_after_reopening() {
+  let scratch = tempfile::tempdir().unwrap();
+  let tree = scratch.path().join("tree");
+  let project = acme_copy(&tree);
+  let home = scratch.path().join("home");
+  fresh(&open(&project, &home));
+  let status = std::process::Command::new(std::env::current_exe().unwrap())
+    .args(["--exact", EDIT_CHILD_HELPER, "--ignored", "--test-threads=1"])
+    .env("ATLAS_EDIT_CRASH_CHILD_TREE", &tree)
+    .env("ATLAS_EDIT_CRASH_CHILD_HOME", &home)
+    .status()
+    .unwrap();
+  assert!(!status.success(), "the child must abort in the middle of its edit refresh");
+
+  let reopened = open(&project, &home);
+  let runs = reopened.store().read(|tx| tx.runs(10)).unwrap();
+  let edit = runs.iter().find(|run| run.trigger == "edit").expect("the child must have begun an edit run");
+  assert_eq!(edit.status, RunStatus::Failed { error: "interrupted".to_owned() });
+  assert!(fresh(&reopened).header().run.is_some());
+  assert_eq!(named(&reopened, &format!("bulk{}", EDIT_BULK_FILES - 1)).len(), 1);
+  let diff = mismatch(&project, &reopened, scratch.path(), "edit-crash");
   assert!(diff.is_none(), "{}", diff.unwrap_or_default());
 }
 

@@ -76,6 +76,22 @@ pub(crate) struct ScipRunOutput {
   pub fingerprints: BTreeMap<(RepoName, RelPath), String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScipUnit {
+  pub repo: RepoName,
+  pub manifest: RelPath,
+  pub ecosystem: Ecosystem,
+  pub root: PathBuf,
+  pub package_dir: Option<RelPath>,
+  pub files: BTreeMap<RelPath, ContentHash>,
+}
+
+impl ScipUnit {
+  pub fn input_files(&self) -> Vec<ScipInputFile> {
+    input_files(&self.files, self.package_dir.as_ref())
+  }
+}
+
 pub(crate) struct PackageJob {
   pub repo: RepoName,
   repo_root: PathBuf,
@@ -102,8 +118,8 @@ impl PackageJob {
   }
 }
 
-pub(crate) fn package_jobs(state: &EngineState) -> Vec<PackageJob> {
-  let mut jobs = Vec::new();
+pub(crate) fn scip_plan_of(state: &EngineState) -> Vec<ScipUnit> {
+  let mut plan = Vec::new();
   for (repo, repo_state) in &state.repos {
     let Some(graph) = &repo_state.graph else { continue };
     let units = scip_units(graph);
@@ -112,28 +128,52 @@ pub(crate) fn package_jobs(state: &EngineState) -> Vec<PackageJob> {
       if file_repo != repo || file.failure.is_some() {
         continue;
       }
-      let Some((manifest, _, _)) = graph.package_for_file(path).and_then(|package| units.get(&package.manifest)) else {
-        continue;
-      };
+      let Some((manifest, _, _)) = unit_for_file(graph, &units, path) else { continue };
       unit_files.entry(manifest.clone()).or_default().insert(path.clone(), file.hash);
     }
     let roots: BTreeMap<&RelPath, (&RepoDir, Ecosystem)> = units.values().map(|(manifest, root, ecosystem)| (manifest, (root, *ecosystem))).collect();
-    let fingerprint = graph_fingerprint(graph);
     for (manifest, files) in unit_files {
       let Some((root, ecosystem)) = roots.get(&manifest).copied() else { continue };
-      jobs.push(PackageJob {
+      plan.push(ScipUnit {
         repo: repo.clone(),
-        repo_root: repo_state.config.path.clone(),
         ecosystem,
         root: repo_state.config.path.join(root.as_str()),
         package_dir: root.as_rel_path().cloned(),
         manifest,
         files,
-        generation: state.generation,
-        graph_fingerprint: fingerprint.clone(),
-        dropped_in: BTreeMap::new(),
       });
     }
+  }
+  plan
+}
+
+pub(crate) fn package_jobs(state: &EngineState) -> Vec<PackageJob> {
+  let mut fingerprints: BTreeMap<RepoName, String> = BTreeMap::new();
+  let mut jobs = Vec::new();
+  for unit in scip_plan_of(state) {
+    let Some(repo_state) = state.repos.get(&unit.repo) else { continue };
+    let Some(graph) = &repo_state.graph else { continue };
+    let graph_fingerprint = fingerprints.entry(unit.repo.clone()).or_insert_with(|| graph_fingerprint(graph)).clone();
+    let ScipUnit {
+      repo,
+      manifest,
+      ecosystem,
+      root,
+      package_dir,
+      files,
+    } = unit;
+    jobs.push(PackageJob {
+      repo,
+      repo_root: repo_state.config.path.clone(),
+      manifest,
+      ecosystem,
+      root,
+      package_dir,
+      files,
+      generation: state.generation,
+      graph_fingerprint,
+      dropped_in: BTreeMap::new(),
+    });
   }
   jobs
 }
@@ -187,7 +227,9 @@ fn indexing_unit(graph: &PackageGraph, package: &PackageInfo) -> (RelPath, RepoD
   }
 }
 
-fn scip_units(graph: &PackageGraph) -> HashMap<RelPath, (RelPath, RepoDir, Ecosystem)> {
+pub(crate) type UnitsByPackage = HashMap<RelPath, (RelPath, RepoDir, Ecosystem)>;
+
+pub(crate) fn scip_units(graph: &PackageGraph) -> UnitsByPackage {
   graph
     .packages
     .iter()
@@ -198,7 +240,29 @@ fn scip_units(graph: &PackageGraph) -> HashMap<RelPath, (RelPath, RepoDir, Ecosy
     .collect()
 }
 
+pub(crate) fn unit_for_file<'u>(graph: &PackageGraph, units: &'u UnitsByPackage, path: &RelPath) -> Option<&'u (RelPath, RepoDir, Ecosystem)> {
+  units.get(&graph.package_for_file(path)?.manifest)
+}
+
+fn input_files(files: &BTreeMap<RelPath, ContentHash>, package_dir: Option<&RelPath>) -> Vec<ScipInputFile> {
+  files
+    .iter()
+    .filter_map(|(path, hash)| {
+      Some(ScipInputFile {
+        path: relative_to(path, package_dir)?,
+        content_hash: *hash,
+      })
+    })
+    .collect()
+}
+
 impl Engine {
+  pub fn scip_plan(&self) -> EngineResult<Vec<ScipUnit>> {
+    let mut inner = lock_inner(&self.inner);
+    self.sync(&mut inner)?;
+    Ok(scip_plan_of(&inner.state))
+  }
+
   pub fn scip(&self, indexers: &ScipIndexers<'_>) -> EngineResult<ScipReport> {
     let mut lock = ScipLock::open(&self.db_path())?;
     let output = lock.hold(|| self.scip_locked(indexers, ScipTrigger::Explicit, &AtomicBool::new(false), &|_, _, _| false))??;
@@ -286,20 +350,10 @@ impl Engine {
   fn scip_package(&self, job: &PackageJob, indexer: &dyn ScipIndexer, cache_dir: &Path, run: RunId, cancel: &AtomicBool) -> EngineResult<ScipPackageOutcome> {
     let span = tracing::info_span!("scip_package", repo = %job.repo, manifest = %job.manifest, indexer = indexer.id(), files = job.files.len());
     let _entered = span.enter();
-    let files: Vec<ScipInputFile> = job
-      .files
-      .iter()
-      .filter_map(|(path, hash)| {
-        Some(ScipInputFile {
-          path: relative_to(path, job.package_dir.as_ref())?,
-          content_hash: *hash,
-        })
-      })
-      .collect();
     let request = ScipRequest {
       root: job.root.clone(),
       cache_dir: cache_dir.to_path_buf(),
-      files,
+      files: input_files(&job.files, job.package_dir.as_ref()),
     };
     let stats: BTreeMap<RelPath, Option<FileStat>> = job.files.keys().map(|path| (path.clone(), file_stat(&job.repo_root.join(path.as_str())))).collect();
     let scip_run = indexer.index_with_cancel(&request, cancel);

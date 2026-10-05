@@ -1,4 +1,5 @@
 mod analyze;
+mod analyze_text;
 mod artifact;
 mod auto_scip;
 mod engine;
@@ -19,6 +20,7 @@ mod scip;
 mod similarity;
 mod state;
 mod status;
+mod units;
 mod watch;
 
 pub use artifact::artifact_file_facts;
@@ -33,5 +35,6 @@ pub use error::{EngineError, EngineResult};
 pub use options::{EngineOptions, FaultInjection, IndexMode};
 pub use passes::{PASS_LINEAGE, PASS_REPOS, PASS_STRUCTURE, PassContext, PassError, PassOutput, ProjectPass, STRUCTURE_VERSION};
 pub use report::*;
-pub use scip::{ScipIndexers, ScipPackageOutcome, ScipPackageReport, ScipReport};
+pub use scip::{ScipIndexers, ScipPackageOutcome, ScipPackageReport, ScipReport, ScipUnit};
+pub use units::{CargoProject, LanguageUnits, RustUnit, TypeScriptUnit, UnitFolder};
 pub use watch::{WatchHandle, WatchState};
