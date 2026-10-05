@@ -68,6 +68,7 @@ rmcp = { version = "3.5", features = ["server", "macros", "schemars", "transport
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "sync", "time"] }
 ureq = { version = "3", features = ["json"] }
 fd-lock = "4"
+rustix = { version = "1", features = ["fs"] }
 url = "2"
 regex = "1"
 tempfile = "3"

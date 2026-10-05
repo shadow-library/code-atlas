@@ -9,4 +9,14 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+atlas-core.workspace = true
+atlas-project.workspace = true
+blake3.workspace = true
+regex.workspace = true
+ignore.workspace = true
+tempfile.workspace = true
+fd-lock.workspace = true
+rustix.workspace = true
+serde.workspace = true
 thiserror.workspace = true
+tracing.workspace = true

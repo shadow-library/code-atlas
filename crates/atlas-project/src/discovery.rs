@@ -10,7 +10,7 @@ use crate::error::ProjectError;
 use crate::globs::PathGlobs;
 use crate::registry::RepoConfig;
 
-const DEFAULT_EXCLUDES: [&str; 8] = ["node_modules", "target", "dist", "build", ".git", ".next", "coverage", "vendor"];
+pub const DEFAULT_EXCLUDES: [&str; 8] = ["node_modules", "target", "dist", "build", ".git", ".next", "coverage", "vendor"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiscoveredFile {
@@ -40,20 +40,42 @@ pub fn is_manifest_name(file_name: &str) -> bool {
   matches!(file_name, "Cargo.toml" | "package.json" | "jsconfig.json") || (file_name.starts_with("tsconfig") && file_name.ends_with(".json"))
 }
 
-struct WalkFilter {
+#[derive(Debug, Clone)]
+pub struct WalkFilter {
   root: std::path::PathBuf,
   overridden_defaults: HashSet<&'static str>,
   exclude: PathGlobs,
 }
 
 impl WalkFilter {
-  fn admits(&self, entry: &DirEntry) -> bool {
+  pub fn new(root: std::path::PathBuf, include: &[String], exclude: &[String]) -> Result<Self, ProjectError> {
+    let overridden_defaults = DEFAULT_EXCLUDES
+      .into_iter()
+      .filter(|name| {
+        include
+          .iter()
+          .filter(|pattern| !pattern.starts_with('!'))
+          .any(|pattern| pattern.split('/').any(|segment| segment == *name))
+      })
+      .collect();
+    Ok(Self {
+      root,
+      overridden_defaults,
+      exclude: PathGlobs::new(exclude)?,
+    })
+  }
+
+  pub fn overrides_default(&self, name: &str) -> bool {
+    self.overridden_defaults.contains(name)
+  }
+
+  pub fn admits(&self, entry: &DirEntry) -> bool {
     if entry.depth() == 0 {
       return true;
     }
     let is_dir = entry.file_type().is_some_and(|file_type| file_type.is_dir());
     let Some(name) = entry.file_name().to_str() else { return true };
-    if is_dir && DEFAULT_EXCLUDES.contains(&name) && !self.overridden_defaults.contains(name) {
+    if is_dir && DEFAULT_EXCLUDES.contains(&name) && !self.overrides_default(name) {
       return false;
     }
     if self.exclude.is_empty() {
@@ -69,21 +91,7 @@ impl WalkFilter {
 pub fn discover(repo: &RepoConfig, max_file_bytes: u64) -> Result<DiscoveryResult, ProjectError> {
   fs::metadata(&repo.path).map_err(|source| ProjectError::io("read repository root", &repo.path, source))?;
   let include = PathGlobs::new(&repo.include)?;
-  let overridden_defaults = DEFAULT_EXCLUDES
-    .into_iter()
-    .filter(|name| {
-      repo
-        .include
-        .iter()
-        .filter(|pattern| !pattern.starts_with('!'))
-        .any(|pattern| pattern.split('/').any(|segment| segment == *name))
-    })
-    .collect();
-  let filter = WalkFilter {
-    root: repo.path.clone(),
-    overridden_defaults,
-    exclude: PathGlobs::new(&repo.exclude)?,
-  };
+  let filter = WalkFilter::new(repo.path.clone(), &repo.include, &repo.exclude)?;
   // ignore's parallel walker spawns threads per walk and parks idle workers in 1 ms sleeps; it measured slower than this walk up to thousands of files.
   let walker = WalkBuilder::new(&repo.path)
     .hidden(true)

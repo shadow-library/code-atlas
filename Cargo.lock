@@ -169,7 +169,17 @@ dependencies = [
 name = "atlas-edit"
 version = "0.1.0"
 dependencies = [
+ "atlas-core",
+ "atlas-project",
+ "blake3",
+ "fd-lock",
+ "ignore",
+ "regex",
+ "rustix",
+ "serde",
+ "tempfile",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]

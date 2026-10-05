@@ -2,16 +2,17 @@ use ignore::gitignore::{Gitignore, GitignoreBuilder};
 
 use crate::error::ProjectError;
 
-pub(crate) struct PathGlobs {
+#[derive(Debug, Clone)]
+pub struct PathGlobs {
   matcher: Gitignore,
 }
 
 impl PathGlobs {
-  pub(crate) fn new<S: AsRef<str>>(patterns: &[S]) -> Result<Self, ProjectError> {
+  pub fn new<S: AsRef<str>>(patterns: &[S]) -> Result<Self, ProjectError> {
     Self::build(patterns.iter().map(|pattern| pattern.as_ref().to_owned()))
   }
 
-  pub(crate) fn anchored<S: AsRef<str>>(patterns: &[S]) -> Result<Self, ProjectError> {
+  pub fn anchored<S: AsRef<str>>(patterns: &[S]) -> Result<Self, ProjectError> {
     Self::build(patterns.iter().map(|pattern| anchor(pattern.as_ref())))
   }
 
@@ -30,15 +31,15 @@ impl PathGlobs {
     Ok(Self { matcher })
   }
 
-  pub(crate) fn is_empty(&self) -> bool {
+  pub fn is_empty(&self) -> bool {
     self.matcher.is_empty()
   }
 
-  pub(crate) fn matches(&self, relative: &str, is_dir: bool) -> bool {
+  pub fn matches(&self, relative: &str, is_dir: bool) -> bool {
     self.matcher.matched(relative, is_dir).is_ignore()
   }
 
-  pub(crate) fn matches_within(&self, relative: &str, is_dir: bool) -> bool {
+  pub fn matches_within(&self, relative: &str, is_dir: bool) -> bool {
     self.matcher.matched_path_or_any_parents(relative, is_dir).is_ignore()
   }
 }
