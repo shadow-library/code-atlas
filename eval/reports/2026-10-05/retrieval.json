@@ -1,0 +1,3304 @@
+{
+  "caveat": "Dev set, same authors: the tasks, their ground truth and Code Atlas were written by the same people, and the tasks were used while developing the product. Read these numbers as regression signals for the retrieval surface, not as an unbiased estimate of how it performs on unseen code.",
+  "code_atlas_revision": "0f3557fefcc02fedbaea4669cc90937a4b263701",
+  "settings": {
+    "context_budget": 6000,
+    "search_limit": 10,
+    "max_code_spans": 8,
+    "max_prose_phrases": 4,
+    "max_similar_seeds": 5,
+    "impact_group_limit": 15
+  },
+  "tasks": [
+    {
+      "id": "t00-smoke",
+      "title": "Smoke: soft-delete timestamp on the users entity",
+      "categories": [
+        "smoke"
+      ],
+      "outcome": {
+        "state": "scored",
+        "index": {
+          "repos": [
+            "acme-api",
+            "acme-sdk",
+            "acme-web",
+            "acme-billing"
+          ],
+          "files": 65,
+          "degraded": null
+        },
+        "queries": {
+          "search_phrases": [
+            {
+              "text": "deletedAt",
+              "source": "code_span"
+            },
+            {
+              "text": "User",
+              "source": "code_span"
+            },
+            {
+              "text": "deleted_at",
+              "source": "code_span"
+            },
+            {
+              "text": "UsersService.findOne",
+              "source": "code_span"
+            },
+            {
+              "text": "database column named",
+              "source": "prose"
+            },
+            {
+              "text": "soft-delete column decorator",
+              "source": "prose"
+            },
+            {
+              "text": "change minimal",
+              "source": "prose"
+            }
+          ],
+          "similar_seeds": [
+            {
+              "key": "ts:acme-api:acme-api:src/users/users.service::UsersService::findOne#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:acme-api:acme-api:src/users/users.controller::UsersController::remove#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 1,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:acme-web:acme-web:src/hooks/useUser::useUser#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 3,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:acme-billing:acme-billing:store::PgInvoiceStore::database_url#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 1,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:acme-api:acme-api:src/users/users.controller::UsersController::update#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 5,
+                "shape_only": 0
+              }
+            }
+          ]
+        },
+        "pack": {
+          "bytes": 10216,
+          "estimated_tokens": 1811,
+          "budget": 6000,
+          "must_read": 11,
+          "skim": 14,
+          "patterns": 0,
+          "reuse": 0,
+          "impact": 4,
+          "tests": 5,
+          "uncertain": 2,
+          "omitted": 8
+        },
+        "must_change": {
+          "expected": [
+            "acme-api/src/users/user.entity.ts"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 5,
+              "relevant": 1,
+              "hits": 0,
+              "precision": 0.0,
+              "recall": 0.0
+            },
+            "pack": {
+              "retrieved": 16,
+              "relevant": 1,
+              "hits": 0,
+              "precision": 0.0,
+              "recall": 0.0
+            },
+            "search": {
+              "retrieved": 14,
+              "relevant": 1,
+              "hits": 1,
+              "precision": 0.07142857142857142,
+              "recall": 1.0
+            },
+            "similar": {
+              "retrieved": 10,
+              "relevant": 1,
+              "hits": 0,
+              "precision": 0.0,
+              "recall": 0.0
+            },
+            "any": {
+              "retrieved": 24,
+              "relevant": 1,
+              "hits": 1,
+              "precision": 0.041666666666666664,
+              "recall": 1.0
+            }
+          },
+          "missed": []
+        },
+        "relevant_files": {
+          "expected": [
+            "acme-api/src/users/user.entity.ts",
+            "acme-api/src/users/users.service.ts"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 5,
+              "relevant": 2,
+              "hits": 1,
+              "precision": 0.2,
+              "recall": 0.5
+            },
+            "pack": {
+              "retrieved": 16,
+              "relevant": 2,
+              "hits": 1,
+              "precision": 0.0625,
+              "recall": 0.5
+            },
+            "search": {
+              "retrieved": 14,
+              "relevant": 2,
+              "hits": 2,
+              "precision": 0.14285714285714285,
+              "recall": 1.0
+            },
+            "similar": {
+              "retrieved": 10,
+              "relevant": 2,
+              "hits": 1,
+              "precision": 0.1,
+              "recall": 0.5
+            },
+            "any": {
+              "retrieved": 24,
+              "relevant": 2,
+              "hits": 2,
+              "precision": 0.08333333333333333,
+              "recall": 1.0
+            }
+          },
+          "missed": []
+        },
+        "must_consider": {
+          "expected": [
+            "acme-api/src/users/users.service.ts",
+            "acme-api/src/users/users.controller.ts"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 5,
+              "relevant": 2,
+              "hits": 2,
+              "precision": 0.4,
+              "recall": 1.0
+            },
+            "pack": {
+              "retrieved": 16,
+              "relevant": 2,
+              "hits": 2,
+              "precision": 0.125,
+              "recall": 1.0
+            },
+            "search": {
+              "retrieved": 14,
+              "relevant": 2,
+              "hits": 2,
+              "precision": 0.14285714285714285,
+              "recall": 1.0
+            },
+            "similar": {
+              "retrieved": 10,
+              "relevant": 2,
+              "hits": 2,
+              "precision": 0.2,
+              "recall": 1.0
+            },
+            "any": {
+              "retrieved": 24,
+              "relevant": 2,
+              "hits": 2,
+              "precision": 0.08333333333333333,
+              "recall": 1.0
+            }
+          },
+          "missed": []
+        },
+        "reuse": null,
+        "blast_radius": null
+      }
+    },
+    {
+      "id": "t01-cwd-relative-targets",
+      "title": "CLI query targets accept paths relative to the working directory",
+      "categories": [
+        "find-and-extend",
+        "reuse"
+      ],
+      "outcome": {
+        "state": "scored",
+        "index": {
+          "repos": [
+            "tree"
+          ],
+          "files": 491,
+          "degraded": null
+        },
+        "queries": {
+          "search_phrases": [
+            {
+              "text": "code-atlas query similar --snippet",
+              "source": "code_span"
+            },
+            {
+              "text": "acme-billing/src",
+              "source": "code_span"
+            },
+            {
+              "text": "--snippet money.rs:1-15",
+              "source": "code_span"
+            },
+            {
+              "text": "acme-api/src/users",
+              "source": "code_span"
+            },
+            {
+              "text": "code-atlas query symbol users.service.ts:18",
+              "source": "code_span"
+            },
+            {
+              "text": "query callers ./users.service.ts:18",
+              "source": "code_span"
+            },
+            {
+              "text": "code-atlas query",
+              "source": "code_span"
+            },
+            {
+              "text": "symbol",
+              "source": "code_span"
+            },
+            {
+              "text": "path relative",
+              "source": "prose"
+            },
+            {
+              "text": "understands paths relative",
+              "source": "prose"
+            },
+            {
+              "text": "repository root",
+              "source": "prose"
+            },
+            {
+              "text": "absolute path",
+              "source": "prose"
+            }
+          ],
+          "similar_seeds": [
+            {
+              "key": "rust:tree:atlas-cli/bin/atlas-cli:commands/query::run#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-query:queries/similar::snippet_target#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 7,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-resolve/test/acme:::billing#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:globex-api:src/util/money::formatMoney#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 6,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:acme-web:src/hooks/useMe::useMe#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 4,
+                "shape_only": 0
+              }
+            }
+          ]
+        },
+        "pack": {
+          "bytes": 24995,
+          "estimated_tokens": 3502,
+          "budget": 6000,
+          "must_read": 22,
+          "skim": 14,
+          "patterns": 0,
+          "reuse": 0,
+          "impact": 6,
+          "tests": 8,
+          "uncertain": 10,
+          "omitted": 63
+        },
+        "must_change": {
+          "expected": [
+            "crates/atlas-cli/src/commands/query.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 12,
+              "relevant": 1,
+              "hits": 1,
+              "precision": 0.08333333333333333,
+              "recall": 1.0
+            },
+            "pack": {
+              "retrieved": 30,
+              "relevant": 1,
+              "hits": 1,
+              "precision": 0.03333333333333333,
+              "recall": 1.0
+            },
+            "search": {
+              "retrieved": 63,
+              "relevant": 1,
+              "hits": 1,
+              "precision": 0.015873015873015872,
+              "recall": 1.0
+            },
+            "similar": {
+              "retrieved": 29,
+              "relevant": 1,
+              "hits": 1,
+              "precision": 0.034482758620689655,
+              "recall": 1.0
+            },
+            "any": {
+              "retrieved": 98,
+              "relevant": 1,
+              "hits": 1,
+              "precision": 0.01020408163265306,
+              "recall": 1.0
+            }
+          },
+          "missed": []
+        },
+        "relevant_files": {
+          "expected": [
+            "crates/atlas-cli/src/commands/query.rs",
+            "crates/atlas-cli/src/cli.rs",
+            "crates/atlas-cli/src/context.rs",
+            "crates/atlas-query/src/target.rs",
+            "crates/atlas-cli/tests/cli.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 12,
+              "relevant": 5,
+              "hits": 1,
+              "precision": 0.08333333333333333,
+              "recall": 0.2
+            },
+            "pack": {
+              "retrieved": 30,
+              "relevant": 5,
+              "hits": 1,
+              "precision": 0.03333333333333333,
+              "recall": 0.2
+            },
+            "search": {
+              "retrieved": 63,
+              "relevant": 5,
+              "hits": 3,
+              "precision": 0.047619047619047616,
+              "recall": 0.6
+            },
+            "similar": {
+              "retrieved": 29,
+              "relevant": 5,
+              "hits": 2,
+              "precision": 0.06896551724137931,
+              "recall": 0.4
+            },
+            "any": {
+              "retrieved": 98,
+              "relevant": 5,
+              "hits": 4,
+              "precision": 0.04081632653061224,
+              "recall": 0.8
+            }
+          },
+          "missed": [
+            "crates/atlas-cli/src/context.rs"
+          ]
+        },
+        "must_consider": {
+          "expected": [
+            "crates/atlas-query/src/target.rs",
+            "crates/atlas-cli/src/cli.rs",
+            "crates/atlas-cli/src/context.rs",
+            "crates/atlas-mcp/src/server.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 12,
+              "relevant": 4,
+              "hits": 0,
+              "precision": 0.0,
+              "recall": 0.0
+            },
+            "pack": {
+              "retrieved": 30,
+              "relevant": 4,
+              "hits": 1,
+              "precision": 0.03333333333333333,
+              "recall": 0.25
+            },
+            "search": {
+              "retrieved": 63,
+              "relevant": 4,
+              "hits": 2,
+              "precision": 0.031746031746031744,
+              "recall": 0.5
+            },
+            "similar": {
+              "retrieved": 29,
+              "relevant": 4,
+              "hits": 1,
+              "precision": 0.034482758620689655,
+              "recall": 0.25
+            },
+            "any": {
+              "retrieved": 98,
+              "relevant": 4,
+              "hits": 3,
+              "precision": 0.030612244897959183,
+              "recall": 0.75
+            }
+          },
+          "missed": [
+            "crates/atlas-cli/src/context.rs"
+          ]
+        },
+        "reuse": {
+          "targets": [
+            {
+              "target": "query::repo_relative",
+              "pack": false,
+              "search": true,
+              "similar": false
+            }
+          ],
+          "pack": 0.0,
+          "search": 1.0,
+          "similar": 0.0,
+          "any": 1.0
+        },
+        "blast_radius": null
+      }
+    },
+    {
+      "id": "t02-typed-degraded-cause",
+      "title": "Typed cause for degraded freshness reports",
+      "categories": [
+        "blast-radius"
+      ],
+      "outcome": {
+        "state": "scored",
+        "index": {
+          "repos": [
+            "tree"
+          ],
+          "files": 491,
+          "degraded": null
+        },
+        "queries": {
+          "search_phrases": [
+            {
+              "text": "code-atlas watch",
+              "source": "code_span"
+            },
+            {
+              "text": "FreshnessReport::Degraded",
+              "source": "code_span"
+            },
+            {
+              "text": "cause: DegradedCause",
+              "source": "code_span"
+            },
+            {
+              "text": "reason: String",
+              "source": "code_span"
+            },
+            {
+              "text": "DegradedCause",
+              "source": "code_span"
+            },
+            {
+              "text": "atlas_engine",
+              "source": "code_span"
+            },
+            {
+              "text": "ProjectConfigChanged",
+              "source": "code_span"
+            },
+            {
+              "text": "UpdateFailed { error: String }",
+              "source": "code_span"
+            },
+            {
+              "text": "process changed",
+              "source": "prose"
+            },
+            {
+              "text": "project configuration",
+              "source": "prose"
+            },
+            {
+              "text": "project configuration changed",
+              "source": "prose"
+            },
+            {
+              "text": "free-text reason",
+              "source": "prose"
+            }
+          ],
+          "similar_seeds": [
+            {
+              "key": "rust:tree:atlas-engine:engine::Engine::barrier#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 3,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-mcp:options::ServeOptions::with_watch#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 3,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-query:freshness::Freshness::from_report#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 3,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-cli/bin/atlas-cli:output::Outcome::degraded_if#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 2,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-resolve/test/workspace_quality:::reason_label#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            }
+          ]
+        },
+        "pack": {
+          "bytes": 28961,
+          "estimated_tokens": 4077,
+          "budget": 6000,
+          "must_read": 24,
+          "skim": 14,
+          "patterns": 0,
+          "reuse": 1,
+          "impact": 4,
+          "tests": 8,
+          "uncertain": 2,
+          "omitted": 32
+        },
+        "must_change": {
+          "expected": [
+            "crates/atlas-engine/src/report.rs",
+            "crates/atlas-engine/src/engine.rs",
+            "crates/atlas-query/src/freshness.rs",
+            "crates/atlas-cli/src/commands/watch.rs",
+            "crates/atlas-engine/tests/engine.rs",
+            "crates/atlas-engine/tests/regressions.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 10,
+              "relevant": 6,
+              "hits": 3,
+              "precision": 0.3,
+              "recall": 0.5
+            },
+            "pack": {
+              "retrieved": 18,
+              "relevant": 6,
+              "hits": 6,
+              "precision": 0.3333333333333333,
+              "recall": 1.0
+            },
+            "search": {
+              "retrieved": 56,
+              "relevant": 6,
+              "hits": 5,
+              "precision": 0.08928571428571429,
+              "recall": 0.8333333333333334
+            },
+            "similar": {
+              "retrieved": 18,
+              "relevant": 6,
+              "hits": 2,
+              "precision": 0.1111111111111111,
+              "recall": 0.3333333333333333
+            },
+            "any": {
+              "retrieved": 71,
+              "relevant": 6,
+              "hits": 6,
+              "precision": 0.08450704225352113,
+              "recall": 1.0
+            }
+          },
+          "missed": []
+        },
+        "relevant_files": {
+          "expected": [
+            "crates/atlas-engine/src/report.rs",
+            "crates/atlas-engine/src/engine.rs",
+            "crates/atlas-engine/src/error.rs",
+            "crates/atlas-engine/src/lib.rs",
+            "crates/atlas-query/src/freshness.rs",
+            "crates/atlas-query/src/text/mod.rs",
+            "crates/atlas-cli/src/commands/watch.rs",
+            "crates/atlas-engine/tests/engine.rs",
+            "crates/atlas-engine/tests/regressions.rs",
+            "crates/atlas-cli/tests/cli.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [
+            "CLAUDE.md"
+          ],
+          "channels": {
+            "must_read": {
+              "retrieved": 10,
+              "relevant": 10,
+              "hits": 4,
+              "precision": 0.4,
+              "recall": 0.4
+            },
+            "pack": {
+              "retrieved": 18,
+              "relevant": 10,
+              "hits": 7,
+              "precision": 0.3888888888888889,
+              "recall": 0.7
+            },
+            "search": {
+              "retrieved": 56,
+              "relevant": 10,
+              "hits": 8,
+              "precision": 0.14285714285714285,
+              "recall": 0.8
+            },
+            "similar": {
+              "retrieved": 18,
+              "relevant": 10,
+              "hits": 3,
+              "precision": 0.16666666666666666,
+              "recall": 0.3
+            },
+            "any": {
+              "retrieved": 71,
+              "relevant": 10,
+              "hits": 10,
+              "precision": 0.14084507042253522,
+              "recall": 1.0
+            }
+          },
+          "missed": []
+        },
+        "must_consider": {
+          "expected": [
+            "crates/atlas-engine/src/error.rs",
+            "crates/atlas-query/src/text/mod.rs",
+            "crates/atlas-cli/src/commands/debug.rs",
+            "crates/atlas-cli/src/commands/enrich.rs",
+            "crates/atlas-cli/src/commands/scip.rs",
+            "crates/atlas-mcp/src/server.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [
+            "CLAUDE.md"
+          ],
+          "channels": {
+            "must_read": {
+              "retrieved": 10,
+              "relevant": 6,
+              "hits": 1,
+              "precision": 0.1,
+              "recall": 0.16666666666666666
+            },
+            "pack": {
+              "retrieved": 18,
+              "relevant": 6,
+              "hits": 1,
+              "precision": 0.05555555555555555,
+              "recall": 0.16666666666666666
+            },
+            "search": {
+              "retrieved": 56,
+              "relevant": 6,
+              "hits": 1,
+              "precision": 0.017857142857142856,
+              "recall": 0.16666666666666666
+            },
+            "similar": {
+              "retrieved": 18,
+              "relevant": 6,
+              "hits": 2,
+              "precision": 0.1111111111111111,
+              "recall": 0.3333333333333333
+            },
+            "any": {
+              "retrieved": 71,
+              "relevant": 6,
+              "hits": 3,
+              "precision": 0.04225352112676056,
+              "recall": 0.5
+            }
+          },
+          "missed": [
+            "crates/atlas-cli/src/commands/enrich.rs",
+            "crates/atlas-cli/src/commands/scip.rs",
+            "crates/atlas-mcp/src/server.rs"
+          ]
+        },
+        "reuse": null,
+        "blast_radius": {
+          "state": "scored",
+          "definition_file": "crates/atlas-engine/src/report.rs",
+          "seeds": [
+            "rust:tree:atlas-engine:report::FreshnessReport::Degraded#variant"
+          ],
+          "expected": [
+            "crates/atlas-cli/src/commands/watch.rs",
+            "crates/atlas-engine/src/engine.rs",
+            "crates/atlas-engine/tests/engine.rs",
+            "crates/atlas-engine/tests/regressions.rs",
+            "crates/atlas-query/src/freshness.rs"
+          ],
+          "visible": {
+            "retrieved": 28,
+            "relevant": 5,
+            "hits": 5,
+            "precision": 0.17857142857142858,
+            "recall": 1.0
+          },
+          "full": {
+            "retrieved": 34,
+            "relevant": 5,
+            "hits": 5,
+            "precision": 0.14705882352941177,
+            "recall": 1.0
+          },
+          "collapsed_visible": 16,
+          "missed": []
+        }
+      }
+    },
+    {
+      "id": "t03-nested-router-links",
+      "title": "Planted bug: routes of Express routers nested across files are never composed or linked",
+      "categories": [
+        "planted-bug",
+        "dependency-trace"
+      ],
+      "outcome": {
+        "state": "scored",
+        "index": {
+          "repos": [
+            "tree"
+          ],
+          "files": 491,
+          "degraded": null
+        },
+        "queries": {
+          "search_phrases": [
+            {
+              "text": "GET /api/orders/{id}",
+              "source": "code_span"
+            },
+            {
+              "text": "GET /{id}",
+              "source": "code_span"
+            },
+            {
+              "text": "fetch(",
+              "source": "code_span"
+            },
+            {
+              "text": "calls_endpoint",
+              "source": "code_span"
+            },
+            {
+              "text": "app.use('/health', healthRouter)",
+              "source": "code_span"
+            },
+            {
+              "text": "health.ts",
+              "source": "code_span"
+            },
+            {
+              "text": "Bug report",
+              "source": "prose"
+            },
+            {
+              "text": "Code Atlas stopped linking",
+              "source": "prose"
+            },
+            {
+              "text": "web client",
+              "source": "prose"
+            },
+            {
+              "text": "Express routers nested",
+              "source": "prose"
+            }
+          ],
+          "similar_seeds": [
+            {
+              "key": "ts:tree:globex-api:src/routes/orders.routes::registerOrderRoutes#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 7,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:acme-billing:acme_client::AcmeApiClient::get_order#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 8,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:@acme/sdk:src/client::AcmeClient::getOrder#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-detect:detectors/clients::fetch_request#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-link:http::calls_endpoint#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            }
+          ]
+        },
+        "pack": {
+          "bytes": 16417,
+          "estimated_tokens": 2156,
+          "budget": 6000,
+          "must_read": 3,
+          "skim": 26,
+          "patterns": 5,
+          "reuse": 2,
+          "impact": 13,
+          "tests": 2,
+          "uncertain": 9,
+          "omitted": 35
+        },
+        "must_change": {
+          "expected": [
+            "crates/atlas-detect/src/detectors/express.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 3,
+              "relevant": 1,
+              "hits": 0,
+              "precision": 0.0,
+              "recall": 0.0
+            },
+            "pack": {
+              "retrieved": 31,
+              "relevant": 1,
+              "hits": 1,
+              "precision": 0.03225806451612903,
+              "recall": 1.0
+            },
+            "search": {
+              "retrieved": 57,
+              "relevant": 1,
+              "hits": 0,
+              "precision": 0.0,
+              "recall": 0.0
+            },
+            "similar": {
+              "retrieved": 27,
+              "relevant": 1,
+              "hits": 0,
+              "precision": 0.0,
+              "recall": 0.0
+            },
+            "any": {
+              "retrieved": 82,
+              "relevant": 1,
+              "hits": 1,
+              "precision": 0.012195121951219513,
+              "recall": 1.0
+            }
+          },
+          "missed": []
+        },
+        "relevant_files": {
+          "expected": [
+            "crates/atlas-detect/src/detectors/express.rs",
+            "crates/atlas-link/src/compose.rs",
+            "crates/atlas-link/src/http.rs",
+            "crates/atlas-detect/tests/endpoints.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 3,
+              "relevant": 4,
+              "hits": 1,
+              "precision": 0.3333333333333333,
+              "recall": 0.25
+            },
+            "pack": {
+              "retrieved": 31,
+              "relevant": 4,
+              "hits": 3,
+              "precision": 0.0967741935483871,
+              "recall": 0.75
+            },
+            "search": {
+              "retrieved": 57,
+              "relevant": 4,
+              "hits": 2,
+              "precision": 0.03508771929824561,
+              "recall": 0.5
+            },
+            "similar": {
+              "retrieved": 27,
+              "relevant": 4,
+              "hits": 2,
+              "precision": 0.07407407407407407,
+              "recall": 0.5
+            },
+            "any": {
+              "retrieved": 82,
+              "relevant": 4,
+              "hits": 3,
+              "precision": 0.036585365853658534,
+              "recall": 0.75
+            }
+          },
+          "missed": [
+            "crates/atlas-detect/tests/endpoints.rs"
+          ]
+        },
+        "must_consider": {
+          "expected": [
+            "crates/atlas-link/src/compose.rs",
+            "crates/atlas-detect/tests/endpoints.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 3,
+              "relevant": 2,
+              "hits": 0,
+              "precision": 0.0,
+              "recall": 0.0
+            },
+            "pack": {
+              "retrieved": 31,
+              "relevant": 2,
+              "hits": 1,
+              "precision": 0.03225806451612903,
+              "recall": 0.5
+            },
+            "search": {
+              "retrieved": 57,
+              "relevant": 2,
+              "hits": 1,
+              "precision": 0.017543859649122806,
+              "recall": 0.5
+            },
+            "similar": {
+              "retrieved": 27,
+              "relevant": 2,
+              "hits": 1,
+              "precision": 0.037037037037037035,
+              "recall": 0.5
+            },
+            "any": {
+              "retrieved": 82,
+              "relevant": 2,
+              "hits": 1,
+              "precision": 0.012195121951219513,
+              "recall": 0.5
+            }
+          },
+          "missed": [
+            "crates/atlas-detect/tests/endpoints.rs"
+          ]
+        },
+        "reuse": null,
+        "blast_radius": null
+      }
+    },
+    {
+      "id": "t04-detector-import-gates",
+      "title": "Refactor: one shared place for detector import checks",
+      "categories": [
+        "refactor"
+      ],
+      "outcome": {
+        "state": "scored",
+        "index": {
+          "repos": [
+            "tree"
+          ],
+          "files": 491,
+          "degraded": null
+        },
+        "queries": {
+          "search_phrases": [
+            {
+              "text": "atlas_core::ImportFact",
+              "source": "code_span"
+            },
+            {
+              "text": "import",
+              "source": "code_span"
+            },
+            {
+              "text": "require()",
+              "source": "code_span"
+            },
+            {
+              "text": "use",
+              "source": "code_span"
+            },
+            {
+              "text": "crates/atlas-detect/src/detectors/",
+              "source": "code_span"
+            },
+            {
+              "text": "ImportFact",
+              "source": "code_span"
+            },
+            {
+              "text": "extern crate",
+              "source": "code_span"
+            },
+            {
+              "text": "Tech debt",
+              "source": "prose"
+            },
+            {
+              "text": "several framework detectors decide",
+              "source": "prose"
+            },
+            {
+              "text": "path-qualified references",
+              "source": "prose"
+            },
+            {
+              "text": "logic exists",
+              "source": "prose"
+            }
+          ],
+          "similar_seeds": [
+            {
+              "key": "rust:tree:atlas-query:queries/context::route_mentions#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-resolve:output::Emitter::ts_import#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:acme-api:src/auth/require-permission.decorator::RequirePermission#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 8,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-resolve:surface::FileSurface::uses_in#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 1,
+                "shape_only": 1
+              }
+            },
+            {
+              "key": "rust:tree:atlas-detect:registry::DetectorRegistry::run_all#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            }
+          ]
+        },
+        "pack": {
+          "bytes": 32814,
+          "estimated_tokens": 5128,
+          "budget": 6000,
+          "must_read": 20,
+          "skim": 20,
+          "patterns": 3,
+          "reuse": 0,
+          "impact": 6,
+          "tests": 8,
+          "uncertain": 4,
+          "omitted": 38
+        },
+        "must_change": {
+          "expected": [
+            "crates/atlas-detect/src/view.rs",
+            "crates/atlas-detect/src/detectors/express.rs",
+            "crates/atlas-detect/src/detectors/nest.rs",
+            "crates/atlas-detect/src/detectors/clients.rs",
+            "crates/atlas-detect/src/detectors/axum.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 10,
+              "relevant": 5,
+              "hits": 4,
+              "precision": 0.4,
+              "recall": 0.8
+            },
+            "pack": {
+              "retrieved": 20,
+              "relevant": 5,
+              "hits": 4,
+              "precision": 0.2,
+              "recall": 0.8
+            },
+            "search": {
+              "retrieved": 49,
+              "relevant": 5,
+              "hits": 5,
+              "precision": 0.10204081632653061,
+              "recall": 1.0
+            },
+            "similar": {
+              "retrieved": 27,
+              "relevant": 5,
+              "hits": 3,
+              "precision": 0.1111111111111111,
+              "recall": 0.6
+            },
+            "any": {
+              "retrieved": 68,
+              "relevant": 5,
+              "hits": 5,
+              "precision": 0.07352941176470588,
+              "recall": 1.0
+            }
+          },
+          "missed": []
+        },
+        "relevant_files": {
+          "expected": [
+            "crates/atlas-detect/src/view.rs",
+            "crates/atlas-detect/src/detectors/express.rs",
+            "crates/atlas-detect/src/detectors/nest.rs",
+            "crates/atlas-detect/src/detectors/clients.rs",
+            "crates/atlas-detect/src/detectors/axum.rs",
+            "crates/atlas-detect/src/detectors/auth.rs",
+            "crates/atlas-detect/src/detectors/mod.rs",
+            "crates/atlas-detect/src/lib.rs",
+            "crates/atlas-core/src/facts.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 10,
+              "relevant": 9,
+              "hits": 7,
+              "precision": 0.7,
+              "recall": 0.7777777777777778
+            },
+            "pack": {
+              "retrieved": 20,
+              "relevant": 9,
+              "hits": 7,
+              "precision": 0.35,
+              "recall": 0.7777777777777778
+            },
+            "search": {
+              "retrieved": 49,
+              "relevant": 9,
+              "hits": 9,
+              "precision": 0.1836734693877551,
+              "recall": 1.0
+            },
+            "similar": {
+              "retrieved": 27,
+              "relevant": 9,
+              "hits": 3,
+              "precision": 0.1111111111111111,
+              "recall": 0.3333333333333333
+            },
+            "any": {
+              "retrieved": 68,
+              "relevant": 9,
+              "hits": 9,
+              "precision": 0.1323529411764706,
+              "recall": 1.0
+            }
+          },
+          "missed": []
+        },
+        "must_consider": {
+          "expected": [
+            "crates/atlas-detect/src/detectors/auth.rs",
+            "crates/atlas-detect/src/detectors/mod.rs",
+            "crates/atlas-core/src/facts.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 10,
+              "relevant": 3,
+              "hits": 2,
+              "precision": 0.2,
+              "recall": 0.6666666666666666
+            },
+            "pack": {
+              "retrieved": 20,
+              "relevant": 3,
+              "hits": 2,
+              "precision": 0.1,
+              "recall": 0.6666666666666666
+            },
+            "search": {
+              "retrieved": 49,
+              "relevant": 3,
+              "hits": 3,
+              "precision": 0.061224489795918366,
+              "recall": 1.0
+            },
+            "similar": {
+              "retrieved": 27,
+              "relevant": 3,
+              "hits": 0,
+              "precision": 0.0,
+              "recall": 0.0
+            },
+            "any": {
+              "retrieved": 68,
+              "relevant": 3,
+              "hits": 3,
+              "precision": 0.04411764705882353,
+              "recall": 1.0
+            }
+          },
+          "missed": []
+        },
+        "reuse": null,
+        "blast_radius": null
+      }
+    },
+    {
+      "id": "t05-mcp-dependency-tools",
+      "title": "Expose the dependents/dependencies traversals as MCP tools",
+      "categories": [
+        "architecture-addition",
+        "test-discovery"
+      ],
+      "outcome": {
+        "state": "scored",
+        "index": {
+          "repos": [
+            "tree"
+          ],
+          "files": 491,
+          "degraded": null
+        },
+        "queries": {
+          "search_phrases": [
+            {
+              "text": "code-atlas query dependents <target>",
+              "source": "code_span"
+            },
+            {
+              "text": "code-atlas query dependencies <target>",
+              "source": "code_span"
+            },
+            {
+              "text": "atlas_callers",
+              "source": "code_span"
+            },
+            {
+              "text": "atlas_callees",
+              "source": "code_span"
+            },
+            {
+              "text": "atlas_dependents",
+              "source": "code_span"
+            },
+            {
+              "text": "atlas_dependencies",
+              "source": "code_span"
+            },
+            {
+              "text": "target",
+              "source": "code_span"
+            },
+            {
+              "text": "depth",
+              "source": "code_span"
+            },
+            {
+              "text": "Agents connected through",
+              "source": "prose"
+            },
+            {
+              "text": "MCP server",
+              "source": "prose"
+            },
+            {
+              "text": "follow imports",
+              "source": "prose"
+            },
+            {
+              "text": "type usage",
+              "source": "prose"
+            }
+          ],
+          "similar_seeds": [
+            {
+              "key": "rust:tree:atlas-mcp:server::AtlasServer::callees#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-query:queries/traverse::QueryEngine::dependents#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 8,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-query:queries/traverse::QueryEngine::dependencies#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 8,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-mcp:server::AtlasServer::callers#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-query:queries/traverse::QueryEngine::callees#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 9,
+                "shape_only": 0
+              }
+            }
+          ]
+        },
+        "pack": {
+          "bytes": 19093,
+          "estimated_tokens": 2804,
+          "budget": 6000,
+          "must_read": 12,
+          "skim": 19,
+          "patterns": 0,
+          "reuse": 5,
+          "impact": 0,
+          "tests": 8,
+          "uncertain": 1,
+          "omitted": 5
+        },
+        "must_change": {
+          "expected": [
+            "crates/atlas-mcp/src/server.rs",
+            "crates/atlas-mcp/tests/protocol.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 5,
+              "relevant": 2,
+              "hits": 1,
+              "precision": 0.2,
+              "recall": 0.5
+            },
+            "pack": {
+              "retrieved": 14,
+              "relevant": 2,
+              "hits": 1,
+              "precision": 0.07142857142857142,
+              "recall": 0.5
+            },
+            "search": {
+              "retrieved": 52,
+              "relevant": 2,
+              "hits": 1,
+              "precision": 0.019230769230769232,
+              "recall": 0.5
+            },
+            "similar": {
+              "retrieved": 7,
+              "relevant": 2,
+              "hits": 1,
+              "precision": 0.14285714285714285,
+              "recall": 0.5
+            },
+            "any": {
+              "retrieved": 62,
+              "relevant": 2,
+              "hits": 1,
+              "precision": 0.016129032258064516,
+              "recall": 0.5
+            }
+          },
+          "missed": [
+            "crates/atlas-mcp/tests/protocol.rs"
+          ]
+        },
+        "relevant_files": {
+          "expected": [
+            "crates/atlas-mcp/src/server.rs",
+            "crates/atlas-mcp/src/descriptions.rs",
+            "crates/atlas-mcp/src/arguments.rs",
+            "crates/atlas-mcp/src/render.rs",
+            "crates/atlas-mcp/tests/protocol.rs",
+            "crates/atlas-query/src/queries/traverse.rs",
+            "crates/atlas-cli/src/commands/query.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 5,
+              "relevant": 7,
+              "hits": 4,
+              "precision": 0.8,
+              "recall": 0.5714285714285714
+            },
+            "pack": {
+              "retrieved": 14,
+              "relevant": 7,
+              "hits": 4,
+              "precision": 0.2857142857142857,
+              "recall": 0.5714285714285714
+            },
+            "search": {
+              "retrieved": 52,
+              "relevant": 7,
+              "hits": 5,
+              "precision": 0.09615384615384616,
+              "recall": 0.7142857142857143
+            },
+            "similar": {
+              "retrieved": 7,
+              "relevant": 7,
+              "hits": 4,
+              "precision": 0.5714285714285714,
+              "recall": 0.5714285714285714
+            },
+            "any": {
+              "retrieved": 62,
+              "relevant": 7,
+              "hits": 6,
+              "precision": 0.0967741935483871,
+              "recall": 0.8571428571428571
+            }
+          },
+          "missed": [
+            "crates/atlas-mcp/tests/protocol.rs"
+          ]
+        },
+        "must_consider": {
+          "expected": [
+            "crates/atlas-mcp/src/descriptions.rs",
+            "crates/atlas-mcp/src/arguments.rs",
+            "crates/atlas-query/src/queries/traverse.rs",
+            "crates/atlas-cli/src/commands/query.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 5,
+              "relevant": 4,
+              "hits": 2,
+              "precision": 0.4,
+              "recall": 0.5
+            },
+            "pack": {
+              "retrieved": 14,
+              "relevant": 4,
+              "hits": 2,
+              "precision": 0.14285714285714285,
+              "recall": 0.5
+            },
+            "search": {
+              "retrieved": 52,
+              "relevant": 4,
+              "hits": 3,
+              "precision": 0.057692307692307696,
+              "recall": 0.75
+            },
+            "similar": {
+              "retrieved": 7,
+              "relevant": 4,
+              "hits": 2,
+              "precision": 0.2857142857142857,
+              "recall": 0.5
+            },
+            "any": {
+              "retrieved": 62,
+              "relevant": 4,
+              "hits": 4,
+              "precision": 0.06451612903225806,
+              "recall": 1.0
+            }
+          },
+          "missed": []
+        },
+        "reuse": {
+          "targets": [
+            {
+              "target": "QueryEngine::dependents",
+              "pack": true,
+              "search": true,
+              "similar": false
+            },
+            {
+              "target": "QueryEngine::dependencies",
+              "pack": false,
+              "search": true,
+              "similar": false
+            },
+            {
+              "target": "render::targeted",
+              "pack": true,
+              "search": false,
+              "similar": true
+            },
+            {
+              "target": "arguments::depth",
+              "pack": true,
+              "search": false,
+              "similar": false
+            },
+            {
+              "target": "arguments::TraverseArgs",
+              "pack": false,
+              "search": false,
+              "similar": false
+            }
+          ],
+          "pack": 0.6,
+          "search": 0.4,
+          "similar": 0.2,
+          "any": 0.8
+        },
+        "blast_radius": null
+      }
+    },
+    {
+      "id": "t06-repo-file-size-limit",
+      "title": "Per-repository max_file_bytes override",
+      "categories": [
+        "config-impact",
+        "blast-radius"
+      ],
+      "outcome": {
+        "state": "scored",
+        "index": {
+          "repos": [
+            "tree"
+          ],
+          "files": 491,
+          "degraded": null
+        },
+        "queries": {
+          "search_phrases": [
+            {
+              "text": "max_file_bytes",
+              "source": "code_span"
+            },
+            {
+              "text": "[project.settings]",
+              "source": "code_span"
+            },
+            {
+              "text": "projects.toml",
+              "source": "code_span"
+            },
+            {
+              "text": "[[project.repo]]",
+              "source": "code_span"
+            },
+            {
+              "text": "Per-repository file size limit",
+              "source": "prose"
+            },
+            {
+              "text": "mixed projects",
+              "source": "prose"
+            },
+            {
+              "text": "large hand-maintained TypeScript files",
+              "source": "prose"
+            },
+            {
+              "text": "want indexed",
+              "source": "prose"
+            }
+          ],
+          "similar_seeds": [
+            {
+              "key": "rust:tree:atlas-cli/bin/atlas-cli:commands/project::apply_settings#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 8,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-lang-rust:analyzer::RustAnalyzer::with_max_source_bytes#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 1,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-project:registry::Registry::set_settings#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-scip/test/rust_analyzer:::expected#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 6,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "rust:tree:atlas-link:facts::Facts::in_project#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            }
+          ]
+        },
+        "pack": {
+          "bytes": 18511,
+          "estimated_tokens": 2706,
+          "budget": 6000,
+          "must_read": 21,
+          "skim": 17,
+          "patterns": 0,
+          "reuse": 1,
+          "impact": 0,
+          "tests": 8,
+          "uncertain": 0,
+          "omitted": 9
+        },
+        "must_change": {
+          "expected": [
+            "crates/atlas-project/src/registry.rs",
+            "crates/atlas-project/src/discovery.rs",
+            "crates/atlas-project/src/manifest/tests.rs",
+            "crates/atlas-engine/src/watch.rs",
+            "crates/atlas-engine/tests/common/mod.rs",
+            "crates/atlas-resolve/tests/common/mod.rs",
+            "crates/atlas-resolve/tests/incremental.rs",
+            "crates/atlas-resolve/tests/workspace_quality.rs",
+            "crates/atlas-query/tests/common/mod.rs",
+            "crates/atlas-query/tests/perf.rs",
+            "crates/atlas-link/tests/common/mod.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 9,
+              "relevant": 11,
+              "hits": 2,
+              "precision": 0.2222222222222222,
+              "recall": 0.18181818181818182
+            },
+            "pack": {
+              "retrieved": 18,
+              "relevant": 11,
+              "hits": 4,
+              "precision": 0.2222222222222222,
+              "recall": 0.36363636363636365
+            },
+            "search": {
+              "retrieved": 41,
+              "relevant": 11,
+              "hits": 6,
+              "precision": 0.14634146341463414,
+              "recall": 0.5454545454545454
+            },
+            "similar": {
+              "retrieved": 17,
+              "relevant": 11,
+              "hits": 3,
+              "precision": 0.17647058823529413,
+              "recall": 0.2727272727272727
+            },
+            "any": {
+              "retrieved": 60,
+              "relevant": 11,
+              "hits": 9,
+              "precision": 0.15,
+              "recall": 0.8181818181818182
+            }
+          },
+          "missed": [
+            "crates/atlas-query/tests/perf.rs",
+            "crates/atlas-resolve/tests/workspace_quality.rs"
+          ]
+        },
+        "relevant_files": {
+          "expected": [
+            "crates/atlas-project/src/registry.rs",
+            "crates/atlas-project/src/discovery.rs",
+            "crates/atlas-engine/src/engine.rs",
+            "crates/atlas-engine/src/scan.rs",
+            "crates/atlas-engine/src/state.rs",
+            "crates/atlas-engine/src/watch.rs",
+            "crates/atlas-cli/src/commands/project.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 9,
+              "relevant": 7,
+              "hits": 3,
+              "precision": 0.3333333333333333,
+              "recall": 0.42857142857142855
+            },
+            "pack": {
+              "retrieved": 18,
+              "relevant": 7,
+              "hits": 4,
+              "precision": 0.2222222222222222,
+              "recall": 0.5714285714285714
+            },
+            "search": {
+              "retrieved": 41,
+              "relevant": 7,
+              "hits": 5,
+              "precision": 0.12195121951219512,
+              "recall": 0.7142857142857143
+            },
+            "similar": {
+              "retrieved": 17,
+              "relevant": 7,
+              "hits": 2,
+              "precision": 0.11764705882352941,
+              "recall": 0.2857142857142857
+            },
+            "any": {
+              "retrieved": 60,
+              "relevant": 7,
+              "hits": 6,
+              "precision": 0.1,
+              "recall": 0.8571428571428571
+            }
+          },
+          "missed": [
+            "crates/atlas-engine/src/engine.rs"
+          ]
+        },
+        "must_consider": {
+          "expected": [
+            "crates/atlas-engine/src/engine.rs",
+            "crates/atlas-engine/src/scan.rs",
+            "crates/atlas-engine/src/state.rs",
+            "crates/atlas-cli/src/commands/project.rs"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 9,
+              "relevant": 4,
+              "hits": 1,
+              "precision": 0.1111111111111111,
+              "recall": 0.25
+            },
+            "pack": {
+              "retrieved": 18,
+              "relevant": 4,
+              "hits": 1,
+              "precision": 0.05555555555555555,
+              "recall": 0.25
+            },
+            "search": {
+              "retrieved": 41,
+              "relevant": 4,
+              "hits": 3,
+              "precision": 0.07317073170731707,
+              "recall": 0.75
+            },
+            "similar": {
+              "retrieved": 17,
+              "relevant": 4,
+              "hits": 1,
+              "precision": 0.058823529411764705,
+              "recall": 0.25
+            },
+            "any": {
+              "retrieved": 60,
+              "relevant": 4,
+              "hits": 3,
+              "precision": 0.05,
+              "recall": 0.75
+            }
+          },
+          "missed": [
+            "crates/atlas-engine/src/engine.rs"
+          ]
+        },
+        "reuse": {
+          "targets": [
+            {
+              "target": "discovery::discover",
+              "pack": false,
+              "search": false,
+              "similar": false
+            }
+          ],
+          "pack": 0.0,
+          "search": 0.0,
+          "similar": 0.0,
+          "any": 0.0
+        },
+        "blast_radius": {
+          "state": "scored",
+          "definition_file": "crates/atlas-project/src/registry.rs",
+          "seeds": [
+            "rust:tree:atlas-project:registry::RepoConfig#struct",
+            "rust:tree:atlas-project:registry::build_repo#function"
+          ],
+          "expected": [
+            "crates/atlas-engine/src/watch.rs",
+            "crates/atlas-engine/tests/common/mod.rs",
+            "crates/atlas-link/tests/common/mod.rs",
+            "crates/atlas-project/src/discovery.rs",
+            "crates/atlas-project/src/manifest/tests.rs",
+            "crates/atlas-query/tests/common/mod.rs",
+            "crates/atlas-query/tests/perf.rs",
+            "crates/atlas-resolve/tests/common/mod.rs",
+            "crates/atlas-resolve/tests/incremental.rs",
+            "crates/atlas-resolve/tests/workspace_quality.rs"
+          ],
+          "visible": {
+            "retrieved": 25,
+            "relevant": 10,
+            "hits": 10,
+            "precision": 0.4,
+            "recall": 1.0
+          },
+          "full": {
+            "retrieved": 40,
+            "relevant": 10,
+            "hits": 10,
+            "precision": 0.25,
+            "recall": 1.0
+          },
+          "collapsed_visible": 119,
+          "missed": []
+        }
+      }
+    },
+    {
+      "id": "t07-static-precompressed-quality",
+      "title": "serveStatic precompressed variants ignore Accept-Encoding quality values",
+      "categories": [
+        "reuse-trap"
+      ],
+      "outcome": {
+        "state": "scored",
+        "index": {
+          "repos": [
+            "tree"
+          ],
+          "files": 486,
+          "degraded": null
+        },
+        "queries": {
+          "search_phrases": [
+            {
+              "text": "serveStatic({ precompressed: true })",
+              "source": "code_span"
+            },
+            {
+              "text": "Accept-Encoding: gzip;q=1.0, br;q=0.5",
+              "source": "code_span"
+            },
+            {
+              "text": "app.js.gz",
+              "source": "code_span"
+            },
+            {
+              "text": "app.js.br",
+              "source": "code_span"
+            },
+            {
+              "text": "app.js",
+              "source": "code_span"
+            },
+            {
+              "text": "Accept-Encoding: br;q=0.2, gzip;q=0.8",
+              "source": "code_span"
+            },
+            {
+              "text": "Accept-*",
+              "source": "code_span"
+            },
+            {
+              "text": "q=0",
+              "source": "code_span"
+            },
+            {
+              "text": "precompressed variant",
+              "source": "prose"
+            },
+            {
+              "text": "client lists",
+              "source": "prose"
+            },
+            {
+              "text": "bare token",
+              "source": "prose"
+            },
+            {
+              "text": "Real browsers",
+              "source": "prose"
+            }
+          ],
+          "similar_seeds": [
+            {
+              "key": "ts:tree:hono:src/middleware/serve-static/index::serveStatic#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 9,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:@hono/cloudflare-workers:src/serve-static::serveStatic#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:hono:benchmarks/http-server/benchmark::getAppTemplate#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 1,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:hono:src/utils/encode.test::str2UInt8Array#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 1,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:hono:src/utils/accept::parseAccept#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 7,
+                "shape_only": 0
+              }
+            }
+          ]
+        },
+        "pack": {
+          "bytes": 28628,
+          "estimated_tokens": 4671,
+          "budget": 6000,
+          "must_read": 30,
+          "skim": 7,
+          "patterns": 0,
+          "reuse": 0,
+          "impact": 0,
+          "tests": 8,
+          "uncertain": 0,
+          "omitted": 35
+        },
+        "must_change": {
+          "expected": [
+            "src/middleware/serve-static/index.ts"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 11,
+              "relevant": 1,
+              "hits": 1,
+              "precision": 0.09090909090909091,
+              "recall": 1.0
+            },
+            "pack": {
+              "retrieved": 14,
+              "relevant": 1,
+              "hits": 1,
+              "precision": 0.07142857142857142,
+              "recall": 1.0
+            },
+            "search": {
+              "retrieved": 52,
+              "relevant": 1,
+              "hits": 1,
+              "precision": 0.019230769230769232,
+              "recall": 1.0
+            },
+            "similar": {
+              "retrieved": 20,
+              "relevant": 1,
+              "hits": 1,
+              "precision": 0.05,
+              "recall": 1.0
+            },
+            "any": {
+              "retrieved": 67,
+              "relevant": 1,
+              "hits": 1,
+              "precision": 0.014925373134328358,
+              "recall": 1.0
+            }
+          },
+          "missed": []
+        },
+        "relevant_files": {
+          "expected": [
+            "src/middleware/serve-static/index.ts",
+            "src/middleware/serve-static/index.test.ts",
+            "src/utils/accept.ts",
+            "src/utils/compress.ts",
+            "src/middleware/compress/index.ts"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 11,
+              "relevant": 5,
+              "hits": 2,
+              "precision": 0.18181818181818182,
+              "recall": 0.4
+            },
+            "pack": {
+              "retrieved": 14,
+              "relevant": 5,
+              "hits": 2,
+              "precision": 0.14285714285714285,
+              "recall": 0.4
+            },
+            "search": {
+              "retrieved": 52,
+              "relevant": 5,
+              "hits": 3,
+              "precision": 0.057692307692307696,
+              "recall": 0.6
+            },
+            "similar": {
+              "retrieved": 20,
+              "relevant": 5,
+              "hits": 2,
+              "precision": 0.1,
+              "recall": 0.4
+            },
+            "any": {
+              "retrieved": 67,
+              "relevant": 5,
+              "hits": 3,
+              "precision": 0.04477611940298507,
+              "recall": 0.6
+            }
+          },
+          "missed": [
+            "src/middleware/serve-static/index.test.ts",
+            "src/utils/compress.ts"
+          ]
+        },
+        "must_consider": {
+          "expected": [
+            "src/utils/accept.ts",
+            "src/middleware/compress/index.ts",
+            "src/middleware/serve-static/index.test.ts",
+            "src/adapter/bun/serve-static.ts",
+            "src/adapter/deno/serve-static.ts",
+            "src/adapter/cloudflare-workers/serve-static.ts"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 11,
+              "relevant": 6,
+              "hits": 1,
+              "precision": 0.09090909090909091,
+              "recall": 0.16666666666666666
+            },
+            "pack": {
+              "retrieved": 14,
+              "relevant": 6,
+              "hits": 1,
+              "precision": 0.07142857142857142,
+              "recall": 0.16666666666666666
+            },
+            "search": {
+              "retrieved": 52,
+              "relevant": 6,
+              "hits": 5,
+              "precision": 0.09615384615384616,
+              "recall": 0.8333333333333334
+            },
+            "similar": {
+              "retrieved": 20,
+              "relevant": 6,
+              "hits": 4,
+              "precision": 0.2,
+              "recall": 0.6666666666666666
+            },
+            "any": {
+              "retrieved": 67,
+              "relevant": 6,
+              "hits": 5,
+              "precision": 0.07462686567164178,
+              "recall": 0.8333333333333334
+            }
+          },
+          "missed": [
+            "src/middleware/serve-static/index.test.ts"
+          ]
+        },
+        "reuse": {
+          "targets": [
+            {
+              "target": "src/utils/accept::parseAccept",
+              "pack": true,
+              "search": true,
+              "similar": false
+            }
+          ],
+          "pack": 1.0,
+          "search": 1.0,
+          "similar": 0.0,
+          "any": 1.0
+        },
+        "blast_radius": null
+      }
+    },
+    {
+      "id": "t08-cookie-samesite-default",
+      "title": "Default SameSite=Lax for cookies created by the cookie helper",
+      "categories": [
+        "test-discovery",
+        "cross-package"
+      ],
+      "outcome": {
+        "state": "scored",
+        "index": {
+          "repos": [
+            "tree"
+          ],
+          "files": 486,
+          "degraded": null
+        },
+        "queries": {
+          "search_phrases": [
+            {
+              "text": "hono/cookie",
+              "source": "code_span"
+            },
+            {
+              "text": "setCookie",
+              "source": "code_span"
+            },
+            {
+              "text": "setSignedCookie",
+              "source": "code_span"
+            },
+            {
+              "text": "generateCookie",
+              "source": "code_span"
+            },
+            {
+              "text": "generateSignedCookie",
+              "source": "code_span"
+            },
+            {
+              "text": "deleteCookie",
+              "source": "code_span"
+            },
+            {
+              "text": "SameSite",
+              "source": "code_span"
+            },
+            {
+              "text": "Set-Cookie",
+              "source": "code_span"
+            },
+            {
+              "text": "Cookies created through",
+              "source": "prose"
+            },
+            {
+              "text": "attribute unless",
+              "source": "prose"
+            },
+            {
+              "text": "caller passes",
+              "source": "prose"
+            },
+            {
+              "text": "Browsers disagree",
+              "source": "prose"
+            }
+          ],
+          "similar_seeds": [
+            {
+              "key": "ts:tree:hono:src/utils/cookie::serializeSigned#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:hono:src/helper/cookie/index::getCookie#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 1,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:hono:src/helper/cookie/index::setCookie#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 5,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:hono:src/helper/cookie/index::setSignedCookie#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 8,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:hono:src/helper/cookie/index::generateCookie#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 6,
+                "shape_only": 0
+              }
+            }
+          ]
+        },
+        "pack": {
+          "bytes": 26501,
+          "estimated_tokens": 4230,
+          "budget": 6000,
+          "must_read": 19,
+          "skim": 19,
+          "patterns": 0,
+          "reuse": 0,
+          "impact": 1,
+          "tests": 8,
+          "uncertain": 0,
+          "omitted": 35
+        },
+        "must_change": {
+          "expected": [
+            "src/helper/cookie/index.ts",
+            "src/helper/cookie/index.test.ts",
+            "src/context.test.ts",
+            "src/adapter/aws-lambda/handler.test.ts",
+            "src/adapter/lambda-edge/handler.test.ts",
+            "adapters/aws-lambda/src/handler.test.ts",
+            "adapters/aws-lambda/test/index.test.ts",
+            "adapters/lambda-edge/src/handler.test.ts"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 7,
+              "relevant": 8,
+              "hits": 1,
+              "precision": 0.14285714285714285,
+              "recall": 0.125
+            },
+            "pack": {
+              "retrieved": 15,
+              "relevant": 8,
+              "hits": 5,
+              "precision": 0.3333333333333333,
+              "recall": 0.625
+            },
+            "search": {
+              "retrieved": 35,
+              "relevant": 8,
+              "hits": 4,
+              "precision": 0.11428571428571428,
+              "recall": 0.5
+            },
+            "similar": {
+              "retrieved": 4,
+              "relevant": 8,
+              "hits": 1,
+              "precision": 0.25,
+              "recall": 0.125
+            },
+            "any": {
+              "retrieved": 44,
+              "relevant": 8,
+              "hits": 6,
+              "precision": 0.13636363636363635,
+              "recall": 0.75
+            }
+          },
+          "missed": [
+            "adapters/aws-lambda/src/handler.test.ts",
+            "adapters/aws-lambda/test/index.test.ts"
+          ]
+        },
+        "relevant_files": {
+          "expected": [
+            "src/helper/cookie/index.ts",
+            "src/utils/cookie.ts",
+            "src/helper/cookie/index.test.ts",
+            "src/context.test.ts",
+            "src/adapter/aws-lambda/handler.test.ts",
+            "src/adapter/lambda-edge/handler.test.ts",
+            "adapters/aws-lambda/src/handler.test.ts",
+            "adapters/aws-lambda/test/index.test.ts",
+            "adapters/lambda-edge/src/handler.test.ts"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 7,
+              "relevant": 9,
+              "hits": 2,
+              "precision": 0.2857142857142857,
+              "recall": 0.2222222222222222
+            },
+            "pack": {
+              "retrieved": 15,
+              "relevant": 9,
+              "hits": 6,
+              "precision": 0.4,
+              "recall": 0.6666666666666666
+            },
+            "search": {
+              "retrieved": 35,
+              "relevant": 9,
+              "hits": 5,
+              "precision": 0.14285714285714285,
+              "recall": 0.5555555555555556
+            },
+            "similar": {
+              "retrieved": 4,
+              "relevant": 9,
+              "hits": 2,
+              "precision": 0.5,
+              "recall": 0.2222222222222222
+            },
+            "any": {
+              "retrieved": 44,
+              "relevant": 9,
+              "hits": 7,
+              "precision": 0.1590909090909091,
+              "recall": 0.7777777777777778
+            }
+          },
+          "missed": [
+            "adapters/aws-lambda/src/handler.test.ts",
+            "adapters/aws-lambda/test/index.test.ts"
+          ]
+        },
+        "must_consider": {
+          "expected": [
+            "src/utils/cookie.ts",
+            "src/utils/cookie.test.ts",
+            "src/adapter/aws-lambda/handler.ts",
+            "adapters/aws-lambda/src/handler.ts"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 7,
+              "relevant": 4,
+              "hits": 1,
+              "precision": 0.14285714285714285,
+              "recall": 0.25
+            },
+            "pack": {
+              "retrieved": 15,
+              "relevant": 4,
+              "hits": 1,
+              "precision": 0.06666666666666667,
+              "recall": 0.25
+            },
+            "search": {
+              "retrieved": 35,
+              "relevant": 4,
+              "hits": 4,
+              "precision": 0.11428571428571428,
+              "recall": 1.0
+            },
+            "similar": {
+              "retrieved": 4,
+              "relevant": 4,
+              "hits": 1,
+              "precision": 0.25,
+              "recall": 0.25
+            },
+            "any": {
+              "retrieved": 44,
+              "relevant": 4,
+              "hits": 4,
+              "precision": 0.09090909090909091,
+              "recall": 1.0
+            }
+          },
+          "missed": []
+        },
+        "reuse": null,
+        "blast_radius": null
+      }
+    },
+    {
+      "id": "t09-lambda-text-content-types",
+      "title": "Lambda adapters base64-encode textual responses such as text/markdown and text/event-stream",
+      "categories": [
+        "cross-package",
+        "consistency"
+      ],
+      "outcome": {
+        "state": "scored",
+        "index": {
+          "repos": [
+            "tree"
+          ],
+          "files": 486,
+          "degraded": null
+        },
+        "queries": {
+          "search_phrases": [
+            {
+              "text": "Content-Type: text/markdown",
+              "source": "code_span"
+            },
+            {
+              "text": "text/event-stream",
+              "source": "code_span"
+            },
+            {
+              "text": "text/calendar",
+              "source": "code_span"
+            },
+            {
+              "text": "application/javascript",
+              "source": "code_span"
+            },
+            {
+              "text": "bodyEncoding: 'base64'",
+              "source": "code_span"
+            },
+            {
+              "text": "text/*",
+              "source": "code_span"
+            },
+            {
+              "text": "application/x-www-form-urlencoded",
+              "source": "code_span"
+            },
+            {
+              "text": "charset",
+              "source": "code_span"
+            },
+            {
+              "text": "come back base64-encoded",
+              "source": "prose"
+            },
+            {
+              "text": "AWS Lambda deployment",
+              "source": "prose"
+            },
+            {
+              "text": "API Gateway REST",
+              "source": "prose"
+            },
+            {
+              "text": "media types configured shows",
+              "source": "prose"
+            }
+          ],
+          "similar_seeds": [
+            {
+              "key": "ts:tree:@hono/aws-lambda:src/handler::EventProcessor::createResult#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:hono:src/helper/ssg/ssg::parseResponseContent#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:hono:src/helper/streaming/text::streamText#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 5,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:hono:src/context::Context::text#method",
+              "outcome": {
+                "outcome": "found",
+                "members": 2,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:hono:src/jsx/dom/hooks/index::useFormStatus#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 4,
+                "shape_only": 0
+              }
+            }
+          ]
+        },
+        "pack": {
+          "bytes": 32075,
+          "estimated_tokens": 5003,
+          "budget": 6000,
+          "must_read": 32,
+          "skim": 4,
+          "patterns": 0,
+          "reuse": 10,
+          "impact": 0,
+          "tests": 8,
+          "uncertain": 10,
+          "omitted": 67
+        },
+        "must_change": {
+          "expected": [
+            "src/adapter/aws-lambda/handler.ts",
+            "src/adapter/lambda-edge/handler.ts",
+            "adapters/aws-lambda/src/handler.ts",
+            "adapters/lambda-edge/src/handler.ts"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 11,
+              "relevant": 4,
+              "hits": 3,
+              "precision": 0.2727272727272727,
+              "recall": 0.75
+            },
+            "pack": {
+              "retrieved": 17,
+              "relevant": 4,
+              "hits": 4,
+              "precision": 0.23529411764705882,
+              "recall": 1.0
+            },
+            "search": {
+              "retrieved": 49,
+              "relevant": 4,
+              "hits": 4,
+              "precision": 0.08163265306122448,
+              "recall": 1.0
+            },
+            "similar": {
+              "retrieved": 18,
+              "relevant": 4,
+              "hits": 3,
+              "precision": 0.16666666666666666,
+              "recall": 0.75
+            },
+            "any": {
+              "retrieved": 59,
+              "relevant": 4,
+              "hits": 4,
+              "precision": 0.06779661016949153,
+              "recall": 1.0
+            }
+          },
+          "missed": []
+        },
+        "relevant_files": {
+          "expected": [
+            "src/adapter/aws-lambda/handler.ts",
+            "src/adapter/lambda-edge/handler.ts",
+            "adapters/aws-lambda/src/handler.ts",
+            "adapters/lambda-edge/src/handler.ts",
+            "src/adapter/aws-lambda/handler.test.ts",
+            "src/adapter/lambda-edge/handler.test.ts",
+            "adapters/aws-lambda/src/handler.test.ts",
+            "adapters/lambda-edge/src/handler.test.ts"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 11,
+              "relevant": 8,
+              "hits": 3,
+              "precision": 0.2727272727272727,
+              "recall": 0.375
+            },
+            "pack": {
+              "retrieved": 17,
+              "relevant": 8,
+              "hits": 4,
+              "precision": 0.23529411764705882,
+              "recall": 0.5
+            },
+            "search": {
+              "retrieved": 49,
+              "relevant": 8,
+              "hits": 8,
+              "precision": 0.16326530612244897,
+              "recall": 1.0
+            },
+            "similar": {
+              "retrieved": 18,
+              "relevant": 8,
+              "hits": 3,
+              "precision": 0.16666666666666666,
+              "recall": 0.375
+            },
+            "any": {
+              "retrieved": 59,
+              "relevant": 8,
+              "hits": 8,
+              "precision": 0.13559322033898305,
+              "recall": 1.0
+            }
+          },
+          "missed": []
+        },
+        "must_consider": {
+          "expected": [
+            "src/adapter/aws-lambda/handler.test.ts",
+            "src/adapter/lambda-edge/handler.test.ts",
+            "adapters/aws-lambda/src/handler.test.ts",
+            "adapters/lambda-edge/src/handler.test.ts"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 11,
+              "relevant": 4,
+              "hits": 0,
+              "precision": 0.0,
+              "recall": 0.0
+            },
+            "pack": {
+              "retrieved": 17,
+              "relevant": 4,
+              "hits": 0,
+              "precision": 0.0,
+              "recall": 0.0
+            },
+            "search": {
+              "retrieved": 49,
+              "relevant": 4,
+              "hits": 4,
+              "precision": 0.08163265306122448,
+              "recall": 1.0
+            },
+            "similar": {
+              "retrieved": 18,
+              "relevant": 4,
+              "hits": 0,
+              "precision": 0.0,
+              "recall": 0.0
+            },
+            "any": {
+              "retrieved": 59,
+              "relevant": 4,
+              "hits": 4,
+              "precision": 0.06779661016949153,
+              "recall": 1.0
+            }
+          },
+          "missed": []
+        },
+        "reuse": null,
+        "blast_radius": null
+      }
+    },
+    {
+      "id": "t10-auth-challenge-quoting",
+      "title": "WWW-Authenticate challenges do not escape backslashes in quoted-string parameters",
+      "categories": [
+        "cross-cutting",
+        "consistency"
+      ],
+      "outcome": {
+        "state": "scored",
+        "index": {
+          "repos": [
+            "tree"
+          ],
+          "files": 486,
+          "degraded": null
+        },
+        "queries": {
+          "search_phrases": [
+            {
+              "text": "bearerAuth({ token, realm: 'C:\\\\vault' })",
+              "source": "code_span"
+            },
+            {
+              "text": "WWW-Authenticate: Bearer realm=\"C:\\vault\"",
+              "source": "code_span"
+            },
+            {
+              "text": "C:vault",
+              "source": "code_span"
+            },
+            {
+              "text": "invalidToken: { wwwAuthenticateHeader: { error: 'invalid_token', error_description: 'bad \"token\"' } }",
+              "source": "code_span"
+            },
+            {
+              "text": "WWW-Authenticate",
+              "source": "code_span"
+            },
+            {
+              "text": "pnpm",
+              "source": "code_span"
+            },
+            {
+              "text": "npx pnpm@12.6.0 ...",
+              "source": "code_span"
+            },
+            {
+              "text": "./node_modules/.bin",
+              "source": "code_span"
+            },
+            {
+              "text": "clients receive",
+              "source": "prose"
+            },
+            {
+              "text": "unterminated quoted-string",
+              "source": "prose"
+            },
+            {
+              "text": "Double quotes",
+              "source": "prose"
+            },
+            {
+              "text": "cut short",
+              "source": "prose"
+            }
+          ],
+          "similar_seeds": [
+            {
+              "key": "ts:tree:hono:src/middleware/bearer-auth/index::bearerAuth#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 1,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:hono:src/utils/jwt/jwt::decodeHeader#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 2,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:hono:src/utils/ipaddr::parseIPv6HexCode#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 10,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:@hono/cloudflare-workers:src/serve-static-module::module#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 8,
+                "shape_only": 0
+              }
+            },
+            {
+              "key": "ts:tree:hono:src/helper/websocket/index::createWSMessageEvent#function",
+              "outcome": {
+                "outcome": "found",
+                "members": 2,
+                "shape_only": 0
+              }
+            }
+          ]
+        },
+        "pack": {
+          "bytes": 8616,
+          "estimated_tokens": 992,
+          "budget": 6000,
+          "must_read": 2,
+          "skim": 6,
+          "patterns": 0,
+          "reuse": 0,
+          "impact": 0,
+          "tests": 8,
+          "uncertain": 0,
+          "omitted": 3
+        },
+        "must_change": {
+          "expected": [
+            "src/middleware/basic-auth/index.ts",
+            "src/middleware/bearer-auth/index.ts",
+            "src/middleware/jwt/jwt.ts",
+            "src/middleware/jwk/jwk.ts"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 2,
+              "relevant": 4,
+              "hits": 1,
+              "precision": 0.5,
+              "recall": 0.25
+            },
+            "pack": {
+              "retrieved": 6,
+              "relevant": 4,
+              "hits": 1,
+              "precision": 0.16666666666666666,
+              "recall": 0.25
+            },
+            "search": {
+              "retrieved": 36,
+              "relevant": 4,
+              "hits": 1,
+              "precision": 0.027777777777777776,
+              "recall": 0.25
+            },
+            "similar": {
+              "retrieved": 14,
+              "relevant": 4,
+              "hits": 1,
+              "precision": 0.07142857142857142,
+              "recall": 0.25
+            },
+            "any": {
+              "retrieved": 51,
+              "relevant": 4,
+              "hits": 2,
+              "precision": 0.0392156862745098,
+              "recall": 0.5
+            }
+          },
+          "missed": [
+            "src/middleware/jwk/jwk.ts",
+            "src/middleware/jwt/jwt.ts"
+          ]
+        },
+        "relevant_files": {
+          "expected": [
+            "src/middleware/basic-auth/index.ts",
+            "src/middleware/bearer-auth/index.ts",
+            "src/middleware/jwt/jwt.ts",
+            "src/middleware/jwk/jwk.ts",
+            "src/middleware/basic-auth/index.test.ts",
+            "src/middleware/bearer-auth/index.test.ts",
+            "src/middleware/jwt/index.test.ts",
+            "src/middleware/jwk/index.test.ts"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 2,
+              "relevant": 8,
+              "hits": 1,
+              "precision": 0.5,
+              "recall": 0.125
+            },
+            "pack": {
+              "retrieved": 6,
+              "relevant": 8,
+              "hits": 2,
+              "precision": 0.3333333333333333,
+              "recall": 0.25
+            },
+            "search": {
+              "retrieved": 36,
+              "relevant": 8,
+              "hits": 4,
+              "precision": 0.1111111111111111,
+              "recall": 0.5
+            },
+            "similar": {
+              "retrieved": 14,
+              "relevant": 8,
+              "hits": 1,
+              "precision": 0.07142857142857142,
+              "recall": 0.125
+            },
+            "any": {
+              "retrieved": 51,
+              "relevant": 8,
+              "hits": 5,
+              "precision": 0.09803921568627451,
+              "recall": 0.625
+            }
+          },
+          "missed": [
+            "src/middleware/basic-auth/index.test.ts",
+            "src/middleware/jwk/jwk.ts",
+            "src/middleware/jwt/jwt.ts"
+          ]
+        },
+        "must_consider": {
+          "expected": [
+            "src/middleware/basic-auth/index.test.ts",
+            "src/middleware/bearer-auth/index.test.ts",
+            "src/middleware/jwt/index.test.ts",
+            "src/middleware/jwk/index.test.ts"
+          ],
+          "absent_at_base": [],
+          "unindexable": [],
+          "channels": {
+            "must_read": {
+              "retrieved": 2,
+              "relevant": 4,
+              "hits": 0,
+              "precision": 0.0,
+              "recall": 0.0
+            },
+            "pack": {
+              "retrieved": 6,
+              "relevant": 4,
+              "hits": 1,
+              "precision": 0.16666666666666666,
+              "recall": 0.25
+            },
+            "search": {
+              "retrieved": 36,
+              "relevant": 4,
+              "hits": 3,
+              "precision": 0.08333333333333333,
+              "recall": 0.75
+            },
+            "similar": {
+              "retrieved": 14,
+              "relevant": 4,
+              "hits": 0,
+              "precision": 0.0,
+              "recall": 0.0
+            },
+            "any": {
+              "retrieved": 51,
+              "relevant": 4,
+              "hits": 3,
+              "precision": 0.058823529411764705,
+              "recall": 0.75
+            }
+          },
+          "missed": [
+            "src/middleware/basic-auth/index.test.ts"
+          ]
+        },
+        "reuse": null,
+        "blast_radius": null
+      }
+    }
+  ],
+  "aggregate": [
+    {
+      "metric": "must_change.recall.must_read",
+      "tasks": 11,
+      "mean": 0.4642561983471074
+    },
+    {
+      "metric": "must_change.recall.pack",
+      "tasks": 11,
+      "mean": 0.6853305785123966
+    },
+    {
+      "metric": "must_change.recall.search",
+      "tasks": 11,
+      "mean": 0.6935261707988981
+    },
+    {
+      "metric": "must_change.recall.similar",
+      "tasks": 11,
+      "mean": 0.43918732782369146
+    },
+    {
+      "metric": "must_change.recall.any",
+      "tasks": 11,
+      "mean": 0.8698347107438017
+    },
+    {
+      "metric": "relevant_files.recall.must_read",
+      "tasks": 11,
+      "mean": 0.38636363636363635
+    },
+    {
+      "metric": "relevant_files.recall.pack",
+      "tasks": 11,
+      "mean": 0.5352092352092352
+    },
+    {
+      "metric": "relevant_files.recall.search",
+      "tasks": 11,
+      "mean": 0.7258297258297258
+    },
+    {
+      "metric": "relevant_files.recall.similar",
+      "tasks": 11,
+      "mean": 0.3647907647907648
+    },
+    {
+      "metric": "relevant_files.recall.any",
+      "tasks": 11,
+      "mean": 0.8424603174603174
+    },
+    {
+      "metric": "must_consider.recall.must_read",
+      "tasks": 11,
+      "mean": 0.2727272727272727
+    },
+    {
+      "metric": "must_consider.recall.pack",
+      "tasks": 11,
+      "mean": 0.36363636363636365
+    },
+    {
+      "metric": "must_consider.recall.search",
+      "tasks": 11,
+      "mean": 0.75
+    },
+    {
+      "metric": "must_consider.recall.similar",
+      "tasks": 11,
+      "mean": 0.3409090909090909
+    },
+    {
+      "metric": "must_consider.recall.any",
+      "tasks": 11,
+      "mean": 0.8257575757575757
+    },
+    {
+      "metric": "relevant_files.precision.must_read",
+      "tasks": 11,
+      "mean": 0.3718417945690673
+    },
+    {
+      "metric": "relevant_files.precision.pack",
+      "tasks": 11,
+      "mean": 0.23190159250405928
+    },
+    {
+      "metric": "relevant_files.precision.search",
+      "tasks": 11,
+      "mean": 0.11319322322439872
+    },
+    {
+      "metric": "relevant_files.precision.similar",
+      "tasks": 11,
+      "mean": 0.18618074885823369
+    },
+    {
+      "metric": "relevant_files.precision.any",
+      "tasks": 11,
+      "mean": 0.09710969958037716
+    },
+    {
+      "metric": "reuse_targets.recall.pack",
+      "tasks": 4,
+      "mean": 0.4
+    },
+    {
+      "metric": "reuse_targets.recall.search",
+      "tasks": 4,
+      "mean": 0.6
+    },
+    {
+      "metric": "reuse_targets.recall.similar",
+      "tasks": 4,
+      "mean": 0.05
+    },
+    {
+      "metric": "reuse_targets.recall.any",
+      "tasks": 4,
+      "mean": 0.7
+    },
+    {
+      "metric": "blast_radius.recall.visible",
+      "tasks": 2,
+      "mean": 1.0
+    },
+    {
+      "metric": "blast_radius.recall.full",
+      "tasks": 2,
+      "mean": 1.0
+    },
+    {
+      "metric": "pack.bytes",
+      "tasks": 11,
+      "mean": 22438.81818181818
+    },
+    {
+      "metric": "pack.estimated_tokens",
+      "tasks": 11,
+      "mean": 3370.909090909091
+    }
+  ]
+}

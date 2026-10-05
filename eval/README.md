@@ -65,7 +65,10 @@ atlas-eval agent run --task t00-smoke --model claude-haiku-4-5-20251001 --judge-
   --runs-per-condition 1 --atlas-bin target/release/code-atlas --budget-usd 2
 atlas-eval agent report --runs eval/runs/<batch> [--out eval/reports/<date>/agent] [--compare previous/agent.json]
 atlas-eval agent probe --out <dir> [--model …]
+atlas-eval retrieval [--task t00-smoke] [--out eval/reports/<date>/retrieval]   # deterministic, no sessions
 ```
+
+`atlas-eval retrieval` reuses the task specs, tree materialisation and clone cache, indexes each base tree in process and scores what `context`, `search` and `similar` return for the prompt against the task's ground truth. It never runs a session. Method and limits: `docs/evaluation/methodology.md` (Retrieval eval).
 
 Run flags: `--tree-root` (system temp dir), `--keep-trees`, `--runs-per-condition` (2), `--condition baseline|atlas` (both), `--seed` (1), `--parallel` (2), `--budget-usd` (stop starting runs once the reported spend exceeds it), `--judge claude|off`, `--no-probe`, `--claude-config user|isolated`, `--validation-timeout-secs`, `--atlas-timeout-secs`, `--eval-home` (`eval`), `--batch` (`<date>-seed<seed>`). A batch is resumable: runs that already have `score.json` are reused.
 
@@ -108,7 +111,8 @@ All `code-atlas` invocations go through `AtlasCli` (`crates/atlas-eval/src/agent
 
 - `code-atlas project create <name> --repo <path>...` and `code-atlas index --project <name>` (index time is recorded separately as `atlas_index_ms`);
 - `mcp.json`: `{"mcpServers":{"code-atlas":{"command":<bin>,"args":["mcp","--project",<name>],"env":{"CODE_ATLAS_HOME":…}}}}`;
-- duplication scoring indexes the post-session tree in a second home and runs `code-atlas query similar --snippet <file>:<start>-<end> --json` (cwd = tree) for every function the diff added. The JSON is read leniently: any object with a symbol (`key`/`symbol`/`qualified_name`/`target`/`name`) and a `structural_score`/`score`/`similarity` or a `verdict`. A match with score ≥ 0.8 or an inferred-equivalent verdict against a reuse target or forbidden duplicate counts as duplication introduced. If the binary or the query fails, duplication is `unavailable`/unknown, never `false`.
+- duplication scoring indexes the post-session tree in a second home and runs `code-atlas query similar --snippet <file>:<start>-<end> --json` (cwd = tree) for every function the diff added. Each cluster member's `structural` signal gives its Jaccard and its `lexical` signal its BM25 score; other JSON shapes are read leniently (a symbol from `key`/`symbol`/`qualified_name`/`target`/`name`, a Jaccard from `structural_score`/`jaccard`, a lexical score from `score`, or a `verdict`). A structural Jaccard ≥ 0.8 or an inferred-equivalent verdict against a reuse target or forbidden duplicate counts as duplication introduced. A match against a target with a lexical score but no qualifying structural Jaccard (≥ 0.8) is not duplication: it is stored in `duplication.lexical_candidates` and reported as `lexical_duplicate_candidates`, whose count is unknown when any query failed. `small_structural` signals (small bodies) do not count, matching the product, whose verdict treats them as shape only. If the binary or the query fails, duplication is `unavailable`/unknown, never `false`.
+- run files written before the structural/lexical split stored every score as `{"kind": "structural", "score": …}`. `agent report` reads that as an unclassified score: above 1 it cannot be a Jaccard, so it becomes a lexical candidate; at most 1 it stays an unclassified finding, which makes `duplication_introduced` unknown rather than true. Those files never stored matches scoring below 0.8, nor structural matches below 0.8 with a lexical score, so re-scored candidate counts are a lower bound and are not comparable with candidate counts from new runs. Every finding in `2026-10-04-seed1` and `2026-10-05-directed` scored between 5.24 and 8.36, so both batches re-score exactly.
 
 An atlas run whose session does not report the `code-atlas` MCP server as `connected` is recorded as `setup_failed` (stage `atlas-mcp`) and excluded from the statistics.
 

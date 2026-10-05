@@ -135,6 +135,12 @@ const METRICS: &[MetricDef] = &[
     extract: |record| score_of(record)?.duplication_introduced.map(flag),
   },
   MetricDef {
+    name: "lexical_duplicate_candidates",
+    group: MetricGroup::ReuseAndBlastRadius,
+    better: Better::Neutral,
+    extract: |record| score_of(record)?.duplication.lexical_candidate_count().map(|candidates| candidates as f64),
+  },
+  MetricDef {
     name: "judge_architectural_consistency",
     group: MetricGroup::ReuseAndBlastRadius,
     better: Better::Higher,
@@ -433,7 +439,7 @@ pub fn load_runs(batch_dir: &Path) -> AgentResult<(Option<BatchManifest>, Vec<Ru
     records.push(RunRecord {
       manifest: read_json(&dir.join(RUN_FILE))?,
       metrics: optional(METRICS_FILE).map(|path| read_json(&path)).transpose()?,
-      score: optional(SCORE_FILE).map(|path| read_json(&path)).transpose()?,
+      score: optional(SCORE_FILE).map(|path| read_json::<Score>(&path)).transpose()?.map(Score::rescored),
       transcript: dir.strip_prefix(batch_dir).unwrap_or(&dir).join(TRANSCRIPT_FILE).display().to_string(),
     });
   }

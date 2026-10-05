@@ -12,7 +12,8 @@ use super::process::{CapturedOutput, ProcessExit, run_captured, tail};
 pub const ATLAS_HOME_VAR: &str = "CODE_ATLAS_HOME";
 const ERROR_TAIL_BYTES: usize = 2000;
 const SYMBOL_FIELDS: [&str; 5] = ["key", "symbol", "qualified_name", "target", "name"];
-const SCORE_FIELDS: [&str; 3] = ["structural_score", "score", "similarity"];
+const STRUCTURAL_FIELDS: [&str; 2] = ["structural_score", "jaccard"];
+const LEXICAL_FIELDS: [&str; 1] = ["score"];
 const VERDICT_FIELDS: [&str; 2] = ["verdict", "inferred_verdict"];
 const LOCATION_FIELDS: [&str; 3] = ["location", "path", "file"];
 
@@ -26,7 +27,8 @@ pub struct AtlasCli {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SimilarMatch {
   pub symbol: String,
-  pub score: Option<f64>,
+  pub structural: Option<f64>,
+  pub lexical: Option<f64>,
   pub verdict: Option<String>,
   pub location: Option<String>,
 }
@@ -132,10 +134,8 @@ fn cluster_member(member: &Value) -> Option<SimilarMatch> {
   let symbol = entity.get("key")?.as_str()?.to_owned();
   let signals: Vec<&Value> = member.get("signals").and_then(Value::as_array).map(|signals| signals.iter().collect()).unwrap_or_default();
   let find = |kind: &str| signals.iter().find(|signal| signal.get("signal").and_then(Value::as_str) == Some(kind));
-  let score = find("structural")
-    .and_then(|signal| signal.get("jaccard"))
-    .or_else(|| find("lexical").and_then(|signal| signal.get("score")))
-    .and_then(Value::as_f64);
+  let structural = find("structural").and_then(|signal| signal.get("jaccard")).and_then(Value::as_f64);
+  let lexical = find("lexical").and_then(|signal| signal.get("score")).and_then(Value::as_f64);
   let verdict = match find("inferred") {
     Some(signal) if signal.get("verdict").and_then(Value::as_str) == Some("equivalent") => Some("inferred equivalent".to_owned()),
     Some(_) => Some("inferred similar, not equivalent".to_owned()),
@@ -148,7 +148,13 @@ fn cluster_member(member: &Value) -> Option<SimilarMatch> {
       None => format!("{repo}:{path}"),
     })
   });
-  Some(SimilarMatch { symbol, score, verdict, location })
+  Some(SimilarMatch {
+    symbol,
+    structural,
+    lexical,
+    verdict,
+    location,
+  })
 }
 
 fn collect_matches(value: &Value, matches: &mut Vec<SimilarMatch>) {
@@ -156,12 +162,14 @@ fn collect_matches(value: &Value, matches: &mut Vec<SimilarMatch>) {
     Value::Array(items) => items.iter().for_each(|item| collect_matches(item, matches)),
     Value::Object(object) => {
       let symbol = first_string(object, &SYMBOL_FIELDS);
-      let score = SCORE_FIELDS.iter().find_map(|field| object.get(*field).and_then(Value::as_f64));
+      let structural = first_number(object, &STRUCTURAL_FIELDS);
+      let lexical = first_number(object, &LEXICAL_FIELDS);
       let verdict = first_string(object, &VERDICT_FIELDS);
-      if let Some(symbol) = symbol.filter(|_| score.is_some() || verdict.is_some()) {
+      if let Some(symbol) = symbol.filter(|_| structural.is_some() || lexical.is_some() || verdict.is_some()) {
         matches.push(SimilarMatch {
           symbol,
-          score,
+          structural,
+          lexical,
           verdict,
           location: first_string(object, &LOCATION_FIELDS),
         });
@@ -174,6 +182,10 @@ fn collect_matches(value: &Value, matches: &mut Vec<SimilarMatch>) {
 
 fn first_string(object: &serde_json::Map<String, Value>, fields: &[&str]) -> Option<String> {
   fields.iter().find_map(|field| object.get(*field).and_then(Value::as_str)).map(str::to_owned)
+}
+
+fn first_number(object: &serde_json::Map<String, Value>, fields: &[&str]) -> Option<f64> {
+  fields.iter().find_map(|field| object.get(*field).and_then(Value::as_f64))
 }
 
 #[cfg(test)]
@@ -203,7 +215,7 @@ mod tests {
     });
     let matches = similar_matches(&document);
     assert_eq!(matches.len(), 2);
-    assert_eq!(matches[0].score, Some(0.91));
+    assert_eq!((matches[0].structural, matches[0].lexical), (Some(0.91), None));
     assert_eq!(matches[0].location.as_deref(), Some("billing:src/money.rs:3"));
     assert!(matches[1].inferred_equivalent());
     assert!(!matches[0].inferred_equivalent());
@@ -217,7 +229,8 @@ mod tests {
       matches,
       vec![SimilarMatch {
         symbol: "ts:acme-sdk:@acme/sdk:src/money::toCents#function".to_owned(),
-        score: Some(4.588),
+        structural: None,
+        lexical: Some(4.588),
         verdict: Some("related by name only, behaviour unverified".to_owned()),
         location: Some("acme-sdk:src/money.ts:1".to_owned()),
       }]
@@ -232,7 +245,7 @@ mod tests {
       {"entity": {"key": "k2"}, "signals": [{"signal": "inferred", "verdict": "different", "rationale": "x"}], "verdict": "inferred similar, not equivalent (0.80): rounding"}
     ]}});
     let matches = similar_matches(&document);
-    assert_eq!(matches[0].score, Some(0.97));
+    assert_eq!((matches[0].structural, matches[0].lexical), (Some(0.97), None));
     assert!(matches[0].inferred_equivalent());
     assert!(!matches[1].inferred_equivalent());
   }
@@ -241,7 +254,8 @@ mod tests {
   fn should_not_read_negative_verdicts_as_equivalence() {
     let not_equivalent = SimilarMatch {
       symbol: "x".to_owned(),
-      score: None,
+      structural: None,
+      lexical: None,
       verdict: Some("similar_but_different".to_owned()),
       location: None,
     };

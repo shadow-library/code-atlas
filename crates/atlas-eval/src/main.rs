@@ -9,6 +9,7 @@ use atlas_eval::agent::{
   RepoSource, RunnerConfig,
 };
 use atlas_eval::quality::{self, QualityArgs};
+use atlas_eval::retrieval::{self, RetrievalArgs};
 
 #[derive(Debug, Parser)]
 #[command(name = "atlas-eval", about = "Code Atlas evaluation harness")]
@@ -23,6 +24,8 @@ enum Command {
   Agent(AgentCommand),
   #[command(about = "Knowledge-quality evaluation: ground truth, SCIP oracle, refactor robustness and context selection")]
   Quality(Box<QualityArgs>),
+  #[command(about = "Deterministic retrieval evaluation: does Code Atlas surface each task's ground truth from the prompt alone?")]
+  Retrieval(Box<RetrievalArgs>),
 }
 
 #[derive(Debug, Subcommand)]
@@ -133,6 +136,7 @@ fn main() -> ExitCode {
     Command::Agent(AgentCommand::Report(args)) => report(&args).map_err(Into::into),
     Command::Agent(AgentCommand::Probe(args)) => probe(&args).map_err(Into::into),
     Command::Quality(args) => run_quality(&args).map_err(Into::into),
+    Command::Retrieval(args) => run_retrieval(&args),
   };
   match outcome {
     Ok(()) => ExitCode::SUCCESS,
@@ -283,6 +287,13 @@ fn run_quality(args: &QualityArgs) -> Result<(), quality::QualityError> {
   if let Some(comparison) = &outcome.comparison {
     print!("{comparison}");
   }
+  Ok(())
+}
+
+fn run_retrieval(args: &RetrievalArgs) -> Result<(), Box<dyn std::error::Error>> {
+  let repo_root = repo_root(args.repo_root.as_deref())?;
+  let outcome = retrieval::execute_retrieval(args, &repo_root)?;
+  tracing::info!(markdown = %outcome.markdown.display(), json = %outcome.json.display(), "retrieval report written");
   Ok(())
 }
 

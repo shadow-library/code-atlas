@@ -193,6 +193,12 @@
               "max": 4.0,
               "n": 2
             },
+            "lexical_duplicate_candidates": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
             "lines_read": {
               "mean": 55.0,
               "min": 55.0,
@@ -406,6 +412,12 @@
               "max": 4.0,
               "n": 2
             },
+            "lexical_duplicate_candidates": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
             "lines_read": {
               "mean": 22.0,
               "min": 17.0,
@@ -610,6 +622,12 @@
               "mean": 4.0,
               "min": 4.0,
               "max": 4.0,
+              "n": 2
+            },
+            "lexical_duplicate_candidates": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
               "n": 2
             },
             "lines_read": {
@@ -823,6 +841,12 @@
               "mean": 4.0,
               "min": 4.0,
               "max": 4.0,
+              "n": 2
+            },
+            "lexical_duplicate_candidates": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
               "n": 2
             },
             "lines_read": {
@@ -2276,6 +2300,12 @@
               "max": 4.0,
               "n": 2
             },
+            "lexical_duplicate_candidates": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
             "lines_read": {
               "mean": 710.5,
               "min": 683.0,
@@ -2495,6 +2525,12 @@
               "max": 4.0,
               "n": 2
             },
+            "lexical_duplicate_candidates": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
             "lines_read": {
               "mean": 289.0,
               "min": 182.0,
@@ -2705,6 +2741,12 @@
               "mean": 4.0,
               "min": 4.0,
               "max": 4.0,
+              "n": 2
+            },
+            "lexical_duplicate_candidates": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
               "n": 2
             },
             "lines_read": {
@@ -2918,6 +2960,12 @@
               "mean": 4.0,
               "min": 4.0,
               "max": 4.0,
+              "n": 2
+            },
+            "lexical_duplicate_candidates": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
               "n": 2
             },
             "lines_read": {
@@ -3138,6 +3186,12 @@
               "max": 5.0,
               "n": 2
             },
+            "lexical_duplicate_candidates": {
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "n": 2
+            },
             "lines_read": {
               "mean": 586.5,
               "min": 582.0,
@@ -3280,9 +3334,9 @@
               "n": 2
             },
             "duplication_introduced": {
-              "mean": 1.0,
-              "min": 1.0,
-              "max": 1.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "max": 0.0,
               "n": 2
             },
             "files_read": {
@@ -3355,6 +3409,12 @@
               "mean": 4.5,
               "min": 4.0,
               "max": 5.0,
+              "n": 2
+            },
+            "lexical_duplicate_candidates": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
               "n": 2
             },
             "lines_read": {
@@ -4778,6 +4838,12 @@
         "max": 5.0,
         "n": 11
       },
+      "lexical_duplicate_candidates": {
+        "mean": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 5
+      },
       "lines_read": {
         "mean": 385.45454545454544,
         "min": 55.0,
@@ -4907,9 +4973,9 @@
         "n": 11
       },
       "duplication_introduced": {
-        "mean": 0.2,
+        "mean": 0.0,
         "min": 0.0,
-        "max": 1.0,
+        "max": 0.0,
         "n": 5
       },
       "files_read": {
@@ -4983,6 +5049,12 @@
         "min": 4.0,
         "max": 5.0,
         "n": 11
+      },
+      "lexical_duplicate_candidates": {
+        "mean": 0.2,
+        "min": 0.0,
+        "max": 1.0,
+        "n": 5
       },
       "lines_read": {
         "mean": 296.5,

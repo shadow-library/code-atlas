@@ -9,6 +9,7 @@ use super::atlas_cli::SimilarMatch;
 use super::diff::Diff;
 
 pub const DUPLICATION_SCORE_THRESHOLD: f64 = 0.8;
+const MAX_JACCARD: f64 = 1.0;
 const ANALYSIS_REPO: &str = "tree";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -191,8 +192,23 @@ pub enum TargetRole {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DuplicationEvidence {
-  Structural { score: f64 },
-  InferredEquivalent { verdict: String },
+  StructuralJaccard {
+    jaccard: f64,
+  },
+  InferredEquivalent {
+    verdict: String,
+  },
+  // Run files written before the structural/lexical split used this tag for either a Jaccard or a BM25 score.
+  #[serde(rename = "structural")]
+  UnclassifiedScore {
+    score: f64,
+  },
+}
+
+impl DuplicationEvidence {
+  pub fn is_conclusive(&self) -> bool {
+    !matches!(self, Self::UnclassifiedScore { .. })
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -205,39 +221,92 @@ pub struct DuplicationFinding {
   pub evidence: DuplicationEvidence,
 }
 
-pub fn duplication_findings(function: &NewFunction, matches: &[SimilarMatch], reuse_targets: &[String], forbidden: &[String]) -> Vec<DuplicationFinding> {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LexicalCandidate {
+  pub new_function: String,
+  pub location: String,
+  pub matched_symbol: String,
+  pub target: String,
+  pub role: TargetRole,
+  pub score: f64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct DuplicationMatches {
+  pub findings: Vec<DuplicationFinding>,
+  pub lexical_candidates: Vec<LexicalCandidate>,
+}
+
+enum MatchEvidence {
+  Duplication(DuplicationEvidence),
+  Lexical(f64),
+}
+
+pub fn duplication_findings(function: &NewFunction, matches: &[SimilarMatch], reuse_targets: &[String], forbidden: &[String]) -> DuplicationMatches {
   let roles = reuse_targets
     .iter()
     .map(|target| (target, TargetRole::ReuseTarget))
     .chain(forbidden.iter().map(|target| (target, TargetRole::ForbiddenDuplicate)));
   let roles: Vec<(SymbolTarget, TargetRole)> = roles.map(|(target, role)| (SymbolTarget::parse(target), role)).collect();
-  let mut findings = Vec::new();
+  let location = format!("{}:{}-{}", function.path, function.start_line, function.end_line);
+  let mut scored = DuplicationMatches::default();
   for candidate in matches.iter().filter(|candidate| !is_self_match(function, candidate)) {
     let Some(evidence) = evidence(candidate) else {
       continue;
     };
     for (target, role) in roles.iter().filter(|(target, _)| target.matches_symbol(&candidate.symbol)) {
-      findings.push(DuplicationFinding {
-        new_function: function.item_path.clone(),
-        location: format!("{}:{}-{}", function.path, function.start_line, function.end_line),
-        matched_symbol: candidate.symbol.clone(),
-        target: target.raw.clone(),
-        role: *role,
-        evidence: evidence.clone(),
-      });
+      match &evidence {
+        MatchEvidence::Duplication(evidence) => scored.findings.push(DuplicationFinding {
+          new_function: function.item_path.clone(),
+          location: location.clone(),
+          matched_symbol: candidate.symbol.clone(),
+          target: target.raw.clone(),
+          role: *role,
+          evidence: evidence.clone(),
+        }),
+        MatchEvidence::Lexical(score) => scored.lexical_candidates.push(LexicalCandidate {
+          new_function: function.item_path.clone(),
+          location: location.clone(),
+          matched_symbol: candidate.symbol.clone(),
+          target: target.raw.clone(),
+          role: *role,
+          score: *score,
+        }),
+      }
     }
   }
-  findings
+  scored
 }
 
-fn evidence(candidate: &SimilarMatch) -> Option<DuplicationEvidence> {
+fn evidence(candidate: &SimilarMatch) -> Option<MatchEvidence> {
   if candidate.inferred_equivalent() {
-    return candidate.verdict.clone().map(|verdict| DuplicationEvidence::InferredEquivalent { verdict });
+    return candidate
+      .verdict
+      .clone()
+      .map(|verdict| MatchEvidence::Duplication(DuplicationEvidence::InferredEquivalent { verdict }));
   }
-  candidate
-    .score
-    .filter(|score| *score >= DUPLICATION_SCORE_THRESHOLD)
-    .map(|score| DuplicationEvidence::Structural { score })
+  if let Some(jaccard) = candidate.structural.filter(|jaccard| *jaccard >= DUPLICATION_SCORE_THRESHOLD) {
+    return Some(MatchEvidence::Duplication(DuplicationEvidence::StructuralJaccard { jaccard }));
+  }
+  candidate.lexical.map(MatchEvidence::Lexical)
+}
+
+pub fn reclassify_legacy(findings: Vec<DuplicationFinding>) -> DuplicationMatches {
+  let mut reclassified = DuplicationMatches::default();
+  for finding in findings {
+    match finding.evidence {
+      DuplicationEvidence::UnclassifiedScore { score } if score > MAX_JACCARD => reclassified.lexical_candidates.push(LexicalCandidate {
+        new_function: finding.new_function,
+        location: finding.location,
+        matched_symbol: finding.matched_symbol,
+        target: finding.target,
+        role: finding.role,
+        score,
+      }),
+      _ => reclassified.findings.push(finding),
+    }
+  }
+  reclassified
 }
 
 fn is_self_match(function: &NewFunction, candidate: &SimilarMatch) -> bool {
@@ -337,34 +406,35 @@ mod tests {
     }
   }
 
-  fn candidate(symbol: &str, score: Option<f64>, verdict: Option<&str>, location: &str) -> SimilarMatch {
+  fn candidate(symbol: &str, structural: Option<f64>, lexical: Option<f64>, verdict: Option<&str>, location: &str) -> SimilarMatch {
     SimilarMatch {
       symbol: symbol.to_owned(),
-      score,
+      structural,
+      lexical,
       verdict: verdict.map(str::to_owned),
       location: Some(location.to_owned()),
     }
   }
 
   #[test]
-  fn should_flag_duplication_above_the_threshold_or_on_inferred_equivalence() {
+  fn should_flag_duplication_above_the_jaccard_threshold_or_on_inferred_equivalence() {
     let matches = vec![
-      candidate("rust:b:b:money::to_cents#function", Some(0.85), None, "b:src/money.rs:1"),
-      candidate("rust:b:b:money::round_cents#function", None, Some("inferred equivalent (0.9)"), "b:src/money.rs:9"),
-      candidate("rust:b:b:money::parse_money#function", Some(0.79), None, "b:src/money.rs:20"),
-      candidate("rust:b:b:money::cents_of#function", Some(1.0), None, "b:src/money.rs:3"),
+      candidate("rust:b:b:money::to_cents#function", Some(0.85), Some(6.2), None, "b:src/money.rs:1"),
+      candidate("rust:b:b:money::round_cents#function", None, None, Some("inferred equivalent (0.9)"), "b:src/money.rs:9"),
+      candidate("rust:b:b:money::parse_money#function", Some(0.79), None, None, "b:src/money.rs:20"),
+      candidate("rust:b:b:money::cents_of#function", Some(1.0), None, None, "b:src/money.rs:3"),
     ];
-    let findings = duplication_findings(
+    let scored = duplication_findings(
       &function(),
       &matches,
       &["crate::money::to_cents".to_owned()],
       &["money::round_cents".to_owned(), "money::parse_money".to_owned()],
     );
-    let summary: Vec<(&str, TargetRole, &DuplicationEvidence)> = findings.iter().map(|finding| (finding.target.as_str(), finding.role, &finding.evidence)).collect();
+    let summary: Vec<(&str, TargetRole, &DuplicationEvidence)> = scored.findings.iter().map(|finding| (finding.target.as_str(), finding.role, &finding.evidence)).collect();
     assert_eq!(
       summary,
       vec![
-        ("crate::money::to_cents", TargetRole::ReuseTarget, &DuplicationEvidence::Structural { score: 0.85 }),
+        ("crate::money::to_cents", TargetRole::ReuseTarget, &DuplicationEvidence::StructuralJaccard { jaccard: 0.85 }),
         (
           "money::round_cents",
           TargetRole::ForbiddenDuplicate,
@@ -374,6 +444,81 @@ mod tests {
         ),
       ]
     );
+    assert_eq!(scored.lexical_candidates, Vec::new());
+  }
+
+  #[test]
+  fn should_report_lexical_only_matches_as_candidates_not_duplication() {
+    let matches = vec![
+      candidate(
+        "ts:tree:hono:src/utils/accept::parseAccept#function",
+        None,
+        Some(5.644),
+        None,
+        "tree:src/utils/accept.ts:12",
+      ),
+      candidate(
+        "ts:tree:hono:src/middleware/compress/index::selectEncoding#function",
+        Some(0.42),
+        Some(8.362),
+        None,
+        "tree:src/middleware/compress/index.ts:30",
+      ),
+    ];
+    let scored = duplication_findings(
+      &function(),
+      &matches,
+      &["src/utils/accept::parseAccept".to_owned()],
+      &["src/middleware/compress/index::selectEncoding".to_owned()],
+    );
+    assert_eq!(scored.findings, Vec::new());
+    let summary: Vec<(&str, TargetRole, f64)> = scored
+      .lexical_candidates
+      .iter()
+      .map(|candidate| (candidate.target.as_str(), candidate.role, candidate.score))
+      .collect();
+    assert_eq!(
+      summary,
+      vec![
+        ("src/utils/accept::parseAccept", TargetRole::ReuseTarget, 5.644),
+        ("src/middleware/compress/index::selectEncoding", TargetRole::ForbiddenDuplicate, 8.362),
+      ]
+    );
+  }
+
+  fn legacy_finding(score: f64) -> DuplicationFinding {
+    DuplicationFinding {
+      new_function: "negotiateEncodings".to_owned(),
+      location: "src/middleware/serve-static/index.ts:34-51".to_owned(),
+      matched_symbol: "ts:tree:hono:src/middleware/compress/index::selectEncoding#function".to_owned(),
+      target: "src/middleware/compress/index::selectEncoding".to_owned(),
+      role: TargetRole::ForbiddenDuplicate,
+      evidence: DuplicationEvidence::UnclassifiedScore { score },
+    }
+  }
+
+  #[test]
+  fn should_read_legacy_structural_evidence_as_an_unclassified_score() {
+    let stored = r#"{"new_function": "negotiateEncodings", "location": "src/middleware/serve-static/index.ts:34-51", "matched_symbol": "ts:tree:hono:src/middleware/compress/index::selectEncoding#function", "target": "src/middleware/compress/index::selectEncoding", "role": "forbidden_duplicate", "evidence": {"kind": "structural", "score": 5.24}}"#;
+    assert_eq!(serde_json::from_str::<DuplicationFinding>(stored).unwrap(), legacy_finding(5.24));
+  }
+
+  #[test]
+  fn should_reclassify_legacy_scores_above_one_as_lexical_and_keep_the_ambiguous_rest() {
+    let reclassified = reclassify_legacy(vec![legacy_finding(5.24), legacy_finding(0.9)]);
+    assert_eq!(reclassified.findings, vec![legacy_finding(0.9)]);
+    assert_eq!(
+      reclassified.lexical_candidates,
+      vec![LexicalCandidate {
+        new_function: "negotiateEncodings".to_owned(),
+        location: "src/middleware/serve-static/index.ts:34-51".to_owned(),
+        matched_symbol: "ts:tree:hono:src/middleware/compress/index::selectEncoding#function".to_owned(),
+        target: "src/middleware/compress/index::selectEncoding".to_owned(),
+        role: TargetRole::ForbiddenDuplicate,
+        score: 5.24,
+      }]
+    );
+    assert!(!reclassified.findings[0].evidence.is_conclusive());
   }
 
   #[test]

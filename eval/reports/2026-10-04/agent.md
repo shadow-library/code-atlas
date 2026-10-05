@@ -47,7 +47,8 @@ Only tasks with scored, uncontaminated runs in both conditions are aggregated (0
 | must_change_coverage | 1 (1–1, tasks=11) | 1 (1–1, tasks=11) |
 | must_consider_coverage | 0.452 (0–1, tasks=11) | 0.479 (0–1, tasks=11) |
 | reuse_targets_referenced | 1 (1–1, tasks=4 of 11) | 0.75 (0–1, tasks=4 of 11) |
-| duplication_introduced | 0 (0–0, tasks=5 of 11) | 0.2 (0–1, tasks=5 of 11) |
+| duplication_introduced | 0 (0–0, tasks=5 of 11) | 0 (0–0, tasks=5 of 11) |
+| lexical_duplicate_candidates | 0 (0–0, tasks=5 of 11) | 0.4 (0–2, tasks=5 of 11) |
 | judge_architectural_consistency | 4.5 (3.5–5, tasks=11) | 4.636 (4–5, tasks=11) |
 | judge_appropriate_reuse | 4.409 (3–5, tasks=11) | 4.682 (4–5, tasks=11) |
 | judge_blast_radius_handling | 4 (3.5–5, tasks=11) | 3.773 (2–4.5, tasks=11) |
@@ -96,6 +97,7 @@ Only tasks with scored, uncontaminated runs in both conditions are aggregated (0
 | must_change_coverage | 1 (1–1, n=2) | 1 (1–1, n=2) |
 | must_consider_coverage | 0.5 (0.5–0.5, n=2) | 1 (1–1, n=2) |
 | duplication_introduced | 0 (0–0, n=2) | 0 (0–0, n=2) |
+| lexical_duplicate_candidates | 0 (0–0, n=2) | 0 (0–0, n=2) |
 | judge_architectural_consistency | 4.5 (4–5, n=2) | 5 (5–5, n=2) |
 | judge_appropriate_reuse | 5 (5–5, n=2) | 5 (5–5, n=2) |
 | judge_blast_radius_handling | 3.5 (3–4, n=2) | 2 (2–2, n=2) |
@@ -138,6 +140,7 @@ Only tasks with scored, uncontaminated runs in both conditions are aggregated (0
 | must_consider_coverage | 0.125 (0–0.25, n=2) | 0 (0–0, n=2) |
 | reuse_targets_referenced | 1 (1–1, n=2) | 1 (1–1, n=2) |
 | duplication_introduced | 0 (0–0, n=2) | 0 (0–0, n=2) |
+| lexical_duplicate_candidates | 0 (0–0, n=2) | 0 (0–0, n=2) |
 | judge_architectural_consistency | 5 (n=1 of 2) | 4.5 (4–5, n=2) |
 | judge_appropriate_reuse | 4 (n=1 of 2) | 5 (5–5, n=2) |
 | judge_blast_radius_handling | 4 (n=1 of 2) | 3.5 (3–4, n=2) |
@@ -299,6 +302,7 @@ Only tasks with scored, uncontaminated runs in both conditions are aggregated (0
 | must_consider_coverage | 0.5 (0.5–0.5, n=2) | 0.5 (0.5–0.5, n=2) |
 | reuse_targets_referenced | 1 (1–1, n=2) | 1 (1–1, n=2) |
 | duplication_introduced | 0 (0–0, n=2) | 0 (0–0, n=2) |
+| lexical_duplicate_candidates | 0 (0–0, n=2) | 0 (0–0, n=2) |
 | judge_architectural_consistency | 3.5 (3–4, n=2) | 5 (5–5, n=2) |
 | judge_appropriate_reuse | 3 (3–3, n=2) | 4 (4–4, n=2) |
 | judge_blast_radius_handling | 3.5 (3–4, n=2) | 3.5 (3–4, n=2) |
@@ -341,6 +345,7 @@ Only tasks with scored, uncontaminated runs in both conditions are aggregated (0
 | must_consider_coverage | 0.5 (0.5–0.5, n=2) | 0.625 (0.5–0.75, n=2) |
 | reuse_targets_referenced | 1 (1–1, n=2) | 0 (0–0, n=2) |
 | duplication_introduced | 0 (0–0, n=2) | 0 (0–0, n=2) |
+| lexical_duplicate_candidates | 0 (0–0, n=2) | 0 (0–0, n=2) |
 | judge_architectural_consistency | 5 (5–5, n=2) | 4.5 (4–5, n=2) |
 | judge_appropriate_reuse | 5 (5–5, n=2) | 5 (5–5, n=2) |
 | judge_blast_radius_handling | 4 (4–4, n=2) | 4 (4–4, n=2) |
@@ -381,7 +386,8 @@ Only tasks with scored, uncontaminated runs in both conditions are aggregated (0
 | must_change_coverage | 1 (1–1, n=2) | 1 (1–1, n=2) |
 | must_consider_coverage | 0.333 (0.333–0.333, n=2) | 0.333 (0.333–0.333, n=2) |
 | reuse_targets_referenced | 1 (1–1, n=2) | 1 (1–1, n=2) |
-| duplication_introduced | 0 (0–0, n=2) | 1 (1–1, n=2) |
+| duplication_introduced | 0 (0–0, n=2) | 0 (0–0, n=2) |
+| lexical_duplicate_candidates | 0 (0–0, n=2) | 2 (1–3, n=2) |
 | judge_architectural_consistency | 4 (4–4, n=2) | 5 (n=1 of 2) |
 | judge_appropriate_reuse | 5 (5–5, n=2) | 5 (n=1 of 2) |
 | judge_blast_radius_handling | 4 (4–4, n=2) | 4 (n=1 of 2) |

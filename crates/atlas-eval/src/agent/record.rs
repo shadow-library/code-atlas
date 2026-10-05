@@ -12,7 +12,7 @@ use super::judge::JudgeOutcome;
 use super::plan::{Condition, PlannedRun, PreambleVariant};
 use super::probe::ProbeReport;
 use super::process::ProcessExit;
-use super::reuse::{DuplicationFinding, NewFunction, ReuseReference};
+use super::reuse::{DuplicationFinding, LexicalCandidate, NewFunction, ReuseReference, reclassify_legacy};
 use super::spec::GroundTruth;
 use super::validation::{Regressions, SuiteResult, TestCounts};
 use super::workspace::TreeSource;
@@ -124,6 +124,8 @@ pub enum DuplicationCheck {
   Checked {
     new_functions: Vec<NewFunction>,
     findings: Vec<DuplicationFinding>,
+    #[serde(default)]
+    lexical_candidates: Vec<LexicalCandidate>,
     failed_queries: Vec<String>,
   },
 }
@@ -131,9 +133,40 @@ pub enum DuplicationCheck {
 impl DuplicationCheck {
   pub fn introduced(&self) -> Option<bool> {
     match self {
-      Self::Checked { findings, .. } if !findings.is_empty() => Some(true),
-      Self::Checked { failed_queries, .. } if failed_queries.is_empty() => Some(false),
+      Self::Checked { findings, .. } if findings.iter().any(|finding| finding.evidence.is_conclusive()) => Some(true),
+      Self::Checked { findings, failed_queries, .. } if findings.is_empty() && failed_queries.is_empty() => Some(false),
       _ => None,
+    }
+  }
+
+  pub fn lexical_candidate_count(&self) -> Option<usize> {
+    match self {
+      Self::Checked {
+        lexical_candidates,
+        failed_queries,
+        ..
+      } if failed_queries.is_empty() => Some(lexical_candidates.len()),
+      _ => None,
+    }
+  }
+
+  fn reclassified(self) -> Self {
+    let Self::Checked {
+      new_functions,
+      findings,
+      mut lexical_candidates,
+      failed_queries,
+    } = self
+    else {
+      return self;
+    };
+    let legacy = reclassify_legacy(findings);
+    lexical_candidates.extend(legacy.lexical_candidates);
+    Self::Checked {
+      new_functions,
+      findings: legacy.findings,
+      lexical_candidates,
+      failed_queries,
     }
   }
 }
@@ -161,6 +194,14 @@ pub struct Score {
   pub new_functions_named_like_targets: Vec<String>,
   pub judge: JudgeOutcome,
   pub atlas_accuracy: Option<AtlasAccuracy>,
+}
+
+impl Score {
+  pub fn rescored(mut self) -> Self {
+    self.duplication = self.duplication.reclassified();
+    self.duplication_introduced = self.duplication.introduced();
+    self
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -214,4 +255,40 @@ pub fn write_json(path: &Path, value: &impl Serialize) -> AgentResult<()> {
     reason: error.to_string(),
   })?;
   fs::write(path, text + "\n").map_err(|error| AgentError::io(path, error))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::agent::LexicalCandidate;
+  use crate::agent::TargetRole;
+
+  fn checked(failed_queries: Vec<String>) -> DuplicationCheck {
+    DuplicationCheck::Checked {
+      new_functions: Vec::new(),
+      findings: Vec::new(),
+      lexical_candidates: vec![LexicalCandidate {
+        new_function: "negotiate".to_owned(),
+        location: "src/a.ts:1-9".to_owned(),
+        matched_symbol: "ts:tree:hono:src/utils/accept::parseAccept#function".to_owned(),
+        target: "src/utils/accept::parseAccept".to_owned(),
+        role: TargetRole::ReuseTarget,
+        score: 5.6,
+      }],
+      failed_queries,
+    }
+  }
+
+  #[test]
+  fn should_count_lexical_candidates_only_when_every_query_ran() {
+    assert_eq!(checked(Vec::new()).lexical_candidate_count(), Some(1));
+    assert_eq!(checked(vec!["src/a.ts:1: timed out".to_owned()]).lexical_candidate_count(), None);
+    assert_eq!(DuplicationCheck::Unavailable { reason: "no binary".to_owned() }.lexical_candidate_count(), None);
+  }
+
+  #[test]
+  fn should_report_unknown_duplication_when_a_query_failed_without_findings() {
+    assert_eq!(checked(Vec::new()).introduced(), Some(false));
+    assert_eq!(checked(vec!["src/a.ts:1: timed out".to_owned()]).introduced(), None);
+  }
 }

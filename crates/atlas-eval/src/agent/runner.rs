@@ -451,7 +451,7 @@ fn run_setup(commands: &[String], tree: &Path, env: &[(String, String)], timeout
   Ok(())
 }
 
-fn atlas_repos(task: &LoadedTask, tree: &Path) -> Vec<PathBuf> {
+pub fn atlas_repos(task: &LoadedTask, tree: &Path) -> Vec<PathBuf> {
   if task.spec.atlas_repos.is_empty() {
     return vec![tree.to_owned()];
   }
@@ -575,6 +575,7 @@ fn duplication_check(context: &RunContext<'_>, scratch: &Path, tree: &Path, base
     return DuplicationCheck::Checked {
       new_functions: added,
       findings: Vec::new(),
+      lexical_candidates: Vec::new(),
       failed_queries: Vec::new(),
     };
   }
@@ -591,16 +592,22 @@ fn duplication_check(context: &RunContext<'_>, scratch: &Path, tree: &Path, base
     return DuplicationCheck::Unavailable { reason: error.to_string() };
   }
   let mut findings = Vec::new();
+  let mut lexical_candidates = Vec::new();
   let mut failed_queries = Vec::new();
   for function in &added {
     match atlas.similar_snippet(&function.path, function.start_line, function.end_line, tree) {
-      Ok(matches) => findings.extend(duplication_findings(function, &matches, &truth.reuse_targets, &truth.forbidden_duplicates)),
+      Ok(matches) => {
+        let scored = duplication_findings(function, &matches, &truth.reuse_targets, &truth.forbidden_duplicates);
+        findings.extend(scored.findings);
+        lexical_candidates.extend(scored.lexical_candidates);
+      }
       Err(error) => failed_queries.push(format!("{}:{}: {error}", function.path, function.start_line)),
     }
   }
   DuplicationCheck::Checked {
     new_functions: added,
     findings,
+    lexical_candidates,
     failed_queries,
   }
 }
