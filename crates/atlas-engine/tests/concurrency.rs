@@ -7,7 +7,7 @@ use std::sync::{Arc, Barrier, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use atlas_core::{EntityKind, RunId};
+use atlas_core::{ContentHash, EntityKind, RelPath, RepoName, RunId};
 use atlas_engine::{Engine, EngineOptions, FaultInjection, FreshnessReport, IndexMode};
 use atlas_store::EntityFilter;
 use common::{acme_copy, fresh, open, open_with};
@@ -19,6 +19,18 @@ fn append(path: &Path, text: &str) {
   let mut content = fs::read_to_string(path).unwrap();
   content.push_str(text);
   fs::write(path, content).unwrap();
+}
+
+fn append_atomically(path: &Path, staging: &Path, text: &str) {
+  let mut content = fs::read_to_string(path).unwrap();
+  content.push_str(text);
+  fs::write(staging, content).unwrap();
+  fs::rename(staging, path).unwrap();
+}
+
+fn indexed_hash(engine: &Engine, repo: &str, path: &str) -> ContentHash {
+  let (repo, path) = (RepoName::new(repo).unwrap(), RelPath::new(path).unwrap());
+  engine.store().read(|tx| tx.file(&repo, &path)).unwrap().unwrap().content_hash
 }
 
 fn functions_named(engine: &Engine, name: &str) -> usize {
@@ -139,11 +151,11 @@ fn should_keep_serving_barriers_reads_and_explicit_runs_under_an_edit_stream_wit
 
   let mut workers = Vec::new();
   {
-    let (stop, done, money) = (Arc::clone(&stop), done.clone(), tree.join("acme-sdk/src/money.ts"));
+    let (stop, done, money, staging) = (Arc::clone(&stop), done.clone(), tree.join("acme-sdk/src/money.ts"), tree.join("money.ts.staging"));
     workers.push(thread::spawn(move || {
       let _finished = Finished { done };
       for index in 0..edits {
-        append(&money, &format!("\nexport const streamed{index} = {index};\n"));
+        append_atomically(&money, &staging, &format!("\nexport const streamed{index} = {index};\n"));
         thread::sleep(Duration::from_millis(25));
       }
       stop.store(true, Ordering::SeqCst);
@@ -192,6 +204,45 @@ fn should_keep_serving_barriers_reads_and_explicit_runs_under_an_edit_stream_wit
     .read(|tx| tx.entities_by_name(&format!("streamed{}", edits - 1), &EntityFilter::default()))
     .unwrap();
   assert_eq!(constants.len(), 1, "the last streamed edit must be indexed");
+}
+
+#[test]
+fn should_index_a_file_truncated_between_its_scan_and_its_analysis_as_read_and_reindex_it_when_the_scanned_content_returns() {
+  let scratch = tempfile::tempdir().unwrap();
+  let tree = scratch.path().join("tree");
+  let project = acme_copy(&tree);
+  let money = tree.join("acme-sdk/src/money.ts");
+  let truncate = Arc::new(AtomicBool::new(false));
+  let options = EngineOptions {
+    fault_injection: FaultInjection::before_index_lock({
+      let (truncate, money) = (Arc::clone(&truncate), money.clone());
+      move || {
+        if truncate.swap(false, Ordering::SeqCst) {
+          fs::write(&money, "").unwrap();
+        }
+      }
+    }),
+    ..EngineOptions::default()
+  };
+  let engine = open_with(&project, &scratch.path().join("home"), options);
+  fresh(&engine);
+  append(&money, &marker(0));
+  let scanned = fs::read_to_string(&money).unwrap();
+  truncate.store(true, Ordering::SeqCst);
+
+  let torn = fresh(&engine);
+
+  assert!(torn.is_fresh(), "{torn:?}");
+  assert_eq!(indexed_hash(&engine, "acme-sdk", "src/money.ts"), ContentHash::of(b""));
+  assert_eq!(functions_named(&engine, "toCents"), 0);
+
+  fs::write(&money, &scanned).unwrap();
+  let healed = fresh(&engine);
+
+  assert!(healed.is_fresh(), "{healed:?}");
+  assert_eq!(indexed_hash(&engine, "acme-sdk", "src/money.ts"), ContentHash::of(scanned.as_bytes()));
+  assert_eq!(functions_named(&engine, "toCents"), 1);
+  assert_eq!(functions_named(&engine, "arrivalMarker0"), 1);
 }
 
 #[test]
