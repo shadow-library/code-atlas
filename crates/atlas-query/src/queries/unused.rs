@@ -1,21 +1,22 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use atlas_core::{
-  ATTR_EXTENDS, ATTR_IMPL_OF, ATTR_IMPLEMENTS, ATTR_OVERRIDE_VIA, Edge, EdgeKind, Entity, EntityId, EntityKind, ImplInfo, LanguageFamily, Owner, RelPath, RepoName,
-  UnresolvedReason, Visibility,
+  ATTR_EXTENDS, ATTR_IMPL_OF, ATTR_IMPLEMENTS, ATTR_OVERRIDE_VIA, CertaintyClass, Edge, EdgeKind, Entity, EntityId, EntityKind, ImplInfo, LanguageFamily, Owner, RelPath, RepoName,
+  UnresolvedReason, Visibility, is_test_code, is_test_path,
 };
+use atlas_store::EdgeLink;
 use serde::Serialize;
 
 use crate::QueryEngine;
-use crate::dynamic::dynamic_member_calls;
-use crate::engine::unresolved_risk;
+use crate::dynamic::{dynamic_member_calls, dynamic_member_files};
+use crate::engine::{risk_reason, unresolved_risk};
 use crate::error::QueryResult;
 use crate::graph::{FileKey, Graph};
 use crate::model::{Caveat, EntityRef, Listing, Response};
 use crate::policy::Policy;
 use crate::queries::common::{DEFAULT_LIMIT, attr_str, attribute_names, is_router_relative, is_test, language, link_caveat, package_key, superseded_fragments};
 use crate::queries::inferred_links::{LinkEnd, LinkScan, inferred_links};
-use crate::queries::textual::{TextCheck, TextIndex, TextScopes};
+use crate::queries::textual::{TestCode, TextCheck, TextIndex, TextScopes};
 
 const SYMBOL_KINDS: [EntityKind; 10] = [
   EntityKind::Function,
@@ -31,6 +32,14 @@ const SYMBOL_KINDS: [EntityKind; 10] = [
 ];
 
 const MAX_HERITAGE_WALK: usize = 32;
+
+const MAX_TEST_SOURCES_SHOWN: usize = 3;
+
+const TRAIT_IMPLEMENTATION: &str = "trait or interface implementation";
+
+const ATTR_MOCK: &str = "mock";
+
+const UNCHECKED_DEFINITIONS: &str = "config keys and env vars are not checked for use: their definitions (.env, config files) are not indexed";
 
 const NON_USAGE: [EdgeKind; 8] = [
   EdgeKind::Contains,
@@ -84,6 +93,7 @@ impl Default for UnusedRequest {
 pub enum UnusedClass {
   LikelyUnused,
   PossiblyUnused,
+  TestOnly,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -97,6 +107,7 @@ pub struct UnusedCandidate {
 pub struct UnusedAnswer {
   pub likely_unused: Listing<UnusedCandidate>,
   pub possibly_unused: Listing<UnusedCandidate>,
+  pub test_only: Listing<UnusedCandidate>,
   pub excluded_entrypoints: BTreeMap<String, usize>,
   pub caveats: Vec<Caveat>,
 }
@@ -113,20 +124,41 @@ impl QueryEngine {
       mut caveats,
     } = self.read(Policy::with_floor(0.0), |graph| unused(graph, request, &private))?;
     let index = TextIndex::build(self, &checks, &scopes);
+    let mut refuted: HashSet<usize> = HashSet::new();
     for check in &checks {
       let Some(candidate) = candidates.get_mut(check.index) else { continue };
-      if let Some(reason) = index.verify(check) {
-        candidate.class = UnusedClass::PossiblyUnused;
-        candidate.evidence.push(reason);
+      let Some(reason) = index.verify(check) else { continue };
+      if candidate.class == UnusedClass::TestOnly {
+        refuted.insert(check.index);
+        continue;
+      }
+      candidate.class = UnusedClass::PossiblyUnused;
+      candidate.evidence.push(reason);
+    }
+    let candidates: Vec<UnusedCandidate> = candidates
+      .into_iter()
+      .enumerate()
+      .filter(|(index, _)| !refuted.contains(index))
+      .map(|(_, candidate)| candidate)
+      .collect();
+    caveats.extend(self.problem_files(freshness.run)?);
+    let mut likely = Vec::new();
+    let mut possibly = Vec::new();
+    let mut test_only = Vec::new();
+    for candidate in candidates {
+      match candidate.class {
+        UnusedClass::LikelyUnused => likely.push(candidate),
+        UnusedClass::PossiblyUnused => possibly.push(candidate),
+        UnusedClass::TestOnly => test_only.push(candidate),
       }
     }
-    caveats.extend(self.problem_files(freshness.run)?);
-    let (mut likely, mut possibly): (Vec<UnusedCandidate>, Vec<UnusedCandidate>) = candidates.into_iter().partition(|candidate| candidate.class == UnusedClass::LikelyUnused);
-    likely.sort_by_key(|candidate| candidate.entity.sort_key());
-    possibly.sort_by_key(|candidate| candidate.entity.sort_key());
+    for group in [&mut likely, &mut possibly, &mut test_only] {
+      group.sort_by_key(|candidate| candidate.entity.sort_key());
+    }
     let answer = UnusedAnswer {
       likely_unused: Listing::truncated(likely, request.limit),
       possibly_unused: Listing::truncated(possibly, request.limit),
+      test_only: Listing::truncated(test_only, request.limit),
       excluded_entrypoints,
       caveats,
     };
@@ -171,11 +203,13 @@ struct Scan<'p> {
   excluded: BTreeMap<String, usize>,
   packages: HashMap<EntityId, PackageRole>,
   package_files: HashMap<EntityId, Vec<FileKey>>,
+  package_file_sets: HashMap<EntityId, HashSet<FileKey>>,
   repo_files: HashMap<RepoName, Vec<RelPath>>,
   macro_files: Option<BTreeSet<FileKey>>,
   dynamic: HashMap<RepoName, DynamicSites>,
   private: Option<&'p BTreeSet<EntityId>>,
   liveness: HashMap<EntityId, bool>,
+  tests: TestScope,
 }
 
 #[derive(Default, Clone)]
@@ -214,6 +248,7 @@ fn unused(graph: &Graph<'_, '_>, request: &UnusedRequest, private: &BTreeSet<Ent
     ..Scan::default()
   };
   graph.preload_dynamic_sites()?;
+  scan.tests = TestScope::build(graph)?;
   for kind in SYMBOL_KINDS.iter().filter(|kind| wanted(request, kind)) {
     for entity in graph.entities_of_kind(kind)? {
       if in_repo(request, &entity) {
@@ -259,9 +294,9 @@ fn unused(graph: &Graph<'_, '_>, request: &UnusedRequest, private: &BTreeSet<Ent
       "no subscriber in the project; external consumers may exist",
     )?;
   }
-  if wanted(request, &EntityKind::EnvVar) {
-    caveats.push(Caveat::MissingFacts {
-      detail: "env var definitions (.env, compose, helm) are not indexed; unused env vars cannot be detected".to_owned(),
+  if wanted(request, &EntityKind::EnvVar) || wanted(request, &EntityKind::ConfigKey) {
+    caveats.push(Caveat::Note {
+      message: UNCHECKED_DEFINITIONS.to_owned(),
     });
   }
   Ok(Scanned {
@@ -270,53 +305,256 @@ fn unused(graph: &Graph<'_, '_>, request: &UnusedRequest, private: &BTreeSet<Ent
     scopes: TextScopes {
       packages: scan.package_files,
       macro_files: scan.macro_files.unwrap_or_default(),
+      test_code: scan.tests.code,
     },
     excluded: scan.excluded,
     caveats,
   })
 }
 
-fn has_usage(graph: &Graph<'_, '_>, id: EntityId, outside: Option<EntityId>) -> QueryResult<bool> {
-  let mut overriders: Option<HashSet<EntityId>> = None;
-  for edge in graph.links_in(id, &[])? {
-    if NON_USAGE.contains(&edge.kind) || Some(edge.from) == outside || edge.from == id {
-      continue;
-    }
-    if edge.kind == EdgeKind::Implements {
-      let overriders = match &mut overriders {
-        Some(found) => found,
-        None => overriders.insert(override_sources(graph, id)?),
-      };
-      if overriders.contains(&edge.from) {
-        continue;
-      }
-    }
-    if let Some(container) = outside
-      && graph.parent(edge.from)?.is_some_and(|parent| parent.id == container)
-    {
-      continue;
-    }
-    return Ok(true);
-  }
-  Ok(false)
+struct UsageFilter<'g, 'a, 'b> {
+  graph: &'g Graph<'a, 'b>,
+  id: EntityId,
+  outside: Option<EntityId>,
+  overriders: Option<HashSet<EntityId>>,
 }
 
-fn used(graph: &Graph<'_, '_>, entity: &Entity) -> QueryResult<bool> {
-  if has_usage(graph, entity.id, None)? {
-    return Ok(true);
+impl<'g, 'a, 'b> UsageFilter<'g, 'a, 'b> {
+  fn new(graph: &'g Graph<'a, 'b>, id: EntityId, outside: Option<EntityId>) -> Self {
+    Self {
+      graph,
+      id,
+      outside,
+      overriders: None,
+    }
   }
-  if !matches!(
-    entity.kind,
-    EntityKind::Class | EntityKind::Struct | EntityKind::Enum | EntityKind::Trait | EntityKind::Interface
-  ) {
-    return Ok(false);
+
+  fn counts(&mut self, link: &EdgeLink) -> QueryResult<bool> {
+    let EdgeLink { kind, from, .. } = link;
+    let from = *from;
+    if NON_USAGE.contains(kind) || Some(from) == self.outside || from == self.id {
+      return Ok(false);
+    }
+    if *kind == EdgeKind::Implements {
+      let overriders = match &mut self.overriders {
+        Some(found) => found,
+        None => self.overriders.insert(override_sources(self.graph, self.id)?),
+      };
+      if overriders.contains(&from) {
+        return Ok(false);
+      }
+    }
+    if let Some(container) = self.outside
+      && self.graph.parent(from)?.is_some_and(|parent| parent.id == container)
+    {
+      return Ok(false);
+    }
+    Ok(true)
   }
-  for child in graph.children(entity.id)? {
-    if has_usage(graph, child.id, Some(entity.id))? {
+}
+
+fn has_usage(graph: &Graph<'_, '_>, id: EntityId, outside: Option<EntityId>) -> QueryResult<bool> {
+  let mut filter = UsageFilter::new(graph, id, outside);
+  for edge in graph.links_in(id, &[])? {
+    if filter.counts(&edge)? {
       return Ok(true);
     }
   }
   Ok(false)
+}
+
+enum Usage {
+  Unreferenced,
+  Live,
+  TestOnly { sources: Vec<EntityRef>, dispatched_from: Option<String> },
+}
+
+#[derive(Default)]
+struct Inbound {
+  test_sources: Vec<EntityRef>,
+  production: Option<String>,
+  firm: bool,
+  incidental: bool,
+}
+
+#[derive(Default)]
+struct TestScope {
+  modules: Vec<(RepoName, String, Vec<String>)>,
+  code: TestCode,
+}
+
+impl TestScope {
+  fn build(graph: &Graph<'_, '_>) -> QueryResult<Self> {
+    let mut scope = Self::default();
+    for module in graph.entities_of_kind(&EntityKind::Module)? {
+      let Some(symbol) = module.key.as_symbol() else { continue };
+      if is_test(&module) {
+        scope.modules.push((symbol.repo().clone(), symbol.package().to_owned(), symbol.module_path().to_vec()));
+      }
+    }
+    for module in graph.entities_of_kind(&EntityKind::Module)? {
+      if is_test(&module) {
+        scope.mark(&module);
+      }
+    }
+    for kind in SYMBOL_KINDS.iter().chain([&EntityKind::Test, &EntityKind::TestSuite]) {
+      for entity in graph.entities_of_kind(kind)? {
+        if scope.contains(&entity) {
+          scope.mark(&entity);
+        }
+      }
+    }
+    Ok(scope)
+  }
+
+  fn mark(&mut self, entity: &Entity) {
+    let (Some(repo), Some(path)) = (entity.repo.clone(), entity.path.clone()) else { return };
+    if is_test_path(path.as_str()) {
+      self.code.files.insert((repo, path));
+      return;
+    }
+    if let Some(span) = entity.span {
+      self.code.ranges.entry((repo, path)).or_default().push((span.start_line, span.end_line));
+    }
+  }
+
+  fn contains(&self, entity: &Entity) -> bool {
+    is_test_code(entity) || self.in_cfg_test_module(entity)
+  }
+
+  fn in_cfg_test_module(&self, entity: &Entity) -> bool {
+    let Some(symbol) = entity.key.as_symbol() else { return false };
+    self
+      .modules
+      .iter()
+      .any(|(repo, package, path)| repo == symbol.repo() && package == symbol.package() && symbol.module_path().starts_with(path))
+  }
+}
+
+fn from_test_side(graph: &Graph<'_, '_>, tests: &TestScope, link: &EdgeLink) -> QueryResult<Option<Entity>> {
+  let Some(source) = graph.entity(link.from)? else { return Ok(None) };
+  if tests.contains(&source) {
+    return Ok(Some(source));
+  }
+  let mocked = graph.edge(link.id)?.is_some_and(|edge| edge.attrs.contains_key(ATTR_MOCK));
+  Ok(mocked.then_some(source))
+}
+
+fn is_own_impl_header(graph: &Graph<'_, '_>, entity: &Entity, link: &EdgeLink) -> QueryResult<bool> {
+  if link.kind != EdgeKind::References || language(entity) != Some(LanguageFamily::Rust) {
+    return Ok(false);
+  }
+  let Some(source) = graph.entity(link.from)? else { return Ok(false) };
+  Ok(source.kind == EntityKind::File && source.repo == entity.repo && source.path == entity.path)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Targets {
+  Own,
+  Dispatched,
+}
+
+fn inbound(graph: &Graph<'_, '_>, tests: &TestScope, entity: &Entity, targets: &[(EntityId, Option<EntityId>)], kind: Targets) -> QueryResult<Inbound> {
+  let mut found = Inbound::default();
+  let mut seen: HashSet<EntityId> = HashSet::new();
+  for &(id, outside) in targets {
+    let mut filter = UsageFilter::new(graph, id, outside);
+    for link in graph.links_in(id, &[])? {
+      if !filter.counts(&link)? {
+        continue;
+      }
+      if is_own_impl_header(graph, entity, &link)? {
+        found.incidental = true;
+        continue;
+      }
+      if let Some(source) = from_test_side(graph, tests, &link)? {
+        if seen.insert(source.id) {
+          found.test_sources.push(EntityRef::of(&source));
+        }
+        continue;
+      }
+      let label = graph.entity(link.from)?.map_or_else(|| link.from.to_string(), |source| EntityRef::of(&source).short);
+      found.production.get_or_insert(label);
+      if kind == Targets::Own || link.certainty_class != CertaintyClass::Heuristic {
+        found.firm = true;
+        return Ok(found);
+      }
+    }
+  }
+  found.test_sources.sort_by_key(EntityRef::sort_key);
+  Ok(found)
+}
+
+fn usage(graph: &Graph<'_, '_>, tests: &TestScope, entity: &Entity) -> QueryResult<Usage> {
+  let mut own = vec![(entity.id, None)];
+  let mut dispatched = Vec::new();
+  if is_container(entity) {
+    for child in graph.children(entity.id)? {
+      match is_trait_impl_method(&child) {
+        true => dispatched.push((child.id, Some(entity.id))),
+        false => own.push((child.id, Some(entity.id))),
+      }
+    }
+  }
+  let direct = inbound(graph, tests, entity, &own, Targets::Own)?;
+  if direct.firm {
+    return Ok(Usage::Live);
+  }
+  let through_traits = inbound(graph, tests, entity, &dispatched, Targets::Dispatched)?;
+  if through_traits.firm {
+    return Ok(Usage::Live);
+  }
+  if direct.test_sources.is_empty() {
+    return Ok(match (through_traits.production, through_traits.test_sources.is_empty()) {
+      (Some(_), _) => Usage::Live,
+      (None, true) if direct.incidental || through_traits.incidental => Usage::Live,
+      (None, true) => Usage::Unreferenced,
+      (None, false) => Usage::TestOnly {
+        sources: through_traits.test_sources,
+        dispatched_from: None,
+      },
+    });
+  }
+  let mut sources = direct.test_sources;
+  sources.extend(through_traits.test_sources);
+  Ok(Usage::TestOnly {
+    sources,
+    dispatched_from: through_traits.production,
+  })
+}
+
+fn is_container(entity: &Entity) -> bool {
+  matches!(
+    entity.kind,
+    EntityKind::Class | EntityKind::Struct | EntityKind::Enum | EntityKind::Trait | EntityKind::Interface
+  )
+}
+
+fn test_only_evidence(sources: &[EntityRef]) -> String {
+  let covered = |source: &EntityRef| {
+    source.kind == "file"
+      && sources.iter().any(|other| {
+        other.kind != "file"
+          && other
+            .location
+            .as_ref()
+            .zip(source.location.as_ref())
+            .is_some_and(|(left, right)| (&left.repo, &left.path) == (&right.repo, &right.path))
+      })
+  };
+  let sources: Vec<&EntityRef> = sources.iter().filter(|source| !covered(source)).collect();
+  let shown: Vec<String> = sources
+    .iter()
+    .take(MAX_TEST_SOURCES_SHOWN)
+    .map(|source| match (&source.location, source.kind.as_str()) {
+      (Some(location), "file") => location.to_string(),
+      (Some(location), _) => format!("{} at {location}", source.short),
+      (None, _) => source.short.clone(),
+    })
+    .collect();
+  let more = sources.len().saturating_sub(MAX_TEST_SOURCES_SHOWN);
+  let tail = if more > 0 { format!(" and {more} more") } else { String::new() };
+  format!("used only by tests: {}{tail}", shown.join(", "))
 }
 
 fn entrypoint(graph: &Graph<'_, '_>, liveness: &mut HashMap<EntityId, bool>, entity: &Entity) -> QueryResult<Option<&'static str>> {
@@ -356,14 +594,14 @@ fn entrypoint(graph: &Graph<'_, '_>, liveness: &mut HashMap<EntityId, bool>, ent
 
 fn implementation(graph: &Graph<'_, '_>, liveness: &mut HashMap<EntityId, bool>, entity: &Entity) -> QueryResult<Option<&'static str>> {
   if is_trait_impl_method(entity) {
-    return Ok(Some("trait or interface implementation"));
+    return Ok(Some(TRAIT_IMPLEMENTATION));
   }
   let edges = graph.edges_out(entity.id, &[EdgeKind::Implements])?;
   if edges.is_empty() {
     return Ok(None);
   }
   if edges.iter().any(|edge| override_via(edge).is_none()) {
-    return Ok(Some("trait or interface implementation"));
+    return Ok(Some(TRAIT_IMPLEMENTATION));
   }
   let mut live = Vec::new();
   for edge in &edges {
@@ -376,7 +614,7 @@ fn implementation(graph: &Graph<'_, '_>, liveness: &mut HashMap<EntityId, bool>,
   }
   Ok(Some(match live.iter().all(|edge| override_via(edge) == Some("class")) {
     true => "override of a base class member",
-    false => "trait or interface implementation",
+    false => TRAIT_IMPLEMENTATION,
   }))
 }
 
@@ -500,12 +738,23 @@ fn is_trait_impl_method(entity: &Entity) -> bool {
 }
 
 fn symbol_candidate(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> QueryResult<()> {
-  if used(graph, entity)? {
-    return Ok(());
-  }
+  let test_only = match usage(graph, &scan.tests, entity)? {
+    Usage::Live => return Ok(()),
+    Usage::TestOnly { .. } if scan.tests.contains(entity) => return Ok(()),
+    Usage::TestOnly { sources, dispatched_from } => Some((sources, dispatched_from)),
+    Usage::Unreferenced => None,
+  };
   if let Some(reason) = entrypoint(graph, &mut scan.liveness, entity)? {
-    *scan.excluded.entry(reason.to_owned()).or_default() += 1;
-    return Ok(());
+    let instantiable = test_only.is_some() && is_container(entity) && reason == TRAIT_IMPLEMENTATION;
+    if !instantiable {
+      if test_only.is_none() {
+        *scan.excluded.entry(reason.to_owned()).or_default() += 1;
+      }
+      return Ok(());
+    }
+  }
+  if let Some((sources, dispatched_from)) = test_only {
+    return test_only_candidate(graph, scan, entity, &sources, dispatched_from);
   }
   let mut evidence = vec!["no inbound usage edges at any certainty".to_owned()];
   let mut class = UnusedClass::LikelyUnused;
@@ -513,14 +762,8 @@ fn symbol_candidate(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity)
     evidence.push(reason);
     class = UnusedClass::PossiblyUnused;
   }
-  if let Some(Caveat::UnresolvedRisk { total, by_reason, .. }) = unresolved_risk(graph, entity.id, &entity.name)? {
-    let reasons: Vec<String> = by_reason.iter().map(|(reason, count)| format!("{count} {reason}")).collect();
-    evidence.push(format!(
-      "{} named {:?} could reach it ({})",
-      crate::text::counted(total, "unresolved reference"),
-      entity.name,
-      reasons.join(", ")
-    ));
+  if let Some(reason) = unresolved_evidence(graph, entity)? {
+    evidence.push(reason);
     class = UnusedClass::PossiblyUnused;
   }
   for reason in dynamic_risk(graph, scan, entity)? {
@@ -529,7 +772,7 @@ fn symbol_candidate(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity)
   }
   if class == UnusedClass::LikelyUnused {
     evidence.push(likely_reason(graph, scan, entity)?);
-    match text_check(graph, scan, entity)? {
+    match text_check(graph, scan, entity, false)? {
       Some(check) => scan.checks.push(check),
       None => {
         class = UnusedClass::PossiblyUnused;
@@ -545,11 +788,112 @@ fn symbol_candidate(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity)
   Ok(())
 }
 
-fn text_check(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> QueryResult<Option<TextCheck>> {
+fn unresolved_evidence(graph: &Graph<'_, '_>, entity: &Entity) -> QueryResult<Option<String>> {
+  let Some(Caveat::UnresolvedRisk { total, by_reason, .. }) = unresolved_risk(graph, entity.id, &entity.name)? else {
+    return Ok(None);
+  };
+  let reasons: Vec<String> = by_reason.iter().map(|(reason, count)| format!("{count} {reason}")).collect();
+  Ok(Some(format!(
+    "{} named {:?} could reach it ({})",
+    crate::text::counted(total, "unresolved reference"),
+    entity.name,
+    reasons.join(", ")
+  )))
+}
+
+struct Reach {
+  packages: Vec<EntityId>,
+}
+
+impl Reach {
+  fn covers(&self, scan: &Scan<'_>, file: &FileKey) -> bool {
+    self.packages.is_empty()
+      || self
+        .packages
+        .iter()
+        .any(|package| scan.package_file_sets.get(package).is_some_and(|files| files.contains(file)))
+  }
+
+  fn production_site(&self, scan: &Scan<'_>, repo: &RepoName, path: &RelPath, line: u32) -> bool {
+    let file = (repo.clone(), path.clone());
+    self.covers(scan, &file) && !scan.tests.code.contains(&file, line)
+  }
+}
+
+fn reach_of(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> QueryResult<Reach> {
+  let Some(package) = package_scope(graph, scan, entity)? else {
+    return Ok(Reach { packages: Vec::new() });
+  };
+  if scan.package_files.get(&package).is_none_or(Vec::is_empty) {
+    return Ok(Reach { packages: Vec::new() });
+  }
+  let mut packages = vec![package];
+  packages.extend(dependent_scopes(graph, scan, package)?);
+  for package in &packages {
+    if !scan.package_file_sets.contains_key(package) {
+      let files = scan.package_files.get(package).map(|files| files.iter().cloned().collect()).unwrap_or_default();
+      scan.package_file_sets.insert(*package, files);
+    }
+  }
+  Ok(Reach { packages })
+}
+
+fn production_unresolved(graph: &Graph<'_, '_>, scan: &Scan<'_>, reach: &Reach, entity: &Entity) -> QueryResult<bool> {
+  if entity.name.is_empty() {
+    return Ok(false);
+  }
+  for found in graph.tx().unresolved_by_names(&[entity.name.as_str()])? {
+    let reference = found.reference;
+    if risk_reason(&reference, entity.id).is_some() && reach.production_site(scan, &reference.repo, &reference.file, reference.span.start_line) {
+      return Ok(true);
+    }
+  }
+  Ok(false)
+}
+
+fn production_dynamic_member_calls(graph: &Graph<'_, '_>, scan: &Scan<'_>, reach: &Reach, entity: &Entity) -> QueryResult<bool> {
+  if language(entity) != Some(LanguageFamily::Ts) || entity.key.as_symbol().is_none() || !entity.kind.is_code_symbol() || !graph.may_have_dynamic_sites()? {
+    return Ok(false);
+  }
+  for (repo, path) in dynamic_member_files(graph, entity)? {
+    for site in graph.dynamic_sites(&repo, &path)?.iter() {
+      if site.location.line.is_some_and(|line| reach.production_site(scan, &repo, &path, line)) {
+        return Ok(true);
+      }
+    }
+  }
+  Ok(false)
+}
+
+fn test_only_candidate(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity, sources: &[EntityRef], dispatched_from: Option<String>) -> QueryResult<()> {
+  let reach = reach_of(graph, scan, entity)?;
+  if production_unresolved(graph, scan, &reach, entity)? || production_dynamic_member_calls(graph, scan, &reach, entity)? {
+    return Ok(());
+  }
+  let mut evidence = vec![test_only_evidence(sources)];
+  evidence.extend(dispatched_from.map(|caller| format!("its trait methods are called from production code through the trait (e.g. {caller}); that call may dispatch to it")));
+  evidence.extend(public_surface(graph, scan, entity)?);
+  evidence.extend(dynamic_import_risk(graph, scan, entity)?);
+  if let Some(check) = text_check(graph, scan, entity, true)? {
+    scan.checks.push(check);
+  }
+  scan.candidates.push(UnusedCandidate {
+    entity: EntityRef::of(entity),
+    class: UnusedClass::TestOnly,
+    evidence,
+  });
+  Ok(())
+}
+
+fn text_check(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity, skip_test_code: bool) -> QueryResult<Option<TextCheck>> {
   let (Some(repo), Some(path)) = (entity.repo.clone(), entity.path.clone()) else {
     return Ok(None);
   };
   let package = package_scope(graph, scan, entity)?;
+  let dependents = match (skip_test_code, package) {
+    (true, Some(package)) => dependent_scopes(graph, scan, package)?,
+    _ => Vec::new(),
+  };
   macro_files(graph, scan)?;
   let owner = match entity.kind {
     EntityKind::Method => graph.parent(entity.id)?.map(|parent| parent.name),
@@ -562,6 +906,8 @@ fn text_check(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> Qu
     file: (repo, path),
     span: entity.span.map_or((0, 0), |span| (span.start_line, span.end_line)),
     package,
+    dependents,
+    skip_test_code,
   }))
 }
 
@@ -582,8 +928,24 @@ fn repo_files<'s>(graph: &Graph<'_, '_>, scan: &'s mut Scan<'_>, repo: &RepoName
 fn package_scope(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> QueryResult<Option<EntityId>> {
   let Some(key) = package_key(entity) else { return Ok(None) };
   let id = EntityId::of(&key);
+  load_package_files(graph, scan, id)?;
+  Ok(Some(id))
+}
+
+fn dependent_scopes(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, package: EntityId) -> QueryResult<Vec<EntityId>> {
+  let mut dependents = Vec::new();
+  for edge in graph.edges_in(package, &[EdgeKind::DependsOnPackage])? {
+    if edge.from != package && graph.entity(edge.from)?.is_some_and(|dependent| dependent.kind == EntityKind::Package) {
+      load_package_files(graph, scan, edge.from)?;
+      dependents.push(edge.from);
+    }
+  }
+  Ok(dependents)
+}
+
+fn load_package_files(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, id: EntityId) -> QueryResult<()> {
   if scan.package_files.contains_key(&id) {
-    return Ok(Some(id));
+    return Ok(());
   }
   let mut files = Vec::new();
   if let Some(package) = graph.entity(id)?
@@ -598,7 +960,7 @@ fn package_scope(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) ->
     }
   }
   scan.package_files.insert(id, files);
-  Ok(Some(id))
+  Ok(())
 }
 
 fn macro_files(graph: &Graph<'_, '_>, scan: &mut Scan<'_>) -> QueryResult<()> {
@@ -638,28 +1000,42 @@ fn dynamic_sites(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, repo: &RepoName) ->
   Ok(sites)
 }
 
-fn dynamic_risk(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> QueryResult<Vec<String>> {
-  let mut reasons = Vec::new();
+fn dynamic_import_risk(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> QueryResult<Option<String>> {
   if language(entity) != Some(LanguageFamily::Ts) {
-    return Ok(reasons);
+    return Ok(None);
   }
-  let Some(repo) = entity.repo.clone() else { return Ok(reasons) };
+  let Some(repo) = entity.repo.clone() else { return Ok(None) };
   let sites = dynamic_sites(graph, scan, &repo)?;
-  if let Some(site) = sites.imports.first()
-    && externally_visible(graph, entity)?
-  {
-    reasons.push(format!(
-      "{} dynamic import()/require() calls in the repo (first at {site}) may load its module",
-      sites.imports.len()
-    ));
+  let Some(site) = sites.imports.first() else { return Ok(None) };
+  if !externally_visible(graph, entity)? {
+    return Ok(None);
   }
-  if let Some(Caveat::DynamicMemberCalls { total, .. }) = dynamic_member_calls(graph, entity)? {
-    reasons.push(format!(
-      "{} could reach this (computed property access)",
-      crate::text::counted(total, "dynamic member call")
-    ));
+  Ok(Some(format!(
+    "{} dynamic import()/require() calls in the repo (first at {site}) may load its module",
+    sites.imports.len()
+  )))
+}
+
+fn dynamic_member_risk(graph: &Graph<'_, '_>, entity: &Entity) -> QueryResult<Option<String>> {
+  if language(entity) != Some(LanguageFamily::Ts) {
+    return Ok(None);
   }
-  Ok(reasons)
+  let Some(Caveat::DynamicMemberCalls { total, .. }) = dynamic_member_calls(graph, entity)? else {
+    return Ok(None);
+  };
+  Ok(Some(format!(
+    "{} could reach this (computed property access)",
+    crate::text::counted(total, "dynamic member call")
+  )))
+}
+
+fn dynamic_risk(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity) -> QueryResult<Vec<String>> {
+  Ok(
+    [dynamic_import_risk(graph, scan, entity)?, dynamic_member_risk(graph, entity)?]
+      .into_iter()
+      .flatten()
+      .collect(),
+  )
 }
 
 fn externally_visible(graph: &Graph<'_, '_>, entity: &Entity) -> QueryResult<bool> {

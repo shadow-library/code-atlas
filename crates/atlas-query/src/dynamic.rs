@@ -15,10 +15,7 @@ pub(crate) fn is_computed_segment(segment: &str) -> bool {
   segment.starts_with('[') && segment.ends_with(']')
 }
 
-pub(crate) fn dynamic_member_calls(graph: &Graph<'_, '_>, target: &Entity) -> QueryResult<Option<Caveat>> {
-  if target.key.as_symbol().is_none() || !target.kind.is_code_symbol() || !graph.may_have_dynamic_sites()? {
-    return Ok(None);
-  }
+pub(crate) fn dynamic_member_files(graph: &Graph<'_, '_>, target: &Entity) -> QueryResult<BTreeSet<(RepoName, RelPath)>> {
   let mut files: BTreeSet<(RepoName, RelPath)> = BTreeSet::new();
   if let (Some(repo), Some(path)) = (&target.repo, &target.path) {
     files.insert((repo.clone(), path.clone()));
@@ -37,6 +34,14 @@ pub(crate) fn dynamic_member_calls(graph: &Graph<'_, '_>, target: &Entity) -> Qu
       }
     }
   }
+  Ok(files)
+}
+
+pub(crate) fn dynamic_member_calls(graph: &Graph<'_, '_>, target: &Entity) -> QueryResult<Option<Caveat>> {
+  if target.key.as_symbol().is_none() || !target.kind.is_code_symbol() || !graph.may_have_dynamic_sites()? {
+    return Ok(None);
+  }
+  let files = dynamic_member_files(graph, target)?;
   let mut sites = Vec::new();
   for (repo, path) in files {
     sites.extend(graph.dynamic_sites(&repo, &path)?.iter().cloned());

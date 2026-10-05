@@ -33,6 +33,13 @@ possibly unused (9)
     no detected consumers in project; external clients outside the project may exist
   AcmeClient.updateUser method acme-sdk:src/client.ts:24
     no inbound usage edges at any certainty; public API of a library package (@acme/sdk is depended on by acme-web); consumers outside the project may exist
+used only by tests (3); candidates to review, not deletions: the index records no use outside test code, entries note what it cannot rule out
+  normalizeEmail function acme-api:src/users/email.ts:1
+    used only by tests: UsersService.normalizeEmail.should lowercase and trim at acme-api:src/users/users.service.spec.ts:25
+  InMemoryInvoiceStore struct acme-billing:src/store.rs:47
+    used only by tests: unknown_invoice_returns_404 at acme-billing:tests/invoices.rs:14, stored_invoice_is_returned at acme-billing:tests/invoices.rs:23; its trait methods are called from production code through the trait (e.g. get_invoice); that call may dispatch to it; pub item of library crate acme-billing; other crates may use it
+  AcmeClient.getOrder method acme-sdk:src/client.ts:34
+    used only by tests: AcmeClient.should send the api key in the x-api-key header at acme-sdk:src/client.test.ts:16; public API of a library package (@acme/sdk is depended on by acme-web); consumers outside the project may exist
 excluded as entrypoints without inbound edges: 12 constructor, 1 main entrypoint, 3 method of a class implementing an interface (may be framework-invoked), 6 route handler, 3 trait or interface implementation
 caveats:
-  env var definitions (.env, compose, helm) are not indexed; unused env vars cannot be detected
+  config keys and env vars are not checked for use: their definitions (.env, config files) are not indexed

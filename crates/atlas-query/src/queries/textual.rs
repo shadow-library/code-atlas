@@ -79,12 +79,32 @@ pub(crate) struct TextCheck {
   pub file: FileKey,
   pub span: (u32, u32),
   pub package: Option<EntityId>,
+  pub dependents: Vec<EntityId>,
+  pub skip_test_code: bool,
+}
+
+#[derive(Default, Clone)]
+pub(crate) struct TestCode {
+  pub files: HashSet<FileKey>,
+  pub ranges: HashMap<FileKey, Vec<(u32, u32)>>,
+}
+
+impl TestCode {
+  pub fn contains(&self, file: &FileKey, line: u32) -> bool {
+    self.files.contains(file)
+      || atlas_core::is_test_path(file.1.as_str())
+      || self
+        .ranges
+        .get(file)
+        .is_some_and(|ranges| ranges.iter().any(|(start, end)| (*start..=*end).contains(&line)))
+  }
 }
 
 #[derive(Default)]
 pub(crate) struct TextScopes {
   pub packages: HashMap<EntityId, Vec<FileKey>>,
   pub macro_files: BTreeSet<FileKey>,
+  pub test_code: TestCode,
 }
 
 struct Occurrence {
@@ -102,6 +122,7 @@ pub(crate) struct TextIndex {
   unreadable: Vec<usize>,
   macro_mask: Vec<bool>,
   package_masks: HashMap<EntityId, Vec<bool>>,
+  test_code: TestCode,
   occurrences: HashMap<String, Vec<Occurrence>>,
 }
 
@@ -124,6 +145,7 @@ impl TextIndex {
     for check in checks {
       union.insert(&check.file);
       packages.extend(check.package);
+      packages.extend(check.dependents.iter().copied());
     }
     for package in &packages {
       union.extend(scopes.packages.get(package).into_iter().flatten());
@@ -173,14 +195,20 @@ impl TextIndex {
       unreadable,
       macro_mask,
       package_masks,
+      test_code: scopes.test_code.clone(),
       occurrences,
     }
   }
 
   pub fn verify(&self, check: &TextCheck) -> Option<String> {
     let own = self.position.get(&check.file).copied();
-    let package = check.package.and_then(|package| self.package_masks.get(&package));
-    let in_scope = |file: usize| Some(file) == own || self.macro_mask[file] || package.is_some_and(|mask| mask[file]);
+    let masks: Vec<&Vec<bool>> = check
+      .package
+      .iter()
+      .chain(&check.dependents)
+      .filter_map(|package| self.package_masks.get(package))
+      .collect();
+    let in_scope = |file: usize| Some(file) == own || self.macro_mask[file] || masks.iter().any(|mask| mask[file]);
     let matcher = Matcher::new(check);
     let mut macro_hit: Option<(usize, u32)> = None;
     let mut first_hit: Option<(usize, u32)> = None;
@@ -188,6 +216,23 @@ impl TextIndex {
     let mut record = |file: usize, number: u32, line: &str, starts: &[usize]| {
       if Some(file) == own && (check.span.0..=check.span.1).contains(&number) {
         return;
+      }
+      let kept;
+      let mut starts = starts;
+      if check.skip_test_code {
+        if self.test_code.contains(&self.files[file], number) || is_non_use_line(line) {
+          return;
+        }
+        let self_type = impl_self_type_offset(line);
+        kept = starts
+          .iter()
+          .copied()
+          .filter(|start| self_type.is_none_or(|offset| *start < offset))
+          .collect::<Vec<usize>>();
+        if kept.is_empty() {
+          return;
+        }
+        starts = kept.as_slice();
       }
       let verdict = matcher.judge(line, starts, Some(file) == own, self.macro_mask[file]);
       if verdict.macro_call && macro_hit.is_none() {
@@ -289,6 +334,64 @@ impl<'c> Matcher<'c> {
     let definition = before.ends_with("fn") || before.ends_with("function");
     after.starts_with('(') && !definition
   }
+}
+
+fn is_non_use_line(line: &str) -> bool {
+  let line = line.trim_start();
+  if line.starts_with("//") || line.starts_with("/*") || line.starts_with("*/") || line == "*" || line.starts_with("* ") {
+    return true;
+  }
+  if ["import ", "import{", "import\t"].iter().any(|prefix| line.starts_with(prefix)) {
+    return true;
+  }
+  if line.starts_with("export ") && (line.starts_with("export {") || line.starts_with("export *") || line.contains(" from ")) {
+    return true;
+  }
+  let declaration = strip_visibility(line);
+  declaration.starts_with("use ") || (declaration.starts_with("mod ") && declaration.trim_end().ends_with(';'))
+}
+
+fn strip_visibility(line: &str) -> &str {
+  let Some(rest) = line.strip_prefix("pub") else { return line };
+  if let Some(restricted) = rest.strip_prefix('(') {
+    return restricted.split_once(')').map_or(line, |(_, after)| after.trim_start());
+  }
+  rest.trim_start()
+}
+
+fn impl_self_type_offset(line: &str) -> Option<usize> {
+  let trimmed = line.trim_start();
+  let rest = trimmed.strip_prefix("impl").filter(|rest| rest.starts_with(|c: char| c.is_whitespace() || c == '<'))?;
+  let base = line.len() - rest.len();
+  let mut depth = 0usize;
+  let mut generics_end = 0;
+  let mut previous = ' ';
+  for (index, character) in rest.char_indices() {
+    match character {
+      '<' => depth += 1,
+      '>' if previous != '-' => depth = depth.saturating_sub(1),
+      _ => {}
+    }
+    previous = character;
+    if depth == 0 && index > 0 && character == '>' {
+      generics_end = index + 1;
+      break;
+    }
+    if depth == 0 && !character.is_whitespace() && character != '<' {
+      break;
+    }
+  }
+  let mut depth = 0usize;
+  let bytes = rest.as_bytes();
+  for (index, character) in rest.char_indices().skip_while(|(index, _)| *index < generics_end) {
+    match character {
+      '<' | '(' | '[' => depth += 1,
+      '>' | ')' | ']' => depth = depth.saturating_sub(1),
+      ' ' if depth == 0 && bytes[index..].starts_with(b" for ") => return Some(base + index + " for ".len()),
+      _ => {}
+    }
+  }
+  Some(base + generics_end)
 }
 
 fn is_word(c: char) -> bool {
@@ -480,6 +583,7 @@ mod tests {
     let scopes = TextScopes {
       packages: HashMap::from([(package, vec![key("src/a.rs"), key("src/b.rs"), key("src/gone.rs"), key("src/macros.rs")])]),
       macro_files: BTreeSet::from([key("src/macros.rs")]),
+      test_code: TestCode::default(),
     };
     let names = ["load", "parse_packet", "#secret", "loader", "new", ""];
     let owners = [None, Some("Store"), Some("Other")];
@@ -495,6 +599,8 @@ mod tests {
             file: key(path),
             span: (start, start + next(10) as u32),
             package: (index != 2).then_some(package),
+            dependents: Vec::new(),
+            skip_test_code: false,
           });
         }
       }
@@ -515,6 +621,47 @@ mod tests {
     for kind in ["called by name", "its qualified name", "its name", "1 files in scope could not be read"] {
       assert!(reasons.iter().any(|reason| reason.starts_with(kind)), "no {kind:?} verdict in {reasons:#?}");
     }
+  }
+
+  #[test]
+  fn should_skip_only_lines_that_can_never_use_a_name() {
+    for line in [
+      "import { foo } from './foo';",
+      "  export { foo } from './foo';",
+      "export * from './foo';",
+      "export type { Foo } from './foo';",
+      "use crate::foo::Foo;",
+      "pub(crate) use super::foo;",
+      "pub mod foo;",
+      "// foo()",
+      "/// foo",
+      " * foo",
+      "/* foo */",
+    ] {
+      assert!(is_non_use_line(line), "{line}");
+    }
+    for line in [
+      "foo();",
+      "import('./foo')",
+      "export const x = foo();",
+      "mod foo { fn a() {} }",
+      "const s = 'foo';",
+      "let a = b * foo;",
+    ] {
+      assert!(!is_non_use_line(line), "{line}");
+    }
+  }
+
+  #[test]
+  fn should_find_where_the_self_type_of_an_impl_header_starts() {
+    let line = "impl From<Foo> for Bar {";
+    assert_eq!(impl_self_type_offset(line), line.find("Bar"));
+    let line = "impl<T: From<Foo>> Wrapper<T> {";
+    assert_eq!(impl_self_type_offset(line), Some(18));
+    assert!(line.find("Foo").unwrap() < 18);
+    let line = "impl<T> Trait for Vec<T> where T: Foo {";
+    assert_eq!(impl_self_type_offset(line), line.find("Vec"));
+    assert_eq!(impl_self_type_offset("fn impl_thing() {}"), None);
   }
 
   #[test]
