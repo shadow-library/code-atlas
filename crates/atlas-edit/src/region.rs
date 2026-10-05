@@ -93,9 +93,16 @@ pub(crate) struct Lead {
   pub(crate) inline: Option<LeadKind>,
 }
 
-pub(crate) fn lead(text: &str, syntax: Syntax) -> Lead {
+pub(crate) fn lead(text: &str, syntax: Syntax) -> Option<Lead> {
   let scanned = scan(text, syntax, &|_| None);
-  let body_offset = if scanned.stop == Stop::End { text.len() } else { scanned.position };
+  let body_offset = match scanned.stop {
+    Stop::Unterminated => return None,
+    Stop::End => text.len(),
+    Stop::BlankLine => text[scanned.position..]
+      .find(|character: char| !character.is_whitespace())
+      .map_or(text.len(), |found| scanned.position + found),
+    Stop::Code | Stop::Known(_) => scanned.position,
+  };
   let line_of = |offset: usize| text[..offset].matches('\n').count();
   let body_line = line_of(body_offset);
   let mut lines: Vec<Option<LeadKind>> = vec![None; body_line];
@@ -115,11 +122,11 @@ pub(crate) fn lead(text: &str, syntax: Syntax) -> Lead {
       inline = Some(strongest(inline, kind));
     }
   }
-  Lead {
+  Some(Lead {
     lines: lines.into_iter().map(|kind| kind.unwrap_or(LeadKind::Plain)).collect(),
     body_offset,
     inline,
-  }
+  })
 }
 
 fn strongest(current: Option<LeadKind>, next: LeadKind) -> LeadKind {
@@ -276,9 +283,55 @@ fn balanced_end(text: &str, open: usize, opener: u8, closer: u8, syntax: Syntax)
       if depth == 0 {
         return Some(position + 1);
       }
-    } else if let Some(end) = string_end(text, position, syntax) {
-      position = end;
+    } else if let Some(skipped) = skip_nested(text, position, syntax) {
+      position = skipped?;
       continue;
+    }
+    position += 1;
+  }
+  None
+}
+
+fn skip_nested(text: &str, position: usize, syntax: Syntax) -> Option<Option<usize>> {
+  let rest = &text[position..];
+  if rest.starts_with("//") {
+    return Some(Some(rest.find('\n').map_or(text.len(), |newline| position + newline)));
+  }
+  if rest.starts_with("/*") {
+    return Some(block_comment_end(text, position, syntax));
+  }
+  if syntax == Syntax::TypeScript && rest.starts_with('/') && regex_may_start(text, position) {
+    return regex_literal_end(text, position).map(Some);
+  }
+  string_end(text, position, syntax).map(Some)
+}
+
+fn regex_may_start(text: &str, slash: usize) -> bool {
+  text[..slash]
+    .bytes()
+    .rev()
+    .find(|byte| !byte.is_ascii_whitespace())
+    .is_none_or(|previous| b"(,=:[!&|?{};+-*%<>~^".contains(&previous))
+}
+
+fn regex_literal_end(text: &str, slash: usize) -> Option<usize> {
+  let bytes = text.as_bytes();
+  let mut position = slash + 1;
+  let mut in_class = false;
+  while let Some(&byte) = bytes.get(position) {
+    match byte {
+      b'\n' => return None,
+      b'\\' => position += 1,
+      b'[' => in_class = true,
+      b']' => in_class = false,
+      b'/' if !in_class => {
+        position += 1;
+        while bytes.get(position).is_some_and(u8::is_ascii_alphabetic) {
+          position += 1;
+        }
+        return Some(position);
+      }
+      _ => {}
     }
     position += 1;
   }
@@ -344,10 +397,33 @@ fn decorator_end(text: &str, at: usize) -> Option<Option<usize>> {
     }
     position += 1;
   }
+  if bytes.get(position) == Some(&b'<') {
+    let Some(end) = type_arguments_end(bytes, position) else { return Some(None) };
+    position = end;
+  }
   if bytes.get(position) == Some(&b'(') {
     return Some(balanced_end(text, position, b'(', b')', Syntax::TypeScript));
   }
   Some(Some(position))
+}
+
+fn type_arguments_end(bytes: &[u8], open: usize) -> Option<usize> {
+  let mut depth = 0usize;
+  for (position, byte) in bytes.iter().enumerate().skip(open) {
+    match byte {
+      b'<' => depth += 1,
+      b'>' if bytes[position - 1] == b'=' => {}
+      b'>' => {
+        depth -= 1;
+        if depth == 0 {
+          return Some(position + 1);
+        }
+      }
+      b'\n' | b'(' | b')' | b';' if depth == 0 => return None,
+      _ => {}
+    }
+  }
+  None
 }
 
 fn is_identifier_byte(byte: u8) -> bool {
@@ -498,7 +574,7 @@ mod tests {
     use LeadKind::{Attribute, Doc, Plain};
     let text = "// NOTE\n/// Docs.\n#[doc = \"More.\"]\n#[derive(\n  Debug,\n)]\nfn a() {}";
     assert_eq!(
-      lead(text, Syntax::Rust),
+      lead(text, Syntax::Rust).unwrap(),
       Lead {
         lines: vec![Plain, Doc, Doc, Attribute, Attribute, Attribute],
         body_offset: text.find("fn a").unwrap(),
@@ -506,16 +582,16 @@ mod tests {
       }
     );
     assert_eq!(
-      lead("@Input() name: string;", Syntax::TypeScript),
+      lead("@Input() name: string;", Syntax::TypeScript).unwrap(),
       Lead {
         lines: Vec::new(),
         body_offset: 9,
         inline: Some(Attribute),
       }
     );
-    assert_eq!(lead("#[doc(hidden)]\nfn a() {}", Syntax::Rust).lines, [Attribute]);
+    assert_eq!(lead("#[doc(hidden)]\nfn a() {}", Syntax::Rust).unwrap().lines, [Attribute]);
     assert_eq!(
-      lead("fn a() {}", Syntax::Rust),
+      lead("fn a() {}", Syntax::Rust).unwrap(),
       Lead {
         lines: Vec::new(),
         body_offset: 0,
@@ -555,5 +631,14 @@ mod tests {
     let started = std::time::Instant::now();
     assert_eq!(region_text(&content, "fn b", Syntax::Rust), comments);
     assert!(started.elapsed() < std::time::Duration::from_millis(200), "{:?}", started.elapsed());
+  }
+
+  #[test]
+  fn should_skip_comments_and_regex_literals_inside_decorator_arguments() {
+    let content = "class A {\n  /** Phone. */\n  @Column({\n    // don't change\n  })\n  @Matches(/^\\(\\d+$/)\n  phone: string;\n}\n";
+    assert_eq!(
+      region_text(content, "phone:", Syntax::TypeScript),
+      "  /** Phone. */\n  @Column({\n    // don't change\n  })\n  @Matches(/^\\(\\d+$/)\n"
+    );
   }
 }

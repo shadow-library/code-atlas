@@ -105,6 +105,8 @@ pub enum EditError {
   EmptyText,
   #[error("declaration span {start}..{end} is invalid for a {len}-byte file")]
   InvalidSpan { start: usize, end: usize, len: usize },
+  #[error("cannot find where the attributes or decorators of {0} end; edit it with replace_content")]
+  RegionUnparseable(&'static str),
   #[error("the declaration shares its line with other code ({0}); edit it with replace_content")]
   NotLineAligned(&'static str),
 }

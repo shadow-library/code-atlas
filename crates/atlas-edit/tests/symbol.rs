@@ -388,3 +388,82 @@ fn should_keep_plain_comments_above_replaced_docs() {
 fn should_not_duplicate_an_attribute_restated_on_the_declaration_line() {
   assert_eq!(rust("#[inline]\nfn a() {}\n", "#[inline] fn a() {}"), "#[inline] fn a() {}\n");
 }
+
+fn member(content: &str, declaration: &str, text: &str) -> String {
+  run(&site(content, declaration, Syntax::TypeScript, Nesting::Nested), SymbolOp::ReplaceBody(text.to_owned()))
+}
+
+#[test]
+fn should_keep_a_decorator_whose_arguments_hold_a_comment_with_an_apostrophe() {
+  let content = "class A {\n  @Column({\n    // don't change: legacy\n    type: 'text',\n  })\n  name: string;\n}\n";
+  let declaration = "@Column({\n    // don't change: legacy\n    type: 'text',\n  })\n  name: string;";
+  assert_eq!(
+    member(content, declaration, "name: number;"),
+    "class A {\n  @Column({\n    // don't change: legacy\n    type: 'text',\n  })\n  name: number;\n}\n"
+  );
+  assert_eq!(
+    member(content, declaration, "/** Doc. */\nname: number;"),
+    "class A {\n  /** Doc. */\n  @Column({\n    // don't change: legacy\n    type: 'text',\n  })\n  name: number;\n}\n"
+  );
+}
+
+#[test]
+fn should_keep_decorators_with_regex_block_comment_and_template_arguments() {
+  let cases = [
+    ("@Matches(/^\\(\\d+$/)", "@Matches(/^\\(\\d+$/)\n  phone: string;"),
+    ("@Column({ /* it's ) here */ length: 3 })", "@Column({ /* it's ) here */ length: 3 })\n  phone: string;"),
+    ("@Label(`a ) b`)", "@Label(`a ) b`)\n  phone: string;"),
+    ("@Split(a / b, (c) / 2)", "@Split(a / b, (c) / 2)\n  phone: string;"),
+  ];
+  for (decorator, declaration) in cases {
+    let content = format!("class A {{\n  {declaration}\n}}\n");
+    assert_eq!(
+      member(&content, declaration, "phone: number;"),
+      format!("class A {{\n  {decorator}\n  phone: number;\n}}\n"),
+      "{decorator}"
+    );
+  }
+}
+
+#[test]
+fn should_refuse_a_declaration_whose_decorator_never_closes() {
+  let content = "class A {\n  @Column({ type: 'text'\n  name: string;\n}\n";
+  let broken = site(content, "@Column({ type: 'text'\n  name: string;", Syntax::TypeScript, Nesting::Nested);
+  assert!(matches!(
+    symbol_edit(&broken, &SymbolOp::ReplaceBody("name: number;".to_owned())),
+    Err(EditError::RegionUnparseable("the declaration"))
+  ));
+  let fine = site(CONTROLLER, FIND, Syntax::TypeScript, Nesting::Nested);
+  assert!(matches!(
+    symbol_edit(&fine, &SymbolOp::ReplaceBody("@Get(':id'\nfind() {}".to_owned())),
+    Err(EditError::RegionUnparseable("the new text"))
+  ));
+}
+
+#[test]
+fn should_keep_a_blank_line_between_a_decorator_and_a_bare_body() {
+  let content = "class A {\n  @Get()\n\n  find() {\n    return 1;\n  }\n}\n";
+  assert_eq!(
+    member(content, "@Get()\n\n  find() {\n    return 1;\n  }", "find() {\n  return 2;\n}"),
+    "class A {\n  @Get()\n\n  find() {\n    return 2;\n  }\n}\n"
+  );
+}
+
+#[test]
+fn should_keep_generic_decorator_calls_and_refuse_unclosed_type_arguments() {
+  for decorator in ["@X<Foo>()", "@Inject<Map<string, number>>()", "@Pipe<(value: string) => number>(parse)"] {
+    let declaration = format!("{decorator}\n  phone: string;");
+    let content = format!("class A {{\n  {declaration}\n}}\n");
+    assert_eq!(
+      member(&content, &declaration, "phone: number;"),
+      format!("class A {{\n  {decorator}\n  phone: number;\n}}\n"),
+      "{decorator}"
+    );
+  }
+  let content = "class A {\n  @X<Foo\n  phone: string;\n}\n";
+  let broken = site(content, "@X<Foo\n  phone: string;", Syntax::TypeScript, Nesting::Nested);
+  assert!(matches!(
+    symbol_edit(&broken, &SymbolOp::ReplaceBody("phone: number;".to_owned())),
+    Err(EditError::RegionUnparseable("the declaration"))
+  ));
+}

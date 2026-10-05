@@ -132,10 +132,10 @@ impl<'a> Layout<'a> {
   fn replace_body(&self, text: &str) -> EditResult<TextEdit> {
     let span = &self.site.span;
     let syntax = self.site.syntax;
-    let incoming = lead(text, syntax);
+    let incoming = lead(text, syntax).ok_or(EditError::RegionUnparseable("the new text"))?;
     let supplies = |kind| incoming.lines.contains(&kind) || incoming.inline == Some(kind);
     let (supplies_docs, supplies_attributes) = (supplies(LeadKind::Doc), supplies(LeadKind::Attribute));
-    let span_lead = lead(&self.content()[span.clone()], syntax);
+    let span_lead = lead(&self.content()[span.clone()], syntax).ok_or(EditError::RegionUnparseable("the declaration"))?;
     let body_start = span.start + span_lead.body_offset;
     if text[incoming.body_offset..].trim().is_empty() {
       return Err(EditError::EmptyText);
@@ -145,7 +145,7 @@ impl<'a> Layout<'a> {
     }
     self.ensure_nothing_before()?;
     let existing_text = self.content()[self.region.start..span.end].replace("\r\n", "\n");
-    let existing = lead(&existing_text, syntax);
+    let existing = lead(&existing_text, syntax).ok_or(EditError::RegionUnparseable("the leading docs and attributes"))?;
     let reindented = reindent(text, self.base, FirstLine::Indented);
     let incoming_lines: Vec<&str> = reindented.split('\n').collect();
     let rebuilt = Rebuild {
