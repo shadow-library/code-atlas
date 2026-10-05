@@ -2,8 +2,11 @@ mod e2e_support;
 
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
+use std::time::Duration;
 
-use e2e_support::{Sandbox, Server, binary, repos_of, shorts, text_of};
+use e2e_support::{CALL_TIMEOUT, Sandbox, Server, binary, repos_of, shorts, text_of};
+use rmcp::ServiceExt;
 use serde_json::{Value, json};
 
 const TOOLS: [&str; 16] = [
@@ -183,4 +186,113 @@ async fn should_serve_the_server_that_connect_claude_registers() {
   assert!(pack.contains("UsersService.findOne method acme-api:src/users/users.service.ts:18"), "{pack}");
   let status = server.stop().await;
   assert!(status.success(), "the server exited with {status} after the client closed stdin");
+}
+
+#[cfg(unix)]
+struct SignalledServer {
+  child: tokio::process::Child,
+  stderr: tokio::io::BufReader<tokio::process::ChildStderr>,
+  log: String,
+}
+
+#[cfg(unix)]
+impl SignalledServer {
+  async fn spawn(sandbox: &Sandbox, api: &std::path::Path, delay_ms: Option<u64>) -> Self {
+    let config: Value = serde_json::from_str(&fs::read_to_string(api.join(".mcp.json")).unwrap()).unwrap();
+    let server = &config["mcpServers"]["code-atlas"];
+    let arguments: Vec<&str> = server["args"].as_array().unwrap().iter().map(|argument| argument.as_str().unwrap()).collect();
+    let mut command = tokio::process::Command::new(server["command"].as_str().unwrap());
+    command
+      .args(&arguments)
+      .current_dir(api)
+      .env("CODE_ATLAS_HOME", sandbox.home())
+      .env("RUST_LOG", "atlas_mcp=info")
+      .stdin(std::process::Stdio::piped())
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .kill_on_drop(true);
+    if let Some(delay_ms) = delay_ms {
+      command.env("ATLAS_MCP_TEST_DELAY_BEFORE_RUN_MS", delay_ms.to_string());
+    }
+    let mut child = command.spawn().unwrap();
+    let stderr = tokio::io::BufReader::new(child.stderr.take().unwrap());
+    Self {
+      child,
+      stderr,
+      log: String::new(),
+    }
+  }
+
+  async fn read_until_log(&mut self, needle: &str) {
+    use tokio::io::AsyncBufReadExt;
+    while !self.log.contains(needle) {
+      let read = tokio::time::timeout(CALL_TIMEOUT, self.stderr.read_line(&mut self.log))
+        .await
+        .expect("stderr timed out")
+        .unwrap();
+      assert_ne!(read, 0, "server exited before logging {needle:?}\n{}", self.log);
+    }
+  }
+
+  fn terminate(&self) {
+    assert!(Command::new("kill").args(["-TERM", &self.child.id().unwrap().to_string()]).status().unwrap().success());
+  }
+
+  async fn handshake_then_expect_clean_exit(mut self, label: &str) {
+    use tokio::io::AsyncReadExt;
+    let transport = (self.child.stdout.take().unwrap(), self.child.stdin.take().unwrap());
+    let client = tokio::time::timeout(CALL_TIMEOUT, ().serve(transport)).await.expect("initialize timed out").unwrap();
+    let status = tokio::time::timeout(Duration::from_secs(20), self.child.wait())
+      .await
+      .expect("no exit after SIGTERM")
+      .unwrap();
+    drop(client);
+    self.stderr.read_to_string(&mut self.log).await.unwrap();
+    assert_eq!(status.code(), Some(0), "{label}: {status:?}\n{}", self.log);
+    assert!(self.log.contains("persisted the similarity index on shutdown"), "{label}: {}", self.log);
+  }
+}
+
+#[cfg(unix)]
+fn indexed_api(sandbox: &Sandbox) -> PathBuf {
+  let api = sandbox.acme().join("acme-api");
+  sandbox.cli_ok(&api, &["index"]);
+  sandbox.cli_ok(&api, &["connect", "claude", "--yes"]);
+  api
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn should_persist_similarity_and_exit_zero_when_sigterm_arrives_before_serving_starts() {
+  let sandbox = Sandbox::new();
+  let api = indexed_api(&sandbox);
+  let mut server = SignalledServer::spawn(&sandbox, &api, Some(1500)).await;
+  server.read_until_log("test delay before serving").await;
+  server.terminate();
+  server.handshake_then_expect_clean_exit("delayed").await;
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn should_persist_similarity_and_exit_zero_when_sigterm_follows_the_handshake_immediately() {
+  // Stress loop (~2 min); runs only with ATLAS_STRESS=1.
+  if std::env::var_os("ATLAS_STRESS").is_none() {
+    return;
+  }
+  let sandbox = Sandbox::new();
+  let api = indexed_api(&sandbox);
+  for round in 0..50 {
+    let mut server = SignalledServer::spawn(&sandbox, &api, None).await;
+    let transport = (server.child.stdout.take().unwrap(), server.child.stdin.take().unwrap());
+    let client = tokio::time::timeout(CALL_TIMEOUT, ().serve(transport)).await.expect("initialize timed out").unwrap();
+    server.terminate();
+    let status = tokio::time::timeout(Duration::from_secs(20), server.child.wait())
+      .await
+      .expect("no exit after SIGTERM")
+      .unwrap();
+    drop(client);
+    tokio::io::AsyncReadExt::read_to_string(&mut server.stderr, &mut server.log).await.unwrap();
+    assert_eq!(status.code(), Some(0), "round {round}: {status:?}\n{}", server.log);
+    assert!(server.log.contains("persisted the similarity index on shutdown"), "round {round}: {}", server.log);
+  }
 }
