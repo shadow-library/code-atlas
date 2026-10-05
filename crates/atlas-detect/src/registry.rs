@@ -5,8 +5,8 @@ use atlas_core::{DetectInput, DetectedEdge, Detection, Detector, Diagnostic, Nod
 use serde::{Deserialize, Serialize};
 
 use crate::detectors::{
-  AuthSchemeDetector, AxumEndpointDetector, ConfigEnvDetector, DbDetector, EventDetector, ExpressEndpointDetector, HttpClientDetector, JobDetector, NestEndpointDetector,
-  TestDetector,
+  AuthSchemeDetector, AxumEndpointDetector, ConfigEnvDetector, DbDetector, EventDetector, ExpressEndpointDetector, HttpClientDetector, JobDetector, MockDetector,
+  NestEndpointDetector, TestDetector,
 };
 
 pub trait DiagnosingDetector: Detector {
@@ -67,6 +67,7 @@ impl Default for DetectorRegistry {
       Box::new(AuthSchemeDetector),
       Box::new(ConfigEnvDetector),
       Box::new(TestDetector),
+      Box::new(MockDetector),
       Box::new(EventDetector),
       Box::new(JobDetector),
       Box::new(DbDetector),

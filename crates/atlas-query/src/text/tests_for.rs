@@ -12,6 +12,9 @@ impl RenderText for TestsForAnswer {
         indent,
         format!("{} [{}]  {}", entity_line(&test.test), test.reach.as_str(), relation_text(&test.relation, &test.path)),
       );
+      if let Some(note) = &test.note {
+        out.line(indent + 1, format!("note: {note}"));
+      }
       if let Some(run) = &test.run {
         out.line(indent + 1, format!("run: {run}"));
       }

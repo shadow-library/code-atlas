@@ -153,6 +153,43 @@ export class ShopClient {\n\
 }
 
 #[test]
+fn should_keep_a_wrapper_request_when_its_callers_add_no_literal_url_text() {
+  let source = "import { Controller, Get, Param } from '@nestjs/common';\n\
+function relayEcho(id: string) {\n\
+  return fetch('/echo/' + id);\n\
+}\n\
+@Controller('echo')\n\
+export class EchoController {\n\
+  @Get(':id')\n\
+  echo(@Param('id') id: string) {\n\
+    return relayEcho(id);\n\
+  }\n\
+}\n";
+  assert_eq!(
+    render_source(&HttpClientDetector, "api", "src/echo.controller.ts", source),
+    lines(&["client:api:GET /echo/{} [resolved]", "makes_request relayEcho -> client:api:GET /echo/{} [resolved]"])
+  );
+}
+
+#[test]
+fn should_synthesize_wrapper_calls_only_for_callers_that_specialise_the_url() {
+  let source = "function load(path: string) {\n\
+  return fetch('/api' + path);\n\
+}\n\
+export function users() { return load('/users'); }\n\
+export function anything(path: string) { return load(path); }\n";
+  assert_eq!(
+    render_source(&HttpClientDetector, "web", "src/api.ts", source),
+    lines(&[
+      "client:web:GET /api/users [heuristic 0.60]",
+      "client:web:GET /api{} [resolved]",
+      "makes_request load -> client:web:GET /api{} [resolved]",
+      "makes_request users -> client:web:GET /api/users [heuristic 0.60]",
+    ])
+  );
+}
+
+#[test]
 fn should_detect_axios_instances_config_calls_and_nest_http_service() {
   let source = "import axios from 'axios';\n\
 import { HttpService } from '@nestjs/axios';\n\

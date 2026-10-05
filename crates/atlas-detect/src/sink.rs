@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use atlas_core::{Attrs, DetectedEdge, DetectedEntity, Detection, Diagnostic, EdgeKind, EntityKey, NodeRef, Severity, Span};
 use serde_json::Value;
 
@@ -7,6 +9,7 @@ use crate::cert::Cert;
 pub(crate) struct Sink {
   detection: Detection,
   diagnostics: Vec<Diagnostic>,
+  edges_at: HashMap<(u32, u32), Vec<usize>>,
 }
 
 impl Sink {
@@ -48,9 +51,12 @@ impl Sink {
       note: None,
       attrs,
     };
-    if !self.detection.edges.contains(&edge) {
-      self.detection.edges.push(edge);
+    let at = self.edges_at.entry((edge.span.start_byte, edge.span.end_byte)).or_default();
+    if at.iter().any(|index| self.detection.edges[*index] == edge) {
+      return;
     }
+    at.push(self.detection.edges.len());
+    self.detection.edges.push(edge);
   }
 
   pub fn diagnostic(&mut self, severity: Severity, code: &str, message: String, span: Option<Span>) {

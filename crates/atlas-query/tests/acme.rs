@@ -3,8 +3,8 @@ mod common;
 use std::collections::BTreeSet;
 
 use atlas_query::{
-  ApiRequest, ContextAnswer, ContextRequest, EntityRef, ImpactAnswer, ImpactRequest, SearchRequest, SimilarRequest, SymbolRequest, Targeted, TestsForRequest, TraverseRequest,
-  UnusedClass, UnusedRequest, UsageState,
+  ApiRequest, ContextAnswer, ContextRequest, EntityRef, ImpactAnswer, ImpactRequest, SearchRequest, SimilarRequest, SymbolRequest, Targeted, TestReach, TestsForRequest,
+  TraverseRequest, UnusedClass, UnusedRequest, UsageState,
 };
 use common::truth::{any_matches, expected, label, matches, section};
 use toml::Value;
@@ -305,6 +305,48 @@ fn should_find_ground_truth_tests_for_each_subject() {
       label(&test_of["test"])
     );
   }
+}
+
+#[test]
+fn should_list_a_spec_that_mocks_the_target_as_mocking_it_not_exercising_it() {
+  let fixture = common::acme();
+  let request = TestsForRequest {
+    filter: atlas_query::TargetFilter {
+      kinds: Vec::new(),
+      repo: Some("acme-api".to_owned()),
+    },
+    ..TestsForRequest::new("OrdersService.findOne")
+  };
+
+  let response = fixture.query.tests_for(&request).unwrap();
+
+  let text = fixture.text(&response);
+  assert!(
+    text.contains(
+      "OrdersController.should delegate findOne to the service test acme-api:src/orders/orders.controller.spec.ts:10 [mocks it (does not exercise it)]  possibly references OrdersService.findOne [heuristic 0.60]"
+    ),
+    "{text}"
+  );
+  let answer = found(response.answer);
+  let tests: Vec<(&str, TestReach, &str, bool)> = answer
+    .tests
+    .items
+    .iter()
+    .map(|test| (test.test.short.as_str(), test.reach, test.relation.phrase.as_str(), test.uncertain))
+    .collect();
+  assert_eq!(
+    tests,
+    [
+      ("OrdersController", TestReach::Mocked, "possibly references", true),
+      ("OrdersController.should delegate findOne to the service", TestReach::Mocked, "possibly references", true),
+      (
+        "OrdersController.should delegate create to the service",
+        TestReach::ScopeMocked,
+        "suite OrdersController mocks",
+        true
+      ),
+    ]
+  );
 }
 
 #[test]

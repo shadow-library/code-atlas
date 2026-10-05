@@ -7,18 +7,19 @@ use atlas_detect::DetectorRegistry;
 use atlas_lang_rust::RustAnalyzer;
 use atlas_lang_ts::TsAnalyzer;
 
-const PINNED_INPUTS: &str = "1b3f3047d346c123790f3d8dec7a2834dbf379d97f31d8e01470c042393e6054";
-const PINNED: [(&str, u32, &str); 10] = [
+const PINNED_INPUTS: &str = "bf52e87c97c8e82b55ae5b56e1b258d5e3dc194e47e36dd23ee45d409ad0c774";
+const PINNED: [(&str, u32, &str); 11] = [
   ("auth-schemes", 1, "8fa6fd38da5eabf63f5d072ca900a04da55fdca21bef5a27c4d4b042a296afcc"),
-  ("config-env", 2, "50945e4d17cea66a3562e5bd8c7b2ea423012b666542d775e658b01d40702dc8"),
+  ("config-env", 2, "8edc86c8db3c8b3cf447f7e2b06648da0a9b94e725737ec8c31f75e1de6fd25a"),
   ("db", 1, "3d36016b9fcefda2574f5e620eb5237fdc84881e3715eafc41f0bb84fefc627c"),
   ("events", 1, "56ea15b0eee70175cbc18b834b599a38e9d4e84b2913700bf6c5d5023d568560"),
-  ("http-clients", 1, "a12672b4fbbecaf3dd70b86b67febb8c2e7a505436ccd34ddc5409736e3644ab"),
+  ("http-clients", 2, "5a99dc031055c7c3ab7f499f7fcc2f433ce0f565433134f4b6d66666b74527e5"),
   ("http-endpoints-axum", 1, "4e8073d521653481c3f481efd33b1f32b71341b97bb752d18751ac9fd016c260"),
   ("http-endpoints-express", 1, "633c6c825f8b3d613b9994233ebe2f768f78fbb084734a2e3c975139ebb05626"),
-  ("http-endpoints-nest", 1, "9aa94679e187c47892e60eebaaf27b03ae68061e6db75a26e631acfefb4af39e"),
+  ("http-endpoints-nest", 1, "dcc852828b9f41afbaf0a5109810f9b96ab33bf7b0ff4b4bd00d5801643554ff"),
   ("jobs", 1, "18c3f1518499074939d9a52840f8d6332c307ee892d6f63087cf846055add3a7"),
-  ("tests", 1, "e49dc6a2ae558e83ca151d954275517b07f6376c58fae1618d82eb1b7d2a2578"),
+  ("test-mocks", 1, "9084635997f4cf01bb3298cd90ff73e83073c4ea425940a200a118b18124c063"),
+  ("tests", 1, "5cc7855a129fedc1f45ba58359f651fe6b8417191d12a58a9121e4b5eea2b1be"),
 ];
 
 fn fixtures_root() -> PathBuf {

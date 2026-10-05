@@ -1,6 +1,7 @@
 mod common;
 
 use atlas_core::{Certainty, CertaintyClass, Confidence, EdgeKind, EntityKind, UnresolvedReason};
+use atlas_resolve::Resolution;
 use common::{file, single, synthetic, ts};
 
 const RESOLVED: &[CertaintyClass] = &[CertaintyClass::Resolved];
@@ -559,4 +560,43 @@ export class Square implements ShapeAlias {
   expected.sort();
   assert_eq!(targets, expected);
   assert!(project.edges_from(EdgeKind::Implements, method(&["Square", "area"], 0)).is_empty());
+}
+
+#[test]
+fn should_resolve_detector_prototype_paths_to_instance_members() {
+  let synthetic = single(
+    "app",
+    &[
+      ("package.json", PACKAGE),
+      (
+        "src/orders.ts",
+        "export class Base { audit() {} }\nexport class Orders extends Base { findOne() {} static create() {} }\nexport interface Port { send(): void }\n",
+      ),
+      (
+        "src/orders.spec.ts",
+        "import { type Orders, type Port } from './orders';\nimport { Mailer } from 'mailer';\ndescribe('Orders', () => {});\n",
+      ),
+    ],
+  );
+  let project = &synthetic.project;
+  let spec = project.facts("app", "src/orders.spec.ts");
+  let resolve = |path: &[&str]| atlas_resolve::resolve_path_in_file(spec, &common::strings(path), None, &project.table).unwrap();
+  let orders = |member: &str| app(&["src", "orders"], &["Orders", member], EntityKind::Method);
+
+  assert_eq!(resolve(&["Orders", "prototype", "findOne"]), Resolution::Resolved(orders("findOne"), Certainty::Resolved));
+  assert_eq!(
+    resolve(&["Orders", "prototype", "audit"]),
+    Resolution::Resolved(app(&["src", "orders"], &["Base", "audit"], EntityKind::Method), Certainty::Resolved)
+  );
+  assert_eq!(
+    resolve(&["Port", "prototype", "send"]),
+    Resolution::Resolved(app(&["src", "orders"], &["Port", "send"], EntityKind::Method), Certainty::Resolved)
+  );
+  assert_eq!(resolve(&["Orders", "prototype", "create"]), Resolution::Unresolved(UnresolvedReason::NotFound));
+  assert_eq!(resolve(&["Orders", "findOne"]), Resolution::Unresolved(UnresolvedReason::NotFound));
+  assert_eq!(resolve(&["Orders", "create"]), Resolution::Resolved(orders("create"), Certainty::Resolved));
+  assert_eq!(
+    resolve(&["Mailer", "prototype", "send"]),
+    Resolution::Unresolved(UnresolvedReason::External { package: "mailer".to_owned() })
+  );
 }

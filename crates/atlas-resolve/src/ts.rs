@@ -276,6 +276,25 @@ impl Resolver<'_> {
     Outcome::from_lookup(self.ts_static_path(self.file, from, path, ns, &mut Guard::default()))
   }
 
+  pub(crate) fn ts_prototype_member(&self, from: Option<u32>, owner: &[String], member: &str) -> Outcome {
+    let found = match self.ts_static_path(self.file, from, owner, TsNs::Type, &mut Guard::default()) {
+      Ok(found) => found,
+      Err(miss) => return Outcome::Unresolved(miss),
+    };
+    let Found::Symbol(symbol) = found.found else {
+      return match found.found {
+        Found::External(_) => Outcome::from_lookup(Ok(found)),
+        _ => Outcome::Unresolved(Miss::NotFound),
+      };
+    };
+    let side = match self.sym_kind(symbol) {
+      Some(EntityKind::Class) => Side::Instance,
+      Some(EntityKind::Interface) => Side::Any,
+      _ => return Outcome::Unresolved(Miss::NotFound),
+    };
+    Outcome::from_lookup(self.ts_member_hit(symbol, member, side).map(|hit| hit.weaken(found.heuristic)))
+  }
+
   pub(crate) fn ts_type_anchor(&self, reference: &ReferenceFact) -> Option<Hit> {
     let (_, chain) = reference.path.split_last()?;
     let head = chain.first()?;

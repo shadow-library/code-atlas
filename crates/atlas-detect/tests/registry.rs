@@ -32,13 +32,14 @@ fn should_register_every_detector_with_a_unique_id_and_versioned_producer() {
       "auth-schemes",
       "config-env",
       "tests",
+      "test-mocks",
       "events",
       "jobs",
       "db",
     ]
   );
   let producers: BTreeSet<String> = registry.producers().iter().map(ToString::to_string).collect();
-  assert_eq!(producers.len(), 10);
+  assert_eq!(producers.len(), 11);
   assert!(producers.contains("atlas-detect.http-endpoints-nest@1"));
 }
 

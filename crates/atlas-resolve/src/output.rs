@@ -12,7 +12,8 @@ use crate::table::{FileIdx, LookupSource, ProjectSymbolTable, Reachability, SymR
 use crate::ts::{TsNs, specifier_display};
 
 pub const RESOLVER_NAME: &str = "atlas-resolve";
-pub const RESOLVER_VERSION: u32 = 4;
+pub const RESOLVER_VERSION: u32 = 5;
+const PROTOTYPE: &str = "prototype";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Resolution {
@@ -143,7 +144,13 @@ pub fn resolve_path_in_file(file: &FileFacts, path: &[String], from: Option<Loca
     span: Span::from_zero_based_rows(0, 0, 0, 0, 0, 0),
     origin: RefOrigin::Syntax,
   };
-  let resolution = match resolver.resolve_reference(&reference) {
+  let outcome = match path {
+    [owner @ .., prototype, member] if surface.family == LanguageFamily::Ts && prototype == PROTOTYPE && !owner.is_empty() => {
+      resolver.ts_prototype_member(from.map(|local| local.0), owner, member)
+    }
+    _ => resolver.resolve_reference(&reference),
+  };
+  let resolution = match outcome {
     Outcome::Targets { primary, .. } => match (resolver.found_entity(&primary.found), certainty_of(&primary)) {
       (Some(entity), Some(certainty)) => Resolution::Resolved(entity, certainty),
       _ => Resolution::Unresolved(UnresolvedReason::NotFound),

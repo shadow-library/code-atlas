@@ -504,3 +504,42 @@ fn should_treat_a_test_path_file_without_test_entities_as_test_code() {
 
   assert_eq!(test_only_shorts(&answer), ["helper"], "{answer:#?}");
 }
+
+const SVC_TS: &str = "export class Svc {\n  onlyMocked(): number { return 1; }\n  moduleMocked(): number { return 2; }\n  usedInProd(): number { return 3; }\n}\n";
+const SVC_APP_TS: &str = "import { Svc } from './svc';\n\nexport function run(svc: Svc): number {\n  return svc.usedInProd();\n}\n";
+const SVC_SPEC_TS: &str = "import { Svc } from './svc';\n\
+\n\
+const shared = { moduleMocked: jest.fn() } as unknown as Svc;\n\
+\n\
+describe('Svc', () => {\n\
+  const svc = { onlyMocked: jest.fn(), usedInProd: jest.fn() } as unknown as Svc;\n\
+  it('calls its collaborator', () => {\n\
+    expect(svc.onlyMocked).toHaveBeenCalled();\n\
+    expect(shared).toBeDefined();\n\
+  });\n\
+});\n";
+
+#[test]
+fn should_class_a_method_referenced_only_by_jest_mocks_as_test_only_and_keep_production_callers_live() {
+  let fixture = common::single_repo(
+    "mocked",
+    &[
+      ("package.json", PACKAGE),
+      ("src/svc.ts", SVC_TS),
+      ("src/app.ts", SVC_APP_TS),
+      ("src/svc.spec.ts", SVC_SPEC_TS),
+    ],
+  );
+
+  let answer = unused_answer(&fixture);
+
+  assert_eq!(test_only_shorts(&answer), ["Svc.onlyMocked", "Svc.moduleMocked"], "{answer:#?}");
+  assert!(all_shorts(&answer).iter().all(|(short, _)| short != "Svc.usedInProd"), "{answer:#?}");
+  let only_mocked = find(&answer.test_only.items, "Svc.onlyMocked");
+  assert_eq!(
+    only_mocked.evidence[0], "used only by tests: Svc at mocked:src/svc.spec.ts:5, Svc.calls its collaborator at mocked:src/svc.spec.ts:7",
+    "{only_mocked:#?}"
+  );
+  let module_mocked = find(&answer.test_only.items, "Svc.moduleMocked");
+  assert!(module_mocked.evidence[0].contains("src/svc.spec.ts"), "{module_mocked:#?}");
+}

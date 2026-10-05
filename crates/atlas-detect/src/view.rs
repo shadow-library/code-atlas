@@ -11,6 +11,7 @@ pub(crate) struct FileView<'a> {
   pub facts: &'a FileFacts,
   pub source: &'a str,
   tokens: OnceCell<Vec<Token>>,
+  line_starts: OnceCell<Vec<usize>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +39,7 @@ impl<'a> FileView<'a> {
       facts: input.facts,
       source: input.source,
       tokens: OnceCell::new(),
+      line_starts: OnceCell::new(),
     }
   }
 
@@ -65,7 +67,30 @@ impl<'a> FileView<'a> {
   }
 
   pub fn token_span(&self, token: &Token) -> Option<Span> {
-    Span::of_text(self.source, token.start as usize, token.end as usize)
+    self.span_of(token.start as usize, token.end as usize)
+  }
+
+  pub fn span_of(&self, start: usize, end: usize) -> Option<Span> {
+    if start > end || end > self.source.len() {
+      return None;
+    }
+    let line_starts = self.line_starts.get_or_init(|| line_starts(self.source));
+    let position = |byte: usize| {
+      let line = line_starts.partition_point(|line_start| *line_start <= byte);
+      let line_start = line.checked_sub(1).and_then(|index| line_starts.get(index)).copied().unwrap_or(0);
+      (u32::try_from(line).ok(), u32::try_from(byte - line_start).ok())
+    };
+    let ((Some(start_line), Some(start_col)), (Some(end_line), Some(end_col))) = (position(start), position(end)) else {
+      return None;
+    };
+    Some(Span {
+      start_byte: u32::try_from(start).ok()?,
+      end_byte: u32::try_from(end).ok()?,
+      start_line,
+      start_col,
+      end_line,
+      end_col,
+    })
   }
 
   pub fn symbol(&self, local: LocalSymbolId) -> Option<&'a SymbolFact> {
@@ -331,6 +356,12 @@ impl<'a> FileView<'a> {
   }
 }
 
+fn line_starts(source: &str) -> Vec<usize> {
+  std::iter::once(0)
+    .chain(source.bytes().enumerate().filter(|(_, byte)| *byte == b'\n').map(|(index, _)| index + 1))
+    .collect()
+}
+
 fn field_type_from_signature(signature: &str, field: &str) -> Option<String> {
   let after_name = signature.split_once(field)?.1.trim_start();
   let after_name = after_name.strip_prefix('?').unwrap_or(after_name);
@@ -463,6 +494,26 @@ mod tests {
     assert!(starts_with_call(&lex("Router::<AppState>::new()", LanguageFamily::Rust), &["Router", "new"], "::"));
     assert!(starts_with_call(&tokens("axios.create<Api>({})"), &["axios", "create"], "."));
     assert!(!starts_with_call(&tokens("map.get('x')"), &["axios", "get"], "."));
+  }
+
+  #[test]
+  fn should_compute_spans_like_span_of_text_from_a_line_index() {
+    let source = "a\nbc\n\nd\u{e9}f\n";
+    let file = atlas_core::FileRef::detect(RepoName::new("r").unwrap(), atlas_core::RelPath::new("a.ts").unwrap(), atlas_core::ContentHash::of(b"")).unwrap();
+    let facts = FileFacts::new(file, atlas_core::Producer::new("test", 1));
+    let input = DetectInput {
+      facts: &facts,
+      source,
+      package: None,
+    };
+    let view = FileView::new(&input);
+    for start in 0..=source.len() {
+      for end in start..=source.len() {
+        assert_eq!(view.span_of(start, end), Span::of_text(source, start, end), "{start}..{end}");
+      }
+    }
+    assert_eq!(view.span_of(3, 2), None);
+    assert_eq!(view.span_of(0, source.len() + 1), None);
   }
 
   #[test]

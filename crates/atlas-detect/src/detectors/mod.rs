@@ -7,6 +7,7 @@ mod events;
 mod express;
 mod headers;
 mod jobs;
+mod mocks;
 mod nest;
 mod testing;
 
@@ -18,6 +19,7 @@ pub use db::DbDetector;
 pub use events::EventDetector;
 pub use express::ExpressEndpointDetector;
 pub use jobs::JobDetector;
+pub use mocks::MockDetector;
 pub use nest::NestEndpointDetector;
 pub use testing::TestDetector;
 

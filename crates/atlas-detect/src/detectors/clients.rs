@@ -15,7 +15,7 @@ use crate::view::{Binding, FileView, starts_with_call};
 
 pub struct HttpClientDetector;
 
-detector!(HttpClientDetector, "http-clients", 1);
+detector!(HttpClientDetector, "http-clients", 2);
 
 const AXIOS: [&str; 1] = ["axios"];
 pub(crate) const DYNAMIC_URL: &str = "http.dynamic_url";
@@ -99,11 +99,11 @@ impl HttpClientDetector {
     let mut wrapped = BTreeSet::new();
     if view.family() == LanguageFamily::Ts {
       for request in &requests {
-        let synthesized = wrapper_calls(view, request);
-        if !synthesized.is_empty() {
+        let WrapperCalls { specialised, own_request } = wrapper_calls(view, request);
+        if own_request == OwnRequest::Replaced {
           wrapped.insert(request.reference.span.start_byte);
         }
-        for (caller, call) in synthesized {
+        for (caller, call) in specialised {
           emit(view, sink, &call, caller);
         }
       }
@@ -428,12 +428,32 @@ fn classify_base_arg(view: &FileView<'_>, scope: Option<LocalSymbolId>, arg: &Ar
   }
 }
 
-fn wrapper_calls<'f>(view: &FileView<'f>, request: &Request<'f>) -> Vec<(Option<LocalSymbolId>, Request<'f>)> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OwnRequest {
+  Kept,
+  Replaced,
+}
+
+struct WrapperCalls<'f> {
+  specialised: Vec<(Option<LocalSymbolId>, Request<'f>)>,
+  own_request: OwnRequest,
+}
+
+impl WrapperCalls<'_> {
+  fn none() -> Self {
+    Self {
+      specialised: Vec::new(),
+      own_request: OwnRequest::Kept,
+    }
+  }
+}
+
+fn wrapper_calls<'f>(view: &FileView<'f>, request: &Request<'f>) -> WrapperCalls<'f> {
   let Some(wrapper) = request.reference.from.and_then(|local| view.symbol(local)) else {
-    return Vec::new();
+    return WrapperCalls::none();
   };
   if !matches!(wrapper.kind, EntityKind::Function | EntityKind::Method) {
-    return Vec::new();
+    return WrapperCalls::none();
   }
   let params: Vec<&str> = wrapper.params.iter().map(|param| param.name.as_str()).collect();
   let url_uses_param = request.url.as_ref().is_some_and(|url| {
@@ -444,15 +464,23 @@ fn wrapper_calls<'f>(view: &FileView<'f>, request: &Request<'f>) -> Vec<(Option<
   });
   let method_uses_param = matches!(&request.method, MethodSource::Param(name) if params.contains(&name.as_str()));
   if !url_uses_param && !method_uses_param {
-    return Vec::new();
+    return WrapperCalls::none();
   }
-  view
+  let bound: Vec<Option<(Option<LocalSymbolId>, Request<'f>)>> = view
     .facts
     .references
     .iter()
     .filter(|caller| caller.from != Some(wrapper.local) && is_call_to(view, caller, wrapper))
-    .filter_map(|caller| bind_wrapper(view, request, wrapper, &params, caller).map(|call| (caller.from, call)))
-    .collect()
+    .map(|caller| bind_wrapper(view, request, wrapper, &params, caller).map(|call| (caller.from, call)))
+    .collect();
+  let own_request = match bound.is_empty() || bound.iter().any(Option::is_none) {
+    true => OwnRequest::Kept,
+    false => OwnRequest::Replaced,
+  };
+  WrapperCalls {
+    specialised: bound.into_iter().flatten().collect(),
+    own_request,
+  }
 }
 
 fn is_call_to(view: &FileView<'_>, caller: &ReferenceFact, wrapper: &SymbolFact) -> bool {
@@ -468,6 +496,7 @@ fn is_call_to(view: &FileView<'_>, caller: &ReferenceFact, wrapper: &SymbolFact)
 
 fn bind_wrapper<'f>(view: &FileView<'f>, request: &Request<'f>, wrapper: &SymbolFact, params: &[&str], caller: &'f ReferenceFact) -> Option<Request<'f>> {
   let argument = |name: &str| params.iter().position(|param| *param == name).and_then(|index| caller.args.get(index));
+  let mut adds_literal = false;
   let url = request.url.as_ref().map(|url| {
     let mut eval = StringEval {
       pieces: Vec::new(),
@@ -479,6 +508,7 @@ fn bind_wrapper<'f>(view: &FileView<'f>, request: &Request<'f>, wrapper: &Symbol
           let Some(arg) = argument(&path[0]) else { continue };
           match evaluate(view, caller.from, arg) {
             Some(bound) => {
+              adds_literal |= bound.has_literal_text();
               eval.cert = eval.cert.weaker(bound.cert);
               for bound_piece in bound.pieces {
                 push_piece(&mut eval, bound_piece);
@@ -502,6 +532,10 @@ fn bind_wrapper<'f>(view: &FileView<'f>, request: &Request<'f>, wrapper: &Symbol
     },
     other => other.clone(),
   };
+  let binds_method = matches!((&request.method, &method), (MethodSource::Param(_), MethodSource::Literal(_)));
+  if !adds_literal && !binds_method {
+    return None;
+  }
   Some(Request {
     reference: caller,
     library: request.library,

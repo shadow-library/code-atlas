@@ -1,20 +1,23 @@
 use std::collections::BTreeMap;
 
-use atlas_core::{ATTR_TEST, EdgeKind, Entity, EntityId, EntityKey, LanguageFamily, TestInfo};
+use atlas_core::{ATTR_MOCK, ATTR_TEST, Edge, EdgeKind, Entity, EntityId, EntityKey, EntityKind, LanguageFamily, TestInfo};
 use atlas_store::EntityFilter;
 use serde::Serialize;
+use serde_json::Value;
 
 use crate::QueryEngine;
 use crate::engine::unresolved_risk;
 use crate::error::QueryResult;
 use crate::graph::{Graph, Step, WalkSpec};
-use crate::model::{Caveat, CertaintyTag, EntityRef, Hop, Listing, Response, Targeted};
+use crate::model::{Caveat, CertaintyTag, EntityRef, Hop, Listing, Response, Targeted, short_name};
 use crate::policy::{Direction, Policy};
 use crate::queries::common::{DEFAULT_LIMIT, MAX_NODES, file_entity, is_test, resolve_one, sibling_test_paths};
 use crate::queries::traverse::risk_name;
 use crate::target::TargetFilter;
 
 const TEST_DEPTH: u32 = 3;
+const ATTR_SITE_ATTRS: &str = "site_attrs";
+const MOCK_REPLACED: &str = "replaced";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestsForRequest {
@@ -43,6 +46,9 @@ pub enum TestReach {
   ImportedByTestFile,
   CallGraph,
   Colocated,
+  Spied,
+  Mocked,
+  ScopeMocked,
 }
 
 impl TestReach {
@@ -53,6 +59,9 @@ impl TestReach {
       Self::ImportedByTestFile => "test file imports it",
       Self::CallGraph => "via call graph",
       Self::Colocated => "colocated",
+      Self::Spied => "spies on it (may call through)",
+      Self::Mocked => "mocks it (does not exercise it)",
+      Self::ScopeMocked => "its scope mocks it (may not exercise it)",
     }
   }
 }
@@ -66,6 +75,8 @@ pub struct TestItem {
   pub path: Vec<Hop>,
   pub uncertain: bool,
   pub run: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub note: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -131,6 +142,7 @@ pub(crate) fn tests_of(graph: &Graph<'_, '_>, target: &Entity, depth: u32, scope
     },
     |entity| !is_test(entity),
   )?;
+  let mocks = mock_edges(graph, &seeds)?;
   let mut found: BTreeMap<EntityId, TestItem> = BTreeMap::new();
   for reached in &walk.reached {
     let Some(entity) = graph.entity(reached.id)? else { continue };
@@ -138,9 +150,10 @@ pub(crate) fn tests_of(graph: &Graph<'_, '_>, target: &Entity, depth: u32, scope
       continue;
     }
     let Some(last) = reached.last_hop() else { continue };
-    let reach = match reached.depth {
-      1 => TestReach::DirectCall,
-      _ => TestReach::CallGraph,
+    let reach = match (reached.hops.iter().filter_map(|hop| mocking_of(&hop.edge)).max(), reached.depth) {
+      (Some(mocking), _) => mocking.reach(),
+      (None, 1) => TestReach::DirectCall,
+      (None, _) => TestReach::CallGraph,
     };
     let path = match reached.depth > 1 {
       true => graph.path(reached)?,
@@ -154,6 +167,7 @@ pub(crate) fn tests_of(graph: &Graph<'_, '_>, target: &Entity, depth: u32, scope
       relation: graph.relation(&last.edge, reached.id)?,
       path,
       uncertain: reached.is_uncertain(),
+      note: None,
     };
     keep_best(&mut found, entity.id, item);
   }
@@ -171,6 +185,7 @@ pub(crate) fn tests_of(graph: &Graph<'_, '_>, target: &Entity, depth: u32, scope
         relation: graph.relation(&edge, test.id)?,
         path: Vec::new(),
         uncertain: !edge.certainty.is_authoritative(),
+        note: None,
       };
       keep_best(&mut found, test.id, item);
     }
@@ -199,9 +214,15 @@ pub(crate) fn tests_of(graph: &Graph<'_, '_>, target: &Entity, depth: u32, scope
         },
         path: Vec::new(),
         uncertain: true,
+        note: None,
       };
       keep_best(&mut found, test.id, item);
     }
+  }
+  let mut scopes = MockScopes::new(graph, &mocks);
+  scopes.note_real_reaches(&mut found)?;
+  if scope == TestScope::All {
+    scopes.add_scope_only_tests(&mut found)?;
   }
   let mut tests: Vec<TestItem> = found.into_values().collect();
   tests.sort_by_key(|test| (test.reach, test.depth, test.uncertain, test.test.sort_key()));
@@ -234,12 +255,192 @@ fn add_importing_tests(graph: &Graph<'_, '_>, seeds: &[EntityId], found: &mut BT
           relation: graph.relation(&edge, importer.id)?,
           path: Vec::new(),
           uncertain: !edge.certainty.is_authoritative(),
+          note: None,
         };
         keep_best(found, test.id, item);
       }
     }
   }
   Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Mocking {
+  Spied,
+  Replaced,
+}
+
+impl Mocking {
+  fn reach(self) -> TestReach {
+    match self {
+      Self::Spied => TestReach::Spied,
+      Self::Replaced => TestReach::Mocked,
+    }
+  }
+}
+
+fn mocking_of(edge: &Edge) -> Option<Mocking> {
+  if edge.kind != EdgeKind::References {
+    return None;
+  }
+  let sites = edge.attrs.get(ATTR_SITE_ATTRS).and_then(Value::as_array).into_iter().flatten();
+  let site_values = sites.filter_map(|site| site.get("attrs").and_then(|attrs| attrs.get(ATTR_MOCK)));
+  edge
+    .attrs
+    .get(ATTR_MOCK)
+    .into_iter()
+    .chain(site_values)
+    .map(|value| match value.as_str() == Some(MOCK_REPLACED) {
+      true => Mocking::Replaced,
+      false => Mocking::Spied,
+    })
+    .max()
+}
+
+struct MockEdge {
+  edge: Edge,
+  mocking: Mocking,
+}
+
+fn mock_edges(graph: &Graph<'_, '_>, seeds: &[EntityId]) -> QueryResult<BTreeMap<EntityId, MockEdge>> {
+  let mut mocks: BTreeMap<EntityId, MockEdge> = BTreeMap::new();
+  for seed in seeds {
+    for edge in graph.edges_in(*seed, &[EdgeKind::References])? {
+      let Some(mocking) = mocking_of(&edge) else { continue };
+      if mocks.get(&edge.from).is_none_or(|existing| existing.mocking < mocking) {
+        mocks.insert(edge.from, MockEdge { edge, mocking });
+      }
+    }
+  }
+  Ok(mocks)
+}
+
+struct MockScopes<'g, 'a, 'c, 'm> {
+  graph: &'g Graph<'a, 'c>,
+  mocks: &'m BTreeMap<EntityId, MockEdge>,
+  callees: BTreeMap<EntityId, Vec<EntityId>>,
+}
+
+impl<'m> MockScopes<'_, '_, '_, 'm> {
+  fn new<'g, 'a, 'c>(graph: &'g Graph<'a, 'c>, mocks: &'m BTreeMap<EntityId, MockEdge>) -> MockScopes<'g, 'a, 'c, 'm> {
+    MockScopes {
+      graph,
+      mocks,
+      callees: BTreeMap::new(),
+    }
+  }
+
+  fn note_real_reaches(&mut self, found: &mut BTreeMap<EntityId, TestItem>) -> QueryResult<()> {
+    if self.mocks.is_empty() {
+      return Ok(());
+    }
+    for (id, item) in found.iter_mut() {
+      if matches!(item.reach, TestReach::Spied | TestReach::Mocked) {
+        continue;
+      }
+      let Some((scope, mock)) = self.scope_mock(*id)? else { continue };
+      let relation = self.scope_relation(&scope, mock)?;
+      item.note = Some(format!("{} {} {}", relation.phrase, relation.entity, relation.certainty.tag));
+    }
+    Ok(())
+  }
+
+  fn add_scope_only_tests(&mut self, found: &mut BTreeMap<EntityId, TestItem>) -> QueryResult<()> {
+    let mut sources: Vec<(&EntityId, &MockEdge)> = self.mocks.iter().collect();
+    sources.sort_by_key(|(id, mock)| (std::cmp::Reverse(mock.mocking), **id));
+    for (source, mock) in sources {
+      let Some(scope) = self.graph.entity(*source)? else { continue };
+      let relation = self.scope_relation(&scope, mock)?;
+      for test in self.tests_under(&scope)? {
+        if found.contains_key(&test.id) {
+          continue;
+        }
+        let item = TestItem {
+          run: run_hint(&test),
+          test: EntityRef::of(&test),
+          reach: TestReach::ScopeMocked,
+          depth: 1,
+          relation: relation.clone(),
+          path: Vec::new(),
+          uncertain: true,
+          note: None,
+        };
+        found.insert(test.id, item);
+      }
+    }
+    Ok(())
+  }
+
+  fn tests_under(&self, scope: &Entity) -> QueryResult<Vec<Entity>> {
+    if let (EntityKey::File { path, .. }, Some(repo)) = (&scope.key, &scope.repo) {
+      return Ok(
+        self
+          .graph
+          .tx()
+          .entities_in_file(repo, path, &EntityFilter::default())?
+          .into_iter()
+          .filter(is_test)
+          .collect(),
+      );
+    }
+    if !is_test(scope) {
+      return Ok(Vec::new());
+    }
+    let mut tests = Vec::new();
+    let mut pending = vec![scope.id];
+    while let Some(parent) = pending.pop() {
+      for child in self.graph.children(parent)?.into_iter().filter(is_test) {
+        pending.push(child.id);
+        tests.push(child);
+      }
+    }
+    Ok(tests)
+  }
+
+  fn scope_relation(&self, scope: &Entity, mock: &MockEdge) -> QueryResult<Hop> {
+    let mut relation = self.graph.relation(&mock.edge, scope.id)?;
+    let role = match scope.kind {
+      EntityKind::TestSuite => "suite",
+      EntityKind::Test => "test",
+      EntityKind::File => "file",
+      _ => "helper",
+    };
+    let verb = match mock.mocking {
+      Mocking::Replaced => "mocks",
+      Mocking::Spied => "spies on",
+    };
+    relation.phrase = format!("{role} {} {verb}", short_name(&scope.key));
+    Ok(relation)
+  }
+
+  fn scope_mock(&mut self, test: EntityId) -> QueryResult<Option<(Entity, &'m MockEdge)>> {
+    let Some(entity) = self.graph.entity(test)? else { return Ok(None) };
+    let mut scopes: Vec<EntityId> = file_entity(&entity).map(|key| EntityId::of(&key)).into_iter().collect();
+    let mut current = Some(entity);
+    while let Some(scope) = current {
+      scopes.push(scope.id);
+      current = self.graph.parent(scope.id)?;
+    }
+    let mut candidates = scopes.clone();
+    for scope in scopes {
+      candidates.extend(self.callees_of(scope)?);
+    }
+    let best = candidates
+      .into_iter()
+      .filter_map(|candidate| self.mocks.get(&candidate).map(|mock| (candidate, mock)))
+      .max_by_key(|(_, mock)| mock.mocking);
+    let Some((scope, mock)) = best else { return Ok(None) };
+    Ok(self.graph.entity(scope)?.map(|scope| (scope, mock)))
+  }
+
+  fn callees_of(&mut self, scope: EntityId) -> QueryResult<Vec<EntityId>> {
+    if let Some(callees) = self.callees.get(&scope) {
+      return Ok(callees.clone());
+    }
+    let callees: Vec<EntityId> = self.graph.edges_out(scope, &[EdgeKind::Calls])?.into_iter().map(|edge| edge.to).collect();
+    self.callees.insert(scope, callees.clone());
+    Ok(callees)
+  }
 }
 
 fn keep_best(found: &mut BTreeMap<EntityId, TestItem>, id: EntityId, item: TestItem) {
@@ -320,5 +521,39 @@ pub(crate) fn run_hint(entity: &Entity) -> Option<String> {
       };
       Some(format!("[{repo}] {command} {filter} {name:?}"))
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use atlas_core::{ATTR_MOCK_TYPE, Certainty, EntityKey, RepoName};
+  use serde_json::json;
+
+  use super::*;
+
+  fn edge(kind: EdgeKind, certainty: Certainty, attrs: Value) -> Edge {
+    let from = EntityId::of(&EntityKey::Repository {
+      repo: RepoName::new("a").unwrap(),
+    });
+    let to = EntityId::of(&EntityKey::Repository {
+      repo: RepoName::new("b").unwrap(),
+    });
+    let mut edge = Edge::new(kind, from, to, "", certainty);
+    edge.attrs = serde_json::from_value(attrs).unwrap();
+    edge
+  }
+
+  #[test]
+  fn should_classify_mock_edges_by_their_attrs_whatever_their_certainty() {
+    let resolved = edge(EdgeKind::References, Certainty::Resolved, json!({ ATTR_MOCK: "spied", ATTR_MOCK_TYPE: "cast" }));
+    assert_eq!(mocking_of(&resolved), Some(Mocking::Spied));
+    let merged = edge(
+      EdgeKind::References,
+      Certainty::Resolved,
+      json!({ ATTR_MOCK: "spied", ATTR_SITE_ATTRS: [{ "span": 10, "attrs": { ATTR_MOCK: "replaced" } }] }),
+    );
+    assert_eq!(mocking_of(&merged), Some(Mocking::Replaced));
+    assert_eq!(mocking_of(&edge(EdgeKind::References, Certainty::Resolved, json!({}))), None);
+    assert_eq!(mocking_of(&edge(EdgeKind::Calls, Certainty::Resolved, json!({ ATTR_MOCK: "replaced" }))), None);
   }
 }

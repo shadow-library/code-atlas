@@ -862,6 +862,14 @@ to = { repo = "acme-billing", path = "src/handlers.rs", symbol = "get_invoice" }
 certainty = ["resolved"]
 note = "handler passed as a value to get(get_invoice)"
 
+[[edge]]
+kind = "references"
+from = { repo = "acme-api", path = "src/orders/orders.controller.spec.ts", suite = "OrdersController" }
+to = { repo = "acme-api", path = "src/orders/orders.service.ts", symbol = "OrdersService.findOne" }
+certainty = ["heuristic"]
+min_confidence = 0.6
+note = "jest mock: `{ findOne: jest.fn() }` cast `as unknown as OrdersService`; the spec mocks findOne and never exercises it, so the edge is only a lead for renames"
+
 [[test_of]]
 test = { repo = "acme-api", path = "src/users/users.service.spec.ts", suite = "UsersService" }
 subject = { repo = "acme-api", path = "src/users/users.service.ts", symbol = "UsersService" }
@@ -1083,6 +1091,13 @@ kind = "reads_env"
 from = { repo = "acme-billing", path = "src/main.rs", symbol = "main" }
 to = { kind = "env_var", repo = "acme-api", name = "DATABASE_URL" }
 note = "env vars are per repo: acme-billing reads its own DATABASE_URL, not the acme-api entity"
+
+[[forbidden_edge]]
+kind = "references"
+from = { repo = "acme-api", path = "src/orders/orders.controller.spec.ts", suite = "OrdersController" }
+to = { repo = "acme-api", path = "src/orders/orders.service.ts", symbol = "OrdersService.findOne" }
+certainty = ["syntactic", "resolved", "compiler_verified"]
+note = "a mocked member is inferred from casts and naming, never known"
 
 [[unmatched_call]]
 from = { repo = "acme-web", path = "src/api/health.ts", symbol = "checkHealth" }

@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use atlas_core::{
-  ATTR_EXTENDS, ATTR_IMPL_OF, ATTR_IMPLEMENTS, ATTR_OVERRIDE_VIA, CertaintyClass, Edge, EdgeKind, Entity, EntityId, EntityKind, ImplInfo, LanguageFamily, Owner, RelPath, RepoName,
-  UnresolvedReason, Visibility, is_test_code, is_test_path,
+  ATTR_EXTENDS, ATTR_IMPL_OF, ATTR_IMPLEMENTS, ATTR_MOCK, ATTR_OVERRIDE_VIA, CertaintyClass, Edge, EdgeKind, Entity, EntityId, EntityKind, ImplInfo, LanguageFamily, Owner,
+  RelPath, RepoName, UnresolvedReason, Visibility, is_test_code, is_test_path,
 };
 use atlas_store::EdgeLink;
 use serde::Serialize;
@@ -36,8 +36,6 @@ const MAX_HERITAGE_WALK: usize = 32;
 const MAX_TEST_SOURCES_SHOWN: usize = 3;
 
 const TRAIT_IMPLEMENTATION: &str = "trait or interface implementation";
-
-const ATTR_MOCK: &str = "mock";
 
 const UNCHECKED_DEFINITIONS: &str = "config keys and env vars are not checked for use: their definitions (.env, config files) are not indexed";
 
