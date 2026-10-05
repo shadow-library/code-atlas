@@ -1,0 +1,11 @@
+[package]
+name = "app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+base = { path = "../base" }
+plugin = { path = "../plugin" }
+
+[dev-dependencies]
+other = { path = "../other" }

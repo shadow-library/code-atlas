@@ -3,8 +3,9 @@ use atlas_core::{EntityKind, LanguageFamily, ReceiverHint, RefKind, ReferenceFac
 use std::collections::{HashSet, VecDeque};
 
 use crate::engine::{
-  DISPATCH_CONFIDENCE, FIELD_NAME_CONFIDENCE, FN_LOCAL_ITEM_CONFIDENCE, Found, Guard, Heuristic, Hit, ImplTargets, Lookup, MACRO_SCOPE_CONFIDENCE, MAX_DISPATCH_CANDIDATES, Miss,
-  Outcome, RULE_DYN_DISPATCH, RULE_FIELD_NAME, RULE_FN_LOCAL_ITEM, RULE_MACRO_SCOPE, RULE_OVERRIDE_DISPATCH, Recv, RecvType, Resolver, unique, weakest,
+  DISPATCH_CONFIDENCE, DispatchReach, DispatchScope, FIELD_NAME_CONFIDENCE, FN_LOCAL_ITEM_CONFIDENCE, Found, Guard, Heuristic, Hit, ImplTargets, Lookup, MACRO_SCOPE_CONFIDENCE,
+  MAX_DISPATCH_CANDIDATES, Miss, Outcome, RULE_DYN_DISPATCH, RULE_FIELD_NAME, RULE_FN_LOCAL_ITEM, RULE_MACRO_SCOPE, RULE_OVERRIDE_DISPATCH, Recv, RecvType, Resolver, unique,
+  weakest,
 };
 use crate::layout::{ExternCrate, PackageKey};
 use crate::surface::{SymSurface, UseScope, UseSurface};
@@ -392,9 +393,14 @@ impl Resolver<'_> {
         match lookup {
           Err(Miss::NotFound) if self.rust_macro_may_generate(&scope, path, &mut guard) => Outcome::Unresolved(Miss::MacroGenerated),
           Ok(hit) if reference.kind == RefKind::Call && self.is_trait_method(&hit) => {
+            let reach = match path.as_slice() {
+              [head, _] if head == "Self" => self.rust_self_reach(&scope),
+              _ => DispatchReach::Linked,
+            };
+            let caller = scope.from.map(|local| SymRef { file: scope.file, local });
             let extra = hit
               .symbol()
-              .map(|declaration| self.rust_dispatch_candidates(declaration, RULE_OVERRIDE_DISPATCH))
+              .map(|declaration| self.rust_dispatch_candidates(declaration, RULE_OVERRIDE_DISPATCH, &self.dispatch_scope(reach, caller)))
               .unwrap_or_default();
             Outcome::Targets { primary: hit, extra }
           }
@@ -553,6 +559,13 @@ impl Resolver<'_> {
   }
 
   fn rust_use_target(&self, scope: &RustScope, entry: &UseSurface, ns: Ns, guard: &mut Guard) -> Lookup {
+    if ns == Ns::Macro
+      && let [name] = entry.target_segments()
+      && let Some(surface) = self.table.file(scope.file)
+      && let Some(local) = surface.textual_macro(&surface.use_module_suffix(entry), name, entry.span.start_byte)
+    {
+      return Ok(Hit::exact(Found::Symbol(SymRef { file: scope.file, local })));
+    }
     let previous = guard.macro_items;
     guard.macro_items = true;
     let result = self.rust_resolve_path(scope, entry.target_segments(), ns, guard);
@@ -1025,8 +1038,24 @@ impl Resolver<'_> {
       return Outcome::Unresolved(Miss::NotFound);
     }
     let caller = scope.from.map(|local| SymRef { file: scope.file, local });
+    let reach = match (reference.receiver.as_ref(), receiver_chain) {
+      (Some(ReceiverHint::SelfValue), [_]) => self.rust_self_reach(scope),
+      _ => DispatchReach::Linked,
+    };
     let receiver = self.rust_chain_recv(scope, reference.receiver.as_ref(), receiver_chain);
-    self.rust_method_on_recv(receiver, method, caller)
+    self.rust_method_on_recv(receiver, method, caller, reach)
+  }
+
+  fn rust_self_reach(&self, scope: &RustScope) -> DispatchReach {
+    let self_trait = self
+      .rust_self_type(scope)
+      .ok()
+      .and_then(|hit| hit.symbol())
+      .is_some_and(|symbol| self.sym_kind(symbol) == Some(&EntityKind::Trait));
+    match self_trait {
+      true => DispatchReach::Implementers,
+      false => DispatchReach::Linked,
+    }
   }
 
   fn rust_chain_recv(&self, scope: &RustScope, hint: Option<&ReceiverHint>, chain: &[String]) -> Recv {
@@ -1104,7 +1133,7 @@ impl Resolver<'_> {
     }
   }
 
-  fn rust_method_on_recv(&self, receiver: Recv, method: &str, caller: Option<SymRef>) -> Outcome {
+  fn rust_method_on_recv(&self, receiver: Recv, method: &str, caller: Option<SymRef>, reach: DispatchReach) -> Outcome {
     self.note(method);
     let carried = receiver.heuristic;
     let wrapper = receiver.wrapper;
@@ -1139,7 +1168,7 @@ impl Resolver<'_> {
           Ok(primary) => {
             let extra = primary
               .symbol()
-              .map(|declaration| self.rust_dispatch_candidates(declaration, RULE_DYN_DISPATCH))
+              .map(|declaration| self.rust_dispatch_candidates(declaration, RULE_DYN_DISPATCH, &self.dispatch_scope(reach, caller)))
               .unwrap_or_default();
             Outcome::Targets {
               primary: primary.weaken(carried),
@@ -1159,7 +1188,7 @@ impl Resolver<'_> {
     }
   }
 
-  fn rust_dispatch_candidates(&self, declaration: SymRef, rule: &'static str) -> Vec<Hit> {
+  fn rust_dispatch_candidates(&self, declaration: SymRef, rule: &'static str, scope: &DispatchScope) -> Vec<Hit> {
     let Some(surface) = self.table.sym(declaration) else { return Vec::new() };
     let Some(trait_symbol) = surface.parent.map(|parent| SymRef {
       file: declaration.file,
@@ -1173,6 +1202,9 @@ impl Resolver<'_> {
     self.note(&trait_name);
     let mut candidates = Vec::new();
     for (file, position) in self.table.rust_impls_by_trait.get(&trait_name).map(Vec::as_slice).unwrap_or_default() {
+      if !self.may_dispatch_into(scope, *file) {
+        continue;
+      }
       let (_, trait_found) = self.rust_impl_targets(*file, *position);
       if trait_found != Some(Found::Symbol(trait_symbol)) {
         continue;
@@ -1188,8 +1220,11 @@ impl Resolver<'_> {
             .as_ref()
             .is_some_and(|impl_of| impl_of.self_type == implementation.self_type && impl_of.trait_ref == implementation.trait_ref)
       });
-      if let Some(local) = method {
-        candidates.push(SymRef { file: *file, local: local as u32 });
+      let Some(candidate) = method.map(|local| SymRef { file: *file, local: local as u32 }) else {
+        continue;
+      };
+      if self.may_dispatch_to(scope, candidate) {
+        candidates.push(candidate);
       }
     }
     candidates.sort_by_key(|candidate| self.table.symbol_entity(*candidate));
@@ -1342,8 +1377,19 @@ impl Resolver<'_> {
       return Outcome::from_lookup(self.rust_resolve_path(scope, path, Ns::Macro, guard));
     };
     self.note(name);
-    if let Some(textual) = self.rust_textual_macro(scope, name, reference.span.start_byte) {
-      return Outcome::from_lookup(Ok(Hit::exact(Found::Symbol(textual))));
+    let reference_suffix = self
+      .table
+      .file(scope.file)
+      .zip(scope.from)
+      .and_then(|(surface, local)| surface.symbol(local))
+      .map(|symbol| symbol.module_suffix.clone())
+      .unwrap_or_default();
+    if let Some(local) = self
+      .table
+      .file(scope.file)
+      .and_then(|surface| surface.textual_macro(&reference_suffix, name, reference.span.start_byte))
+    {
+      return Outcome::from_lookup(Ok(Hit::exact(Found::Symbol(SymRef { file: scope.file, local }))));
     }
     match self.rust_lookup_scoped(scope, name, Ns::Macro, guard) {
       Err(Miss::NotFound) => {}
@@ -1368,25 +1414,6 @@ impl Resolver<'_> {
       Ok(hit) => Outcome::Candidates(vec![hit]),
       Err(miss) => Outcome::Unresolved(miss),
     }
-  }
-
-  fn rust_textual_macro(&self, scope: &RustScope, name: &str, before: u32) -> Option<SymRef> {
-    let surface = self.table.file(scope.file)?;
-    let reference_suffix = scope
-      .from
-      .and_then(|local| surface.symbol(local))
-      .map(|symbol| symbol.module_suffix.clone())
-      .unwrap_or_default();
-    surface
-      .symbols
-      .iter()
-      .enumerate()
-      .filter(|(_, symbol)| symbol.kind == EntityKind::Macro && symbol.name == name && symbol.span.start_byte < before && reference_suffix.starts_with(&symbol.module_suffix))
-      .max_by_key(|(_, symbol)| symbol.span.start_byte)
-      .map(|(local, _)| SymRef {
-        file: scope.file,
-        local: local as u32,
-      })
   }
 
   fn rust_macro_may_generate(&self, scope: &RustScope, path: &[String], guard: &mut Guard) -> bool {
@@ -1424,11 +1451,7 @@ impl Resolver<'_> {
   }
 
   pub(crate) fn rust_use_targets(&self, entry: &UseSurface) -> Vec<Hit> {
-    let module_suffix = match &entry.scope {
-      UseScope::Module(suffix) => suffix.clone(),
-      UseScope::Function(local) => self.surface.symbol(*local).map(|symbol| symbol.module_suffix.clone()).unwrap_or_default(),
-    };
-    let Some(module) = self.table.rust_module_of(self.file, &module_suffix) else {
+    let Some(module) = self.table.rust_module_of(self.file, &self.surface.use_module_suffix(entry)) else {
       return Vec::new();
     };
     let scope = RustScope::at_module(self.file, module);

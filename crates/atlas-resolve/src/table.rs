@@ -326,13 +326,17 @@ impl ProjectSymbolTable {
         }
       }
     }
-    if !broad_packages.is_empty() {
+    loop {
       let dependents: Vec<PackageKey> = self
         .package_files
         .keys()
+        .filter(|candidate| !broad_packages.contains(*candidate))
         .filter(|candidate| self.layout.dependency_packages(candidate).iter().any(|dependency| broad_packages.contains(dependency)))
         .cloned()
         .collect();
+      if dependents.is_empty() {
+        break;
+      }
       broad_packages.extend(dependents);
     }
     for package in &broad_packages {

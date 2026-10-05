@@ -1,9 +1,10 @@
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::rc::Rc;
 
-use atlas_core::{EntityKind, LanguageFamily, RepoName};
+use atlas_core::{EntityKind, LanguageFamily, RUST_TEST_MODULES, RepoName, RustTarget, is_test_path};
 
-use crate::layout::PackageKey;
+use crate::layout::{DependencyUse, PackageKey};
 use crate::surface::FileSurface;
 use crate::table::{FileIdx, ModuleId, ProjectSymbolTable, Reachability, SymRef};
 
@@ -339,6 +340,19 @@ impl Outcome {
 
 pub(crate) type ImplTargets = (Option<Found>, Option<Found>);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DispatchReach {
+  Linked,
+  Implementers,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum DispatchScope {
+  Anywhere,
+  OwnRepo,
+  Packages(Rc<HashSet<PackageKey>>),
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct Guard {
   stack: Vec<String>,
@@ -373,6 +387,7 @@ pub(crate) struct Resolver<'t> {
   pub file: FileIdx,
   pub surface: &'t FileSurface,
   visible: CandidateScope,
+  linked: RefCell<HashMap<DependencyUse, Rc<HashSet<PackageKey>>>>,
   pub(crate) self_types: RefCell<HashMap<SymRef, Option<Found>>>,
   pub(crate) impl_targets: RefCell<HashMap<(FileIdx, u32), ImplTargets>>,
   pub(crate) module_lookups: RefCell<HashMap<String, Lookup>>,
@@ -394,6 +409,7 @@ impl<'t> Resolver<'t> {
       file,
       surface,
       visible,
+      linked: RefCell::new(HashMap::new()),
       self_types: RefCell::new(HashMap::new()),
       impl_targets: RefCell::new(HashMap::new()),
       module_lookups: RefCell::new(HashMap::new()),
@@ -455,6 +471,104 @@ impl<'t> Resolver<'t> {
         .map(|candidate| Hit::heuristic(Found::Symbol(candidate), confidence, RULE_METHOD_NAME))
         .collect(),
     )
+  }
+
+  pub(crate) fn dispatch_scope(&self, reach: DispatchReach, caller: Option<SymRef>) -> DispatchScope {
+    if reach == DispatchReach::Implementers {
+      return DispatchScope::Anywhere;
+    }
+    let Some(package) = self.table.file_package(self.file) else {
+      return DispatchScope::OwnRepo;
+    };
+    let usage = self.dependency_use(package, caller);
+    let packages = self
+      .linked
+      .borrow_mut()
+      .entry(usage)
+      .or_insert_with(|| Rc::new(self.table.layout.linked_packages(package, usage)))
+      .clone();
+    DispatchScope::Packages(packages)
+  }
+
+  fn dependency_use(&self, package: &PackageKey, caller: Option<SymRef>) -> DependencyUse {
+    let Some(cargo) = self.table.layout.cargo(package).filter(|_| self.surface.family == LanguageFamily::Rust) else {
+      return DependencyUse::Any;
+    };
+    let context = self.table.effective_placement(self.file).context;
+    let Some(target) = cargo.targets.iter().find(|target| target.target.package_field(&cargo.name) == context.package) else {
+      return DependencyUse::Any;
+    };
+    let in_test_code = is_test_path(self.surface.path.as_str())
+      || caller.is_some_and(|caller| self.sym_kind(caller) == Some(&EntityKind::Test) || self.is_test_only(caller) || self.in_rust_test_module(caller, &context.module_path));
+    match target.target {
+      RustTarget::BuildScript => DependencyUse::BuildScript,
+      RustTarget::Test(_) | RustTarget::Example(_) | RustTarget::Bench(_) => DependencyUse::Test,
+      _ if in_test_code => DependencyUse::Test,
+      _ => DependencyUse::Runtime,
+    }
+  }
+
+  pub(crate) fn may_dispatch_into(&self, scope: &DispatchScope, file: FileIdx) -> bool {
+    let Some(surface) = self.table.file(file) else { return false };
+    let outside_tests = || self.is_own_package(file) || !is_test_path(surface.path.as_str());
+    match scope {
+      DispatchScope::Anywhere => outside_tests(),
+      DispatchScope::OwnRepo => surface.repo == self.surface.repo && outside_tests(),
+      DispatchScope::Packages(packages) => {
+        let Some(package) = self.table.file_package(file) else { return false };
+        packages.contains(package) && (self.is_own_package(file) || self.is_library_file(file, package))
+      }
+    }
+  }
+
+  pub(crate) fn may_dispatch_to(&self, scope: &DispatchScope, candidate: SymRef) -> bool {
+    if self.is_own_package(candidate.file) {
+      return true;
+    }
+    match scope {
+      DispatchScope::Packages(_) => {
+        let placement = self.table.effective_placement(candidate.file);
+        !self.is_test_only(candidate) && !self.in_rust_test_module(candidate, &placement.context.module_path)
+      }
+      // Only downstream callers are re-resolved when the candidate's placement or cfg changes; others may use only in-file facts, which the trait's name digest covers.
+      DispatchScope::Anywhere | DispatchScope::OwnRepo => !self.in_rust_test_module(candidate, &[]),
+    }
+  }
+
+  fn is_own_package(&self, file: FileIdx) -> bool {
+    self.table.file(file).is_some_and(|surface| surface.repo == self.surface.repo) && self.table.file_package(file) == self.table.file_package(self.file)
+  }
+
+  fn is_library_file(&self, file: FileIdx, package: &PackageKey) -> bool {
+    let Some(surface) = self.table.file(file) else { return false };
+    if is_test_path(surface.path.as_str()) {
+      return false;
+    }
+    if surface.family != LanguageFamily::Rust {
+      return true;
+    }
+    let Some(lib) = self
+      .table
+      .layout
+      .cargo(package)
+      .filter(|cargo| cargo.lib().is_some())
+      .map(|cargo| RustTarget::Lib.package_field(&cargo.name))
+    else {
+      return false;
+    };
+    let placement = self.table.effective_placement(file);
+    std::iter::once(&placement.context).chain(&placement.also_in).any(|context| context.package == lib)
+  }
+
+  fn in_rust_test_module(&self, symbol: SymRef, file_module: &[String]) -> bool {
+    let (Some(file), Some(surface)) = (self.table.file(symbol.file), self.table.sym(symbol)) else {
+      return false;
+    };
+    file.family == LanguageFamily::Rust
+      && file_module
+        .iter()
+        .chain(&surface.module_suffix)
+        .any(|segment| RUST_TEST_MODULES.contains(&segment.as_str()))
   }
 
   fn is_test_only(&self, symbol: SymRef) -> bool {

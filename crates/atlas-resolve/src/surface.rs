@@ -197,6 +197,30 @@ impl FileSurface {
     let scope = scope.clone();
     self.rust.uses.iter().filter(move |entry| entry.scope == scope)
   }
+
+  pub fn use_module_suffix(&self, entry: &UseSurface) -> Vec<String> {
+    match &entry.scope {
+      UseScope::Module(suffix) => suffix.clone(),
+      UseScope::Function(local) => self.symbol(*local).map(|symbol| symbol.module_suffix.clone()).unwrap_or_default(),
+    }
+  }
+
+  pub fn textual_macro(&self, reference_suffix: &[String], name: &str, before: u32) -> Option<u32> {
+    self
+      .symbols
+      .iter()
+      .enumerate()
+      .filter(|(_, symbol)| symbol.kind == EntityKind::Macro && symbol.name == name && symbol.span.start_byte < before && reference_suffix.starts_with(&symbol.module_suffix))
+      .max_by_key(|(_, symbol)| symbol.span.start_byte)
+      .map(|(local, _)| local as u32)
+  }
+
+  pub fn use_binds_textual_macro(&self, entry: &UseSurface) -> bool {
+    match entry.target_segments() {
+      [name] => self.textual_macro(&self.use_module_suffix(entry), name, entry.span.start_byte).is_some(),
+      _ => false,
+    }
+  }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -276,7 +300,7 @@ impl FileSurface {
     }
     let mut structural: Vec<u64> = Vec::new();
     for entry in &self.rust.uses {
-      let value = digest((&entry.scope, &entry.visibility, &entry.segments, &entry.binding));
+      let value = digest((&entry.scope, &entry.visibility, &entry.segments, &entry.binding, self.use_binds_textual_macro(entry)));
       match entry.bound_name() {
         Some(name) => add(name, value),
         None => structural.push(value),

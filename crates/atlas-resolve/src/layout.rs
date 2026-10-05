@@ -1,7 +1,7 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use atlas_core::{RelPath, RepoName};
-use atlas_project::{CargoDependency, CargoDependencySource, CargoPackage, NpmPackage, PackageGraph, PackageInfo, RepoDir, TsConfigInfo};
+use atlas_project::{CargoDependency, CargoDependencySource, CargoPackage, DependencySection, NpmPackage, PackageGraph, PackageInfo, RepoDir, TsConfigInfo};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct PackageKey {
@@ -14,6 +14,25 @@ pub(crate) enum ExternCrate {
   InProject(PackageKey),
   Ambiguous(Vec<PackageKey>),
   External(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum DependencyUse {
+  Any,
+  Runtime,
+  Test,
+  BuildScript,
+}
+
+impl DependencyUse {
+  fn admits(self, section: &DependencySection) -> bool {
+    match self {
+      Self::Any => true,
+      Self::Runtime => matches!(section, DependencySection::Normal | DependencySection::Peer),
+      Self::Test => matches!(section, DependencySection::Normal | DependencySection::Peer | DependencySection::Dev),
+      Self::BuildScript => matches!(section, DependencySection::Build),
+    }
+  }
 }
 
 #[derive(Debug, Default)]
@@ -113,10 +132,35 @@ impl Layout {
   }
 
   pub fn dependency_packages(&self, from: &PackageKey) -> Vec<PackageKey> {
+    self.dependencies_in(from, |_| true)
+  }
+
+  pub fn linked_packages(&self, from: &PackageKey, usage: DependencyUse) -> HashSet<PackageKey> {
+    let mut linked = HashSet::from([from.clone()]);
+    let mut pending = self.dependencies_in(from, |section| usage.admits(section));
+    while let Some(package) = pending.pop() {
+      if linked.insert(package.clone()) {
+        pending.extend(self.dependencies_in(&package, |section| DependencyUse::Runtime.admits(section)));
+      }
+    }
+    linked
+  }
+
+  fn dependencies_in(&self, from: &PackageKey, admit: impl Fn(&DependencySection) -> bool) -> Vec<PackageKey> {
     let Some(package) = self.package(from) else { return Vec::new() };
     match (package.as_cargo(), package.as_npm()) {
-      (Some(cargo), _) => cargo.dependencies.iter().filter_map(|dependency| self.in_project_dependency(from, dependency)).collect(),
-      (_, Some(npm)) => npm.dependencies.iter().filter_map(|dependency| self.npm_package(&from.repo, &dependency.name)).collect(),
+      (Some(cargo), _) => cargo
+        .dependencies
+        .iter()
+        .filter(|dependency| admit(&dependency.section))
+        .filter_map(|dependency| self.in_project_dependency(from, dependency))
+        .collect(),
+      (_, Some(npm)) => npm
+        .dependencies
+        .iter()
+        .filter(|dependency| admit(&dependency.section))
+        .filter_map(|dependency| self.npm_package(&from.repo, &dependency.name))
+        .collect(),
       _ => Vec::new(),
     }
   }

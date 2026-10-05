@@ -4,7 +4,7 @@ use crate::lang::LanguageFamily;
 
 const TEST_DIRECTORIES: [&str; 3] = ["__tests__", "test", "tests"];
 const TEST_MARKERS: [&str; 2] = ["spec", "test"];
-const RUST_TEST_MODULES: [&str; 2] = ["tests", "test"];
+pub const RUST_TEST_MODULES: [&str; 2] = ["tests", "test"];
 
 pub fn is_test_path(path: &str) -> bool {
   let mut segments: Vec<&str> = path.split('/').collect();

@@ -4,8 +4,8 @@ use atlas_core::{ArgSummary, DefaultExportTarget, EntityKind, ExportFact, Import
 use atlas_project::{NpmExportTarget, NpmExports, TsConfigInfo};
 
 use crate::engine::{
-  DISPATCH_CONFIDENCE, DIST_TO_SRC_CONFIDENCE, Found, Guard, Heuristic, Hit, Lookup, MAX_DISPATCH_CANDIDATES, Miss, Outcome, RULE_DIST_TO_SRC, RULE_INTERFACE_DISPATCH,
-  RULE_OVERRIDE_DISPATCH, Recv, RecvType, Resolver, unique, weakest,
+  DISPATCH_CONFIDENCE, DIST_TO_SRC_CONFIDENCE, DispatchReach, DispatchScope, Found, Guard, Heuristic, Hit, Lookup, MAX_DISPATCH_CANDIDATES, Miss, Outcome, RULE_DIST_TO_SRC,
+  RULE_INTERFACE_DISPATCH, RULE_OVERRIDE_DISPATCH, Recv, RecvType, Resolver, unique, weakest,
 };
 use crate::layout::PackageKey;
 use crate::table::{FileIdx, SymRef};
@@ -169,6 +169,13 @@ enum Side {
   Instance,
   Static,
   Any,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReceiverHead {
+  This,
+  Super,
+  Other,
 }
 
 enum Member {
@@ -720,10 +727,15 @@ impl Resolver<'_> {
     let Some(head) = chain.first() else {
       return Outcome::Unresolved(Miss::NotFound);
     };
-    let mut via_super = false;
+    let mut head_kind = ReceiverHead::Other;
     let receiver = match &reference.receiver {
       Some(ReceiverHint::This) if head == "this" => match self.ts_this(from) {
-        Some(receiver) => receiver,
+        Some(receiver) => {
+          if chain.len() == 1 {
+            head_kind = ReceiverHead::This;
+          }
+          receiver
+        }
         None => return Outcome::Unresolved(Miss::Unsupported("this outside a class")),
       },
       Some(ReceiverHint::Expr(expression)) if head == "this" && expression == "this" && self.ts_this(from).is_some() => {
@@ -731,7 +743,7 @@ impl Resolver<'_> {
       }
       Some(ReceiverHint::Expr(expression)) if head == "super" && expression == "super" => match self.ts_this(from) {
         Some(receiver) => {
-          via_super = true;
+          head_kind = ReceiverHead::Super;
           self.ts_base_recv(receiver)
         }
         None => return Outcome::Unresolved(Miss::Unsupported("super outside a class")),
@@ -751,7 +763,7 @@ impl Resolver<'_> {
     for segment in &chain[1..] {
       receiver = self.ts_member_type(receiver, segment);
     }
-    self.ts_method_on(receiver, member, from, via_super)
+    self.ts_method_on(receiver, member, from, head_kind)
   }
 
   fn ts_this(&self, from: Option<u32>) -> Option<Recv> {
@@ -903,7 +915,7 @@ impl Resolver<'_> {
     Recv::of(next.ty, weakened)
   }
 
-  fn ts_method_on(&self, receiver: Recv, member: &str, from: Option<u32>, via_super: bool) -> Outcome {
+  fn ts_method_on(&self, receiver: Recv, member: &str, from: Option<u32>, head: ReceiverHead) -> Outcome {
     let carried = receiver.heuristic;
     let caller = from.map(|local| SymRef { file: self.file, local });
     match &receiver.ty {
@@ -912,10 +924,10 @@ impl Resolver<'_> {
       RecvType::Unknown => self.method_name_candidates(member, caller),
       RecvType::Concrete(class) | RecvType::Static(class) => match self.ts_member_of_recv(&receiver, member) {
         Some(Ok((found, heuristic))) => {
-          let overridable = matches!(receiver.ty, RecvType::Concrete(_)) && !via_super;
-          let extra = match overridable {
-            true => self.ts_override_candidates(*class, found, member),
-            false => Vec::new(),
+          let extra = match (&receiver.ty, head) {
+            (RecvType::Concrete(_), ReceiverHead::This) => self.ts_override_candidates(*class, found, member, &self.dispatch_scope(DispatchReach::Implementers, caller)),
+            (RecvType::Concrete(_), ReceiverHead::Other) => self.ts_override_candidates(*class, found, member, &self.dispatch_scope(DispatchReach::Linked, caller)),
+            _ => Vec::new(),
           };
           Outcome::Targets {
             primary: Hit::exact(Found::Symbol(found)).weaken(heuristic).weaken(carried),
@@ -937,7 +949,7 @@ impl Resolver<'_> {
           [] => Outcome::Unresolved(Miss::NotFound),
           [(interface, found, heuristic), ..] => Outcome::Targets {
             primary: Hit::exact(Found::Symbol(*found)).weaken(*heuristic).weaken(carried),
-            extra: self.ts_dispatch_candidates(*interface, member),
+            extra: self.ts_dispatch_candidates(*interface, member, &self.dispatch_scope(DispatchReach::Linked, caller)),
           },
         }
       }
@@ -1000,7 +1012,7 @@ impl Resolver<'_> {
     }
   }
 
-  fn ts_override_candidates(&self, class: SymRef, declared: SymRef, member: &str) -> Vec<Hit> {
+  fn ts_override_candidates(&self, class: SymRef, declared: SymRef, member: &str, scope: &DispatchScope) -> Vec<Hit> {
     if self.table.sym(declared).is_none_or(|symbol| symbol.is_static()) {
       return Vec::new();
     }
@@ -1026,6 +1038,9 @@ impl Resolver<'_> {
         }
         visited.insert(*subclass);
         pending.push(*subclass);
+        if !self.may_dispatch_into(scope, subclass.file) || !self.may_dispatch_to(scope, *subclass) {
+          continue;
+        }
         if let Some(own) = self.ts_own_member(*subclass, member, Side::Instance)
           && own != declared
         {
@@ -1042,13 +1057,16 @@ impl Resolver<'_> {
       .collect()
   }
 
-  fn ts_dispatch_candidates(&self, interface: SymRef, member: &str) -> Vec<Hit> {
+  fn ts_dispatch_candidates(&self, interface: SymRef, member: &str, scope: &DispatchScope) -> Vec<Hit> {
     let Some(name) = self.table.sym(interface).map(|symbol| symbol.name.clone()) else {
       return Vec::new();
     };
     self.note(&name);
     let mut candidates: Vec<SymRef> = Vec::new();
     for class in self.table.ts_implementers.get(&name).map(Vec::as_slice).unwrap_or_default() {
+      if !self.may_dispatch_into(scope, class.file) || !self.may_dispatch_to(scope, *class) {
+        continue;
+      }
       let Some(surface) = self.table.sym(*class) else { continue };
       let implements_it = surface
         .implements

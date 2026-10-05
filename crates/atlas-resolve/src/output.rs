@@ -12,7 +12,7 @@ use crate::table::{FileIdx, LookupSource, ProjectSymbolTable, Reachability, SymR
 use crate::ts::{TsNs, specifier_display};
 
 pub const RESOLVER_NAME: &str = "atlas-resolve";
-pub const RESOLVER_VERSION: u32 = 2;
+pub const RESOLVER_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Resolution {
