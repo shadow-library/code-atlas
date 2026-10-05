@@ -9,6 +9,8 @@ pub enum QueryError {
   Engine(#[from] EngineError),
   #[error(transparent)]
   Store(#[from] StoreError),
+  #[error("the draft could not be analysed: {0}")]
+  Analysis(String),
   #[error("invalid query: {0}")]
   Invalid(String),
   #[error("cannot encode the response as JSON: {0}")]

@@ -1,8 +1,13 @@
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
-use atlas_core::{EdgeKind, Entity, EntityId, EntityKey, EntityKind, LanguageFamily, RelPath};
+use atlas_core::{
+  BodyFingerprintInput, CoreError, EdgeKind, Entity, EntityId, EntityKey, EntityKind, ExportFact, FileFacts, ImportFact, Language, LanguageFamily, ParamFact, ParseStatus, RelPath,
+  RepoName, SymbolFact, is_test_code,
+};
+use atlas_engine::EngineError;
 use atlas_semantic::{RELATION_EQUIVALENT_TO, RELATION_SIMILAR_TO};
-use atlas_similarity::{SMALL_BODY_TOKENS, SMALL_PAIR_MIN_JACCARD, SimilarityIndex};
+use atlas_similarity::{SMALL_BODY_TOKENS, SMALL_PAIR_MIN_JACCARD, SMALL_SHINGLE_SIZE, SimilarityIndex, StructuralMatch};
 use atlas_store::{EntityFilter, FreshnessPolicy, InferredQuery};
 use serde::Serialize;
 
@@ -12,7 +17,7 @@ use crate::graph::Graph;
 use crate::model::{Caveat, CertaintyTag, EntityRef, Response, Targeted};
 use crate::policy::{Direction, InferredAdmission, Policy};
 use crate::queries::common::{is_test, language, package_key, resolve_one};
-use crate::queries::reuse::{CandidateQuery, lexical_and_signature_candidates, signature_shape};
+use crate::queries::reuse::{CandidateQuery, CandidateScope, access, lexical_and_signature_candidates, shape_of, signature_shape};
 use crate::queries::search::rounded;
 use crate::queries::tests_for::direct_tests;
 use crate::target::TargetFilter;
@@ -22,11 +27,20 @@ const IDENTICAL_JACCARD: f64 = 0.95;
 const STRUCTURAL_CANDIDATE_FACTOR: usize = 4;
 const SHAPE_ONLY_LIMIT: usize = 5;
 const SHAPE_ONLY_NOTE: &str = "shape-only (small body, likely boilerplate)";
+const MAX_DRAFT_BYTES: usize = 64 * 1024;
+const MAX_DRAFT_SYMBOLS: usize = 8;
+const WRAPPER_NAME: &str = "__draft";
+const FRAGMENT_NAME: &str = "(fragment)";
+const NAME_ONLY_FLOOR: f64 = 0.6;
+const NAME_ONLY_LIMIT: usize = 5;
+const DECLARATION_KEYWORDS: [&str; 3] = ["const", "let", "var"];
+const RESIDUE_KEYWORDS: [&str; 5] = ["export", "default", "declare", "pub", "async"];
 const SHARED_SEGMENTS: [&str; 6] = ["shared", "common", "util", "utils", "lib", "core"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SimilarRequest {
   pub target: String,
+  pub code: Option<CodeQuery>,
   pub filter: TargetFilter,
   pub limit: usize,
   pub threshold: f64,
@@ -37,12 +51,26 @@ impl SimilarRequest {
   pub fn new(target: impl Into<String>) -> Self {
     Self {
       target: target.into(),
+      code: None,
       filter: TargetFilter::default(),
       limit: 10,
       threshold: DEFAULT_THRESHOLD,
       include_stale: false,
     }
   }
+
+  pub fn from_code(language: Language, text: impl Into<String>) -> Self {
+    Self {
+      code: Some(CodeQuery { language, text: text.into() }),
+      ..Self::new(String::new())
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodeQuery {
+  pub language: Language,
+  pub text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -82,6 +110,8 @@ pub struct ClusterMember {
   pub language: String,
   pub signals: Vec<SimilaritySignal>,
   pub verdict: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub importability: Option<String>,
   pub consumers: ConsumerSummary,
   pub tests: usize,
 }
@@ -110,8 +140,375 @@ pub struct SimilarAnswer {
   pub caveats: Vec<Caveat>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DraftOrigin {
+  Declared,
+  WrappedFragment,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DraftSymbol {
+  pub name: String,
+  pub kind: EntityKind,
+  pub lines: u32,
+  pub tokens: u32,
+  pub origin: DraftOrigin,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SearchScope {
+  pub symbols: usize,
+  pub repos: Vec<String>,
+  pub languages: Vec<String>,
+  pub threshold: f64,
+  pub min_tokens: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DraftMatches {
+  pub draft: DraftSymbol,
+  pub members: Vec<ClusterMember>,
+  pub related: Vec<ClusterMember>,
+  pub shape_only: Vec<ShapeOnlyMatch>,
+  pub searched: SearchScope,
+  pub caveats: Vec<Caveat>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DraftSimilarAnswer {
+  pub language: String,
+  pub lines: u32,
+  pub drafts: Vec<DraftMatches>,
+  pub caveats: Vec<Caveat>,
+}
+
+enum Mode<'r> {
+  Target,
+  Code(&'r CodeQuery),
+}
+
+impl SimilarRequest {
+  fn mode(&self) -> QueryResult<Mode<'_>> {
+    let target = self.target.trim();
+    match (&self.code, target.is_empty()) {
+      (Some(_), false) => Err(QueryError::invalid("give either a target or code to compare, not both")),
+      (Some(code), true) => Ok(Mode::Code(code)),
+      (None, false) => Ok(Mode::Target),
+      (None, true) => Err(QueryError::invalid("give a target symbol or code to compare")),
+    }
+  }
+}
+
+struct DraftSource {
+  family: LanguageFamily,
+  name: String,
+  kind: EntityKind,
+  signature: Option<String>,
+  params: Vec<ParamFact>,
+  lines: u32,
+  body: Option<BodyFingerprintInput>,
+  origin: DraftOrigin,
+}
+
+struct DraftAnalysis {
+  sources: Vec<DraftSource>,
+  caveats: Vec<Caveat>,
+  test_code: bool,
+}
+
+struct DraftContext {
+  repo: Option<String>,
+  allow_tests: bool,
+}
+
+enum Admission {
+  Admit,
+  TestCode,
+  Unrelated,
+}
+
+fn note(message: impl Into<String>) -> Caveat {
+  Caveat::Note { message: message.into() }
+}
+
+fn wrap_fragment(language: Language, text: &str) -> String {
+  match language.family() {
+    LanguageFamily::Rust => format!("fn {WRAPPER_NAME}() {{\n{text}\n}}\n"),
+    _ => format!("async function {WRAPPER_NAME}() {{\n{text}\n}}\n"),
+  }
+}
+
+fn analyse_text(query: &QueryEngine, language: Language, text: &str) -> QueryResult<FileFacts> {
+  query.engine().analyze_text(language, text).map_err(|error| match error {
+    EngineError::Core(CoreError::UnsupportedPath(_)) => QueryError::invalid(format!("no analyzer for language {language}")),
+    other => QueryError::from(other),
+  })
+}
+
+fn syntax_errors(facts: &FileFacts) -> Option<u32> {
+  match &facts.parse_status {
+    ParseStatus::Partial { error_count, .. } => Some(*error_count),
+    _ => None,
+  }
+}
+
+fn strip_comments(text: &str) -> String {
+  let mut kept = String::with_capacity(text.len());
+  let mut chars = text.chars().peekable();
+  while let Some(c) = chars.next() {
+    match (c, chars.peek()) {
+      ('/', Some('/')) => while chars.next_if(|next| *next != '\n').is_some() {},
+      ('/', Some('*')) => {
+        chars.next();
+        let mut previous = ' ';
+        for next in chars.by_ref() {
+          if previous == '*' && next == '/' {
+            break;
+          }
+          previous = next;
+        }
+        kept.push(' ');
+      }
+      _ => kept.push(c),
+    }
+  }
+  kept
+}
+
+fn leading_keywords_start(bytes: &[u8], mut start: usize) -> usize {
+  loop {
+    let word_end = bytes[..start].iter().rposition(|byte| !byte.is_ascii_whitespace()).map_or(0, |last| last + 1);
+    let word_start = bytes[..word_end]
+      .iter()
+      .rposition(|byte| !(byte.is_ascii_alphanumeric() || *byte == b'_'))
+      .map_or(0, |last| last + 1);
+    let word = std::str::from_utf8(&bytes[word_start..word_end]).unwrap_or_default();
+    if word.is_empty() || !(RESIDUE_KEYWORDS.contains(&word) || DECLARATION_KEYWORDS.contains(&word)) {
+      return start;
+    }
+    start = word_start;
+  }
+}
+
+fn declaration_ranges(text: &str, facts: &FileFacts) -> Vec<(usize, usize)> {
+  let bytes = text.as_bytes();
+  let spans = facts
+    .symbols
+    .iter()
+    .filter(|symbol| symbol.parent.is_none() && !matches!(symbol.kind, EntityKind::Constant | EntityKind::Variable))
+    .map(|symbol| symbol.span)
+    .chain(facts.symbols.iter().flat_map(|symbol| symbol.attributes.iter().map(|attribute| attribute.span)))
+    .chain(facts.imports.iter().map(ImportFact::span))
+    .chain(facts.exports.iter().map(ExportFact::span));
+  spans
+    .map(|span| {
+      let mut end = (span.end_byte as usize).min(bytes.len());
+      if bytes.get(end) == Some(&b';') {
+        end += 1;
+      }
+      (leading_keywords_start(bytes, (span.start_byte as usize).min(bytes.len())), end)
+    })
+    .collect()
+}
+
+fn blank_bytes(text: &str, ranges: &[(usize, usize)], keep_ranges: bool) -> Option<String> {
+  let mut inside = vec![false; text.len()];
+  for (start, end) in ranges {
+    inside[*start.min(&text.len())..*end.min(&text.len())].fill(true);
+  }
+  let bytes = text
+    .bytes()
+    .zip(inside)
+    .map(|(byte, inside)| if byte == b'\n' || inside == keep_ranges { byte } else { b' ' })
+    .collect();
+  String::from_utf8(bytes).ok()
+}
+
+struct Residue {
+  text: String,
+  lines: u32,
+}
+
+fn statement_residue(text: &str, ranges: &[(usize, usize)]) -> Option<Residue> {
+  let residue = blank_bytes(text, ranges, false)?;
+  let stripped = strip_comments(&residue);
+  let has_statements = stripped
+    .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
+    .any(|word| !word.is_empty() && !RESIDUE_KEYWORDS.contains(&word));
+  let lines = u32::try_from(stripped.lines().filter(|line| !line.trim().is_empty()).count()).unwrap_or(u32::MAX);
+  has_statements.then_some(Residue { text: residue, lines })
+}
+
+fn analyse_draft(query: &QueryEngine, code: &CodeQuery, min_tokens: usize) -> QueryResult<DraftAnalysis> {
+  let facts = analyse_text(query, code.language, &code.text)?;
+  if let ParseStatus::Failed { reason } = &facts.parse_status {
+    return Err(QueryError::Analysis(reason.clone()));
+  }
+  let mut sources = draft_sources(&facts);
+  let declared = sources.len();
+  let mut errors = syntax_errors(&facts);
+  let mut caveats = Vec::new();
+  if declared > MAX_DRAFT_SYMBOLS {
+    caveats.push(note(format!("the draft declares {declared} functions; only the first {MAX_DRAFT_SYMBOLS} were compared")));
+    sources.truncate(MAX_DRAFT_SYMBOLS);
+  }
+  let ranges = declaration_ranges(&code.text, &facts);
+  if let Some(residue) = statement_residue(&code.text, &ranges) {
+    if declared > 0 && errors.is_some() {
+      let declared_text = blank_bytes(&code.text, &ranges, true).unwrap_or_default();
+      errors = syntax_errors(&analyse_text(query, code.language, &declared_text)?);
+    }
+    let wrapped = analyse_text(query, code.language, &wrap_fragment(code.language, &residue.text))?;
+    let source = match wrapped.parse_status {
+      ParseStatus::Failed { .. } => None,
+      _ => top_level_callables(&wrapped)
+        .into_iter()
+        .find(|symbol| symbol.name == WRAPPER_NAME)
+        .map(|symbol| DraftSource {
+          name: FRAGMENT_NAME.to_owned(),
+          lines: residue.lines,
+          origin: DraftOrigin::WrappedFragment,
+          ..draft_source(&wrapped, symbol)
+        })
+        .filter(|source| declared == 0 || source.body.as_ref().is_some_and(|body| body.normalized_tokens.len() >= min_tokens)),
+    };
+    let fragment_errors = syntax_errors(&wrapped);
+    errors = match declared {
+      0 => fragment_errors,
+      _ => Some(errors.unwrap_or(0) + fragment_errors.unwrap_or(0)).filter(|count| *count > 0),
+    };
+    if let Some(source) = source {
+      match declared {
+        0 => caveats.push(note(
+          "the draft declares no function; its statements were compared as the body of a function, by structure only",
+        )),
+        _ => caveats.push(note(
+          "statements outside the declared functions were also compared as the body of a function, by structure only",
+        )),
+      }
+      sources.push(source);
+    }
+  }
+  if let Some(count) = errors {
+    caveats.push(note(format!("the draft has syntax errors ({count}); only the parts that parse were compared")));
+  }
+  if sources.is_empty() {
+    caveats = vec![note("no function, method or statement body was found in the draft, so nothing was compared")];
+  }
+  Ok(DraftAnalysis {
+    sources,
+    caveats,
+    test_code: facts.symbols.iter().any(|symbol| symbol.test.is_some()),
+  })
+}
+
+fn top_level_callables(facts: &FileFacts) -> Vec<&SymbolFact> {
+  let nested_in_callable = |symbol: &SymbolFact| {
+    let mut parent = symbol.parent;
+    while let Some(id) = parent {
+      let Some(owner) = facts.symbols.iter().find(|candidate| candidate.local == id) else {
+        return false;
+      };
+      if callable(&owner.kind) {
+        return true;
+      }
+      parent = owner.parent;
+    }
+    false
+  };
+  facts
+    .symbols
+    .iter()
+    .filter(|symbol| callable(&symbol.kind) && symbol.test.is_none() && !nested_in_callable(symbol))
+    .collect()
+}
+
+fn draft_source(facts: &FileFacts, symbol: &SymbolFact) -> DraftSource {
+  DraftSource {
+    family: facts.file.language.family(),
+    name: symbol.name.clone(),
+    kind: symbol.kind.clone(),
+    signature: symbol.signature.clone(),
+    params: symbol.params.clone(),
+    lines: symbol.span.end_line.saturating_sub(symbol.span.start_line) + 1,
+    body: symbol.body.clone(),
+    origin: DraftOrigin::Declared,
+  }
+}
+
+fn draft_sources(facts: &FileFacts) -> Vec<DraftSource> {
+  top_level_callables(facts).into_iter().map(|symbol| draft_source(facts, symbol)).collect()
+}
+
 impl QueryEngine {
+  pub fn similar_to_code(&self, request: &SimilarRequest) -> QueryResult<Response<DraftSimilarAnswer>> {
+    let code = match request.mode()? {
+      Mode::Code(code) => code,
+      Mode::Target => return Err(QueryError::invalid("no code given; use `similar` to compare an indexed symbol")),
+    };
+    if !request.filter.kinds.is_empty() {
+      return Err(QueryError::invalid("the kinds filter does not apply to code drafts; only the repo filter does"));
+    }
+    let repos: Vec<String> = self.repos().iter().map(ToString::to_string).collect();
+    if let Some(repo) = request.filter.repo.as_ref().filter(|repo| !repos.contains(repo)) {
+      return Err(QueryError::invalid(format!("unknown repo {repo:?}; this project has {}", repos.join(", "))));
+    }
+    if code.text.trim().is_empty() {
+      return Err(QueryError::invalid("the code to compare is empty"));
+    }
+    if code.text.len() > MAX_DRAFT_BYTES {
+      return Err(QueryError::invalid(format!(
+        "the code to compare is {} bytes, over the {MAX_DRAFT_BYTES} byte limit; pass the function or fragment, not the whole file",
+        code.text.len()
+      )));
+    }
+    let freshness = self.barrier()?;
+    let index = self.engine().similarity();
+    let analysis = analyse_draft(self, code, index.config().min_tokens.max(SMALL_SHINGLE_SIZE))?;
+    let text_lines = u32::try_from(code.text.lines().count()).unwrap_or(u32::MAX);
+    let policy = Policy {
+      min_confidence: 0.0,
+      include_stale: request.include_stale,
+    };
+    let scope = SearchScope {
+      symbols: index.len(),
+      repos: request.filter.repo.clone().map_or(repos, |repo| vec![repo]),
+      languages: Vec::new(),
+      threshold: request.threshold,
+      min_tokens: index.config().min_tokens,
+    };
+    let context = DraftContext {
+      repo: request.filter.repo.clone(),
+      allow_tests: analysis.test_code,
+    };
+    let drafts = self.read(policy, |graph| {
+      let mut drafts = analysis
+        .sources
+        .iter()
+        .map(|source| draft_matches(graph, &index, request, source, &context, &scope))
+        .collect::<QueryResult<Vec<_>>>()?;
+      let empty = |draft: &DraftMatches| draft.members.is_empty() && draft.related.is_empty() && draft.shape_only.is_empty();
+      if drafts.iter().any(empty) {
+        for draft in drafts.iter_mut().filter(|draft| empty(draft)) {
+          draft.searched.languages = indexed_languages(graph, &draft.searched.repos, analysis.sources[0].family)?;
+        }
+      }
+      Ok(drafts)
+    })?;
+    let answer = DraftSimilarAnswer {
+      language: code.language.to_string(),
+      lines: text_lines,
+      drafts,
+      caveats: analysis.caveats,
+    };
+    Ok(Response { freshness, answer })
+  }
+
   pub fn similar(&self, request: &SimilarRequest) -> QueryResult<Response<Targeted<SimilarAnswer>>> {
+    if matches!(request.mode()?, Mode::Code(_)) {
+      return Err(QueryError::invalid("code drafts are answered by `similar_to_code`"));
+    }
     let freshness = self.barrier()?;
     let index = self.engine().similarity();
     let policy = Policy {
@@ -165,11 +562,63 @@ fn callable(kind: &EntityKind) -> bool {
 }
 
 fn comparable(target: &Entity, candidate: &Entity) -> bool {
-  candidate.id != target.id
-    && !is_test(candidate)
-    && (callable(&target.kind) == callable(&candidate.kind))
-    && candidate.kind.is_code_symbol()
-    && candidate.kind != EntityKind::Field
+  candidate.id != target.id && comparable_to(callable(&target.kind), candidate)
+}
+
+fn comparable_kind(subject_callable: bool, candidate: &Entity) -> bool {
+  subject_callable == callable(&candidate.kind) && candidate.kind.is_code_symbol() && candidate.kind != EntityKind::Field
+}
+
+fn comparable_to(subject_callable: bool, candidate: &Entity) -> bool {
+  !is_test(candidate) && comparable_kind(subject_callable, candidate)
+}
+
+fn collect_structural(found: Vec<StructuralMatch>, signals: &mut BTreeMap<EntityId, Vec<SimilaritySignal>>) -> BTreeMap<EntityId, f64> {
+  let mut small_found = BTreeMap::new();
+  for found in found {
+    if found.small {
+      small_found.insert(found.entity, rounded(found.exact_jaccard));
+      continue;
+    }
+    signals.entry(found.entity).or_default().push(SimilaritySignal::Structural {
+      jaccard: rounded(found.exact_jaccard),
+    });
+  }
+  small_found
+}
+
+fn corroborate_small(
+  graph: &Graph<'_, '_>,
+  shape: Option<&String>,
+  small_found: BTreeMap<EntityId, f64>,
+  signals: &mut BTreeMap<EntityId, Vec<SimilaritySignal>>,
+  comparable: impl Fn(&Entity) -> bool,
+) -> QueryResult<Vec<ShapeOnlyMatch>> {
+  let mut shape_only = Vec::new();
+  for (id, jaccard) in small_found {
+    let corroborated = signals.get(&id).is_some_and(|found| {
+      found
+        .iter()
+        .any(|signal| matches!(signal, SimilaritySignal::Lexical { .. } | SimilaritySignal::Inferred { .. }))
+    });
+    if !corroborated {
+      let Some(entity) = graph.entity(id)? else { continue };
+      if comparable(&entity) {
+        shape_only.push(ShapeOnlyMatch {
+          entity: EntityRef::of(&entity),
+          jaccard,
+          note: SHAPE_ONLY_NOTE.to_owned(),
+        });
+      }
+      continue;
+    }
+    let found = signals.entry(id).or_default();
+    found.push(SimilaritySignal::SmallStructural { jaccard });
+    add_signature_shape(graph, shape, id, found)?;
+  }
+  shape_only.sort_by(|left, right| right.jaccard.total_cmp(&left.jaccard).then_with(|| left.entity.id.cmp(&right.entity.id)));
+  shape_only.truncate(SHAPE_ONLY_LIMIT);
+  Ok(shape_only)
 }
 
 fn structural_reason(status: &atlas_similarity::StructuralStatus) -> String {
@@ -185,16 +634,10 @@ fn structural_reason(status: &atlas_similarity::StructuralStatus) -> String {
 fn similar(graph: &Graph<'_, '_>, index: &SimilarityIndex, target: &Entity, request: &SimilarRequest) -> QueryResult<SimilarAnswer> {
   let mut signals: BTreeMap<EntityId, Vec<SimilaritySignal>> = BTreeMap::new();
   let mut caveats = Vec::new();
-  let mut small_found: BTreeMap<EntityId, f64> = BTreeMap::new();
-  for found in index.near_duplicates(target.id, request.threshold, request.limit * STRUCTURAL_CANDIDATE_FACTOR) {
-    if found.small {
-      small_found.insert(found.entity, rounded(found.exact_jaccard));
-      continue;
-    }
-    signals.entry(found.entity).or_default().push(SimilaritySignal::Structural {
-      jaccard: rounded(found.exact_jaccard),
-    });
-  }
+  let small_found = collect_structural(
+    index.near_duplicates(target.id, request.threshold, request.limit * STRUCTURAL_CANDIDATE_FACTOR),
+    &mut signals,
+  );
   let structural = index.structural_status(target.id);
   if let atlas_similarity::StructuralStatus::Indexed { tokens } = structural
     && tokens < SMALL_BODY_TOKENS
@@ -222,8 +665,9 @@ fn similar(graph: &Graph<'_, '_>, index: &SimilarityIndex, target: &Entity, requ
     shape: target_shape.as_deref(),
     exclude: Some(target.id),
     fetch: request.limit * 3,
+    scope: CandidateScope::default(),
   };
-  for candidate in lexical_and_signature_candidates(graph, index, &query)? {
+  for candidate in lexical_and_signature_candidates(graph, index, &query)?.found {
     let found = signals.entry(candidate.entity.id).or_default();
     found.push(SimilaritySignal::Lexical {
       score: rounded(candidate.score),
@@ -237,30 +681,7 @@ fn similar(graph: &Graph<'_, '_>, index: &SimilarityIndex, target: &Entity, requ
     add_signature_shape(graph, target_shape.as_ref(), *id, found)?;
   }
   let (hidden_stale, hidden_low) = inferred_signals(graph, target, &mut signals)?;
-  let mut shape_only = Vec::new();
-  for (id, jaccard) in small_found {
-    let corroborated = signals.get(&id).is_some_and(|found| {
-      found
-        .iter()
-        .any(|signal| matches!(signal, SimilaritySignal::Lexical { .. } | SimilaritySignal::Inferred { .. }))
-    });
-    if !corroborated {
-      let Some(entity) = graph.entity(id)? else { continue };
-      if comparable(target, &entity) {
-        shape_only.push(ShapeOnlyMatch {
-          entity: EntityRef::of(&entity),
-          jaccard,
-          note: SHAPE_ONLY_NOTE.to_owned(),
-        });
-      }
-      continue;
-    }
-    let found = signals.entry(id).or_default();
-    found.push(SimilaritySignal::SmallStructural { jaccard });
-    add_signature_shape(graph, target_shape.as_ref(), id, found)?;
-  }
-  shape_only.sort_by(|left, right| right.jaccard.total_cmp(&left.jaccard).then_with(|| left.entity.id.cmp(&right.entity.id)));
-  shape_only.truncate(SHAPE_ONLY_LIMIT);
+  let shape_only = corroborate_small(graph, target_shape.as_ref(), small_found, &mut signals, |entity| comparable(target, entity))?;
   if hidden_stale + hidden_low > 0 {
     caveats.push(Caveat::InferredHidden {
       stale: hidden_stale,
@@ -299,6 +720,189 @@ fn similar(graph: &Graph<'_, '_>, index: &SimilarityIndex, target: &Entity, requ
     shape_only,
     shared_home,
     coupling_risks,
+    caveats,
+  })
+}
+
+fn indexed_languages(graph: &Graph<'_, '_>, repos: &[String], family: LanguageFamily) -> QueryResult<Vec<String>> {
+  let mut languages = BTreeSet::new();
+  for repo in repos.iter().filter_map(|repo| RepoName::new(repo).ok()) {
+    let files = graph.tx().files_in_repo(&repo)?;
+    languages.extend(
+      files
+        .into_iter()
+        .filter_map(|file| file.language)
+        .filter(|language| language.family() == family)
+        .map(|language| language.to_string()),
+    );
+  }
+  Ok(languages.into_iter().collect())
+}
+
+fn admission(source: &DraftSource, context: &DraftContext, entity: &Entity) -> Admission {
+  let other_repo = context.repo.as_deref().is_some_and(|repo| entity.repo.as_ref().is_none_or(|found| found.as_str() != repo));
+  if !comparable_kind(callable(&source.kind), entity) || language(entity) != Some(source.family) || other_repo {
+    return Admission::Unrelated;
+  }
+  match !context.allow_tests && is_test_code(entity) {
+    true => Admission::TestCode,
+    false => Admission::Admit,
+  }
+}
+
+fn structural_score(signals: &[SimilaritySignal]) -> Option<f64> {
+  signals.iter().find_map(|signal| match signal {
+    SimilaritySignal::Structural { jaccard } | SimilaritySignal::SmallStructural { jaccard } => Some(*jaccard),
+    _ => None,
+  })
+}
+
+fn lexical_score(signals: &[SimilaritySignal]) -> f64 {
+  signals
+    .iter()
+    .filter_map(|signal| match signal {
+      SimilaritySignal::Lexical { score, .. } => Some(*score),
+      _ => None,
+    })
+    .fold(0.0, f64::max)
+}
+
+fn draft_view(graph: &Graph<'_, '_>, entity: &Entity, signals: Vec<SimilaritySignal>) -> QueryResult<ClusterMember> {
+  let mut view = member(graph, entity, signals)?;
+  view.importability = Some(format!("{}; behaviour unverified", access(graph, entity, None)?));
+  Ok(view)
+}
+
+fn draft_matches(
+  graph: &Graph<'_, '_>,
+  index: &SimilarityIndex,
+  request: &SimilarRequest,
+  source: &DraftSource,
+  context: &DraftContext,
+  scope: &SearchScope,
+) -> QueryResult<DraftMatches> {
+  let mut signals: BTreeMap<EntityId, Vec<SimilaritySignal>> = BTreeMap::new();
+  let mut caveats = Vec::new();
+  let excluded: RefCell<BTreeSet<EntityId>> = RefCell::new(BTreeSet::new());
+  let mut lexical_excluded: Vec<(EntityId, f64)> = Vec::new();
+  let min_tokens = scope.min_tokens.max(SMALL_SHINGLE_SIZE);
+  let lexical_only = match source.origin {
+    DraftOrigin::Declared => "; only lexical signals apply",
+    DraftOrigin::WrappedFragment => "",
+  };
+  let mut small_found = BTreeMap::new();
+  match &source.body {
+    None => caveats.push(note(format!("the draft symbol has no body, so no structural fingerprint exists{lexical_only}"))),
+    Some(body) if body.normalized_tokens.len() < min_tokens => caveats.push(note(format!(
+      "the draft body is too small for structural comparison ({} tokens, minimum {min_tokens}){lexical_only}",
+      body.token_count
+    ))),
+    Some(body) => {
+      let found = index.near_duplicates_of_tokens(&body.normalized_tokens, request.threshold, request.limit * STRUCTURAL_CANDIDATE_FACTOR);
+      small_found = collect_structural(found, &mut signals);
+      if body.normalized_tokens.len() < SMALL_BODY_TOKENS && request.threshold < SMALL_PAIR_MIN_JACCARD {
+        caveats.push(note(format!(
+          "the draft is a small body ({} tokens): small-body structural matches are held to a minimum score of {SMALL_PAIR_MIN_JACCARD:.2}, overriding the requested threshold {:.2}",
+          body.token_count, request.threshold
+        )));
+      }
+    }
+  }
+  let shape = source.signature.as_deref().and_then(|signature| shape_of(signature, &source.params, Some(source.family)));
+  if source.origin == DraftOrigin::Declared {
+    let text = format!("{} {}", source.name, source.signature.clone().unwrap_or_default());
+    let query = CandidateQuery {
+      text: &text,
+      shape: shape.as_deref(),
+      exclude: None,
+      fetch: request.limit * 3,
+      scope: CandidateScope {
+        family: Some(source.family),
+        repo: context.repo.as_deref(),
+        kinds: &[EntityKind::Function, EntityKind::Method],
+        exclude_tests: !context.allow_tests,
+      },
+    };
+    let candidates = lexical_and_signature_candidates(graph, index, &query)?;
+    lexical_excluded = candidates.excluded_tests;
+    for candidate in candidates.found {
+      let found = signals.entry(candidate.entity.id).or_default();
+      found.push(SimilaritySignal::Lexical {
+        score: rounded(candidate.score),
+        terms: candidate.terms,
+      });
+      if let Some(shape) = shape.clone().filter(|_| candidate.same_shape) {
+        found.push(SimilaritySignal::SignatureShape { shape });
+      }
+    }
+  }
+  for (id, found) in signals.iter_mut() {
+    add_signature_shape(graph, shape.as_ref(), *id, found)?;
+  }
+  let admit = |entity: &Entity| match admission(source, context, entity) {
+    Admission::Admit => true,
+    Admission::TestCode => {
+      excluded.borrow_mut().insert(entity.id);
+      false
+    }
+    Admission::Unrelated => false,
+  };
+  let shape_only = corroborate_small(graph, shape.as_ref(), small_found, &mut signals, admit)?;
+  let mut structural_rows = Vec::new();
+  let mut name_rows = Vec::new();
+  for (id, found) in signals {
+    let Some(entity) = graph.entity(id)? else { continue };
+    if !admit(&entity) {
+      continue;
+    }
+    match structural_score(&found) {
+      Some(_) => structural_rows.push((entity, found)),
+      None => name_rows.push((entity, found)),
+    }
+  }
+  let best_lexical = structural_rows.iter().chain(&name_rows).map(|(_, found)| lexical_score(found)).fold(0.0, f64::max);
+  structural_rows.sort_by(|(left, left_signals), (right, right_signals)| {
+    structural_score(right_signals)
+      .unwrap_or_default()
+      .total_cmp(&structural_score(left_signals).unwrap_or_default())
+      .then_with(|| lexical_score(right_signals).total_cmp(&lexical_score(left_signals)))
+      .then_with(|| left.key.cmp(&right.key))
+  });
+  structural_rows.truncate(request.limit);
+  name_rows.retain(|(_, found)| lexical_score(found) >= NAME_ONLY_FLOOR * best_lexical);
+  name_rows.sort_by(|(left, left_signals), (right, right_signals)| lexical_score(right_signals).total_cmp(&lexical_score(left_signals)).then_with(|| left.key.cmp(&right.key)));
+  name_rows.truncate(NAME_ONLY_LIMIT);
+  let mut members = Vec::new();
+  for (entity, found) in structural_rows {
+    members.push(draft_view(graph, &entity, found)?);
+  }
+  let mut related = Vec::new();
+  for (entity, found) in name_rows {
+    related.push(draft_view(graph, &entity, found)?);
+  }
+  let best_with_excluded = lexical_excluded.iter().map(|(_, score)| rounded(*score)).fold(best_lexical, f64::max);
+  excluded.borrow_mut().extend(
+    lexical_excluded
+      .iter()
+      .filter(|(_, score)| rounded(*score) >= NAME_ONLY_FLOOR * best_with_excluded)
+      .map(|(id, _)| *id),
+  );
+  let excluded = excluded.into_inner().len();
+  if excluded > 0 {
+    caveats.push(note(format!("{excluded} test helpers excluded")));
+  }
+  Ok(DraftMatches {
+    draft: DraftSymbol {
+      name: source.name.clone(),
+      kind: source.kind.clone(),
+      lines: source.lines,
+      tokens: source.body.as_ref().map_or(0, |body| body.token_count),
+      origin: source.origin,
+    },
+    members,
+    related,
+    shape_only,
+    searched: scope.clone(),
     caveats,
   })
 }
@@ -436,6 +1040,7 @@ fn member(graph: &Graph<'_, '_>, entity: &Entity, signals: Vec<SimilaritySignal>
     entity: EntityRef::of(entity),
     language: language_label(entity),
     verdict: verdict(&signals),
+    importability: None,
     signals,
     consumers: ConsumerSummary {
       callers,

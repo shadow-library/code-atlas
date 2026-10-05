@@ -1,11 +1,11 @@
-use atlas_core::{ATTR_PARAMS, EdgeKind, Entity, EntityId, EntityKey, EntityKind, LanguageFamily, PackageEcosystem, ParamFact, Visibility};
-use atlas_similarity::{Field, SimilarityIndex};
+use atlas_core::{ATTR_PARAMS, EdgeKind, Entity, EntityId, EntityKey, EntityKind, LanguageFamily, PackageEcosystem, ParamFact, Visibility, is_test_path};
+use atlas_similarity::{Field, SearchHit, SimilarityIndex};
 
 use crate::error::QueryResult;
 use crate::graph::Graph;
 use crate::model::short_name;
 use crate::queries::common::{language, package_key};
-use crate::queries::search::lexical_hits;
+use crate::queries::search::lexical_hits_in;
 
 const LEXICAL_FRACTION: f64 = 0.35;
 const SITE: &str = "likely change site";
@@ -15,6 +15,15 @@ pub(crate) struct CandidateQuery<'q> {
   pub(crate) shape: Option<&'q str>,
   pub(crate) exclude: Option<EntityId>,
   pub(crate) fetch: usize,
+  pub(crate) scope: CandidateScope<'q>,
+}
+
+#[derive(Default)]
+pub(crate) struct CandidateScope<'q> {
+  pub(crate) family: Option<LanguageFamily>,
+  pub(crate) repo: Option<&'q str>,
+  pub(crate) kinds: &'q [EntityKind],
+  pub(crate) exclude_tests: bool,
 }
 
 pub(crate) struct LexicalCandidate {
@@ -24,43 +33,65 @@ pub(crate) struct LexicalCandidate {
   pub(crate) same_shape: bool,
 }
 
-pub(crate) fn lexical_and_signature_candidates(graph: &Graph<'_, '_>, index: &SimilarityIndex, query: &CandidateQuery<'_>) -> QueryResult<Vec<LexicalCandidate>> {
-  let hits: Vec<_> = lexical_hits(index, query.text, &[], None, query.fetch)
-    .into_iter()
-    .filter(|hit| Some(hit.entity) != query.exclude)
-    .collect();
+pub(crate) struct Candidates {
+  pub(crate) found: Vec<LexicalCandidate>,
+  pub(crate) excluded_tests: Vec<(EntityId, f64)>,
+}
+
+pub(crate) fn lexical_and_signature_candidates(graph: &Graph<'_, '_>, index: &SimilarityIndex, query: &CandidateQuery<'_>) -> QueryResult<Candidates> {
+  let scope = &query.scope;
+  let mut tests = Vec::new();
+  let mut hits = Vec::new();
+  for hit in lexical_hits_in(index, query.text, scope.kinds, scope.repo, scope.family, query.fetch) {
+    if Some(hit.entity) == query.exclude {
+      continue;
+    }
+    match scope.exclude_tests && is_test_path(hit.path.as_str()) {
+      true => tests.push(hit),
+      false => hits.push(hit),
+    }
+  }
   let top = hits.iter().map(|hit| hit.score).fold(0.0_f64, f64::max);
-  let mut candidates = Vec::new();
+  let top_with_tests = tests.iter().map(|hit| hit.score).fold(top, f64::max);
+  let names_match = |hit: &SearchHit| hit.matched_fields.iter().any(|matched| matched.field == Field::Name);
+  let excluded_tests = tests
+    .iter()
+    .filter(|hit| names_match(hit) && hit.score >= LEXICAL_FRACTION * top_with_tests)
+    .map(|hit| (hit.entity, hit.score))
+    .collect();
+  let mut found = Vec::new();
   for hit in hits {
-    let name_matches = hit.matched_fields.iter().any(|matched| matched.field == Field::Name);
-    if !name_matches || hit.score < LEXICAL_FRACTION * top {
+    if !names_match(&hit) || hit.score < LEXICAL_FRACTION * top {
       continue;
     }
     let Some(entity) = graph.entity(hit.entity)? else { continue };
     let same_shape = query.shape.is_some_and(|shape| signature_shape(&entity).as_deref() == Some(shape));
-    candidates.push(LexicalCandidate {
+    found.push(LexicalCandidate {
       entity,
       score: hit.score,
       terms: hit.direct_terms,
       same_shape,
     });
   }
-  Ok(candidates)
+  Ok(Candidates { found, excluded_tests })
 }
 
 pub(crate) fn signature_shape(entity: &Entity) -> Option<String> {
-  let signature = entity.signature.as_deref()?;
   let params: Vec<ParamFact> = entity
     .attrs
     .get(ATTR_PARAMS)
     .and_then(|value| serde_json::from_value(value.clone()).ok())
     .unwrap_or_default();
+  shape_of(entity.signature.as_deref()?, &params, language(entity))
+}
+
+pub(crate) fn shape_of(signature: &str, params: &[ParamFact], family: Option<LanguageFamily>) -> Option<String> {
   let types: Vec<String> = params
     .iter()
     .filter(|param| !matches!(param.name.as_str(), "self" | "&self" | "&mut self" | "this"))
     .map(|param| param.type_text.as_deref().map_or_else(|| "?".to_owned(), compact))
     .collect();
-  let returns = match language(entity) {
+  let returns = match family {
     Some(LanguageFamily::Rust) => signature.rsplit_once("->").map(|(_, rest)| rest.split(" where ").next().unwrap_or(rest).to_owned()),
     _ => signature.rsplit_once("):").map(|(_, rest)| rest.to_owned()),
   };

@@ -280,6 +280,7 @@ pub(super) fn lexical(tx: &ReadTx<'_>, index: &SimilarityIndex, exclude: &BTreeS
       k: LEXICAL_NEIGHBOURS + 1,
       kinds: vec![query.entity.kind.clone()],
       repos: Vec::new(),
+      ..SearchOptions::default()
     };
     let hits = index.search(&query.entity.name, &options);
     let Some(top) = hits.iter().find(|hit| hit.entity == *id).or(hits.first()).map(|hit| hit.score).filter(|score| *score > 0.0) else {

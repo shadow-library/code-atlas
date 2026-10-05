@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use atlas_core::{EntityId, EntityKind, RepoName};
+use atlas_core::{EntityId, EntityKind, LanguageFamily, RepoName};
 use atlas_semantic::RELATION_CAPABILITY_SUMMARY;
 use atlas_similarity::{Field, SearchHit, SearchOptions, SimilarityIndex};
 use atlas_store::{FreshnessPolicy, InferredQuery};
@@ -126,8 +126,20 @@ pub(crate) fn query_terms(text: &str) -> BTreeSet<String> {
 }
 
 pub(crate) fn lexical_hits(index: &SimilarityIndex, text: &str, kinds: &[EntityKind], repo: Option<&str>, k: usize) -> Vec<SearchHit> {
+  lexical_hits_in(index, text, kinds, repo, None, k)
+}
+
+pub(crate) fn lexical_hits_in(index: &SimilarityIndex, text: &str, kinds: &[EntityKind], repo: Option<&str>, family: Option<LanguageFamily>, k: usize) -> Vec<SearchHit> {
   let repos = repo.and_then(|repo| RepoName::new(repo).ok()).into_iter().collect();
-  index.search(text, &SearchOptions { k, kinds: kinds.to_vec(), repos })
+  index.search(
+    text,
+    &SearchOptions {
+      k,
+      kinds: kinds.to_vec(),
+      repos,
+      families: family.into_iter().collect(),
+    },
+  )
 }
 
 fn field_name(field: Field) -> &'static str {

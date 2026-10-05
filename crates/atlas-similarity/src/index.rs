@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use atlas_core::{EntityId, EntityKind, RelPath, RepoName};
+use atlas_core::{EntityId, EntityKind, Language, LanguageFamily, RelPath, RepoName};
 use serde::Serialize;
 
 use crate::config::SimilarityConfig;
@@ -18,6 +18,7 @@ pub struct SearchOptions {
   pub k: usize,
   pub kinds: Vec<EntityKind>,
   pub repos: Vec<RepoName>,
+  pub families: Vec<LanguageFamily>,
 }
 
 impl Default for SearchOptions {
@@ -26,6 +27,7 @@ impl Default for SearchOptions {
       k: DEFAULT_SEARCH_LIMIT,
       kinds: Vec::new(),
       repos: Vec::new(),
+      families: Vec::new(),
     }
   }
 }
@@ -280,7 +282,19 @@ impl SimilarityIndex {
     if parsed.direct.is_empty() {
       return Vec::new();
     }
-    let accepts = |meta: &DocMeta| (options.kinds.is_empty() || options.kinds.contains(&meta.kind)) && (options.repos.is_empty() || options.repos.contains(&meta.repo));
+    let family_of = |meta: &DocMeta| {
+      meta
+        .path
+        .as_str()
+        .rsplit_once('.')
+        .and_then(|(_, extension)| Language::from_extension(extension))
+        .map(Language::family)
+    };
+    let accepts = |meta: &DocMeta| {
+      (options.kinds.is_empty() || options.kinds.contains(&meta.kind))
+        && (options.repos.is_empty() || options.repos.contains(&meta.repo))
+        && (options.families.is_empty() || family_of(meta).is_some_and(|family| options.families.contains(&family)))
+    };
     let resolve = |slot: u32| self.metas[slot as usize].as_ref().filter(|meta| accepts(meta)).map(|meta| meta.entity);
     self
       .lexical
