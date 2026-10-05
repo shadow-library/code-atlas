@@ -30,6 +30,20 @@ fn traverse(fixture: &Fixture, kind: TraversalKind, target: &str, depth: u32) ->
   )
 }
 
+fn traverse_http(fixture: &Fixture, kind: TraversalKind, target: &str, depth: u32) -> String {
+  text(
+    fixture,
+    fixture.query.traverse(
+      kind,
+      &TraverseRequest {
+        depth,
+        via_http: true,
+        ..TraverseRequest::new(target)
+      },
+    ),
+  )
+}
+
 fn battery(fixture: &Fixture) -> Vec<(&'static str, String)> {
   let query = &fixture.query;
   query.status().unwrap();
@@ -49,6 +63,8 @@ fn battery(fixture: &Fixture) -> Vec<(&'static str, String)> {
     ("symbol_ambiguous", text(fixture, query.symbol(&SymbolRequest::new("findOne")))),
     ("callers_depth_2", traverse(fixture, TraversalKind::Callers, "UsersService.findOne", 2)),
     ("callees_depth_2", traverse(fixture, TraversalKind::Callees, "OrdersController.findOne", 2)),
+    ("callers_via_http", traverse_http(fixture, TraversalKind::Callers, "UsersService.findOne", 4)),
+    ("callees_via_http", traverse_http(fixture, TraversalKind::Callees, "UserCard", 6)),
     ("dependents", traverse(fixture, TraversalKind::Dependents, "toCents", 1)),
     ("dependencies", traverse(fixture, TraversalKind::Dependencies, "UsersController", 1)),
     ("impact_users_find_one", text(fixture, query.impact(&ImpactRequest::new(["UsersService.findOne"])))),

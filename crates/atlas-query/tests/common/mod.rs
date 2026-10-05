@@ -83,6 +83,10 @@ pub fn fixture_with(group: &str, repos: &[&str], options: EngineOptions) -> Fixt
 }
 
 pub fn single_repo(name: &str, files: &[(&str, &str)]) -> Fixture {
+  single_repo_with(name, files, engine_options())
+}
+
+pub fn single_repo_with(name: &str, files: &[(&str, &str)], options: EngineOptions) -> Fixture {
   let scratch = tempfile::tempdir().unwrap();
   let root = scratch.path().join("tree").join(name);
   for (path, content) in files {
@@ -101,7 +105,7 @@ pub fn single_repo(name: &str, files: &[(&str, &str)]) -> Fixture {
       languages: None,
     }],
   };
-  let engine = Engine::open(&project, &AtlasHome::rooted_at(scratch.path().join("home")), engine_options()).unwrap();
+  let engine = Engine::open(&project, &AtlasHome::rooted_at(scratch.path().join("home")), options).unwrap();
   let query = QueryEngine::new(Arc::new(engine));
   Fixture { scratch, project, query }
 }

@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
 use atlas_core::{Certainty, CertaintyClass, Edge, EdgeId, EdgeKind, Entity, EntityId, EntityKind, Owner, RelPath, RepoName};
@@ -176,6 +176,23 @@ impl<'a, 'c> Graph<'a, 'c> {
     Ok(admitted)
   }
 
+  pub fn admitted_distinct(&self, id: EntityId, direction: Direction, kinds: &[EdgeKind], hidden: &mut BTreeSet<EdgeId>) -> QueryResult<Vec<Edge>> {
+    let links = match direction {
+      Direction::Forward => self.links_out(id, kinds)?,
+      Direction::Reverse => self.links_in(id, kinds)?,
+    };
+    let mut admitted = Vec::new();
+    for link in links {
+      match self.policy.admits_link(&link) {
+        true => admitted.extend(self.edge(link.id)?),
+        false => {
+          hidden.insert(link.id);
+        }
+      }
+    }
+    Ok(admitted)
+  }
+
   fn admitted_links(&self, id: EntityId, direction: Direction, kinds: &[EdgeKind], hidden: &mut usize) -> QueryResult<Vec<EdgeLink>> {
     let links = match direction {
       Direction::Forward => self.links_out(id, kinds)?,
@@ -235,15 +252,26 @@ impl<'a, 'c> Graph<'a, 'c> {
     })
   }
 
+  pub fn hop(&self, hop: &PathHop) -> QueryResult<Hop> {
+    match &hop.bridged {
+      Some(bridged) => Ok(bridged.clone()),
+      None => self.relation(&hop.edge, hop.toward),
+    }
+  }
+
   pub fn path(&self, reached: &Reached) -> QueryResult<Vec<Hop>> {
     let mut hops = Vec::with_capacity(reached.hops.len());
     for hop in reached.hops.iter().rev() {
-      hops.push(self.relation(&hop.edge, hop.toward)?);
+      hops.push(self.hop(hop)?);
     }
     Ok(hops)
   }
 
   pub fn walk(&self, spec: &WalkSpec<'_>, expand: impl Fn(&Entity) -> bool) -> QueryResult<Walk> {
+    self.walk_bridged(spec, expand, |_| Ok(Vec::new()))
+  }
+
+  pub fn walk_bridged(&self, spec: &WalkSpec<'_>, expand: impl Fn(&Entity) -> bool, mut bridges: impl FnMut(EntityId) -> QueryResult<Vec<Bridge>>) -> QueryResult<Walk> {
     let mut states: HashMap<EntityId, NodeState> = HashMap::new();
     let mut order: Vec<EntityId> = Vec::new();
     let mut queue = VecDeque::new();
@@ -288,28 +316,65 @@ impl<'a, 'c> Graph<'a, 'c> {
         }
       }
       steps.sort_by_key(|(link, _, neighbour)| (link.id, *neighbour));
-      for (link, direction, neighbour) in steps {
-        let step = spec.step(&link.kind, direction);
-        let next = depth + step.map_or(1, |step| step.cost);
-        let candidate = strength * step.map_or(1.0, |step| step.weight) * link_value(&link);
-        let candidate_authoritative = authoritative && is_authoritative_class(link.certainty_class);
+      let mut offers: Vec<Offer> = steps
+        .into_iter()
+        .map(|(link, direction, neighbour)| {
+          let step = spec.step(&link.kind, direction);
+          Offer {
+            neighbour,
+            depth: depth + step.map_or(1, |step| step.cost),
+            strength: strength * step.map_or(1.0, |step| step.weight) * link_value(&link),
+            authoritative: authoritative && is_authoritative_class(link.certainty_class),
+            via: Via::Link(link.id),
+          }
+        })
+        .collect();
+      if !at_limit {
+        let mut bridged = bridges(node)?;
+        if !bridged.is_empty() {
+          let direct: HashSet<(EdgeId, EntityId)> = offers
+            .iter()
+            .filter_map(|offer| match offer.via {
+              Via::Link(id) => Some((id, offer.neighbour)),
+              Via::Bridge(_) => None,
+            })
+            .collect();
+          bridged.retain(|bridge| !direct.contains(&(bridge.edge.id, bridge.to)));
+        }
+        bridged.sort_by(|left, right| (left.to, left.edge.id, &left.hop.edge).cmp(&(right.to, right.edge.id, &right.hop.edge)));
+        offers.extend(bridged.into_iter().map(|bridge| Offer {
+          neighbour: bridge.to,
+          depth: depth + 1,
+          strength: strength * bridge.value,
+          authoritative: false,
+          via: Via::Bridge(Box::new(bridge)),
+        }));
+      }
+      for offer in offers {
+        let Offer {
+          neighbour,
+          depth: next,
+          strength: candidate,
+          authoritative: candidate_authoritative,
+          via,
+        } = offer;
         if let Some(state) = states.get_mut(&neighbour) {
           if state.depth > next && state.parent.is_some() {
-            let Some(edge) = self.edge(link.id)? else { continue };
+            let Some(arrival) = self.arrival(via)? else { continue };
             state.depth = next;
             state.strength = candidate;
             state.authoritative = candidate_authoritative;
-            state.parent = Some((node, edge));
+            state.parent = Some((node, arrival));
             queue.push_front(neighbour);
             continue;
           }
           if state.depth == next {
             state.in_degree += 1;
             if (candidate_authoritative, candidate) > (state.authoritative, state.strength) {
-              let Some(edge) = self.edge(link.id)? else { continue };
+              let Some(arrival) = self.arrival(via)? else { continue };
               state.strength = candidate;
               state.authoritative = candidate_authoritative;
-              state.parent = Some((node, edge));
+              state.parent = Some((node, arrival));
             }
           }
           continue;
@@ -318,12 +383,12 @@ impl<'a, 'c> Graph<'a, 'c> {
           truncated = true;
           continue;
         }
-        let Some(edge) = self.edge(link.id)? else { continue };
+        let Some(arrival) = self.arrival(via)? else { continue };
         states.insert(
           neighbour,
           NodeState {
             depth: next,
-            parent: Some((node, edge)),
+            parent: Some((node, arrival)),
             strength: candidate,
             authoritative: candidate_authoritative,
             in_degree: 1,
@@ -353,6 +418,16 @@ impl<'a, 'c> Graph<'a, 'c> {
       reached,
       truncated,
       hidden_below_floor: hidden,
+    })
+  }
+
+  fn arrival(&self, via: Via) -> QueryResult<Option<Arrival>> {
+    Ok(match via {
+      Via::Link(id) => self.edge(id)?.map(|edge| Arrival { edge, bridged: None }),
+      Via::Bridge(bridge) => Some(Arrival {
+        edge: bridge.edge,
+        bridged: Some(bridge.hop),
+      }),
     })
   }
 }
@@ -446,9 +521,36 @@ impl WalkSpec<'_> {
   }
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct Bridge {
+  pub to: EntityId,
+  pub edge: Edge,
+  pub hop: Hop,
+  pub value: f64,
+}
+
+enum Via {
+  Link(EdgeId),
+  Bridge(Box<Bridge>),
+}
+
+struct Offer {
+  neighbour: EntityId,
+  depth: u32,
+  strength: f64,
+  authoritative: bool,
+  via: Via,
+}
+
+#[derive(Clone)]
+struct Arrival {
+  edge: Edge,
+  bridged: Option<Hop>,
+}
+
 struct NodeState {
   depth: u32,
-  parent: Option<(EntityId, Edge)>,
+  parent: Option<(EntityId, Arrival)>,
   strength: f64,
   authoritative: bool,
   in_degree: usize,
@@ -470,6 +572,7 @@ impl NodeState {
 pub(crate) struct PathHop {
   pub edge: Edge,
   pub toward: EntityId,
+  pub bridged: Option<Hop>,
 }
 
 #[derive(Debug, Clone)]
@@ -483,7 +586,7 @@ pub(crate) struct Reached {
 
 impl Reached {
   pub fn is_uncertain(&self) -> bool {
-    self.hops.iter().any(|hop| !hop.edge.certainty.is_authoritative())
+    self.hops.iter().any(|hop| hop.bridged.is_some() || !hop.edge.certainty.is_authoritative())
   }
 
   pub fn last_hop(&self) -> Option<&PathHop> {
@@ -500,8 +603,8 @@ pub(crate) struct Walk {
 fn path_to(states: &HashMap<EntityId, NodeState>, target: EntityId) -> Vec<PathHop> {
   let mut hops = Vec::new();
   let mut current = target;
-  while let Some((parent, edge)) = states.get(&current).and_then(|state| state.parent.clone()) {
-    hops.push(PathHop { edge, toward: current });
+  while let Some((parent, Arrival { edge, bridged })) = states.get(&current).and_then(|state| state.parent.clone()) {
+    hops.push(PathHop { edge, toward: current, bridged });
     current = parent;
   }
   hops.reverse();

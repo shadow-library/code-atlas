@@ -3,12 +3,14 @@ use crate::text::{RenderText, TextOut, caveats, entity_line, omitted, relation_t
 
 impl RenderText for TraversalAnswer {
   fn render_text(&self, out: &mut TextOut) {
-    out.line(0, format!("{} of {} depth={}", self.kind.as_str(), entity_line(&self.target), self.depth));
+    let http = if self.via_http { " via_http" } else { "" };
+    out.line(0, format!("{} of {} depth={}{http}", self.kind.as_str(), entity_line(&self.target), self.depth));
     if let Some(symbols) = self.aggregated_symbols {
       out.line(1, format!("file target: aggregated over {symbols} symbols"));
     }
     if self.total == 0 {
-      out.line(1, format!("none found over {}", self.edge_kinds.join(", ")));
+      let hops = if self.via_http { " and HTTP hops" } else { "" };
+      out.line(1, format!("none found over {}{hops}", self.edge_kinds.join(", ")));
     }
     for group in &self.groups {
       out.line(0, format!("{} ({})", group.repo, group.total));

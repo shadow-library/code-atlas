@@ -1,0 +1,23 @@
+---
+source: crates/atlas-query/tests/snapshots.rs
+expression: output
+---
+fresh run=1 (+0 files, <t>)
+callers of UsersService.findOne method acme-api:src/users/users.service.ts:18 depth=4 via_http
+acme-api (5)
+  UsersController.findOne method acme-api:src/users/users.controller.ts:13  calls UsersService.findOne [resolved]
+  UsersService.findOne.should return the user when it exists test acme-api:src/users/users.service.spec.ts:13  calls UsersService.findOne [resolved]
+  UsersService.findOne.should throw NotFoundException when the user is missing test acme-api:src/users/users.service.spec.ts:18  calls UsersService.findOne [resolved]
+  UsersService.update method acme-api:src/users/users.service.ts:28  calls UsersService.findOne [resolved]
+  UsersController.update method acme-api:src/users/users.controller.ts:25  calls UsersService.update [resolved] > calls UsersService.findOne [resolved]
+acme-sdk (3)
+  AcmeClient.getUser method acme-sdk:src/client.ts:19  via HTTP GET /users/{id} to UsersController.findOne [heuristic 0.77] > calls UsersService.findOne [resolved]
+  AcmeClient.should send the bearer token in the Authorization header test acme-sdk:src/client.test.ts:8  calls AcmeClient.getUser [resolved] > via HTTP GET /users/{id} to UsersController.findOne [heuristic 0.77] > calls UsersService.findOne [resolved]
+  AcmeClient.updateUser method acme-sdk:src/client.ts:24  via HTTP PATCH /users/{id} to UsersController.update [heuristic 0.77] > calls UsersService.update [resolved] > calls UsersService.findOne [resolved]
+acme-web (6)
+  useMe function acme-web:src/hooks/useMe.ts:7  via HTTP GET /users/{id} to UsersController.findOne [heuristic 0.47] > calls UsersService.findOne [resolved]
+  OrderForm function acme-web:src/components/OrderForm.tsx:7  calls useMe [resolved] > via HTTP GET /users/{id} to UsersController.findOne [heuristic 0.47] > calls UsersService.findOne [resolved]
+  useUser function acme-web:src/hooks/useUser.ts:6  possibly calls AcmeClient.getUser [heuristic 0.85] > via HTTP GET /users/{id} to UsersController.findOne [heuristic 0.77] > calls UsersService.findOne [resolved]
+  App function acme-web:src/main.tsx:7  calls useMe [resolved] > via HTTP GET /users/{id} to UsersController.findOne [heuristic 0.47] > calls UsersService.findOne [resolved]
+  UserCard function acme-web:src/components/UserCard.tsx:3  calls useUser [resolved] > possibly calls AcmeClient.getUser [heuristic 0.85] > via HTTP GET /users/{id} to UsersController.findOne [heuristic 0.77] > calls UsersService.findOne [resolved]
+  src/main.tsx file acme-web:src/main.tsx  calls App [resolved] > calls useMe [resolved] > via HTTP GET /users/{id} to UsersController.findOne [heuristic 0.47] > calls UsersService.findOne [resolved]
