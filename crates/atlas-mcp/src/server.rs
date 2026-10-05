@@ -3,18 +3,22 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use atlas_engine::Engine;
+use atlas_ide::EditStatus;
 use atlas_query::{
-  ApiRequest, ChangesRequest, ContextRequest, ExplainRequest, ImpactRequest, PatternsRequest, QueryEngine, ReadRequest, SearchRequest, SimilarRequest, SymbolRequest, Targeted,
-  TestsForRequest, TraverseRequest, UnusedRequest,
+  ApiRequest, ChangesRequest, ContextRequest, ExplainRequest, ImpactRequest, PatternsRequest, QueryEngine, SearchRequest, Targeted, TestsForRequest, TraverseRequest, UnusedRequest,
 };
+use rmcp::ErrorData;
 use rmcp::handler::server::router::tool::ToolRouter;
+use rmcp::handler::server::tool::ToolCallContext;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{CallToolResult, ContentBlock, ServerCapabilities, ServerConfig};
+use rmcp::model::{CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, ServerCapabilities, ServerConfig};
+use rmcp::service::RequestContext;
 use rmcp::transport::IntoTransport;
 use rmcp::{RoleServer, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 
 use crate::arguments::{
-  self, ApiArgs, ChangesArgs, ContextArgs, Format, ImpactArgs, NoArgs, PatternsArgs, ReadArgs, SearchArgs, SimilarArgs, SymbolArgs, TargetArgs, TraverseArgs, UnusedArgs,
+  self, ApiArgs, ContextArgs, EditArgs, Format, ImpactArgs, NoArgs, PatternsArgs, SearchArgs, SimilarArgs, SimilarPlan, StatusArgs, SymbolArgs, SymbolPlan, TargetArgs,
+  TraverseArgs, UnusedArgs,
 };
 use crate::descriptions as text;
 use crate::error::{McpError, ToolError};
@@ -58,7 +62,7 @@ impl AtlasServer {
         max_output_bytes: options.max_output_bytes,
         max_body_lines: options.max_body_lines,
       }),
-      tool_router: Self::tool_router(),
+      tool_router: compact_router(Self::tool_router()),
     })
   }
 
@@ -138,6 +142,61 @@ impl AtlasServer {
   }
 }
 
+fn compact_router(mut router: ToolRouter<AtlasServer>) -> ToolRouter<AtlasServer> {
+  for route in router.map.values_mut() {
+    route.attr.input_schema = Arc::new(compact_schema(&route.attr.input_schema));
+  }
+  router
+}
+
+fn compact_schema(schema: &rmcp::model::JsonObject) -> rmcp::model::JsonObject {
+  use serde_json::Value;
+  let mut schema = schema.clone();
+  schema.remove("$schema");
+  let defs = match schema.remove("$defs") {
+    Some(Value::Object(defs)) => defs,
+    _ => serde_json::Map::new(),
+  };
+  let Some(Value::Object(properties)) = schema.get_mut("properties") else { return schema };
+  for property in properties.values_mut() {
+    let Value::Object(property) = property else { continue };
+    if let Some(Value::Array(variants)) = property.remove("anyOf") {
+      let mut rest: Vec<Value> = variants.into_iter().filter(|variant| variant != &serde_json::json!({"type": "null"})).collect();
+      match (rest.len(), rest.pop()) {
+        (1, Some(Value::Object(only))) => property.extend(only),
+        (_, last) => {
+          rest.extend(last);
+          property.insert("anyOf".to_owned(), Value::Array(rest));
+        }
+      }
+    }
+    if let Some(Value::String(reference)) = property.remove("$ref")
+      && let Some(Value::Object(definition)) = defs.get(reference.trim_start_matches("#/$defs/"))
+    {
+      property.extend(definition.clone());
+    }
+    if let Some(Value::Array(types)) = property.get_mut("type") {
+      types.retain(|kind| kind != "null");
+      if types.len() == 1 {
+        let only = types.remove(0);
+        property.insert("type".to_owned(), only);
+      }
+    }
+    if property.get("type").and_then(Value::as_str) == Some("integer") {
+      property.remove("format");
+    }
+  }
+  schema
+}
+
+fn removed_tool_replacement(name: &str) -> Option<&'static str> {
+  match name {
+    "atlas_read" => Some("atlas_read was removed; use atlas_symbol mode=source"),
+    "atlas_changes" => Some("atlas_changes was removed; use atlas_status since_run"),
+    _ => None,
+  }
+}
+
 fn check_repo(shared: &Shared, repo: Option<&str>) -> Result<(), ToolError> {
   let Some(repo) = repo else { return Ok(()) };
   let repos = shared.session.repo_names();
@@ -193,15 +252,55 @@ impl AtlasServer {
   async fn symbol(&self, Parameters(args): Parameters<SymbolArgs>) -> CallToolResult {
     self
       .call("atlas_symbol", args.format, move |shared| {
-        arguments::non_empty("target", &args.target)?;
-        let mut request = SymbolRequest::new(args.target);
-        request.body = args.body.unwrap_or(false);
-        let mut response = query(shared).symbol(&request)?;
-        let dropped = match &mut response.answer {
-          Targeted::Found(found) => found.body.as_mut().map_or(0, |body| render::cap_body(body, shared.max_body_lines)),
-          _ => 0,
-        };
-        render::targeted_noted(query(shared), &response, args.format.unwrap_or_default(), render::body_note(dropped, shared.max_body_lines))
+        let format = args.format.unwrap_or_default();
+        let ide = shared.session.ide();
+        match arguments::symbol_plan(args)? {
+          SymbolPlan::Info(request) => {
+            let mut response = query(shared).symbol(&request)?;
+            let dropped = match &mut response.answer {
+              Targeted::Found(found) => found.body.as_mut().map_or(0, |body| render::cap_body(body, shared.max_body_lines)),
+              _ => 0,
+            };
+            render::targeted_noted(query(shared), &response, format, render::body_note(dropped, shared.max_body_lines))
+          }
+          SymbolPlan::Source(request) => {
+            let mut response = query(shared).read_symbol(&request)?;
+            let dropped = match &mut response.answer {
+              Targeted::Found(found) => render::cap_body(&mut found.source, shared.max_body_lines),
+              _ => 0,
+            };
+            render::targeted_noted(query(shared), &response, format, render::body_note(dropped, shared.max_body_lines))
+          }
+          SymbolPlan::Find(request) => render::plain(&ide.find(&request)?, format),
+          SymbolPlan::Outline(request) => render::plain(&ide.outline(&request)?, format),
+          SymbolPlan::References(request) => render::plain(&ide.references(&request)?, format),
+          SymbolPlan::Declaration(request) => render::plain(&ide.declaration(&request)?, format),
+          SymbolPlan::Implementations(target) => render::targeted(query(shared), &ide.implementations(&target)?, format),
+          SymbolPlan::Hierarchy(request) => render::targeted(query(shared), &query(shared).hierarchy(&request)?, format),
+          SymbolPlan::Diagnostics(request) => render::plain(&ide.diagnostics(&request)?, format),
+        }
+      })
+      .await
+  }
+
+  #[tool(
+    name = "atlas_edit",
+    description = text::edit(),
+    annotations(destructive_hint = true, read_only_hint = false, idempotent_hint = false)
+  )]
+  async fn edit(&self, Parameters(args): Parameters<EditArgs>) -> CallToolResult {
+    self
+      .call("atlas_edit", args.format, move |shared| {
+        let format = args.format.unwrap_or_default();
+        let request = arguments::edit_request(args)?;
+        let response = shared.session.ide().edit(&request)?;
+        let rendered = render::plain(&response, format)?;
+        match response.answer.status {
+          EditStatus::Refused { .. } | EditStatus::RolledBack { .. } | EditStatus::PartiallyApplied { .. } => {
+            Err(ToolError::Refused(render::cap(rendered, format, shared.max_output_bytes).0))
+          }
+          EditStatus::Applied | EditStatus::DryRun { .. } => Ok(rendered),
+        }
       })
       .await
   }
@@ -213,6 +312,7 @@ impl AtlasServer {
         arguments::non_empty("target", &args.target)?;
         let mut request = TraverseRequest::new(args.target);
         request.depth = arguments::depth(args.depth, request.depth)?;
+        request.via_http = args.via_http.unwrap_or(false);
         render::targeted(query(shared), &query(shared).callers(&request)?, args.format.unwrap_or_default())
       })
       .await
@@ -225,6 +325,7 @@ impl AtlasServer {
         arguments::non_empty("target", &args.target)?;
         let mut request = TraverseRequest::new(args.target);
         request.depth = arguments::depth(args.depth, request.depth)?;
+        request.via_http = args.via_http.unwrap_or(false);
         render::targeted(query(shared), &query(shared).callees(&request)?, args.format.unwrap_or_default())
       })
       .await
@@ -277,13 +378,11 @@ impl AtlasServer {
   async fn similar(&self, Parameters(args): Parameters<SimilarArgs>) -> CallToolResult {
     self
       .call("atlas_similar", args.format, move |shared| {
-        let spec = match (args.target, args.snippet) {
-          (Some(target), None) => target,
-          (None, Some(snippet)) => snippet,
-          _ => return Err(ToolError::invalid("provide exactly one of target or snippet")),
-        };
-        arguments::non_empty("target or snippet", &spec)?;
-        render::targeted(query(shared), &query(shared).similar(&SimilarRequest::new(spec))?, args.format.unwrap_or_default())
+        let format = args.format.unwrap_or_default();
+        match arguments::similar_plan(args)? {
+          SimilarPlan::Indexed(request) => render::targeted(query(shared), &query(shared).similar(&request)?, format),
+          SimilarPlan::Draft(request) => render::plain(&query(shared).similar_to_code(&request)?, format),
+        }
       })
       .await
   }
@@ -323,23 +422,6 @@ impl AtlasServer {
       .await
   }
 
-  #[tool(name = "atlas_read", description = text::READ, annotations(read_only_hint = true))]
-  async fn read(&self, Parameters(args): Parameters<ReadArgs>) -> CallToolResult {
-    self
-      .call("atlas_read", args.format, move |shared| {
-        arguments::non_empty("target", &args.target)?;
-        let mut request = ReadRequest::new(args.target);
-        request.context = arguments::context_lines(args.context_lines)?;
-        let mut response = query(shared).read_symbol(&request)?;
-        let dropped = match &mut response.answer {
-          Targeted::Found(found) => render::cap_body(&mut found.source, shared.max_body_lines),
-          _ => 0,
-        };
-        render::targeted_noted(query(shared), &response, args.format.unwrap_or_default(), render::body_note(dropped, shared.max_body_lines))
-      })
-      .await
-  }
-
   #[tool(name = "atlas_overview", description = text::OVERVIEW, annotations(read_only_hint = true))]
   async fn overview(&self, Parameters(args): Parameters<NoArgs>) -> CallToolResult {
     self
@@ -350,15 +432,44 @@ impl AtlasServer {
   }
 
   #[tool(name = "atlas_status", description = text::STATUS, annotations(read_only_hint = true))]
-  async fn status(&self, Parameters(args): Parameters<NoArgs>) -> CallToolResult {
+  async fn status(&self, Parameters(args): Parameters<StatusArgs>) -> CallToolResult {
     self
       .call("atlas_status", args.format, move |shared| {
         let format = args.format.unwrap_or_default();
+        if args.since_run.is_some_and(|since_run| since_run < 0) {
+          return Err(ToolError::invalid("since_run must not be negative"));
+        }
         let response = query(shared).status()?;
+        let changes = args
+          .since_run
+          .map(|since_run| {
+            query(shared).changes(&ChangesRequest {
+              since_run: Some(since_run),
+              limit: 0,
+            })
+          })
+          .transpose()?;
+        let servers = shared.session.ide().status();
         let telemetry = shared.telemetry.snapshot();
         match format {
-          Format::Text => Ok(render::plain(&response, format)? + &telemetry.render_text()),
+          Format::Text => {
+            let mut text = render::plain(&response, format)? + &render::answer_text(&servers);
+            if let (Some(since_run), Some(changes)) = (args.since_run, &changes) {
+              let current = changes.freshness.run.map_or_else(|| "none".to_owned(), |run| run.to_string());
+              text.push_str(&format!(
+                "changes since run {since_run} (index at run {current}):\n{}",
+                render::answer_text(&changes.answer)
+              ));
+            }
+            Ok(text + &telemetry.render_text())
+          }
           Format::Json => render::edit_json(&render::plain(&response, format)?, |document| {
+            if let Ok(value) = serde_json::to_value(&servers) {
+              document["language_servers"] = value;
+            }
+            if let Some(value) = changes.as_ref().and_then(|changes| serde_json::to_value(&changes.answer).ok()) {
+              document["changes"] = value;
+            }
             if let Ok(value) = serde_json::to_value(&telemetry) {
               document["mcp_telemetry"] = value;
             }
@@ -367,23 +478,17 @@ impl AtlasServer {
       })
       .await
   }
-
-  #[tool(name = "atlas_changes", description = text::CHANGES, annotations(read_only_hint = true))]
-  async fn changes(&self, Parameters(args): Parameters<ChangesArgs>) -> CallToolResult {
-    self
-      .call("atlas_changes", args.format, move |shared| {
-        let request = ChangesRequest {
-          since_run: args.since_run,
-          limit: 0,
-        };
-        render::plain(&query(shared).changes(&request)?, args.format.unwrap_or_default())
-      })
-      .await
-  }
 }
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for AtlasServer {
+  async fn call_tool(&self, request: CallToolRequestParams, context: RequestContext<RoleServer>) -> Result<CallToolResponse, ErrorData> {
+    if let Some(replacement) = removed_tool_replacement(&request.name) {
+      return Ok(CallToolResult::error(vec![ContentBlock::text(replacement)]).into());
+    }
+    self.tool_router.call(ToolCallContext::new(self, request, context)).await
+  }
+
   fn get_info(&self) -> ServerConfig {
     ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(text::INSTRUCTIONS)
   }

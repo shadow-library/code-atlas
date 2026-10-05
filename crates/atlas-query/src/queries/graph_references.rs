@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use atlas_core::{ContentHash, Edge, EdgeKind, Entity, EntityKind, Evidence, LanguageFamily, RefKind, RelPath, RepoName, Span, UnresolvedRef};
+use atlas_core::{ATTR_MOCK, ContentHash, Edge, EdgeKind, Entity, EntityKind, Evidence, LanguageFamily, RefKind, RelPath, RepoName, Span, UnresolvedRef};
 use atlas_project::Project;
 use serde::Serialize;
 
@@ -255,7 +255,7 @@ impl Sites<'_, '_, '_, '_, '_> {
       enclosing,
       certainty: CertaintyTag::of(&edge.certainty),
       overload: self.overload,
-      mock: edge.attrs.get("mock").and_then(serde_json::Value::as_str).map(str::to_owned),
+      mock: edge.attrs.get(ATTR_MOCK).and_then(serde_json::Value::as_str).map(str::to_owned),
       snippet,
     }
   }

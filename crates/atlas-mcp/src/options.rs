@@ -1,8 +1,20 @@
+use std::fmt;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use atlas_engine::EngineOptions;
+use atlas_ide::Launcher;
 use atlas_project::AtlasHome;
+
+#[derive(Clone)]
+pub(crate) struct LauncherHandle(pub(crate) Arc<dyn Launcher>);
+
+impl fmt::Debug for LauncherHandle {
+  fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    formatter.write_str("Launcher")
+  }
+}
 
 #[derive(Debug, Clone)]
 pub struct ServeOptions {
@@ -13,6 +25,7 @@ pub struct ServeOptions {
   pub engine: EngineOptions,
   pub max_output_bytes: usize,
   pub max_body_lines: usize,
+  pub(crate) launcher: Option<LauncherHandle>,
 }
 
 pub const DEFAULT_MAX_OUTPUT_BYTES: usize = 100_000;
@@ -35,6 +48,7 @@ impl ServeOptions {
       engine: server_engine_options(),
       max_output_bytes: DEFAULT_MAX_OUTPUT_BYTES,
       max_body_lines: DEFAULT_MAX_BODY_LINES,
+      launcher: None,
     }
   }
 
@@ -51,6 +65,12 @@ impl ServeOptions {
 
   pub fn with_watch(mut self, watch: bool) -> Self {
     self.watch = watch;
+    self
+  }
+
+  #[doc(hidden)]
+  pub fn with_launcher(mut self, launcher: Arc<dyn Launcher>) -> Self {
+    self.launcher = Some(LauncherHandle(launcher));
     self
   }
 }

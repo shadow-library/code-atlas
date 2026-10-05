@@ -3,11 +3,10 @@ Code Atlas answers questions about ONE indexed project (a group of repos) from a
 1. Start a task with atlas_context: a ranked, budgeted pack of code to read, with reasons and omissions.
 2. Before writing new code, run atlas_search and atlas_similar to find something to reuse.
 3. Before changing shared code, run atlas_impact on it; use atlas_tests_for to pick tests.
-4. Read only the code the results list. To edit a file, read it with your own file-reading tool; use atlas_read for code you only need to view.
-5. Untagged entities and [resolved]/[syntactic]/[compiler]/[declared] relations are reliable but not exhaustive; always read the caveats. [heuristic] and [inferred] relations are leads: verify them in the source before relying on them; entities carry the same tags. A tag after an entity name tags the entity; a tag in parentheses or in a `verb target [tag]` step tags the relation.
-6. An empty result is not proof of absence: read the caveats (unresolved references, files that failed to parse, hidden low-confidence relations).
-7. After editing, call atlas_changes or re-query; freshness is automatic, there is no reindex tool.
-8. Targets: a name (UsersService.findOne), a [repo:]path[:line], 'GET /users/{id}' or a full key. If not found or ambiguous, use atlas_search.
+4. Read only the code the results list (atlas_symbol mode=source only for code you will not edit yourself; read files you will edit with your own tool). To rename or rewrite a symbol use atlas_edit (exact across files), not find-and-replace; after it changes a file, re-read that file before editing it yourself.
+5. Untagged entities and [resolved]/[syntactic]/[compiler]/[declared] relations are reliable but not exhaustive; always read the caveats. An empty result is not proof of absence (unresolved references, files that failed to parse, hidden low-confidence relations). [heuristic] and [inferred] relations are leads: verify them in the source before relying on them; entities carry the same tags. A tag after an entity name tags the entity; a tag in parentheses or in a `verb target [tag]` step tags the relation.
+6. After editing, call atlas_status with since_run or re-query; freshness is automatic, there is no reindex tool.
+7. Targets: a name (UsersService.findOne), a [repo:]path[:line], 'GET /users/{id}' or a full key. If not found or ambiguous, use atlas_search.
 Add format \"json\" to any tool for structured output.";
 
 macro_rules! certainty {
@@ -18,19 +17,18 @@ macro_rules! certainty {
 
 pub(crate) const CONTEXT: &str = concat!(
   "START HERE for a task. Returns a ranked, budgeted pack of the code to read: full bodies for the top items, signatures for the next, one-liners for the rest, each with why it was included, plus what was omitted and why. ",
-  "Items marked \"likely to edit: read the file directly\" show only a signature outline. To edit a file, read it with your own file-reading tool; use atlas_read for code you only need to view. ",
+  "Items marked \"likely to edit: read the file directly\" show only a signature outline; for a rename or symbol rewrite use atlas_edit. ",
   "Seeds are optional symbols or files to anchor on. ",
   certainty!()
 );
 pub(crate) const SEARCH: &str = "Find where a capability is implemented or whether similar code already exists (names, text and structure). Use before writing new code. Returns ranked hits by match strength; a hit is a candidate, not proof of equivalence.";
-pub(crate) const SYMBOL: &str =
-  "Definition, signature, docs, location and relation counts for one symbol; the body only if body=true. Use atlas_read for the source of a single symbol.";
+pub(crate) const SYMBOL: &str = "Symbol lookup and IDE navigation. mode: info (default: definition, signature, docs, relation counts), find (name-path search like 'UsersService/findOne'), outline (a file's symbols), source (code from disk), references | declaration | implementations (exact, from rust-analyzer or typescript-language-server), hierarchy (supertypes/subtypes from the graph), diagnostics (compiler errors for a file). Exact modes fail with an install hint when no server is available; source='graph' returns tagged graph results instead (outline, references).";
 pub(crate) const CALLERS: &str = concat!(
-  "Who calls this function or method, grouped by repo, up to depth hops (default 1). Misses dynamic or macro-generated calls; see the caveats. ",
+  "Who calls this function or method, grouped by repo, up to depth hops (default 1). Misses dynamic or macro-generated calls; see the caveats. via_http includes HTTP callers from other repos. ",
   certainty!()
 );
 pub(crate) const CALLEES: &str = concat!(
-  "What this function or method calls, grouped by repo, up to depth hops (default 1). Misses dynamic or macro-generated calls; see the caveats. ",
+  "What this function or method calls, grouped by repo, up to depth hops (default 1). Misses dynamic or macro-generated calls; see the caveats. via_http follows HTTP calls across repos. ",
   certainty!()
 );
 pub(crate) const IMPACT: &str = concat!(
@@ -47,17 +45,22 @@ pub(crate) const API: &str = concat!(
   certainty!()
 );
 pub(crate) const SIMILAR: &str = concat!(
-  "Near-duplicates and equivalents of a symbol (target) or of a line range inside an indexed symbol (snippet, e.g. 'repo:src/money.ts:10-30'; code text is not accepted), ",
-  "with consumers, tests and a likely shared home. Provide exactly one of target or snippet. Use before adding a helper. Matches are leads, not proof of equivalence."
+  "Near-duplicates and equivalents of a symbol (target), of a line range inside an indexed symbol (snippet, e.g. 'repo:src/money.ts:10-30') or of draft code you have not saved (code with language rust|ts|tsx|js), ",
+  "with consumers, tests and a likely shared home. Provide exactly one of target, snippet or code. Use before adding a helper. Matches are leads, not proof of equivalence."
 );
-pub(crate) const UNUSED: &str = "Candidate unused functions, endpoints, auth modes, events and config with evidence and caveats. These are candidates only: dynamic dispatch, reflection and external consumers can hide uses; verify before deleting.";
+pub(crate) const UNUSED: &str = "Candidate unused functions, endpoints, auth modes and events, plus test-only symbols (used only by tests), with evidence and caveats. These are candidates only: dynamic dispatch, reflection and external consumers can hide uses; verify before deleting.";
 pub(crate) const PATTERNS: &str =
   "How this codebase does something (e.g. 'error handling', 'pagination'): exemplar implementations ranked by prevalence. Use to match local conventions.";
 pub(crate) const EXPLAIN: &str =
   "Provenance of a symbol or relation: certainty, evidence spans, producing run, staleness and history. Use to decide whether to trust a [heuristic]/[inferred] fact.";
-pub(crate) const READ: &str = "Source of exactly one symbol, re-read from disk (never a cache), with optional extra context lines. To edit a file, read it with your own file-reading tool; use atlas_read for code you only need to view.";
 pub(crate) const OVERVIEW: &str = "Project map: repos, packages, applications, entrypoints, key modules and detected domains. Use to orient in an unfamiliar project.";
-pub(crate) const STATUS: &str =
-  "Index health: freshness, parse failures, SCIP coverage, LLM status and this server's per-tool call telemetry. Use when answers look incomplete or stale.";
-pub(crate) const CHANGES: &str =
-  "What the index changed in recent runs (files analysed, deleted, moved, renamed symbols). Use after editing to confirm the index saw it; since_run limits to newer runs.";
+pub(crate) const STATUS: &str = "Index health: freshness, parse failures, SCIP coverage, LLM status, language servers and this server's per-tool call telemetry. Use when answers look incomplete or stale. since_run also lists what the index changed in newer runs (files analysed, deleted, moved, renamed symbols); use it after editing.";
+
+pub(crate) fn edit() -> String {
+  format!(
+    "Edit code safely. operation: rename (exact, every file the language server sees; sites it cannot see are listed to verify; apply refuses when sites the server should have renamed are unverified, set allow_unverified only after checking them), replace_body / insert_before / insert_after (a symbol's definition), safe_delete (refuses and lists references), replace_content (one file), replace_in_files, apply (a plan id). dry_run=true returns diffs and a plan id. Refuses if a file changed since planning. Re-read changed files before editing them with your own tool. {}. {}. {}.",
+    atlas_ide::REPLACE_BODY_NOTE,
+    atlas_ide::REGEX_NOTE,
+    atlas_ide::REPLACE_IN_FILES_NOTE
+  )
+}

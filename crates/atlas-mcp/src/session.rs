@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use atlas_engine::{Engine, WatchHandle};
+use atlas_ide::{DiscoveryLauncher, IdeMode, IdeOptions, IdeService};
 use atlas_project::{AtlasHome, Registry};
 use atlas_query::QueryEngine;
 
@@ -13,7 +14,7 @@ const REGISTRY_RETRY_DELAY: Duration = Duration::from_millis(50);
 pub(crate) struct Session {
   home: AtlasHome,
   project: String,
-  query: QueryEngine,
+  ide: IdeService,
   refresh: Mutex<Refresh>,
 }
 
@@ -29,20 +30,26 @@ impl Session {
     let engine = Arc::new(Engine::open(&project, &options.home, options.engine.clone())?);
     let watcher = if options.watch { start_watcher(&engine) } else { None };
     tracing::info!(project = %project.name, repos = project.repos.len(), watch = options.watch, "bound the MCP server to its project");
+    let launcher = options.launcher.as_ref().map_or_else(|| Arc::new(DiscoveryLauncher) as _, |handle| Arc::clone(&handle.0));
+    let ide = IdeService::new(engine, launcher, IdeOptions::for_project(&project, &options.home, IdeMode::Warm));
     Ok(Self {
       home: options.home.clone(),
       project: project.name.to_string(),
-      query: QueryEngine::new(engine),
+      ide,
       refresh: Mutex::new(Refresh { watching: options.watch, watcher }),
     })
   }
 
   pub(crate) fn query(&self) -> &QueryEngine {
-    &self.query
+    self.ide.query()
+  }
+
+  pub(crate) fn ide(&self) -> &IdeService {
+    &self.ide
   }
 
   pub(crate) fn engine(&self) -> &Arc<Engine> {
-    self.query.engine()
+    self.ide.query().engine()
   }
 
   pub(crate) fn project_name(&self) -> &str {
@@ -65,6 +72,7 @@ impl Session {
     }
     tracing::info!(project = %self.project, repos = latest.repos.len(), "project definition changed; reloading the engine");
     self.engine().reload_project(latest)?;
+    self.ide.reload(latest);
     if refresh.watching {
       refresh.watcher = None;
       refresh.watcher = start_watcher(self.engine());
@@ -92,11 +100,20 @@ impl Session {
 
   pub(crate) fn shut_down(&self) {
     self.refresh.lock().unwrap_or_else(PoisonError::into_inner).watcher = None;
+    shut_down_in_order(|| self.ide.shutdown(), || self.persist_similarity());
+  }
+
+  fn persist_similarity(&self) {
     match self.engine().persist_similarity() {
       Ok(persisted) => tracing::info!(persisted, "persisted the similarity index on shutdown"),
       Err(error) => tracing::warn!(error = %error, "could not persist the similarity index on shutdown"),
     }
   }
+}
+
+fn shut_down_in_order(stop_language_servers: impl FnOnce(), persist_similarity: impl FnOnce()) {
+  stop_language_servers();
+  persist_similarity();
 }
 
 fn start_watcher(engine: &Arc<Engine>) -> Option<WatchHandle> {
@@ -106,5 +123,21 @@ fn start_watcher(engine: &Arc<Engine>) -> Option<WatchHandle> {
       tracing::warn!(error = %error, "file watcher unavailable; every call falls back to a stat scan");
       None
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::cell::RefCell;
+
+  use super::*;
+
+  #[test]
+  fn should_stop_language_servers_before_persisting_the_similarity_index() {
+    let order = RefCell::new(Vec::new());
+
+    shut_down_in_order(|| order.borrow_mut().push("language servers"), || order.borrow_mut().push("similarity"));
+
+    assert_eq!(*order.borrow(), ["language servers", "similarity"]);
   }
 }

@@ -1,4 +1,5 @@
 use atlas_engine::EngineError;
+use atlas_ide::IdeError;
 use atlas_project::ProjectError;
 use atlas_query::QueryError;
 use thiserror::Error;
@@ -22,6 +23,10 @@ pub(crate) enum ToolError {
   Invalid(String),
   #[error(transparent)]
   Query(#[from] QueryError),
+  #[error(transparent)]
+  Ide(#[from] IdeError),
+  #[error("{0}")]
+  Refused(String),
   #[error("cannot read the project registry: {0}")]
   Registry(#[from] ProjectError),
   #[error(transparent)]

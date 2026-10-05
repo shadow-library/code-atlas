@@ -9,17 +9,16 @@ use e2e_support::{CALL_TIMEOUT, Sandbox, Server, binary, repos_of, shorts, text_
 use rmcp::ServiceExt;
 use serde_json::{Value, json};
 
-const TOOLS: [&str; 16] = [
+const TOOLS: [&str; 15] = [
   "atlas_api",
   "atlas_callees",
   "atlas_callers",
-  "atlas_changes",
   "atlas_context",
+  "atlas_edit",
   "atlas_explain",
   "atlas_impact",
   "atlas_overview",
   "atlas_patterns",
-  "atlas_read",
   "atlas_search",
   "atlas_similar",
   "atlas_status",

@@ -7,17 +7,16 @@ use atlas_project::{Registry, RepoSpec};
 use common::{ACME_REPOS, start, start_limited, start_watching, start_with, text_of};
 use serde_json::{Value, json};
 
-const TOOLS: [&str; 16] = [
+const TOOLS: [&str; 15] = [
   "atlas_api",
   "atlas_callees",
   "atlas_callers",
-  "atlas_changes",
   "atlas_context",
+  "atlas_edit",
   "atlas_explain",
   "atlas_impact",
   "atlas_overview",
   "atlas_patterns",
-  "atlas_read",
   "atlas_search",
   "atlas_similar",
   "atlas_status",
@@ -60,18 +59,27 @@ async fn should_name_certainty_tags_exactly_as_the_query_output_renders_them() {
 }
 
 #[tokio::test]
-async fn should_tell_agents_to_read_files_they_will_edit_with_their_own_tool() {
+async fn should_tell_agents_to_edit_through_atlas_edit_and_reread_changed_files() {
   let harness = start(&ACME_REPOS).await;
-  let guidance = "To edit a file, read it with your own file-reading tool; use atlas_read for code you only need to view.";
+  let rule = "To rename or rewrite a symbol use atlas_edit (exact across files), not find-and-replace; after it changes a file, re-read that file before editing it yourself.";
 
   let instructions = harness.client.peer_info().unwrap().instructions.clone().unwrap();
   let tools = harness.client.list_all_tools().await.unwrap();
 
-  assert!(instructions.contains(guidance), "{instructions}");
-  for name in ["atlas_read", "atlas_context"] {
-    let description = tools.iter().find(|tool| tool.name == name).and_then(|tool| tool.description.clone()).unwrap();
-    assert!(description.contains(guidance), "{name}: {description}");
+  assert!(instructions.contains(rule), "{instructions}");
+  assert!(instructions.contains("After editing, call atlas_status with since_run"), "{instructions}");
+  assert!(!instructions.contains("own file-reading tool"), "{instructions}");
+  for removed in ["atlas_read", "atlas_changes"] {
+    assert!(!instructions.contains(removed), "{removed}: {instructions}");
+    assert!(tools.iter().all(|tool| tool.name != removed), "{removed}");
+    assert!(tools.iter().all(|tool| !tool.description.clone().unwrap().contains(removed)), "{removed}");
   }
+  let edit = tools.iter().find(|tool| tool.name == "atlas_edit").and_then(|tool| tool.description.clone()).unwrap();
+  assert!(edit.contains("Re-read changed files before editing them with your own tool."), "{edit}");
+  assert!(edit.contains(atlas_ide::REPLACE_BODY_NOTE), "{edit}");
+  assert!(edit.contains(atlas_ide::REGEX_NOTE), "{edit}");
+  assert!(edit.contains(atlas_ide::REPLACE_IN_FILES_NOTE), "{edit}");
+  assert!(edit.contains("set allow_unverified only after checking them"), "{edit}");
   harness.stop().await.unwrap();
 }
 
@@ -196,12 +204,12 @@ async fn should_explain_semantic_argument_errors_as_tool_errors() {
       .await
       .contains("unknown kind")
   );
-  assert!(harness.failure("atlas_similar", json!({})).await.contains("exactly one of target or snippet"));
+  assert!(harness.failure("atlas_similar", json!({})).await.contains("exactly one of target, snippet or code"));
   assert!(
     harness
       .failure("atlas_similar", json!({ "target": "a", "snippet": "b" }))
       .await
-      .contains("exactly one of target or snippet")
+      .contains("exactly one of target, snippet or code")
   );
   assert!(harness.failure("atlas_search", json!({ "query": "  " })).await.contains("query must not be empty"));
   harness.stop().await.unwrap();
@@ -247,7 +255,7 @@ async fn should_never_answer_about_another_project() {
     .text("atlas_search", json!({ "query": "handle_order_created requireGlobexKey registerOrderRoutes" }))
     .await;
   let symbol = harness.text("atlas_symbol", json!({ "target": "handle_order_created" })).await;
-  let file = harness.text("atlas_read", json!({ "target": "globex-worker:src/consumer.rs" })).await;
+  let file = harness.text("atlas_symbol", json!({ "target": "globex-worker:src/consumer.rs", "mode": "source" })).await;
   let impact = harness.text("atlas_impact", json!({ "targets": ["globex-api:src/services/orders.service.ts"] })).await;
   let repo_filter = harness.failure("atlas_search", json!({ "query": "orders", "repo": "globex-api" })).await;
   let overview = harness.text("atlas_overview", json!({})).await;
@@ -304,8 +312,8 @@ async fn should_reflect_an_edit_made_between_calls() {
   fs::write(&money, source).unwrap();
 
   let after = harness.text("atlas_search", json!({ "query": "zz_brand_new_marker_fn" })).await;
-  let symbol = harness.text("atlas_read", json!({ "target": "zz_brand_new_marker_fn" })).await;
-  let changes = harness.text("atlas_changes", json!({})).await;
+  let symbol = harness.text("atlas_symbol", json!({ "target": "zz_brand_new_marker_fn", "mode": "source" })).await;
+  let changes = harness.text("atlas_status", json!({ "since_run": 0 })).await;
 
   assert!(after.contains("zz_brand_new_marker_fn"), "{after}");
   assert!(symbol.contains("7"), "{symbol}");
@@ -419,7 +427,10 @@ async fn should_truncate_oversized_text_output_and_record_it_in_telemetry() {
 
   assert!(text.starts_with("fresh run="), "{text}");
   assert!(text.contains("[output truncated: "), "{text}");
-  assert!(text.contains("narrow the query (limit/depth/kind/repo) or use atlas_read on a specific symbol]"), "{text}");
+  assert!(
+    text.contains("narrow the query (limit/depth/kind/repo) or use atlas_symbol mode=source on a specific symbol]"),
+    "{text}"
+  );
   assert!(text.len() < 600 + 250, "{}", text.len());
   let telemetry = harness.server.telemetry();
   let overview = &telemetry.tools["atlas_overview"];
@@ -464,9 +475,9 @@ async fn should_bound_the_context_budget() {
 async fn should_cap_symbol_and_read_bodies_and_say_how_to_read_the_rest() {
   let harness = start_limited(&ACME_REPOS, 100_000, 3).await;
 
-  let read = harness.text("atlas_read", json!({ "target": "toCents" })).await;
+  let read = harness.text("atlas_symbol", json!({ "target": "toCents", "mode": "source" })).await;
   let symbol = harness.text("atlas_symbol", json!({ "target": "toCents", "body": true })).await;
-  let structured = harness.text("atlas_read", json!({ "target": "toCents", "format": "json" })).await;
+  let structured = harness.text("atlas_symbol", json!({ "target": "toCents", "mode": "source", "format": "json" })).await;
 
   for text in [&read, &symbol] {
     assert!(text.contains("body capped at 3 lines, 4 more not shown"), "{text}");
@@ -482,12 +493,38 @@ async fn should_cap_symbol_and_read_bodies_and_say_how_to_read_the_rest() {
 async fn should_refuse_paths_outside_the_project_and_other_projects_keys() {
   let harness = start(&ACME_REPOS).await;
 
-  for tool in ["atlas_read", "atlas_symbol"] {
+  for mode in ["source", "info"] {
     for target in ["../../etc/passwd", "/etc/passwd", "file:globex-api:src/server.ts", "globex-api:src/server.ts"] {
-      let text = harness.text(tool, json!({ "target": target })).await;
-      assert!(text.contains("not found"), "{tool} {target}: {text}");
-      assert!(!text.contains("root:"), "{tool} {target}: {text}");
-      assert!(!text.replace(target, "").contains("globex"), "{tool} {target}: {text}");
+      let text = harness.text("atlas_symbol", json!({ "target": target, "mode": mode })).await;
+      assert!(text.contains("not found"), "{mode} {target}: {text}");
+      assert!(!text.contains("root:"), "{mode} {target}: {text}");
+      assert!(!text.replace(target, "").contains("globex"), "{mode} {target}: {text}");
+    }
+  }
+  harness.stop().await.unwrap();
+}
+
+const PRE_EPIC_SCHEMA_BYTES: usize = 15_140;
+
+#[tokio::test]
+async fn should_keep_tool_schemas_within_the_budget() {
+  let harness = start(&ACME_REPOS).await;
+
+  let tools = harness.client.list_all_tools().await.unwrap();
+  let listed = serde_json::to_string(&tools).unwrap();
+  let instructions = harness.client.peer_info().unwrap().instructions.clone().unwrap();
+
+  let total = listed.len() + instructions.len();
+  assert!(
+    total * 10 <= PRE_EPIC_SCHEMA_BYTES * 11,
+    "tools/list {} + instructions {} = {total} bytes, over 1.10 x {PRE_EPIC_SCHEMA_BYTES}",
+    listed.len(),
+    instructions.len()
+  );
+  for tool in &tools {
+    let schema = serde_json::to_string(&tool.input_schema).unwrap();
+    for forbidden in ["$schema", "$ref", "$defs", "null"] {
+      assert!(!schema.contains(forbidden), "{} schema contains {forbidden}: {schema}", tool.name);
     }
   }
   harness.stop().await.unwrap();

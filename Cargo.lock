@@ -322,6 +322,8 @@ version = "0.1.0"
 dependencies = [
  "atlas-core",
  "atlas-engine",
+ "atlas-ide",
+ "atlas-lsp",
  "atlas-project",
  "atlas-query",
  "atlas-store",

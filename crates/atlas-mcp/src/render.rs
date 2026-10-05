@@ -1,4 +1,4 @@
-use atlas_query::{EntityRef, QueryEngine, QueryError, RenderText, Response, SearchRequest, Snippet, Targeted, render_json, render_text};
+use atlas_query::{EntityRef, QueryEngine, QueryError, RenderText, Response, SearchRequest, Snippet, Targeted, TextOut, render_json, render_text};
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -45,6 +45,12 @@ fn noted(text: String, format: Format, note: Option<String>) -> Result<String, T
   }
 }
 
+pub(crate) fn answer_text(answer: &impl RenderText) -> String {
+  let mut out = TextOut::default();
+  answer.render_text(&mut out);
+  out.finish()
+}
+
 pub(crate) fn cap_body(snippet: &mut Snippet, max_lines: usize) -> usize {
   let Snippet::Text { lines, omitted_lines, .. } = snippet else { return 0 };
   let dropped = lines.len().saturating_sub(max_lines);
@@ -66,7 +72,7 @@ pub(crate) fn cap(text: String, format: Format, max_bytes: usize) -> (String, us
   while !text.is_char_boundary(end) {
     end -= 1;
   }
-  let note = format!("output truncated: {end} of {total} bytes; narrow the query (limit/depth/kind/repo) or use atlas_read on a specific symbol");
+  let note = format!("output truncated: {end} of {total} bytes; narrow the query (limit/depth/kind/repo) or use atlas_symbol mode=source on a specific symbol");
   let capped = match format {
     Format::Text => format!("{}\n[{note}]\n", &text[..end]),
     Format::Json => json!({ "truncated": true, "bytes": total, "note": note, "partial_text": &text[..end] }).to_string() + "\n",

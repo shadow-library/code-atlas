@@ -8,9 +8,16 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[[bin]]
+name = "atlas-mcp-fake-lsp"
+path = "src/bin/atlas-mcp-fake-lsp.rs"
+test = false
+
 [dependencies]
 atlas-core.workspace = true
 atlas-engine.workspace = true
+atlas-ide.workspace = true
+atlas-lsp.workspace = true
 atlas-project.workspace = true
 atlas-query.workspace = true
 rmcp.workspace = true
