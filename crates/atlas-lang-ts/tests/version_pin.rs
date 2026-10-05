@@ -6,8 +6,8 @@ use atlas_lang_ts::{ANALYZER_VERSION, TsAnalyzer};
 
 const PINNED: (u32, &str, &str) = (
   2,
-  "393f186ae77fb5176e633b78b31c22aaa64a1a244ae9ff1d85d7a04d9951b4f0",
-  "cc0a74d7347b3d4ac674421084cc3224bb4ba473fbb3e2e03dce7e9360054af5",
+  "7df77303bf50abd6147fb67825b1197ed5a5cf3996e4cfee22343cc55c1e1d39",
+  "2188d94e29163e81d6ffc5be5c257c1c32efe2ce6f046844c50857eaeb2f3de3",
 );
 
 fn fixtures_root() -> PathBuf {

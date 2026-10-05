@@ -246,6 +246,62 @@ fn should_list_dependents_when_an_intermediate_ts_class_gains_an_override() {
 }
 
 #[test]
+fn should_list_implementers_when_an_interface_or_intermediate_class_gains_the_member() {
+  let mut synthetic = common::single(
+    "app",
+    &[
+      ("package.json", r#"{ "name": "app", "version": "1.0.0" }"#),
+      ("src/shape.ts", "export interface Shape { area(): number; }\n"),
+      ("src/base.ts", "export class Base { scale() {} }\n"),
+      ("src/mid.ts", "import { Base } from './base';\nexport class Mid extends Base {}\n"),
+      (
+        "src/square.ts",
+        "import { Shape } from './shape';\nimport { Mid } from './mid';\nexport class Square extends Mid implements Shape {\n  area() { return 1; }\n  scale() {}\n  side() { return 1; }\n}\n",
+      ),
+      ("src/other.ts", "export function other() {}\n"),
+    ],
+  );
+  let project = &mut synthetic.project;
+  let method = |module: &str, items: &[&str]| common::ts("app", "app", &["src", module], items, atlas_core::EntityKind::Method);
+  let implements_from = |resolved: &ResolvedFile, from: atlas_core::EntityId| -> Vec<atlas_core::EntityId> {
+    let mut targets: Vec<_> = resolved
+      .structural
+      .iter()
+      .filter(|edge| edge.kind == atlas_core::EdgeKind::Implements && edge.from == from)
+      .map(|edge| edge.to)
+      .collect();
+    targets.sort();
+    targets
+  };
+  let context = |module: &str| KeyContext {
+    package: "app".to_owned(),
+    module_path: vec!["src".to_owned(), module.to_owned()],
+  };
+  let (_, affected) = changed_and_affected(
+    project,
+    "app",
+    "src/shape.ts",
+    "export interface Shape { area(): number; side(): number; }\n",
+    context("shape"),
+  );
+  assert!(affected.contains(&key("app", "src/square.ts")), "{affected:?}");
+  assert!(!affected.contains(&key("app", "src/other.ts")), "{affected:?}");
+  let (_, affected) = changed_and_affected(
+    project,
+    "app",
+    "src/mid.ts",
+    "import { Base } from './base';\nexport class Mid extends Base { scale() {} }\n",
+    context("mid"),
+  );
+  assert!(affected.contains(&key("app", "src/square.ts")), "{affected:?}");
+  let square = project.facts("app", "src/square.ts").clone();
+  let resolved = resolve_file(&square, &project.table).unwrap();
+  assert_eq!(implements_from(&resolved, method("square", &["Square", "area"])), [method("shape", &["Shape", "area"])]);
+  assert_eq!(implements_from(&resolved, method("square", &["Square", "side"])), [method("shape", &["Shape", "side"])]);
+  assert_eq!(implements_from(&resolved, method("square", &["Square", "scale"])), [method("mid", &["Mid", "scale"])]);
+}
+
+#[test]
 fn should_list_the_package_and_its_dependents_for_added_and_removed_files() {
   let mut synthetic = common::single(
     "app",

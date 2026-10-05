@@ -80,6 +80,13 @@ Project-wide Rust and TypeScript name, module and import resolution. It turns pe
   - `Decorator` maps to `calls`.
   - `JsxElement` maps to `calls`, or `instantiates` for class components.
 - `imports` and `re_exports` run from the file entity, or from the enclosing symbol for a dynamic `import()`. They live in `ResolvedFile.structural`.
+- TS heritage clauses become `extends`/`implements` edges (class or interface to the resolved target). The analyzer also emits a `TypeRef` for each heritage path; when it is a `from` symbol's own `extends`/`implements` path and resolves to the same symbol as the heritage edge, it emits no `references` edge, so dependents see the heritage kind instead. Type arguments in the clause (`Store<User>`) keep their `references` edges, and an unresolved or external heritage path keeps its `UnresolvedRef`.
+- Method-level overrides (TS), in `ResolvedFile.structural`: every `method` child of a class (methods, accessors, arrow-function properties) gets `implements` edges to the same-named `method` or `field` members of the nearest owner among each resolved `extends`/`implements` target and its resolved `extends` ancestors. Owners are searched breadth-first (at most `MAX_HERITAGE_DEPTH` symbols), and each target's ancestor chain is resolved once per class. The edge carries `via = "interface" | "class"` (`atlas_core::ATTR_OVERRIDE_VIA`), the kind of that owner. Certainty is `resolved`, weakened by every heritage hop (`dist-to-src`). Rules:
+  - static methods match static members of classes only; interfaces have no static side;
+  - every overload signature of the nearest owner is a target; when the owner has same-named members of the source's accessor kind (getter, setter or plain), only those are targets;
+  - constructors, `private` and `#private` sources have no edge, and a nearest member that is private stops the search with no edge;
+  - only class symbols are sources: an interface member that redeclares a super-interface member gets no edge;
+  - heritage without a static path (mixin calls, conditional expressions), external targets and targets that are neither class nor interface give no edge.
 
 ## Known limits
 
@@ -87,6 +94,7 @@ Project-wide Rust and TypeScript name, module and import resolution. It turns pe
 - `self`/`Self` inside an item nested in a body stay unresolved (`Unsupported("self in nested item")`, `Dynamic` for `(Self)` paths), even when the nested impl is for a module-level type.
 - Member accesses on a rebound `this` inside a class stay unresolved, including functions invoked with the enclosing instance as `this` (`forEach(fn, this)`, `fn.call(this)`).
 - Explicit `this: T` parameter annotations are ignored (vue `get(this: VueElement)`, pinia `$reset(this: …)`), so such receivers are rebound `this`.
+- TS override edges come from `method` symbols only. A field whose value is not a function literal (hono `RegExpRouter.match: typeof match = match`) does not link to the interface member it implements.
 
 - Rust `let x = T::new()` receivers stay unknown, because the analyzer emits `Expr` for untyped lets.
 - Bindings in fn items nested in a body keep the old hints, so their generic and wrapper receivers stay capped at `param-type-recovery`.

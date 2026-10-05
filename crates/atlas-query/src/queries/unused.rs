@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use atlas_core::{ATTR_IMPL_OF, ATTR_IMPLEMENTS, EdgeKind, Entity, EntityId, EntityKind, ImplInfo, LanguageFamily, Owner, RelPath, RepoName, UnresolvedReason, Visibility};
+use atlas_core::{
+  ATTR_EXTENDS, ATTR_IMPL_OF, ATTR_IMPLEMENTS, ATTR_OVERRIDE_VIA, Edge, EdgeKind, Entity, EntityId, EntityKind, ImplInfo, LanguageFamily, Owner, RelPath, RepoName,
+  UnresolvedReason, Visibility,
+};
 use serde::Serialize;
 
 use crate::QueryEngine;
@@ -26,6 +29,8 @@ const SYMBOL_KINDS: [EntityKind; 10] = [
   EntityKind::Constant,
   EntityKind::Macro,
 ];
+
+const MAX_HERITAGE_WALK: usize = 32;
 
 const NON_USAGE: [EdgeKind; 8] = [
   EdgeKind::Contains,
@@ -170,6 +175,7 @@ struct Scan<'p> {
   macro_files: Option<BTreeSet<FileKey>>,
   dynamic: HashMap<RepoName, DynamicSites>,
   private: Option<&'p BTreeSet<EntityId>>,
+  liveness: HashMap<EntityId, bool>,
 }
 
 #[derive(Default, Clone)]
@@ -271,9 +277,19 @@ fn unused(graph: &Graph<'_, '_>, request: &UnusedRequest, private: &BTreeSet<Ent
 }
 
 fn has_usage(graph: &Graph<'_, '_>, id: EntityId, outside: Option<EntityId>) -> QueryResult<bool> {
+  let mut overriders: Option<HashSet<EntityId>> = None;
   for edge in graph.links_in(id, &[])? {
     if NON_USAGE.contains(&edge.kind) || Some(edge.from) == outside || edge.from == id {
       continue;
+    }
+    if edge.kind == EdgeKind::Implements {
+      let overriders = match &mut overriders {
+        Some(found) => found,
+        None => overriders.insert(override_sources(graph, id)?),
+      };
+      if overriders.contains(&edge.from) {
+        continue;
+      }
     }
     if let Some(container) = outside
       && graph.parent(edge.from)?.is_some_and(|parent| parent.id == container)
@@ -303,7 +319,7 @@ fn used(graph: &Graph<'_, '_>, entity: &Entity) -> QueryResult<bool> {
   Ok(false)
 }
 
-fn entrypoint(graph: &Graph<'_, '_>, entity: &Entity) -> QueryResult<Option<&'static str>> {
+fn entrypoint(graph: &Graph<'_, '_>, liveness: &mut HashMap<EntityId, bool>, entity: &Entity) -> QueryResult<Option<&'static str>> {
   if is_test(entity) {
     return Ok(Some("test"));
   }
@@ -319,8 +335,8 @@ fn entrypoint(graph: &Graph<'_, '_>, entity: &Entity) -> QueryResult<Option<&'st
   if entity.visibility == Some(Visibility::ExportedDefault) && entity.path.as_ref().is_some_and(|path| path.segments().any(|segment| ROUTE_DIRECTORIES.contains(&segment))) {
     return Ok(Some("framework route module (default export)"));
   }
-  if !graph.edges_out(entity.id, &[EdgeKind::Implements])?.is_empty() || is_trait_impl_method(entity) {
-    return Ok(Some("trait or interface implementation"));
+  if let Some(reason) = implementation(graph, liveness, entity)? {
+    return Ok(Some(reason));
   }
   let attributes = attribute_names(entity);
   match language(entity) {
@@ -330,14 +346,149 @@ fn entrypoint(graph: &Graph<'_, '_>, entity: &Entity) -> QueryResult<Option<&'st
   }
   if entity.kind == EntityKind::Method
     && let Some(parent) = graph.parent(entity.id)?
-    && parent
-      .attrs
-      .get(ATTR_IMPLEMENTS)
-      .is_some_and(|implements| implements.as_array().is_some_and(|list| !list.is_empty()))
+    && heritage_count(&parent, ATTR_IMPLEMENTS) > 0
+    && has_unresolved_heritage(graph, parent)?
   {
     return Ok(Some("method of a class implementing an interface (may be framework-invoked)"));
   }
   Ok(None)
+}
+
+fn implementation(graph: &Graph<'_, '_>, liveness: &mut HashMap<EntityId, bool>, entity: &Entity) -> QueryResult<Option<&'static str>> {
+  if is_trait_impl_method(entity) {
+    return Ok(Some("trait or interface implementation"));
+  }
+  let edges = graph.edges_out(entity.id, &[EdgeKind::Implements])?;
+  if edges.is_empty() {
+    return Ok(None);
+  }
+  if edges.iter().any(|edge| override_via(edge).is_none()) {
+    return Ok(Some("trait or interface implementation"));
+  }
+  let mut live = Vec::new();
+  for edge in &edges {
+    if is_live(graph, liveness, edge.to)? {
+      live.push(edge);
+    }
+  }
+  if live.is_empty() {
+    return Ok(None);
+  }
+  Ok(Some(match live.iter().all(|edge| override_via(edge) == Some("class")) {
+    true => "override of a base class member",
+    false => "trait or interface implementation",
+  }))
+}
+
+fn override_via(edge: &Edge) -> Option<&str> {
+  edge.attrs.get(ATTR_OVERRIDE_VIA).and_then(|via| via.as_str())
+}
+
+fn override_sources(graph: &Graph<'_, '_>, id: EntityId) -> QueryResult<HashSet<EntityId>> {
+  Ok(
+    graph
+      .edges_in(id, &[EdgeKind::Implements])?
+      .into_iter()
+      .filter(|edge| override_via(edge).is_some())
+      .map(|edge| edge.from)
+      .collect(),
+  )
+}
+
+fn is_live(graph: &Graph<'_, '_>, liveness: &mut HashMap<EntityId, bool>, member: EntityId) -> QueryResult<bool> {
+  if let Some(known) = liveness.get(&member) {
+    return Ok(*known);
+  }
+  let mut visited: HashSet<EntityId> = HashSet::new();
+  let mut reached_from: HashMap<EntityId, EntityId> = HashMap::new();
+  let mut pending = vec![member];
+  while let Some(current) = pending.pop() {
+    if !visited.insert(current) {
+      continue;
+    }
+    if visited.len() > MAX_HERITAGE_WALK {
+      liveness.insert(member, true);
+      return Ok(true);
+    }
+    let live = match liveness.get(&current) {
+      Some(known) => *known,
+      None => has_usage(graph, current, None)?,
+    };
+    if live {
+      let mut node = Some(current);
+      while let Some(on_path) = node {
+        liveness.insert(on_path, true);
+        node = reached_from.get(&on_path).copied();
+      }
+      return Ok(true);
+    }
+    if liveness.contains_key(&current) {
+      continue;
+    }
+    for edge in graph.edges_out(current, &[EdgeKind::Implements])? {
+      if override_via(&edge).is_some() && !visited.contains(&edge.to) {
+        reached_from.entry(edge.to).or_insert(current);
+        pending.push(edge.to);
+      }
+    }
+  }
+  liveness.extend(visited.into_iter().map(|node| (node, false)));
+  Ok(false)
+}
+
+fn heritage_count(entity: &Entity, attr: &str) -> usize {
+  entity.attrs.get(attr).and_then(|value| value.as_array()).map_or(0, Vec::len)
+}
+
+fn has_unresolved_heritage(graph: &Graph<'_, '_>, class: Entity) -> QueryResult<bool> {
+  let mut visited: HashSet<EntityId> = HashSet::new();
+  let mut pending = vec![class];
+  while let Some(current) = pending.pop() {
+    if !visited.insert(current.id) {
+      continue;
+    }
+    if visited.len() > MAX_HERITAGE_WALK || has_unlisted_extends(&current) {
+      return Ok(true);
+    }
+    let declared = heritage_count(&current, ATTR_EXTENDS) + heritage_count(&current, ATTR_IMPLEMENTS);
+    let mut resolved = 0;
+    for edge in graph.edges_out(current.id, &[EdgeKind::Extends, EdgeKind::Implements])? {
+      if let Some(target) = graph.entity(edge.to)?.filter(|target| matches!(target.kind, EntityKind::Class | EntityKind::Interface)) {
+        resolved += 1;
+        pending.push(target);
+      }
+    }
+    if resolved < declared {
+      return Ok(true);
+    }
+  }
+  Ok(false)
+}
+
+fn has_unlisted_extends(entity: &Entity) -> bool {
+  entity.kind == EntityKind::Class && heritage_count(entity, ATTR_EXTENDS) == 0 && entity.signature.as_deref().is_some_and(declares_extends)
+}
+
+fn declares_extends(signature: &str) -> bool {
+  let mut depth = 0usize;
+  let mut previous = ' ';
+  for (index, character) in signature.char_indices() {
+    match character {
+      '<' | '(' | '[' | '{' => depth += 1,
+      '>' if previous == '=' => {}
+      '>' | ')' | ']' | '}' => depth = depth.saturating_sub(1),
+      'e' if depth == 0 && !(previous.is_alphanumeric() || previous == '_' || previous == '$') => {
+        let rest = &signature[index..];
+        let ends_word = rest.chars().nth("extends".len()).is_none_or(|next| !(next.is_alphanumeric() || next == '_' || next == '$'));
+        if rest.starts_with("extends") && ends_word {
+          return true;
+        }
+      }
+      _ => {}
+    }
+    previous = character;
+  }
+  false
 }
 
 fn is_trait_impl_method(entity: &Entity) -> bool {
@@ -352,7 +503,7 @@ fn symbol_candidate(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, entity: &Entity)
   if used(graph, entity)? {
     return Ok(());
   }
-  if let Some(reason) = entrypoint(graph, entity)? {
+  if let Some(reason) = entrypoint(graph, &mut scan.liveness, entity)? {
     *scan.excluded.entry(reason.to_owned()).or_default() += 1;
     return Ok(());
   }
@@ -639,4 +790,18 @@ fn linked_candidates(graph: &Graph<'_, '_>, scan: &mut Scan<'_>, request: &Unuse
     });
   }
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::declares_extends;
+
+  #[test]
+  fn should_find_only_a_top_level_extends_clause_in_a_class_signature() {
+    assert!(declares_extends("export class JwtGuard extends AuthGuard('jwt') implements Named"));
+    assert!(declares_extends("class Box<F = () => void> extends mixin(Base)"));
+    assert!(!declares_extends("class Box<T extends Base<U>> implements Named"));
+    assert!(!declares_extends("class Extendsable implements extendsLike"));
+    assert!(!declares_extends("class Plain"));
+  }
 }

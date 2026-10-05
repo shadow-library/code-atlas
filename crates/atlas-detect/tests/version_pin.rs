@@ -7,10 +7,10 @@ use atlas_detect::DetectorRegistry;
 use atlas_lang_rust::RustAnalyzer;
 use atlas_lang_ts::TsAnalyzer;
 
-const PINNED_INPUTS: &str = "01d9bc1736f229a24cbcc0ebef8826b22666daed6a066113aa0674bbae79226a";
+const PINNED_INPUTS: &str = "1b3f3047d346c123790f3d8dec7a2834dbf379d97f31d8e01470c042393e6054";
 const PINNED: [(&str, u32, &str); 10] = [
-  ("auth-schemes", 1, "7fca69b6290a574556ceaee0946162a0138b762ace77390b0d597194d51f0935"),
-  ("config-env", 2, "fff96a6ccd0aebd31d24a002b37d3c2aaa231a7d43f1a14192c88b4dc0ef9e2a"),
+  ("auth-schemes", 1, "8fa6fd38da5eabf63f5d072ca900a04da55fdca21bef5a27c4d4b042a296afcc"),
+  ("config-env", 2, "50945e4d17cea66a3562e5bd8c7b2ea423012b666542d775e658b01d40702dc8"),
   ("db", 1, "3d36016b9fcefda2574f5e620eb5237fdc84881e3715eafc41f0bb84fefc627c"),
   ("events", 1, "56ea15b0eee70175cbc18b834b599a38e9d4e84b2913700bf6c5d5023d568560"),
   ("http-clients", 1, "a12672b4fbbecaf3dd70b86b67febb8c2e7a505436ccd34ddc5409736e3644ab"),
@@ -18,7 +18,7 @@ const PINNED: [(&str, u32, &str); 10] = [
   ("http-endpoints-express", 1, "633c6c825f8b3d613b9994233ebe2f768f78fbb084734a2e3c975139ebb05626"),
   ("http-endpoints-nest", 1, "9aa94679e187c47892e60eebaaf27b03ae68061e6db75a26e631acfefb4af39e"),
   ("jobs", 1, "18c3f1518499074939d9a52840f8d6332c307ee892d6f63087cf846055add3a7"),
-  ("tests", 1, "b96631eda220c21cecd1a6f43c253136236f8b2e95475c1ab1658924a3ed27d4"),
+  ("tests", 1, "e49dc6a2ae558e83ca151d954275517b07f6376c58fae1618d82eb1b7d2a2578"),
 ];
 
 fn fixtures_root() -> PathBuf {

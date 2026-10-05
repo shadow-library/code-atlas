@@ -1,0 +1,258 @@
+[project]
+name = "ts-overrides"
+repos = ["ts-overrides"]
+unused_exhaustive = false
+
+[[entity]]
+kind = "interface"
+sym = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider.charge" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider.refund" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider.charge" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider.refund" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider.log" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "ts-overrides", path = "src/stripe-provider.ts", symbol = "StripeProvider" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "ts-overrides", path = "src/stripe-provider.ts", symbol = "StripeProvider.charge" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "ts-overrides", path = "src/stripe-provider.ts", symbol = "StripeProvider.refund" }
+
+[[entity]]
+kind = "class"
+sym = { repo = "ts-overrides", path = "src/paypal-provider.ts", symbol = "PaypalProvider" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "ts-overrides", path = "src/paypal-provider.ts", symbol = "PaypalProvider.charge" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "ts-overrides", path = "src/paypal-provider.ts", symbol = "PaypalProvider.refund" }
+
+[[entity]]
+kind = "method"
+sym = { repo = "ts-overrides", path = "src/paypal-provider.ts", symbol = "PaypalProvider.audit" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "ts-overrides", path = "src/checkout.ts", symbol = "checkout" }
+
+[[entity]]
+kind = "function"
+sym = { repo = "ts-overrides", path = "src/checkout.ts", symbol = "cancel" }
+
+[[edge]]
+kind = "implements"
+from = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider" }
+to = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider" }
+certainty = ["resolved"]
+note = "class-level `implements` clause"
+
+[[edge]]
+kind = "implements"
+from = { repo = "ts-overrides", path = "src/stripe-provider.ts", symbol = "StripeProvider" }
+to = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider" }
+certainty = ["resolved"]
+note = "class-level `implements` clause next to `extends`"
+
+[[edge]]
+kind = "extends"
+from = { repo = "ts-overrides", path = "src/stripe-provider.ts", symbol = "StripeProvider" }
+to = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider" }
+certainty = ["resolved"]
+note = "class-level `extends` clause"
+
+[[edge]]
+kind = "implements"
+from = { repo = "ts-overrides", path = "src/paypal-provider.ts", symbol = "PaypalProvider" }
+to = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider" }
+certainty = ["resolved"]
+note = "class-level `implements` clause"
+
+[[edge]]
+kind = "implements"
+from = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider.charge" }
+to = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider.charge" }
+certainty = ["resolved"]
+note = "method-level override: the nearest same-named member of a heritage target (via = interface)"
+
+[[edge]]
+kind = "implements"
+from = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider.refund" }
+to = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider.refund" }
+certainty = ["resolved"]
+note = "method-level override: the nearest same-named member of a heritage target (via = interface)"
+
+[[edge]]
+kind = "implements"
+from = { repo = "ts-overrides", path = "src/stripe-provider.ts", symbol = "StripeProvider.charge" }
+to = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider.charge" }
+certainty = ["resolved"]
+note = "method-level override: the nearest same-named member of a heritage target (via = class)"
+
+[[edge]]
+kind = "implements"
+from = { repo = "ts-overrides", path = "src/stripe-provider.ts", symbol = "StripeProvider.charge" }
+to = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider.charge" }
+certainty = ["resolved"]
+note = "method-level override: the nearest same-named member of a heritage target (via = interface)"
+
+[[edge]]
+kind = "implements"
+from = { repo = "ts-overrides", path = "src/stripe-provider.ts", symbol = "StripeProvider.refund" }
+to = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider.refund" }
+certainty = ["resolved"]
+note = "method-level override: the nearest same-named member of a heritage target (via = class)"
+
+[[edge]]
+kind = "implements"
+from = { repo = "ts-overrides", path = "src/stripe-provider.ts", symbol = "StripeProvider.refund" }
+to = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider.refund" }
+certainty = ["resolved"]
+note = "method-level override: the nearest same-named member of a heritage target (via = interface)"
+
+[[edge]]
+kind = "implements"
+from = { repo = "ts-overrides", path = "src/paypal-provider.ts", symbol = "PaypalProvider.charge" }
+to = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider.charge" }
+certainty = ["resolved"]
+note = "method-level override: the nearest same-named member of a heritage target (via = interface)"
+
+[[edge]]
+kind = "implements"
+from = { repo = "ts-overrides", path = "src/paypal-provider.ts", symbol = "PaypalProvider.refund" }
+to = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider.refund" }
+certainty = ["resolved"]
+note = "method-level override: the nearest same-named member of a heritage target (via = interface)"
+
+[[forbidden_edge]]
+kind = "references"
+from = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider" }
+to = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider" }
+note = "a heritage clause is `extends`/`implements`, never a parallel `references` edge"
+
+[[forbidden_edge]]
+kind = "references"
+from = { repo = "ts-overrides", path = "src/stripe-provider.ts", symbol = "StripeProvider" }
+to = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider" }
+note = "a heritage clause is `extends`/`implements`, never a parallel `references` edge"
+
+[[forbidden_edge]]
+kind = "references"
+from = { repo = "ts-overrides", path = "src/stripe-provider.ts", symbol = "StripeProvider" }
+to = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider" }
+note = "a heritage clause is `extends`/`implements`, never a parallel `references` edge"
+
+[[forbidden_edge]]
+kind = "references"
+from = { repo = "ts-overrides", path = "src/paypal-provider.ts", symbol = "PaypalProvider" }
+to = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider" }
+note = "a heritage clause is `extends`/`implements`, never a parallel `references` edge"
+
+[[forbidden_edge]]
+kind = "implements"
+from = { repo = "ts-overrides", path = "src/paypal-provider.ts", symbol = "PaypalProvider.charge" }
+to = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider.charge" }
+note = "PaypalProvider does not extend BaseProvider"
+
+[[forbidden_edge]]
+kind = "implements"
+from = { repo = "ts-overrides", path = "src/paypal-provider.ts", symbol = "PaypalProvider.audit" }
+to = { kind = "method" }
+note = "no heritage target declares a member of this name"
+
+[[forbidden_edge]]
+kind = "implements"
+from = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider.log" }
+to = { kind = "method" }
+note = "no heritage target declares a member of this name"
+
+[[edge]]
+kind = "calls"
+from = { repo = "ts-overrides", path = "src/checkout.ts", symbol = "checkout" }
+to = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider.charge" }
+certainty = ["resolved"]
+note = "the declared parameter type names the interface, so the interface method is the certain target"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "ts-overrides", path = "src/checkout.ts", symbol = "checkout" }
+to = { repo = "ts-overrides", path = "src/stripe-provider.ts", symbol = "StripeProvider.charge" }
+certainty = ["resolved", "compiler_verified", "syntactic"]
+note = "which implementation runs is decided at runtime; it may only be a heuristic candidate"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "ts-overrides", path = "src/checkout.ts", symbol = "checkout" }
+to = { repo = "ts-overrides", path = "src/paypal-provider.ts", symbol = "PaypalProvider.charge" }
+certainty = ["resolved", "compiler_verified", "syntactic"]
+note = "which implementation runs is decided at runtime; it may only be a heuristic candidate"
+
+[[forbidden_edge]]
+kind = "calls"
+from = { repo = "ts-overrides", path = "src/checkout.ts", symbol = "checkout" }
+to = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider.charge" }
+certainty = ["resolved", "compiler_verified", "syntactic"]
+note = "which implementation runs is decided at runtime; it may only be a heuristic candidate"
+
+[[edge]]
+kind = "calls"
+from = { repo = "ts-overrides", path = "src/stripe-provider.ts", symbol = "StripeProvider.refund" }
+to = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider.refund" }
+certainty = ["resolved"]
+note = "`super.refund` binds to the base implementation"
+
+[[edge]]
+kind = "calls"
+from = { repo = "ts-overrides", path = "src/checkout.ts", symbol = "cancel" }
+to = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider.refund" }
+certainty = ["resolved"]
+note = "the interface method is the certain target; it keeps every refund implementation live"
+
+[[not_unused]]
+sym = { repo = "ts-overrides", path = "src/stripe-provider.ts", symbol = "StripeProvider.charge" }
+reason = "implements PaymentProvider.charge and overrides BaseProvider.charge"
+
+[[not_unused]]
+sym = { repo = "ts-overrides", path = "src/paypal-provider.ts", symbol = "PaypalProvider.refund" }
+reason = "implements PaymentProvider.refund, which cancel calls"
+
+[[not_unused]]
+sym = { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider.refund" }
+reason = "implements PaymentProvider.refund; called through super"
+
+[[blast_radius]]
+change = { repo = "ts-overrides", path = "src/payment-provider.ts", symbol = "PaymentProvider.charge" }
+must_include = [
+  { repo = "ts-overrides", path = "src/stripe-provider.ts", symbol = "StripeProvider.charge" },
+  { repo = "ts-overrides", path = "src/paypal-provider.ts", symbol = "PaypalProvider.charge" },
+  { repo = "ts-overrides", path = "src/base-provider.ts", symbol = "BaseProvider.charge" },
+  { repo = "ts-overrides", path = "src/checkout.ts", symbol = "checkout" },
+]
+note = "changing the interface method touches every implementation and every caller through the interface"

@@ -350,3 +350,213 @@ export class Service extends Base {
   assert_eq!(users.evidence.len(), 2);
   project.assert_edge(EdgeKind::References, run, app(&["src", "main"], &["Base", "shared"], EntityKind::Field), RESOLVED);
 }
+
+fn via(edge: &atlas_core::Edge) -> Option<&str> {
+  edge.attrs.get("via").and_then(|value| value.as_str())
+}
+
+const PROVIDERS: &str = r#"export interface Provider {
+  readonly label: string;
+  charge(amount: number): number;
+  refund(id: string): void;
+}
+export abstract class Base implements Provider {
+  abstract readonly label: string;
+  abstract charge(amount: number): number;
+  refund(id: string): void {}
+  protected log(message: string): void {}
+  static create(): void {}
+  private secret(): void {}
+  #hidden(): void {}
+}
+export class Stripe extends Base implements Provider {
+  readonly label = 'stripe';
+  charge(amount: number): number { return amount; }
+  refund(id: string): void {}
+  get label2(): string { return ''; }
+  static create(): void {}
+  secret(): void {}
+  #hidden(): void {}
+  constructor() { super(); }
+}
+export class Paypal implements Provider {
+  label = 'paypal';
+  charge = (amount: number): number => amount;
+  refund(id: string): void {}
+  audit(): void {}
+}
+"#;
+
+#[test]
+fn should_link_class_methods_to_the_nearest_member_of_each_heritage_target() {
+  let synthetic = single("app", &[("package.json", PACKAGE), ("src/main.ts", PROVIDERS)]);
+  let project = &synthetic.project;
+  let member = |items: &[&str]| app(&["src", "main"], items, EntityKind::Method);
+  let expected = [
+    (["Base", "charge"], ["Provider", "charge"], "interface"),
+    (["Base", "refund"], ["Provider", "refund"], "interface"),
+    (["Stripe", "charge"], ["Base", "charge"], "class"),
+    (["Stripe", "charge"], ["Provider", "charge"], "interface"),
+    (["Stripe", "refund"], ["Base", "refund"], "class"),
+    (["Stripe", "refund"], ["Provider", "refund"], "interface"),
+    (["Stripe", "create"], ["Base", "create"], "class"),
+    (["Paypal", "charge"], ["Provider", "charge"], "interface"),
+    (["Paypal", "refund"], ["Provider", "refund"], "interface"),
+  ];
+  for (from, to, kind) in expected {
+    let edge = project.assert_edge(EdgeKind::Implements, member(&from), member(&to), RESOLVED);
+    assert_eq!(edge.certainty, Certainty::Resolved);
+    assert_eq!(via(edge), Some(kind), "{from:?} -> {to:?}");
+  }
+  for from in [
+    ["Base", "log"],
+    ["Stripe", "secret"],
+    ["Stripe", "#hidden"],
+    ["Stripe", "label2"],
+    ["Stripe", "constructor"],
+    ["Paypal", "audit"],
+  ] {
+    assert_eq!(project.edges_from(EdgeKind::Implements, member(&from)), Vec::<&atlas_core::Edge>::new(), "{from:?}");
+  }
+  project.assert_no_edge(EdgeKind::Implements, member(&["Paypal", "charge"]), member(&["Base", "charge"]));
+  for field in [["Stripe", "label"], ["Paypal", "label"]] {
+    assert!(project.edges_from(EdgeKind::Implements, app(&["src", "main"], &field, EntityKind::Field)).is_empty());
+  }
+}
+
+#[test]
+fn should_label_heritage_as_extends_or_implements_and_not_as_a_parallel_reference() {
+  let synthetic = single(
+    "app",
+    &[
+      ("package.json", PACKAGE),
+      (
+        "src/main.ts",
+        r#"import { Store } from './store';
+import { External } from 'lib';
+export interface User { id: string; }
+export interface Named { name(): string; }
+export interface Keyed extends Named { key(): string; }
+export class Base<T> { load(): T | undefined { return undefined; } }
+export class Users extends Base<User> implements Store<User>, Keyed {
+  name(): string { return 'users'; }
+  key(): string { return 'id'; }
+  load(): User | undefined { return undefined; }
+}
+export class Wrapped extends External {
+  render(): string { return ''; }
+}
+"#,
+      ),
+      ("src/store.ts", "export interface Store<T> { load(): T | undefined; }\n"),
+    ],
+  );
+  let project = &synthetic.project;
+  let main = |items: &[&str], kind: EntityKind| app(&["src", "main"], items, kind);
+  let users = main(&["Users"], EntityKind::Class);
+  let store = app(&["src", "store"], &["Store"], EntityKind::Interface);
+  let base = main(&["Base"], EntityKind::Class);
+  let keyed = main(&["Keyed"], EntityKind::Interface);
+  let named = main(&["Named"], EntityKind::Interface);
+  project.assert_edge(EdgeKind::Extends, users, base, RESOLVED);
+  project.assert_edge(EdgeKind::Implements, users, store, RESOLVED);
+  project.assert_edge(EdgeKind::Implements, users, keyed, RESOLVED);
+  project.assert_edge(EdgeKind::Extends, keyed, named, RESOLVED);
+  for (from, to) in [(users, base), (users, store), (users, keyed), (keyed, named)] {
+    project.assert_no_edge(EdgeKind::References, from, to);
+  }
+  project.assert_edge(EdgeKind::References, users, main(&["User"], EntityKind::Interface), RESOLVED);
+  let method = |items: &[&str]| main(items, EntityKind::Method);
+  let name = project.assert_edge(EdgeKind::Implements, method(&["Users", "name"]), method(&["Named", "name"]), RESOLVED);
+  assert_eq!(via(name), Some("interface"));
+  project.assert_edge(EdgeKind::Implements, method(&["Users", "key"]), method(&["Keyed", "key"]), RESOLVED);
+  project.assert_edge(
+    EdgeKind::Implements,
+    method(&["Users", "load"]),
+    app(&["src", "store"], &["Store", "load"], EntityKind::Method),
+    RESOLVED,
+  );
+  project.assert_edge(EdgeKind::Implements, method(&["Users", "load"]), method(&["Base", "load"]), RESOLVED);
+  let wrapped = main(&["Wrapped"], EntityKind::Class);
+  assert!(project.edges_from(EdgeKind::Implements, method(&["Wrapped", "render"])).is_empty());
+  project.assert_unresolved(wrapped, "External", &UnresolvedReason::External { package: "lib".to_owned() });
+}
+
+#[test]
+fn should_match_accessors_by_kind_and_weaken_overrides_through_dist_to_src() {
+  let synthetic = synthetic(&[
+    (
+      "web",
+      &[
+        ("package.json", r#"{ "name": "web", "dependencies": { "@x/built": "file:../built" } }"#),
+        (
+          "src/main.ts",
+          r#"import { Model } from '@x/built';
+export class Account extends Model {
+  get value(): number { return 1; }
+  set value(next: number) {}
+  save(): void {}
+}
+"#,
+        ),
+      ],
+    ),
+    (
+      "built",
+      &[
+        ("package.json", r#"{ "name": "@x/built", "main": "dist/index.js", "types": "dist/index.d.ts" }"#),
+        (
+          "src/index.ts",
+          "export class Model {\n  get value(): number { return 0; }\n  set value(next: number) {}\n  save(): void {}\n}\n",
+        ),
+      ],
+    ),
+  ]);
+  let project = &synthetic.project;
+  let account = |items: &[&str], n: u32| common::symbol_n(atlas_core::LanguageFamily::Ts, "web", "web", &["src", "main"], items, EntityKind::Method, n);
+  let model = |items: &[&str], n: u32| common::symbol_n(atlas_core::LanguageFamily::Ts, "built", "@x/built", &["src", "index"], items, EntityKind::Method, n);
+  let dist = Certainty::heuristic(Confidence::new(0.85).unwrap(), "dist-to-src");
+  for (n, items) in [(0, ["Account", "value"]), (1, ["Account", "value"]), (0, ["Account", "save"])] {
+    let edges = project.edges_from(EdgeKind::Implements, account(&items, n));
+    let targets: Vec<_> = edges.iter().map(|edge| (edge.to, edge.certainty.clone(), via(edge))).collect();
+    let to = model(&[items[0].replace("Account", "Model").as_str(), items[1]], n);
+    assert_eq!(targets, [(to, dist.clone(), Some("class"))], "{items:?}~{n}");
+  }
+}
+
+#[test]
+fn should_link_an_implementation_to_every_overload_of_the_nearest_member() {
+  let synthetic = single(
+    "app",
+    &[
+      ("package.json", PACKAGE),
+      (
+        "src/main.ts",
+        r#"export interface Emitter {
+  on(event: 'a', cb: () => void): void;
+  on(event: 'b', cb: (x: number) => void): void;
+}
+export type ShapeAlias = { area(): number };
+export class Bus implements Emitter {
+  on(event: string, cb: (...args: any[]) => void): void {}
+}
+export class Square implements ShapeAlias {
+  area(): number { return 1; }
+}
+"#,
+      ),
+    ],
+  );
+  let project = &synthetic.project;
+  let method = |items: &[&str], n: u32| common::symbol_n(atlas_core::LanguageFamily::Ts, "app", "app", &["src", "main"], items, EntityKind::Method, n);
+  let mut targets: Vec<_> = project
+    .edges_from(EdgeKind::Implements, method(&["Bus", "on"], 0))
+    .iter()
+    .map(|edge| (edge.to, via(edge)))
+    .collect();
+  targets.sort();
+  let mut expected = vec![(method(&["Emitter", "on"], 0), Some("interface")), (method(&["Emitter", "on"], 1), Some("interface"))];
+  expected.sort();
+  assert_eq!(targets, expected);
+  assert!(project.edges_from(EdgeKind::Implements, method(&["Square", "area"], 0)).is_empty());
+}

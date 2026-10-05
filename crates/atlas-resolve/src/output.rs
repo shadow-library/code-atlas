@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, HashMap};
 
 use atlas_core::{
-  ArgSummary, Certainty, Confidence, ContentHash, Edge, EdgeId, EdgeKind, EntityId, EntityKind, Evidence, ExportFact, FileFacts, ImportBinding, ImportFact, LanguageFamily,
-  LocalSymbolId, Producer, ReceiverHint, RefKind, RefOrigin, ReferenceFact, Span, UnresolvedReason, UnresolvedRef, Visibility,
+  ATTR_OVERRIDE_VIA, ArgSummary, Certainty, Confidence, ContentHash, Edge, EdgeId, EdgeKind, EntityId, EntityKind, Evidence, ExportFact, FileFacts, ImportBinding, ImportFact,
+  LanguageFamily, LocalSymbolId, Producer, ReceiverHint, RefKind, RefOrigin, ReferenceFact, Span, UnresolvedReason, UnresolvedRef, Visibility,
 };
 
 use crate::engine::{Found, Guard, Hit, MACRO_TOKEN_SCAN_CONFIDENCE, MAX_AMBIGUOUS_CANDIDATES, Miss, Outcome, RULE_MACRO_TOKEN_SCAN, Resolver};
@@ -12,7 +12,7 @@ use crate::table::{FileIdx, LookupSource, ProjectSymbolTable, Reachability, SymR
 use crate::ts::{TsNs, specifier_display};
 
 pub const RESOLVER_NAME: &str = "atlas-resolve";
-pub const RESOLVER_VERSION: u32 = 3;
+pub const RESOLVER_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Resolution {
@@ -314,12 +314,17 @@ impl<'r, 't> Emitter<'r, 't> {
     if from == to && kind != EdgeKind::Calls {
       return;
     }
+    let edge = Edge::new(kind, from, to, "", certainty);
+    self.insert(bucket, edge, span);
+  }
+
+  fn insert(&mut self, bucket: Bucket, edge: Edge, span: Span) {
     let evidence = self.evidence(span);
     let edges = match bucket {
       Bucket::Reference => &mut self.edges,
       Bucket::Structural => &mut self.structural,
     };
-    let edge = Edge::new(kind, from, to, "", certainty).with_evidence(evidence.clone());
+    let edge = edge.with_evidence(evidence.clone());
     match edges.get_mut(&edge.id) {
       None => {
         edges.insert(edge.id, edge);
@@ -382,7 +387,7 @@ impl<'r, 't> Emitter<'r, 't> {
           None => RefOutcome::Resolved,
           Some(_) => RefOutcome::Heuristic,
         };
-        let emitted = self.add_hit(Bucket::Reference, kind.clone(), from, &primary, reference.span);
+        let emitted = self.is_heritage_clause(reference, &primary) || self.add_hit(Bucket::Reference, kind.clone(), from, &primary, reference.span);
         for hit in &extra {
           self.add_hit(Bucket::Reference, kind.clone(), from, hit, reference.span);
         }
@@ -409,6 +414,22 @@ impl<'r, 't> Emitter<'r, 't> {
       }
     };
     self.stats.by_kind.entry(reference.kind).or_default().record(class);
+  }
+
+  fn is_heritage_clause(&self, reference: &ReferenceFact, hit: &Hit) -> bool {
+    let resolver = self.resolver;
+    if reference.kind != RefKind::TypeRef || resolver.surface.family == LanguageFamily::Rust {
+      return false;
+    }
+    let Some(local) = reference.from.map(|local| local.0) else { return false };
+    let Some(symbol) = resolver.surface.symbol(local) else { return false };
+    if !symbol.extends.contains(&reference.path) && !symbol.implements.contains(&reference.path) {
+      return false;
+    }
+    let class = SymRef { file: self.file(), local };
+    resolver
+      .ts_resolve_heritage(class, &reference.path)
+      .is_ok_and(|heritage| matches!(heritage.found, Found::Symbol(_)) && heritage.found == hit.found)
   }
 
   fn anchor(&mut self, reference: &ReferenceFact, hit: &Hit) {
@@ -545,6 +566,9 @@ impl<'r, 't> Emitter<'r, 't> {
           self.add_hit(Bucket::Structural, kind, entity, &hit, symbol.span);
         }
       }
+      if symbol.kind == EntityKind::Class {
+        self.ts_overrides(reference);
+      }
     }
     let Some(file_entity) = self.local_entity(None) else { return };
     for import in &facts.imports {
@@ -589,6 +613,29 @@ impl<'r, 't> Emitter<'r, 't> {
           }
         }
         _ => {}
+      }
+    }
+  }
+
+  fn ts_overrides(&mut self, class: SymRef) {
+    let resolver = self.resolver;
+    let chains = resolver.ts_heritage_chains(class);
+    if chains.is_empty() {
+      return;
+    }
+    for child in resolver.surface.children(class.local) {
+      let Some(method) = resolver.surface.symbol(*child).filter(|symbol| symbol.kind == EntityKind::Method) else {
+        continue;
+      };
+      let Some(from) = self.local_entity(Some(*child)) else { continue };
+      let source = SymRef { file: class.file, local: *child };
+      for (hit, via) in chains.iter().flat_map(|chain| resolver.ts_overridden_members(chain, source)) {
+        let (Some(to), Some(certainty)) = (resolver.found_entity(&hit.found), certainty_of(&hit)) else {
+          continue;
+        };
+        let mut edge = Edge::new(EdgeKind::Implements, from, to, "", certainty);
+        edge.attrs.insert(ATTR_OVERRIDE_VIA.to_owned(), serde_json::Value::from(via.as_str()));
+        self.insert(Bucket::Structural, edge, method.span);
       }
     }
   }

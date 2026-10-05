@@ -19,6 +19,7 @@ pub const ATTR_TEST: &str = "test";
 pub const ATTR_IMPL_OF: &str = "impl_of";
 pub const ATTR_EXTENDS: &str = "extends";
 pub const ATTR_IMPLEMENTS: &str = "implements";
+pub const ATTR_OVERRIDE_VIA: &str = "via";
 
 fn insert_attr<T: Serialize>(attrs: &mut Attrs, name: &str, value: &T) {
   if let Ok(json) = serde_json::to_value(value) {

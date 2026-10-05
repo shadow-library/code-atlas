@@ -19,4 +19,5 @@ Test data for analyzers, linker, query engine and quality evaluation. These are 
 | `adversarial/generated-code` | TS, Rust | `@generated` file flagging, `include!(concat!(env!("OUT_DIR"), ...))` stays unresolved |
 | `adversarial/similar-not-equivalent` | TS | same shape different behaviour, same name different behaviour, different shape same behaviour |
 | `adversarial/broken-syntax` | TS, Rust | partial-parse extraction around a syntax error |
+| `adversarial/ts-overrides` | TS (jest) | method-level `implements` from implementations and overrides (`via` interface/class), heritage labelled `implements`/`extends` instead of `references`, calls through an interface |
 | `adversarial/macro-heavy-rust` | Rust | `macro_rules!`-generated functions are never resolved |

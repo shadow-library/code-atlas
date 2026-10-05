@@ -1,6 +1,8 @@
 use std::collections::{HashSet, VecDeque};
 
-use atlas_core::{ArgSummary, DefaultExportTarget, EntityKind, ExportFact, ImportBinding, ImportFact, ReceiverHint, RefKind, ReferenceFact, RelPath, RepoName, Visibility};
+use atlas_core::{
+  ArgSummary, DefaultExportTarget, EntityKind, ExportFact, ImportBinding, ImportFact, Modifier, ReceiverHint, RefKind, ReferenceFact, RelPath, RepoName, Visibility,
+};
 use atlas_project::{NpmExportTarget, NpmExports, TsConfigInfo};
 
 use crate::engine::{
@@ -8,6 +10,7 @@ use crate::engine::{
   RULE_INTERFACE_DISPATCH, RULE_OVERRIDE_DISPATCH, Recv, RecvType, Resolver, unique, weakest,
 };
 use crate::layout::PackageKey;
+use crate::surface::SymSurface;
 use crate::table::{FileIdx, SymRef};
 use crate::typetext::{ValueType, ts_type_head};
 
@@ -1092,6 +1095,133 @@ impl Resolver<'_> {
 
   pub(crate) fn ts_resolve_heritage(&self, class: SymRef, path: &[String]) -> Lookup {
     self.ts_static_path(class.file, None, path, TsNs::Type, &mut Guard::default())
+  }
+
+  pub(crate) fn ts_heritage_chains(&self, class: SymRef) -> Vec<Vec<(SymRef, Option<Heuristic>)>> {
+    let Some(owner) = self.table.sym(class) else { return Vec::new() };
+    owner
+      .extends
+      .iter()
+      .chain(&owner.implements)
+      .filter_map(|path| match self.ts_resolve_heritage(class, path) {
+        Ok(Hit {
+          found: Found::Symbol(target),
+          heuristic,
+        }) => Some(self.ts_ancestors(target, heuristic)),
+        _ => None,
+      })
+      .collect()
+  }
+
+  fn ts_ancestors(&self, start: SymRef, heuristic: Option<Heuristic>) -> Vec<(SymRef, Option<Heuristic>)> {
+    let mut visited: HashSet<SymRef> = HashSet::new();
+    let mut ancestors = Vec::new();
+    let mut pending: VecDeque<(SymRef, Option<Heuristic>)> = VecDeque::from([(start, heuristic)]);
+    while let Some((current, carried)) = pending.pop_front() {
+      if !visited.insert(current) || visited.len() > MAX_HERITAGE_DEPTH {
+        continue;
+      }
+      let Some(surface) = self.table.sym(current) else { continue };
+      self.note(&surface.name);
+      if !matches!(surface.kind, EntityKind::Class | EntityKind::Interface) {
+        continue;
+      }
+      ancestors.push((current, carried));
+      for base in &surface.extends {
+        if let Ok(Hit {
+          found: Found::Symbol(parent),
+          heuristic,
+        }) = self.ts_resolve_heritage(current, base)
+        {
+          pending.push_back((parent, weakest(carried, heuristic)));
+        }
+      }
+    }
+    ancestors
+  }
+
+  pub(crate) fn ts_overridden_members(&self, chain: &[(SymRef, Option<Heuristic>)], method: SymRef) -> Vec<(Hit, Override)> {
+    let Some(source) = self.table.sym(method) else { return Vec::new() };
+    if source.name == "constructor" || source.visibility == Visibility::Private {
+      return Vec::new();
+    }
+    let side = if source.is_static() { Side::Static } else { Side::Instance };
+    let accessor = Accessor::of(source);
+    for (owner, carried) in chain {
+      let kind = self.sym_kind(*owner);
+      if side == Side::Static && kind != Some(&EntityKind::Class) {
+        continue;
+      }
+      let members = self.ts_override_targets(*owner, &source.name, side, accessor);
+      if members.is_empty() {
+        continue;
+      }
+      let private = members
+        .iter()
+        .any(|member| self.table.sym(*member).is_none_or(|symbol| symbol.visibility == Visibility::Private));
+      if private || members.contains(&method) {
+        return Vec::new();
+      }
+      let via = match kind {
+        Some(EntityKind::Interface) => Override::Interface,
+        _ => Override::Class,
+      };
+      return members.into_iter().map(|member| (Hit::exact(Found::Symbol(member)).weaken(*carried), via)).collect();
+    }
+    Vec::new()
+  }
+
+  fn ts_override_targets(&self, owner: SymRef, name: &str, side: Side, accessor: Accessor) -> Vec<SymRef> {
+    self.note(name);
+    let Some(file) = self.table.file(owner.file) else { return Vec::new() };
+    let filtered = self.sym_kind(owner) == Some(&EntityKind::Class);
+    let members: Vec<(u32, Accessor)> = file
+      .children(owner.local)
+      .iter()
+      .filter_map(|child| {
+        let symbol = file.symbol(*child)?;
+        let admitted = symbol.name == name && matches!(symbol.kind, EntityKind::Method | EntityKind::Field) && (!filtered || symbol.is_static() == (side == Side::Static));
+        admitted.then_some((*child, Accessor::of(symbol)))
+      })
+      .collect();
+    let same_accessor = members.iter().any(|(_, kind)| *kind == accessor);
+    members
+      .into_iter()
+      .filter(|(_, kind)| !same_accessor || *kind == accessor)
+      .map(|(local, _)| SymRef { file: owner.file, local })
+      .collect()
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Override {
+  Interface,
+  Class,
+}
+
+impl Override {
+  pub(crate) fn as_str(self) -> &'static str {
+    match self {
+      Self::Interface => "interface",
+      Self::Class => "class",
+    }
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Accessor {
+  Getter,
+  Setter,
+  Plain,
+}
+
+impl Accessor {
+  fn of(symbol: &SymSurface) -> Self {
+    match (symbol.is_getter(), symbol.modifiers.contains(Modifier::Setter)) {
+      (true, _) => Self::Getter,
+      (_, true) => Self::Setter,
+      _ => Self::Plain,
+    }
   }
 }
 

@@ -48,6 +48,7 @@ fn should_report_every_adversarial_fixture_with_the_documented_structure() {
       "adversarial/shadowing-ts",
       "adversarial/similar-not-equivalent",
       "adversarial/trait-dispatch-rust",
+      "adversarial/ts-overrides",
     ]
   );
   assert_eq!(report.schema_version, 1);

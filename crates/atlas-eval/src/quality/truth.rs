@@ -428,6 +428,6 @@ to = { kind = "function" }
       load_truth(&entry.unwrap().path().join("expected.toml")).unwrap();
       parsed += 1;
     }
-    assert_eq!(parsed, 12);
+    assert_eq!(parsed, 13);
   }
 }
