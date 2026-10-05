@@ -3,7 +3,7 @@ mod common;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use atlas_core::{ContentHash, Owner};
+use atlas_core::{ContentHash, EdgeKind, Owner};
 use atlas_engine::{PASS_STRUCTURE, STRUCTURE_VERSION};
 use atlas_project::Project;
 use common::{copy_dir, digest, fixtures_root, fresh, open, project, repo_config};
@@ -15,8 +15,8 @@ const PINNED_STRUCTURE: (u32, &str, &str) = (
 );
 const PINNED_LINK: (u32, &str, &str) = (
   2,
-  "2dc0fa76d4849a9f179c5ceb4fd8413d5dc24527107d49d372018fafa853e94d",
-  "476e5950ca7f5615d7ccaf30c41dd5edd90b56001c87e75696cf627804351ac3",
+  "f5ed21431d3b0742726713a5de629f37fca9bb9ce8248123ad448c1771a8d2b8",
+  "9a6825fc835c6ca42663514a765f9b807d042c3f55a37ce06b5a6f8ca8283635",
 );
 
 #[derive(Default)]
@@ -57,6 +57,20 @@ fn fixture_projects(tree: &Path) -> Vec<Project> {
   projects
 }
 
+fn link_corpus_project(tree: &Path) -> Project {
+  let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/pin-corpus/link");
+  let repos = walk_dirs(&root)
+    .into_iter()
+    .map(|source| {
+      let name = source.file_name().unwrap().to_string_lossy().into_owned();
+      let target = tree.join("link-corpus").join(&name);
+      copy_dir(&source, &target);
+      repo_config(&name, &target)
+    })
+    .collect();
+  project("link-corpus", repos)
+}
+
 fn canonical_owner(facts: &atlas_store::OwnedFacts) -> Vec<u8> {
   let mut lines: Vec<String> = facts.entities.iter().map(|entity| serde_json::to_string(entity).unwrap()).collect();
   lines.extend(facts.edges.iter().map(|edge| serde_json::to_string(edge).unwrap()));
@@ -67,10 +81,17 @@ fn canonical_owner(facts: &atlas_store::OwnedFacts) -> Vec<u8> {
 fn pass_digests(scratch: &Path) -> (PassDigests, PassDigests) {
   let mut structure = PassDigests::default();
   let mut link = PassDigests::default();
-  for (index, project) in fixture_projects(&scratch.join("tree")).iter().enumerate() {
+  let tree = scratch.join("tree");
+  let mut projects: Vec<(Project, bool)> = fixture_projects(&tree).into_iter().map(|project| (project, true)).collect();
+  projects.push((link_corpus_project(&tree), false));
+  for (index, (project, with_structure)) in projects.iter().enumerate() {
     let engine = open(project, &scratch.join(format!("home-{index}")));
     assert!(fresh(&engine).is_fresh());
-    for (digests, pass) in [(&mut link, atlas_link::PASS_NAME), (&mut structure, PASS_STRUCTURE)] {
+    let mut passes = vec![(&mut link, atlas_link::PASS_NAME)];
+    if *with_structure {
+      passes.push((&mut structure, PASS_STRUCTURE));
+    }
+    for (digests, pass) in passes {
       let owner = Owner::Project { pass: pass.to_owned() };
       let facts = engine.store().read(|tx| tx.owned_facts(&owner)).unwrap();
       digests.output.extend(project.name.as_str().as_bytes());
@@ -102,4 +123,26 @@ fn should_change_the_structure_and_link_pass_output_over_the_fixtures_only_with_
   let (structure, link) = pass_digests(scratch.path());
   assert_pinned("atlas_engine::STRUCTURE_VERSION", PINNED_STRUCTURE, STRUCTURE_VERSION, &structure);
   assert_pinned("atlas_link::LINK_VERSION", PINNED_LINK, atlas_link::LINK_VERSION, &link);
+}
+
+#[test]
+fn should_derive_auth_usage_in_the_link_pin_corpus_from_production_code_only() {
+  let scratch = tempfile::tempdir().unwrap();
+  let engine = open(&link_corpus_project(scratch.path()), &scratch.path().join("home"));
+  assert!(fresh(&engine).is_fresh());
+  let owner = Owner::Project {
+    pass: atlas_link::PASS_NAME.to_owned(),
+  };
+  let users = engine
+    .store()
+    .read(|tx| -> Result<Vec<String>, atlas_store::StoreError> {
+      let mut names = Vec::new();
+      for edge in tx.owned_facts(&owner)?.edges.iter().filter(|edge| edge.kind == EdgeKind::UsesAuth) {
+        names.extend(tx.entity(edge.from)?.map(|entity| entity.name));
+      }
+      names.sort();
+      Ok(names)
+    })
+    .unwrap();
+  assert_eq!(users, vec!["loadMe".to_owned(), "load_order".to_owned()]);
 }
