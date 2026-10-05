@@ -41,7 +41,7 @@ impl Scenario {
   }
 
   fn command(&self) -> ServerCommand {
-    ServerCommand::new(env!("CARGO_BIN_EXE_atlas-fake-lsp")).arg(self.path("script.jsonl"))
+    ServerCommand::new(atlas_test_lsp::fake_lsp_path()).arg(self.path("script.jsonl"))
   }
 
   fn spawn(&self, handler: Arc<dyn ClientHandler>, options: ClientOptions) -> Client {

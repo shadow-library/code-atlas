@@ -876,7 +876,7 @@ fn should_document_the_edit_exit_codes_and_the_one_shot_server_cost_in_help() {
     "never exits 0",
     "start a language server per invocation and stop it on exit",
     "2-5 s on TypeScript fixtures, 20-65 s cold on Rust",
-    "130  interrupted (a write in progress finishes first)",
+    "130  interrupted (a write in progress finishes first; if that edit is refused, rolled back or partially applied, its 5, 6 or 7 wins)",
     "every refused edit exits 5, never 4",
     "An applied or dry-run edit whose index freshness is degraded exits 3.",
     "edit replace-body|insert-before|insert-after start one only when one is already warm",

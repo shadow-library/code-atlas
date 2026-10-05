@@ -7,10 +7,10 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
+use atlas_test_lsp::fake_lsp_path;
 use e2e_support::{ACME_REPOS, Run, Sandbox, copy_dir, executable, fixtures};
 use serde_json::{Value, json};
 
-const FAKE: &str = env!("CARGO_BIN_EXE_atlas-cli-fake-lsp");
 const MONEY: &str = "export function toCents(amount: string): number {\n  return Math.round(Number(amount) * 100);\n}\n";
 const USE: &str = "import { toCents } from './money';\nexport function total(): number {\n  return toCents('1') + toCents('2');\n}\n";
 
@@ -87,8 +87,9 @@ impl Demo {
     fs::write(&script, lines.join("\n")).unwrap();
     let wrapper = self.scratch.join("ts-server.sh");
     let body = format!(
-      "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 5.1.3; exit 0; fi\necho $$ > '{}'\nexec '{FAKE}' '{}'\n",
+      "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 5.1.3; exit 0; fi\necho $$ > '{}'\nexec '{}' '{}'\n",
       self.scratch.join("ts.pid").display(),
+      fake_lsp_path().display(),
       script.display()
     );
     executable(&wrapper, &body);
@@ -569,7 +570,8 @@ fn should_exit_3_and_suggest_lsp_exclude_when_rust_analyzer_reports_an_unhealthy
   executable(
     &wrapper,
     &format!(
-      "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'rust-analyzer 1.2.3 (fake)'; exit 0; fi\nexec '{FAKE}' '{}'\n",
+      "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'rust-analyzer 1.2.3 (fake)'; exit 0; fi\nexec '{}' '{}'\n",
+      fake_lsp_path().display(),
       script.display()
     ),
   );

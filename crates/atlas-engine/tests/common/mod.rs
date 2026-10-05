@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+pub mod atlas_edits;
 pub mod edits;
 
 use std::collections::BTreeMap;

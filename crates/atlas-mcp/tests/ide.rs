@@ -11,7 +11,6 @@ use common::{ACME_REPOS, Harness, repo_path, start_configured};
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
-const FAKE: &str = env!("CARGO_BIN_EXE_atlas-mcp-fake-lsp");
 const INSTALL_HINT: &str = "typescript-language-server not found. Install it (npm i -g typescript-language-server typescript@5)";
 
 #[derive(Default)]
@@ -73,7 +72,7 @@ impl Ide {
     self.launcher.specs.lock().unwrap().insert(
       ServerKind::TypeScript,
       LaunchSpec {
-        command: ServerCommand::new(FAKE).arg(script),
+        command: ServerCommand::new(atlas_test_lsp::fake_lsp_path()).arg(script),
         launch: Launch::Installed,
         server_version: "0.0-discovered".to_owned(),
         tsserver: Some(TsServer {

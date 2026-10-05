@@ -5,9 +5,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use atlas_lsp::{Launch, RustAnalyzerSettings, ServerCommand, ServerUnit, TypeScriptSettings, UnitFolder, UnitSettings, canonical_path};
+use atlas_test_lsp::fake_lsp_path;
 use serde_json::{Value, json};
 
-pub const FAKE: &str = env!("CARGO_BIN_EXE_atlas-fake-lsp");
 pub const WAIT: Duration = Duration::from_secs(20);
 
 pub struct Workspace {
@@ -38,13 +38,18 @@ impl Workspace {
     let lines: Vec<String> = steps.iter().map(Value::to_string).collect();
     let script = self.path(&format!("{name}.jsonl"));
     fs::write(&script, lines.join("\n")).unwrap();
-    ServerCommand::new(FAKE).arg(script)
+    ServerCommand::new(fake_lsp_path()).arg(script)
   }
 
   pub fn counted(&self, name: &str, steps: &[Value]) -> ServerCommand {
     let script = self.script(name, steps).args.remove(0);
     let count = self.path(&format!("{name}.spawns"));
-    let line = format!("echo spawn >> '{}'; exec '{FAKE}' '{}'", count.display(), Path::new(&script).display());
+    let line = format!(
+      "echo spawn >> '{}'; exec '{}' '{}'",
+      count.display(),
+      fake_lsp_path().display(),
+      Path::new(&script).display()
+    );
     ServerCommand::new("sh").arg("-c").arg(line)
   }
 

@@ -29,7 +29,7 @@ fn main() -> ExitCode {
     }
   };
   match interrupt::interrupted() {
-    true => ExitCode::from(interrupt::INTERRUPTED_EXIT),
+    true => ExitCode::from(interrupt::exit_after_signal(exit)),
     false => ExitCode::from(Exit::code(exit)),
   }
 }

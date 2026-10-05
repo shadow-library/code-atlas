@@ -15,10 +15,10 @@ use atlas_ide::{IdeError, IdeMode, IdeOptions, IdeResult, IdeService, IdeSetting
 use atlas_lsp::{Launch, ServerCommand, ServerKind, SyncLimits, canonical_path, uri_from_path};
 use atlas_project::{AtlasHome, Project, ProjectSettings, RepoConfig};
 use atlas_query::{RenderText, Response, render_text};
+use atlas_test_lsp::fake_lsp_path;
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
-pub const FAKE: &str = env!("CARGO_BIN_EXE_atlas-ide-fake-lsp");
 pub const WAIT: Duration = Duration::from_secs(20);
 
 #[derive(Default)]
@@ -152,13 +152,18 @@ impl Fixture {
     let lines: Vec<String> = steps.iter().map(Value::to_string).collect();
     let script = self.scratch.path().join(format!("{name}.jsonl"));
     fs::write(&script, lines.join("\n")).unwrap();
-    ServerCommand::new(FAKE).arg(script)
+    ServerCommand::new(fake_lsp_path()).arg(script)
   }
 
   pub fn counted(&self, name: &str, steps: &[Value]) -> ServerCommand {
     let script = self.script(name, steps).args.remove(0);
     let count = self.scratch.path().join(format!("{name}.spawns"));
-    let line = format!("echo spawn >> '{}'; exec '{FAKE}' '{}'", count.display(), Path::new(&script).display());
+    let line = format!(
+      "echo spawn >> '{}'; exec '{}' '{}'",
+      count.display(),
+      fake_lsp_path().display(),
+      Path::new(&script).display()
+    );
     ServerCommand::new("sh").arg("-c").arg(line)
   }
 

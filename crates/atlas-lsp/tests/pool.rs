@@ -540,7 +540,7 @@ fn should_cancel_a_start_in_flight_on_shutdown() {
   let line = format!(
     "echo $$ > '{}'; exec '{}' '{}'",
     pid_file.display(),
-    common::fake::FAKE,
+    atlas_test_lsp::fake_lsp_path().display(),
     std::path::Path::new(&script).display()
   );
   let unit = workspace.rust_unit("demo", atlas_lsp::ServerCommand::new("sh").arg("-c").arg(line));

@@ -64,6 +64,6 @@
 
 ## Testing
 
-- `atlas-ide-fake-lsp` is atlas-lsp's fake server compiled again (`include!`), because Cargo exposes `CARGO_BIN_EXE_*` only to the defining package's tests.
-- Real-server tests (`tests/lsp_real.rs`, `tests/edit_real.rs`) run with `ATLAS_TEST_TS_LSP`, a server on PATH or in the npx cache, and rust-analyzer on PATH or via rustup; otherwise they print `SKIPPED`. They never download and only edit fixture copies.
+- The fake server is `atlas-test-lsp`'s `atlas-fake-lsp`, located with `atlas_test_lsp::fake_lsp_path()` (dev-dependency only, so release builds never contain it).
+- Real-server tests (`tests/lsp_real.rs`, `tests/edit_real.rs`, `tests/golden_rename.rs` with exact `repo:path:line:col` site lists) run with `ATLAS_TEST_TS_LSP`, a server on PATH or in the npx cache, and rust-analyzer on PATH or via rustup; otherwise they print `SKIPPED`. They never download and only edit fixture copies.
 - `tests/edit_fake.rs` drives edits through the fake server (`canned` answers are fixed per method, so a retry sees the same edit); `tests/edit_concurrency.rs` checks the edit mutex and that a barrier from a second `Engine` never indexes half of a rename.

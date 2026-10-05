@@ -7,8 +7,8 @@ use std::time::Duration;
 use atlas_core::{ContentHash, RunId};
 use atlas_lsp::protocol::{Location, ReferenceContext, ReferenceParams, TextDocumentIdentifier, TextDocumentPositionParams};
 use atlas_lsp::{
-  ChangeKind, ChangeList, FileChange, Launch, Lease, LineBreaks, LineIndex, LspPool, PoolOptions, ServerCommand, ServerState, ServerUnit, SyncDemand, TypeScriptSettings,
-  UnitFolder, UnitSettings, canonical_path, path_from_uri, uri_from_path,
+  ChangeKind, ChangeList, FileChange, Launch, Lease, LineBreaks, LineIndex, LspPool, PoolOptions, Probe, ServerCommand, ServerState, ServerUnit, SyncDemand, TypeScriptDiscovery,
+  TypeScriptSettings, UnitFolder, UnitSettings, canonical_path, discover_typescript_with, path_from_uri, uri_from_path,
 };
 
 fn runs(command: &ServerCommand) -> bool {
@@ -90,6 +90,43 @@ fn should_answer_references_with_typescript_language_server_and_see_synced_edits
       return;
     }
   };
+  assert_references_follow_synced_edits(command);
+}
+
+fn linked_bin(names: &[&str], into: &Path) -> PathBuf {
+  let bin = into.join("bin");
+  fs::create_dir_all(&bin).unwrap();
+  let path = env::var_os("PATH").unwrap();
+  for name in names {
+    let found = env::split_paths(&path).map(|directory| directory.join(name)).find(|candidate| candidate.is_file());
+    std::os::unix::fs::symlink(found.unwrap_or_else(|| panic!("{name} is not on PATH")), bin.join(name)).unwrap();
+  }
+  bin
+}
+
+#[test]
+#[ignore = "needs network: npx typescript-language-server@5"]
+fn should_answer_references_with_the_typescript_language_server_downloaded_through_npx() {
+  let scratch = tempfile::tempdir().unwrap();
+  let bin = linked_bin(&["node", "npm", "npx", "sh"], scratch.path());
+  let probe = Probe {
+    path: Some(bin.into_os_string()),
+    ..Probe::default()
+  };
+  let input = TypeScriptDiscovery {
+    command: None,
+    repo_roots: &[],
+    download: true,
+  };
+
+  let discovery = discover_typescript_with(&input, &probe);
+
+  let server = discovery.result.unwrap_or_else(|error| panic!("{error}: {:?}", discovery.steps));
+  assert_eq!(server.launch, Launch::Download, "{:?}", discovery.steps);
+  assert_references_follow_synced_edits(server.command.env("npm_config_cache", scratch.path().join("npm-cache")));
+}
+
+fn assert_references_follow_synced_edits(command: ServerCommand) {
   let work = tempfile::tempdir().unwrap();
   let root = canonical_path(&work.path().join("shop")).unwrap();
   fs::create_dir_all(root.join("src")).unwrap();

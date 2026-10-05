@@ -1,0 +1,19 @@
+[package]
+name = "atlas-test-lsp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "atlas-fake-lsp"
+path = "src/bin/atlas-fake-lsp.rs"
+test = false
+
+[dependencies]
+atlas-lsp.workspace = true
+serde.workspace = true
+serde_json.workspace = true

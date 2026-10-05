@@ -9,15 +9,6 @@ publish.workspace = true
 name = "code-atlas"
 path = "src/main.rs"
 
-[[bin]]
-name = "atlas-cli-fake-lsp"
-path = "src/bin/atlas-cli-fake-lsp.rs"
-test = false
-required-features = ["test-fake-lsp"]
-
-[features]
-test-fake-lsp = []
-
 [lints]
 workspace = true
 
@@ -45,4 +36,4 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
-atlas-cli = { path = ".", features = ["test-fake-lsp"] }
+atlas-test-lsp.workspace = true

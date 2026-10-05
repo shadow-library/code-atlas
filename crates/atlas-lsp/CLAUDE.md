@@ -87,7 +87,7 @@ Blocking stdio JSON-RPC client for language servers, hand-written lenient LSP ty
 
 ## Testing
 
-- `atlas-fake-lsp` (a real `[[bin]]`, `CARGO_BIN_EXE_atlas-fake-lsp`) replays a JSON-lines script: `recv`, `recv_all`, `reply`, `recv_reply`, `notify`, `request`, `canned`, `sleep_ms`, `stderr`, `exit`, `raw`, `raw_bytes`, `sleeper`, `hang`, `record` (append every later client message as a JSON line to a file). A script mismatch exits 97 with the reason on stderr.
+- `atlas-fake-lsp` (the `[[bin]]` of the test-only crate `atlas-test-lsp`; tests get its path from `atlas_test_lsp::fake_lsp_path()`, which builds it on first use, because Cargo builds no binaries of dependencies) replays a JSON-lines script: `recv`, `recv_all`, `reply`, `recv_reply`, `notify`, `request`, `canned`, `sleep_ms`, `stderr`, `exit`, `raw`, `raw_bytes`, `sleeper`, `hang`, `record` (append every later client message as a JSON line to a file). A script mismatch exits 97 with the reason on stderr.
 - The real rust-analyzer tests run when rust-analyzer is found on PATH or through `rustup which`, and print `SKIPPED` otherwise.
 - The real typescript-language-server test runs with `ATLAS_TEST_TS_LSP` (a binary or `lib/cli.mjs`), a server on PATH, or one cached under `~/.npm/_npx`. It never downloads, and prints `SKIPPED` otherwise.
 - Discovery tests build shell-script fakes in a tempdir and inject `PATH`; they never hit the network. Fresh scripts can take about 0.3 s each to exec on macOS, so timing-sensitive tests take the exclusive lock and the others use 60 s probe timeouts.

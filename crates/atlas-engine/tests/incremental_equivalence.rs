@@ -3,6 +3,7 @@ mod common;
 use std::path::Path;
 
 use atlas_engine::{Engine, FreshnessReport};
+use common::atlas_edits::AtlasEdits;
 use common::edits::Tree;
 use common::{SplitMix, acme_copy, digest, fact_diff, fresh, import_lineage, open};
 
@@ -11,6 +12,8 @@ const WRITE_SEED: u64 = 0xB4_0000_0000_0004;
 const EDITS: usize = 60;
 const WRITE_EDITS: usize = 30;
 const REOPEN_EVERY: usize = 15;
+const ATLAS_EDIT_SEED: u64 = 0xED17_0000_0000_0005;
+const ATLAS_EDITS: usize = 30;
 
 fn reference_digest(project: &atlas_project::Project, home: &Path, incremental: &Engine) -> (Engine, atlas_core::ContentHash) {
   let reference = open(project, home);
@@ -74,6 +77,28 @@ fn should_match_a_full_index_after_every_edit_applied_through_write_then_refresh
   let mut rng = SplitMix(seed);
   for step in 1..=env_or("ATLAS_EQUIVALENCE_EDITS", WRITE_EDITS) {
     let (description, report) = engine.write_then_refresh(&[], || tree.apply(&mut rng, step)).unwrap();
+    assert!(report.header().run.is_some(), "step {step} ({description}) did not trigger an update: {report:?}");
+    assert_equivalent(seed, step, &description, &project, &engine, scratch.path());
+    let quiet = fresh(&engine);
+    assert_eq!(quiet.header().run, None, "step {step} ({description}) left changes behind");
+  }
+}
+
+#[test]
+fn should_match_a_full_index_after_atlas_edits() {
+  let seed = seed_or("ATLAS_EQUIVALENCE_ATLAS_EDIT_SEED", ATLAS_EDIT_SEED);
+  let scratch = tempfile::tempdir().unwrap();
+  let project = acme_copy(&scratch.path().join("tree"));
+  let engine = open(&project, &scratch.path().join("home"));
+  assert!(fresh(&engine).is_fresh());
+  let edits = AtlasEdits::new(&engine);
+  let mut rng = SplitMix(seed);
+  for step in 1..=env_or("ATLAS_EQUIVALENCE_EDITS", ATLAS_EDITS) {
+    let (description, plan) = edits.plan(&engine, &mut rng, step);
+    let (applied, report) = engine.write_then_refresh(&AtlasEdits::touched(&plan), || edits.apply(&plan)).unwrap();
+    if let Err(error) = applied {
+      panic!("seed {seed:#x} step {step} ({description}) was not applied: {error}");
+    }
     assert!(report.header().run.is_some(), "step {step} ({description}) did not trigger an update: {report:?}");
     assert_equivalent(seed, step, &description, &project, &engine, scratch.path());
     let quiet = fresh(&engine);

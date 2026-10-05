@@ -8,11 +8,6 @@ publish.workspace = true
 [lints]
 workspace = true
 
-[[bin]]
-name = "atlas-fake-lsp"
-path = "src/bin/atlas-fake-lsp.rs"
-test = false
-
 [dependencies]
 atlas-core.workspace = true
 serde.workspace = true
@@ -22,4 +17,5 @@ tracing.workspace = true
 url.workspace = true
 
 [dev-dependencies]
+atlas-test-lsp.workspace = true
 tempfile.workspace = true
