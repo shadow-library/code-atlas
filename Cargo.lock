@@ -166,6 +166,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "atlas-edit"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "atlas-engine"
 version = "0.1.0"
 dependencies = [
@@ -224,6 +231,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "atlas-ide"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "atlas-lang-rust"
 version = "0.1.0"
 dependencies = [
@@ -264,6 +278,13 @@ dependencies = [
  "thiserror 2.0.21",
  "toml",
  "tracing",
+]
+
+[[package]]
+name = "atlas-lsp"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
 ]
 
 [[package]]

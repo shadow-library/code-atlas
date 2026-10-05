@@ -18,6 +18,9 @@ members = [
   "crates/atlas-cli",
   "crates/atlas-bench",
   "crates/atlas-eval",
+  "crates/atlas-lsp",
+  "crates/atlas-edit",
+  "crates/atlas-ide",
 ]
 
 [workspace.package]
@@ -65,6 +68,8 @@ rmcp = { version = "3.5", features = ["server", "macros", "schemars", "transport
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "sync", "time"] }
 ureq = { version = "3", features = ["json"] }
 fd-lock = "4"
+url = "2"
+regex = "1"
 tempfile = "3"
 insta = { version = "1", features = ["yaml", "json"] }
 criterion = "0.8"

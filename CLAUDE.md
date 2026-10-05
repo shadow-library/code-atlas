@@ -17,6 +17,9 @@ Every fact carries provenance (certainty + evidence), and no query answers from 
 - `atlas-link` — cross-repo links: packages, API↔client, auth, events, config
 - `atlas-engine` — full/incremental pipeline, lineage, freshness barrier, watcher
 - `atlas-query` — query surface shared by CLI and MCP
+- `atlas-lsp` — blocking stdio JSON-RPC client, LSP types, server processes and pool, document sync (core only, no project or engine)
+- `atlas-edit` — edit plans, path-guarded atomic application with rollback, text operations, symbol regions (no LSP, no engine)
+- `atlas-ide` — `IdeService`: exact operations over language servers plus graph extras, shared by CLI and MCP
 - `atlas-mcp`, `atlas-cli` (binary `code-atlas`), `atlas-bench`, `atlas-eval`
 
 The plan lives in `docs/plan/implementation-plan.md`.
