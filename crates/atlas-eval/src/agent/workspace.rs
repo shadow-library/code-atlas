@@ -189,7 +189,7 @@ fn archive(repo: &Path, commit: &str, subdir: Option<&str>, tree: &Path) -> Agen
   Ok(())
 }
 
-fn copy_dir(from: &Path, to: &Path) -> AgentResult<()> {
+pub(super) fn copy_dir(from: &Path, to: &Path) -> AgentResult<()> {
   let entries = fs::read_dir(from).map_err(|error| AgentError::io(from, error))?;
   for entry in entries {
     let entry = entry.map_err(|error| AgentError::io(from, error))?;

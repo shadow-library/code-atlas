@@ -1,0 +1,1069 @@
+{
+  "model": "claude-haiku-4-5-20251001",
+  "claude_code_version": "2.1.296 (Claude Code)",
+  "atlas_version": "catl 0.1.0 (commit 1c1232df7b9779c7b442740c48136972343cedf7)",
+  "bytes": {
+    "server_name": "rmcp",
+    "server_version": "3.5.0",
+    "instructions_bytes": 1584,
+    "tools_list_bytes": 13937,
+    "tool_count": 15,
+    "tools": [
+      {
+        "name": "atlas_edit",
+        "name_description_bytes": 965,
+        "input_schema_bytes": 1661,
+        "total_bytes": 2753
+      },
+      {
+        "name": "atlas_symbol",
+        "name_description_bytes": 553,
+        "input_schema_bytes": 1460,
+        "total_bytes": 2092
+      },
+      {
+        "name": "atlas_context",
+        "name_description_bytes": 520,
+        "input_schema_bytes": 484,
+        "total_bytes": 1085
+      },
+      {
+        "name": "atlas_similar",
+        "name_description_bytes": 391,
+        "input_schema_bytes": 456,
+        "total_bytes": 926
+      },
+      {
+        "name": "atlas_search",
+        "name_description_bytes": 234,
+        "input_schema_bytes": 544,
+        "total_bytes": 857
+      },
+      {
+        "name": "atlas_impact",
+        "name_description_bytes": 416,
+        "input_schema_bytes": 353,
+        "total_bytes": 848
+      },
+      {
+        "name": "atlas_callers",
+        "name_description_bytes": 308,
+        "input_schema_bytes": 402,
+        "total_bytes": 789
+      },
+      {
+        "name": "atlas_callees",
+        "name_description_bytes": 302,
+        "input_schema_bytes": 402,
+        "total_bytes": 783
+      },
+      {
+        "name": "atlas_unused",
+        "name_description_bytes": 263,
+        "input_schema_bytes": 306,
+        "total_bytes": 648
+      },
+      {
+        "name": "atlas_status",
+        "name_description_bytes": 313,
+        "input_schema_bytes": 231,
+        "total_bytes": 623
+      },
+      {
+        "name": "atlas_api",
+        "name_description_bytes": 252,
+        "input_schema_bytes": 270,
+        "total_bytes": 601
+      },
+      {
+        "name": "atlas_tests_for",
+        "name_description_bytes": 244,
+        "input_schema_bytes": 255,
+        "total_bytes": 578
+      },
+      {
+        "name": "atlas_explain",
+        "name_description_bytes": 175,
+        "input_schema_bytes": 255,
+        "total_bytes": 509
+      },
+      {
+        "name": "atlas_patterns",
+        "name_description_bytes": 164,
+        "input_schema_bytes": 242,
+        "total_bytes": 485
+      },
+      {
+        "name": "atlas_overview",
+        "name_description_bytes": 144,
+        "input_schema_bytes": 111,
+        "total_bytes": 334
+      }
+    ],
+    "estimated_tokens_chars_div4": 3880
+  },
+  "tokens": {
+    "state": "measured",
+    "prompt": "Reply with the single word ok.",
+    "max_turns": 1,
+    "repeats": 3,
+    "sessions_started": 12,
+    "retries_used": 0,
+    "configurations": [
+      {
+        "arm": "no_mcp",
+        "loading": "upfront",
+        "samples": [
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 1964,
+              "cache_read": 8428,
+              "prompt_total": 10402
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 1964,
+              "cache_read": 8428,
+              "prompt_total": 10402
+            },
+            "output_tokens": 6,
+            "num_turns": 1,
+            "cost_usd": 0.005020800000000001,
+            "exposure": {
+              "tool_count": 6,
+              "atlas_tool_count": 0,
+              "tool_search_tool_present": false,
+              "mcp_servers": [],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "Write"
+              ]
+            }
+          },
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 10392,
+              "prompt_total": 10402
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 10392,
+              "prompt_total": 10402
+            },
+            "output_tokens": 3,
+            "num_turns": 1,
+            "cost_usd": 0.0012542,
+            "exposure": {
+              "tool_count": 6,
+              "atlas_tool_count": 0,
+              "tool_search_tool_present": false,
+              "mcp_servers": [],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "Write"
+              ]
+            }
+          },
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 10392,
+              "prompt_total": 10402
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 10392,
+              "prompt_total": 10402
+            },
+            "output_tokens": 6,
+            "num_turns": 1,
+            "cost_usd": 0.0012142,
+            "exposure": {
+              "tool_count": 6,
+              "atlas_tool_count": 0,
+              "tool_search_tool_present": false,
+              "mcp_servers": [],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "Write"
+              ]
+            }
+          }
+        ],
+        "failed_attempts": [],
+        "prompt_total": {
+          "min": 10402,
+          "median": 10402,
+          "max": 10402
+        },
+        "input": {
+          "min": 10,
+          "median": 10,
+          "max": 10
+        },
+        "cache_creation": {
+          "min": 0,
+          "median": 0,
+          "max": 1964
+        },
+        "cache_read": {
+          "min": 8428,
+          "median": 10392,
+          "max": 10392
+        }
+      },
+      {
+        "arm": "code_atlas",
+        "loading": "upfront",
+        "samples": [
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 14832,
+              "cache_read": 0,
+              "prompt_total": 14842
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 14832,
+              "cache_read": 0,
+              "prompt_total": 14842
+            },
+            "output_tokens": 3,
+            "num_turns": 1,
+            "cost_usd": 0.029874,
+            "exposure": {
+              "tool_count": 21,
+              "atlas_tool_count": 15,
+              "tool_search_tool_present": false,
+              "mcp_servers": [
+                "code-atlas (connected)"
+              ],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "Write",
+                "mcp__code-atlas__atlas_api",
+                "mcp__code-atlas__atlas_callees",
+                "mcp__code-atlas__atlas_callers",
+                "mcp__code-atlas__atlas_context",
+                "mcp__code-atlas__atlas_edit",
+                "mcp__code-atlas__atlas_explain",
+                "mcp__code-atlas__atlas_impact",
+                "mcp__code-atlas__atlas_overview",
+                "mcp__code-atlas__atlas_patterns",
+                "mcp__code-atlas__atlas_search",
+                "mcp__code-atlas__atlas_similar",
+                "mcp__code-atlas__atlas_status",
+                "mcp__code-atlas__atlas_symbol",
+                "mcp__code-atlas__atlas_tests_for",
+                "mcp__code-atlas__atlas_unused"
+              ]
+            }
+          },
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 14832,
+              "prompt_total": 14842
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 14832,
+              "prompt_total": 14842
+            },
+            "output_tokens": 6,
+            "num_turns": 1,
+            "cost_usd": 0.0017432,
+            "exposure": {
+              "tool_count": 21,
+              "atlas_tool_count": 15,
+              "tool_search_tool_present": false,
+              "mcp_servers": [
+                "code-atlas (connected)"
+              ],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "Write",
+                "mcp__code-atlas__atlas_api",
+                "mcp__code-atlas__atlas_callees",
+                "mcp__code-atlas__atlas_callers",
+                "mcp__code-atlas__atlas_context",
+                "mcp__code-atlas__atlas_edit",
+                "mcp__code-atlas__atlas_explain",
+                "mcp__code-atlas__atlas_impact",
+                "mcp__code-atlas__atlas_overview",
+                "mcp__code-atlas__atlas_patterns",
+                "mcp__code-atlas__atlas_search",
+                "mcp__code-atlas__atlas_similar",
+                "mcp__code-atlas__atlas_status",
+                "mcp__code-atlas__atlas_symbol",
+                "mcp__code-atlas__atlas_tests_for",
+                "mcp__code-atlas__atlas_unused"
+              ]
+            }
+          },
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 14832,
+              "prompt_total": 14842
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 14832,
+              "prompt_total": 14842
+            },
+            "output_tokens": 3,
+            "num_turns": 1,
+            "cost_usd": 0.0017282,
+            "exposure": {
+              "tool_count": 21,
+              "atlas_tool_count": 15,
+              "tool_search_tool_present": false,
+              "mcp_servers": [
+                "code-atlas (connected)"
+              ],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "Write",
+                "mcp__code-atlas__atlas_api",
+                "mcp__code-atlas__atlas_callees",
+                "mcp__code-atlas__atlas_callers",
+                "mcp__code-atlas__atlas_context",
+                "mcp__code-atlas__atlas_edit",
+                "mcp__code-atlas__atlas_explain",
+                "mcp__code-atlas__atlas_impact",
+                "mcp__code-atlas__atlas_overview",
+                "mcp__code-atlas__atlas_patterns",
+                "mcp__code-atlas__atlas_search",
+                "mcp__code-atlas__atlas_similar",
+                "mcp__code-atlas__atlas_status",
+                "mcp__code-atlas__atlas_symbol",
+                "mcp__code-atlas__atlas_tests_for",
+                "mcp__code-atlas__atlas_unused"
+              ]
+            }
+          }
+        ],
+        "failed_attempts": [],
+        "prompt_total": {
+          "min": 14842,
+          "median": 14842,
+          "max": 14842
+        },
+        "input": {
+          "min": 10,
+          "median": 10,
+          "max": 10
+        },
+        "cache_creation": {
+          "min": 0,
+          "median": 0,
+          "max": 14832
+        },
+        "cache_read": {
+          "min": 0,
+          "median": 14832,
+          "max": 14832
+        }
+      },
+      {
+        "arm": "no_mcp",
+        "loading": "search_tool_denied",
+        "samples": [
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 10392,
+              "prompt_total": 10402
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 10392,
+              "prompt_total": 10402
+            },
+            "output_tokens": 3,
+            "num_turns": 1,
+            "cost_usd": 0.0012892,
+            "exposure": {
+              "tool_count": 6,
+              "atlas_tool_count": 0,
+              "tool_search_tool_present": false,
+              "mcp_servers": [],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "Write"
+              ]
+            }
+          },
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 10392,
+              "prompt_total": 10402
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 10392,
+              "prompt_total": 10402
+            },
+            "output_tokens": 4,
+            "num_turns": 1,
+            "cost_usd": 0.0012092,
+            "exposure": {
+              "tool_count": 6,
+              "atlas_tool_count": 0,
+              "tool_search_tool_present": false,
+              "mcp_servers": [],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "Write"
+              ]
+            }
+          },
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 10392,
+              "prompt_total": 10402
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 10392,
+              "prompt_total": 10402
+            },
+            "output_tokens": 6,
+            "num_turns": 1,
+            "cost_usd": 0.0012542,
+            "exposure": {
+              "tool_count": 6,
+              "atlas_tool_count": 0,
+              "tool_search_tool_present": false,
+              "mcp_servers": [],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "Write"
+              ]
+            }
+          }
+        ],
+        "failed_attempts": [],
+        "prompt_total": {
+          "min": 10402,
+          "median": 10402,
+          "max": 10402
+        },
+        "input": {
+          "min": 10,
+          "median": 10,
+          "max": 10
+        },
+        "cache_creation": {
+          "min": 0,
+          "median": 0,
+          "max": 0
+        },
+        "cache_read": {
+          "min": 10392,
+          "median": 10392,
+          "max": 10392
+        }
+      },
+      {
+        "arm": "code_atlas",
+        "loading": "search_tool_denied",
+        "samples": [
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 14832,
+              "prompt_total": 14842
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 14832,
+              "prompt_total": 14842
+            },
+            "output_tokens": 6,
+            "num_turns": 1,
+            "cost_usd": 0.0017132,
+            "exposure": {
+              "tool_count": 21,
+              "atlas_tool_count": 15,
+              "tool_search_tool_present": false,
+              "mcp_servers": [
+                "code-atlas (connected)"
+              ],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "Write",
+                "mcp__code-atlas__atlas_api",
+                "mcp__code-atlas__atlas_callees",
+                "mcp__code-atlas__atlas_callers",
+                "mcp__code-atlas__atlas_context",
+                "mcp__code-atlas__atlas_edit",
+                "mcp__code-atlas__atlas_explain",
+                "mcp__code-atlas__atlas_impact",
+                "mcp__code-atlas__atlas_overview",
+                "mcp__code-atlas__atlas_patterns",
+                "mcp__code-atlas__atlas_search",
+                "mcp__code-atlas__atlas_similar",
+                "mcp__code-atlas__atlas_status",
+                "mcp__code-atlas__atlas_symbol",
+                "mcp__code-atlas__atlas_tests_for",
+                "mcp__code-atlas__atlas_unused"
+              ]
+            }
+          },
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 14832,
+              "prompt_total": 14842
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 14832,
+              "prompt_total": 14842
+            },
+            "output_tokens": 6,
+            "num_turns": 1,
+            "cost_usd": 0.0016982,
+            "exposure": {
+              "tool_count": 21,
+              "atlas_tool_count": 15,
+              "tool_search_tool_present": false,
+              "mcp_servers": [
+                "code-atlas (connected)"
+              ],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "Write",
+                "mcp__code-atlas__atlas_api",
+                "mcp__code-atlas__atlas_callees",
+                "mcp__code-atlas__atlas_callers",
+                "mcp__code-atlas__atlas_context",
+                "mcp__code-atlas__atlas_edit",
+                "mcp__code-atlas__atlas_explain",
+                "mcp__code-atlas__atlas_impact",
+                "mcp__code-atlas__atlas_overview",
+                "mcp__code-atlas__atlas_patterns",
+                "mcp__code-atlas__atlas_search",
+                "mcp__code-atlas__atlas_similar",
+                "mcp__code-atlas__atlas_status",
+                "mcp__code-atlas__atlas_symbol",
+                "mcp__code-atlas__atlas_tests_for",
+                "mcp__code-atlas__atlas_unused"
+              ]
+            }
+          },
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 14832,
+              "prompt_total": 14842
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 14832,
+              "prompt_total": 14842
+            },
+            "output_tokens": 3,
+            "num_turns": 1,
+            "cost_usd": 0.0016932000000000002,
+            "exposure": {
+              "tool_count": 21,
+              "atlas_tool_count": 15,
+              "tool_search_tool_present": false,
+              "mcp_servers": [
+                "code-atlas (connected)"
+              ],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "Write",
+                "mcp__code-atlas__atlas_api",
+                "mcp__code-atlas__atlas_callees",
+                "mcp__code-atlas__atlas_callers",
+                "mcp__code-atlas__atlas_context",
+                "mcp__code-atlas__atlas_edit",
+                "mcp__code-atlas__atlas_explain",
+                "mcp__code-atlas__atlas_impact",
+                "mcp__code-atlas__atlas_overview",
+                "mcp__code-atlas__atlas_patterns",
+                "mcp__code-atlas__atlas_search",
+                "mcp__code-atlas__atlas_similar",
+                "mcp__code-atlas__atlas_status",
+                "mcp__code-atlas__atlas_symbol",
+                "mcp__code-atlas__atlas_tests_for",
+                "mcp__code-atlas__atlas_unused"
+              ]
+            }
+          }
+        ],
+        "failed_attempts": [],
+        "prompt_total": {
+          "min": 14842,
+          "median": 14842,
+          "max": 14842
+        },
+        "input": {
+          "min": 10,
+          "median": 10,
+          "max": 10
+        },
+        "cache_creation": {
+          "min": 0,
+          "median": 0,
+          "max": 0
+        },
+        "cache_read": {
+          "min": 14832,
+          "median": 14832,
+          "max": 14832
+        }
+      },
+      {
+        "arm": "code_atlas",
+        "loading": "search_allowed",
+        "samples": [
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 11476,
+              "cache_read": 0,
+              "prompt_total": 11486
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 11476,
+              "cache_read": 0,
+              "prompt_total": 11486
+            },
+            "output_tokens": 6,
+            "num_turns": 1,
+            "cost_usd": 0.023197,
+            "exposure": {
+              "tool_count": 22,
+              "atlas_tool_count": 15,
+              "tool_search_tool_present": true,
+              "mcp_servers": [
+                "code-atlas (connected)"
+              ],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "ToolSearch",
+                "Write",
+                "mcp__code-atlas__atlas_api",
+                "mcp__code-atlas__atlas_callees",
+                "mcp__code-atlas__atlas_callers",
+                "mcp__code-atlas__atlas_context",
+                "mcp__code-atlas__atlas_edit",
+                "mcp__code-atlas__atlas_explain",
+                "mcp__code-atlas__atlas_impact",
+                "mcp__code-atlas__atlas_overview",
+                "mcp__code-atlas__atlas_patterns",
+                "mcp__code-atlas__atlas_search",
+                "mcp__code-atlas__atlas_similar",
+                "mcp__code-atlas__atlas_status",
+                "mcp__code-atlas__atlas_symbol",
+                "mcp__code-atlas__atlas_tests_for",
+                "mcp__code-atlas__atlas_unused"
+              ]
+            }
+          },
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 1805,
+              "cache_read": 9671,
+              "prompt_total": 11486
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 1805,
+              "cache_read": 9671,
+              "prompt_total": 11486
+            },
+            "output_tokens": 3,
+            "num_turns": 1,
+            "cost_usd": 0.0048821,
+            "exposure": {
+              "tool_count": 22,
+              "atlas_tool_count": 15,
+              "tool_search_tool_present": true,
+              "mcp_servers": [
+                "code-atlas (connected)"
+              ],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "ToolSearch",
+                "Write",
+                "mcp__code-atlas__atlas_api",
+                "mcp__code-atlas__atlas_callees",
+                "mcp__code-atlas__atlas_callers",
+                "mcp__code-atlas__atlas_context",
+                "mcp__code-atlas__atlas_edit",
+                "mcp__code-atlas__atlas_explain",
+                "mcp__code-atlas__atlas_impact",
+                "mcp__code-atlas__atlas_overview",
+                "mcp__code-atlas__atlas_patterns",
+                "mcp__code-atlas__atlas_search",
+                "mcp__code-atlas__atlas_similar",
+                "mcp__code-atlas__atlas_status",
+                "mcp__code-atlas__atlas_symbol",
+                "mcp__code-atlas__atlas_tests_for",
+                "mcp__code-atlas__atlas_unused"
+              ]
+            }
+          },
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 11476,
+              "prompt_total": 11486
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 11476,
+              "prompt_total": 11486
+            },
+            "output_tokens": 3,
+            "num_turns": 1,
+            "cost_usd": 0.0013626,
+            "exposure": {
+              "tool_count": 22,
+              "atlas_tool_count": 15,
+              "tool_search_tool_present": true,
+              "mcp_servers": [
+                "code-atlas (connected)"
+              ],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "ToolSearch",
+                "Write",
+                "mcp__code-atlas__atlas_api",
+                "mcp__code-atlas__atlas_callees",
+                "mcp__code-atlas__atlas_callers",
+                "mcp__code-atlas__atlas_context",
+                "mcp__code-atlas__atlas_edit",
+                "mcp__code-atlas__atlas_explain",
+                "mcp__code-atlas__atlas_impact",
+                "mcp__code-atlas__atlas_overview",
+                "mcp__code-atlas__atlas_patterns",
+                "mcp__code-atlas__atlas_search",
+                "mcp__code-atlas__atlas_similar",
+                "mcp__code-atlas__atlas_status",
+                "mcp__code-atlas__atlas_symbol",
+                "mcp__code-atlas__atlas_tests_for",
+                "mcp__code-atlas__atlas_unused"
+              ]
+            }
+          }
+        ],
+        "failed_attempts": [],
+        "prompt_total": {
+          "min": 11486,
+          "median": 11486,
+          "max": 11486
+        },
+        "input": {
+          "min": 10,
+          "median": 10,
+          "max": 10
+        },
+        "cache_creation": {
+          "min": 0,
+          "median": 1805,
+          "max": 11476
+        },
+        "cache_read": {
+          "min": 0,
+          "median": 9671,
+          "max": 11476
+        }
+      },
+      {
+        "arm": "no_mcp",
+        "loading": "search_allowed",
+        "samples": [
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 1126,
+              "cache_read": 9266,
+              "prompt_total": 10402
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 1126,
+              "cache_read": 9266,
+              "prompt_total": 10402
+            },
+            "output_tokens": 3,
+            "num_turns": 1,
+            "cost_usd": 0.0034086000000000003,
+            "exposure": {
+              "tool_count": 7,
+              "atlas_tool_count": 0,
+              "tool_search_tool_present": true,
+              "mcp_servers": [],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "ToolSearch",
+                "Write"
+              ]
+            }
+          },
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 10392,
+              "prompt_total": 10402
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 10392,
+              "prompt_total": 10402
+            },
+            "output_tokens": 3,
+            "num_turns": 1,
+            "cost_usd": 0.0012542,
+            "exposure": {
+              "tool_count": 7,
+              "atlas_tool_count": 0,
+              "tool_search_tool_present": true,
+              "mcp_servers": [],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "ToolSearch",
+                "Write"
+              ]
+            }
+          },
+          {
+            "first_request": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 10392,
+              "prompt_total": 10402
+            },
+            "result_usage": {
+              "input": 10,
+              "cache_creation": 0,
+              "cache_read": 10392,
+              "prompt_total": 10402
+            },
+            "output_tokens": 3,
+            "num_turns": 1,
+            "cost_usd": 0.0012542,
+            "exposure": {
+              "tool_count": 7,
+              "atlas_tool_count": 0,
+              "tool_search_tool_present": true,
+              "mcp_servers": [],
+              "tools": [
+                "Bash",
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "ToolSearch",
+                "Write"
+              ]
+            }
+          }
+        ],
+        "failed_attempts": [],
+        "prompt_total": {
+          "min": 10402,
+          "median": 10402,
+          "max": 10402
+        },
+        "input": {
+          "min": 10,
+          "median": 10,
+          "max": 10
+        },
+        "cache_creation": {
+          "min": 0,
+          "median": 0,
+          "max": 1126
+        },
+        "cache_read": {
+          "min": 9266,
+          "median": 10392,
+          "max": 10392
+        }
+      }
+    ],
+    "deltas": [
+      {
+        "loading": "upfront",
+        "prompt_total": {
+          "median": 4440,
+          "low": 4440,
+          "high": 4440
+        },
+        "input": {
+          "median": 0,
+          "low": 0,
+          "high": 0
+        },
+        "cache_creation": {
+          "median": 0,
+          "low": -1964,
+          "high": 14832
+        },
+        "cache_read": {
+          "median": 4440,
+          "low": -10392,
+          "high": 6404
+        }
+      },
+      {
+        "loading": "search_tool_denied",
+        "prompt_total": {
+          "median": 4440,
+          "low": 4440,
+          "high": 4440
+        },
+        "input": {
+          "median": 0,
+          "low": 0,
+          "high": 0
+        },
+        "cache_creation": {
+          "median": 0,
+          "low": 0,
+          "high": 0
+        },
+        "cache_read": {
+          "median": 4440,
+          "low": 4440,
+          "high": 4440
+        }
+      },
+      {
+        "loading": "search_allowed",
+        "prompt_total": {
+          "median": 1084,
+          "low": 1084,
+          "high": 1084
+        },
+        "input": {
+          "median": 0,
+          "low": 0,
+          "high": 0
+        },
+        "cache_creation": {
+          "median": 1805,
+          "low": -1126,
+          "high": 11476
+        },
+        "cache_read": {
+          "median": -721,
+          "low": -10392,
+          "high": 2210
+        }
+      }
+    ],
+    "extension": {
+      "sessions_started": 6,
+      "retries_used": 0
+    }
+  }
+}

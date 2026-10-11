@@ -36,6 +36,8 @@ enum AgentCommand {
   Report(ReportArgs),
   #[command(about = "Run one tiny session with the baseline flags and record which isolation they achieve")]
   Probe(ProbeArgs),
+  #[command(about = "Measure what the MCP tool surface costs per request: bytes of tools/list and instructions, and tokens in tiny sessions")]
+  Surface(SurfaceArgs),
 }
 
 #[derive(Debug, Args)]
@@ -125,6 +127,28 @@ struct ProbeArgs {
   claude: ClaudeArgs,
 }
 
+#[derive(Debug, Args)]
+struct SurfaceArgs {
+  #[arg(long, required_unless_present = "render_from")]
+  atlas_bin: Option<PathBuf>,
+  #[arg(long, conflicts_with_all = ["atlas_bin", "no_sessions", "work_dir", "extend_from"])]
+  render_from: Option<PathBuf>,
+  #[arg(long, requires = "atlas_bin", conflicts_with = "no_sessions")]
+  extend_from: Option<PathBuf>,
+  #[arg(long, default_value = "eval/reports/surface")]
+  out: PathBuf,
+  #[arg(long, default_value = agent::SURFACE_DEFAULT_MODEL)]
+  model: String,
+  #[arg(long, default_value = "claude")]
+  claude_bin: PathBuf,
+  #[arg(long)]
+  repo_root: Option<PathBuf>,
+  #[arg(long)]
+  work_dir: Option<PathBuf>,
+  #[arg(long)]
+  no_sessions: bool,
+}
+
 fn main() -> ExitCode {
   tracing_subscriber::fmt()
     .with_writer(std::io::stderr)
@@ -135,6 +159,7 @@ fn main() -> ExitCode {
     Command::Agent(AgentCommand::Run(args)) => run(&args).map_err(Into::into),
     Command::Agent(AgentCommand::Report(args)) => report(&args).map_err(Into::into),
     Command::Agent(AgentCommand::Probe(args)) => probe(&args).map_err(Into::into),
+    Command::Agent(AgentCommand::Surface(args)) => surface(&args).map_err(Into::into),
     Command::Quality(args) => run_quality(&args).map_err(Into::into),
     Command::Retrieval(args) => run_retrieval(&args),
   };
@@ -295,6 +320,39 @@ fn run_retrieval(args: &RetrievalArgs) -> Result<(), Box<dyn std::error::Error>>
   let outcome = retrieval::execute_retrieval(args, &repo_root)?;
   tracing::info!(markdown = %outcome.markdown.display(), json = %outcome.json.display(), "retrieval report written");
   Ok(())
+}
+
+fn surface(args: &SurfaceArgs) -> Result<(), AgentError> {
+  let report = match (&args.render_from, &args.atlas_bin) {
+    (Some(path), _) => agent::read_json(path)?,
+    (None, Some(atlas_bin)) => measure_surface(args, atlas_bin)?,
+    (None, None) => return Err(AgentError::InvalidArgument("--atlas-bin is required".to_owned())),
+  };
+  std::fs::create_dir_all(&args.out).map_err(|error| AgentError::io(&args.out, error))?;
+  agent::write_json(&args.out.join("surface.json"), &report)?;
+  let markdown_path = args.out.join("surface.md");
+  std::fs::write(&markdown_path, agent::render_surface_markdown(&report)).map_err(|error| AgentError::io(&markdown_path, error))
+}
+
+fn measure_surface(args: &SurfaceArgs, atlas_bin: &Path) -> Result<agent::SurfaceReport, AgentError> {
+  let repo_root = repo_root(args.repo_root.as_deref())?;
+  let scratch = tempfile::tempdir().map_err(|error| AgentError::io(std::env::temp_dir(), error))?;
+  let options = agent::SurfaceOptions {
+    atlas_bin: atlas_bin.canonicalize().unwrap_or_else(|_| atlas_bin.to_owned()),
+    claude: ClaudeConfig {
+      binary: args.claude_bin.clone(),
+      model: args.model.clone(),
+      judge_model: DEFAULT_JUDGE_MODEL.to_owned(),
+      config_isolation: ConfigIsolation::User,
+    },
+    fixture: repo_root.join("fixtures").join("acme"),
+    work_dir: args.work_dir.clone().unwrap_or_else(|| scratch.path().to_owned()),
+    sessions: !args.no_sessions,
+  };
+  match &args.extend_from {
+    Some(path) => agent::extend_surface(&options, agent::read_json(path)?),
+    None => agent::run_surface(&options),
+  }
 }
 
 fn probe(args: &ProbeArgs) -> Result<(), AgentError> {
