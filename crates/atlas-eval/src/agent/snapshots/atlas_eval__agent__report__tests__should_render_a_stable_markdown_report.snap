@@ -15,8 +15,8 @@ expression: render_markdown(&report)
 | judge model | claude-sonnet-5-5 |
 | claude config | user |
 | eval repository commit | 9b1fc2d |
-| code-atlas binary version (build commit) | unknown |
-| code-atlas binary blake3 | unknown |
+| catl binary version (build commit) | unknown |
+| catl binary blake3 | unknown |
 | preamble version | 1 |
 | repo override | none |
 | spent (reported) | $2.00 |

@@ -20,7 +20,7 @@ fn age(secs: u64) -> String {
 fn render_auto_scip(project: &str, view: &AutoScipView, out: &mut TextOut) {
   let running = if view.in_progress { "; a run is in progress" } else { "" };
   match view.setting {
-    AutoScipSetting::Off => out.line(0, format!("scip auto: off (enable with `code-atlas project config {project} --scip on`){running}")),
+    AutoScipSetting::Off => out.line(0, format!("scip auto: off (enable with `catl project config {project} --scip on`){running}")),
     AutoScipSetting::On { debounce_secs } => out.line(
       0,
       format!("scip auto: on, runs while a watcher is active, after {debounce_secs}s without file changes{running}"),
@@ -283,7 +283,7 @@ mod tests {
     );
     let off = render(&answer(Some(ScipState::Current), 0, Vec::new()));
     assert!(
-      off.contains("scip auto: off (enable with `code-atlas project config acme --scip on`)\n") && !off.contains("last automatic run"),
+      off.contains("scip auto: off (enable with `catl project config acme --scip on`)\n") && !off.contains("last automatic run"),
       "{off}"
     );
   }

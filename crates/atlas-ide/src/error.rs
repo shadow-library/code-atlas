@@ -21,7 +21,7 @@ pub enum IdeError {
     alternative: Option<&'static str>,
   },
   #[error(
-    "language servers are disabled for project {project} (lsp.enabled = false); enable them with `code-atlas project config {project} --lsp on`{}",
+    "language servers are disabled for project {project} (lsp.enabled = false); enable them with `catl project config {project} --lsp on`{}",
     alternative_suffix(alternative)
   )]
   Disabled { project: String, alternative: Option<&'static str> },

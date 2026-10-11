@@ -33,7 +33,7 @@ impl Sandbox {
   }
 
   fn run_env(&self, cwd: &Path, args: &[&str], envs: &[(&str, &str)]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_code-atlas"))
+    Command::new(env!("CARGO_BIN_EXE_catl"))
       .args(args)
       .current_dir(cwd)
       .env("CODE_ATLAS_HOME", self.home.path())
@@ -188,7 +188,7 @@ fn should_print_the_build_commit_in_the_version() {
   let version = stdout(&output);
   let commit = version
     .trim()
-    .strip_prefix(concat!("code-atlas ", env!("CARGO_PKG_VERSION"), " (commit "))
+    .strip_prefix(concat!("catl ", env!("CARGO_PKG_VERSION"), " (commit "))
     .and_then(|rest| rest.strip_suffix(')'))
     .unwrap();
   assert!(commit == "unknown" || (commit.len() == 40 && commit.chars().all(|c| c.is_ascii_hexdigit())), "{version}");
@@ -280,7 +280,7 @@ fn should_write_connect_claude_files_idempotently() {
 
   let config: Value = serde_json::from_str(&fs::read_to_string(api.join(".mcp.json")).unwrap()).unwrap();
   let server = &config["mcpServers"]["code-atlas"];
-  assert_eq!(server["command"], fs::canonicalize(env!("CARGO_BIN_EXE_code-atlas")).unwrap().display().to_string());
+  assert_eq!(server["command"], fs::canonicalize(env!("CARGO_BIN_EXE_catl")).unwrap().display().to_string());
   assert_eq!(server["args"], serde_json::json!(["mcp", "--project", "acme"]));
   let guidance = fs::read_to_string(api.join("AGENTS.md")).unwrap();
   for tool in ["`context`", "`impact`", "`search`", "`similar`", "`explain`", "[heuristic]", "[inferred]", "[compiler]"] {
@@ -470,7 +470,7 @@ fn should_shut_watch_down_cleanly_on_interrupt() {
   let sandbox = Sandbox::new();
   let root = sandbox.create_acme();
   let api = root.join("acme-api");
-  let mut child = Command::new(env!("CARGO_BIN_EXE_code-atlas"))
+  let mut child = Command::new(env!("CARGO_BIN_EXE_catl"))
     .args(["watch"])
     .current_dir(&api)
     .env("CODE_ATLAS_HOME", sandbox.home.path())
@@ -653,7 +653,7 @@ fn should_serve_a_search_while_another_process_indexes() {
   let root = sandbox.create_acme();
   let api = root.join("acme-api");
   let spawn = |args: &[&str]| {
-    Command::new(env!("CARGO_BIN_EXE_code-atlas"))
+    Command::new(env!("CARGO_BIN_EXE_catl"))
       .args(args)
       .current_dir(&api)
       .env("CODE_ATLAS_HOME", sandbox.home.path())
@@ -678,7 +678,7 @@ fn should_reload_the_project_when_another_process_changes_it_while_watching() {
   let root = sandbox.create_acme();
   let api = root.join("acme-api");
   assert_ok(&sandbox.run(&api, &["index"]));
-  let mut child = Command::new(env!("CARGO_BIN_EXE_code-atlas"))
+  let mut child = Command::new(env!("CARGO_BIN_EXE_catl"))
     .args(["watch"])
     .current_dir(&api)
     .env("CODE_ATLAS_HOME", sandbox.home.path())
@@ -1075,7 +1075,7 @@ fn should_exit_1_with_the_install_hint_when_the_typescript_server_is_unavailable
   let disabled = sandbox.run(&sdk, &["refs", "toCents"]);
   assert_eq!(code(&disabled), 1);
   assert!(
-    stderr(&disabled).contains("language servers are disabled for project acme (lsp.enabled = false); enable them with `code-atlas project config acme --lsp on`"),
+    stderr(&disabled).contains("language servers are disabled for project acme (lsp.enabled = false); enable them with `catl project config acme --lsp on`"),
     "{}",
     stderr(&disabled)
   );
@@ -1160,7 +1160,7 @@ fn should_find_code_similar_to_a_draft_on_stdin_and_follow_http_hops() {
   let sdk = root.join("acme-sdk");
   assert_ok(&sandbox.run(&sdk, &["index"]));
   let draft = fs::read_to_string(sdk.join("src/money.ts")).unwrap();
-  let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_code-atlas"));
+  let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_catl"));
   command
     .args(["query", "similar", "--code", "-", "--language", "ts", "--json"])
     .current_dir(&sdk)

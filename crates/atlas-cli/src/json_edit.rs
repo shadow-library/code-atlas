@@ -226,7 +226,7 @@ mod tests {
   use super::*;
 
   fn server() -> Value {
-    json!({"type": "stdio", "command": "/bin/code-atlas", "args": ["mcp", "--project", "p"]})
+    json!({"type": "stdio", "command": "/bin/catl", "args": ["mcp", "--project", "p"]})
   }
 
   #[test]

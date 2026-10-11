@@ -28,11 +28,11 @@ pub enum LspError {
   #[error("language server chose position encoding {encoding:?}, which code-atlas does not support")]
   UnsupportedEncoding { encoding: String },
   #[error(
-    "{server} was not ready after {}s ({status}); check it with `code-atlas lsp check`, and on a large workspace raise lsp.ready_timeout_secs in the project config",
+    "{server} was not ready after {}s ({status}); check it with `catl lsp check`, and on a large workspace raise lsp.ready_timeout_secs in the project config",
     waited.as_secs_f64()
   )]
   NotReady { server: String, waited: Duration, status: String },
-  #[error("{server} reports an unhealthy workspace: {message}; fix the workspace (rust-analyzer needs `cargo metadata` to succeed) and check it with `code-atlas lsp check`")]
+  #[error("{server} reports an unhealthy workspace: {message}; fix the workspace (rust-analyzer needs `cargo metadata` to succeed) and check it with `catl lsp check`")]
   Unhealthy { server: String, message: String },
   #[error("{server} failed {failures} times within {}s; not restarting it for another {}s; last failure: {last_failure}", window.as_secs(), retry_in.as_secs())]
   CrashLoop {

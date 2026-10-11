@@ -43,7 +43,7 @@ Positive
 
 - Self-index of the repository: 530 files in 1.7 s, 528 MB peak RSS (release build). The impact query on `Certainty::is_authoritative` again split resolved callers from `UNCERTAIN` name-only ones.
 - `api` on acme renders every cross-repo link hedged (`possibly calls endpoint GET /orders/{id} [heuristic 0.77]`) and the weakest one honestly low: `useMe`, whose runtime path `/users/me` matches `GET /users/{id}` only structurally, scored `[heuristic 0.47]`.
-- After `code-atlas scip`, the same `callers UsersService.findOne` query went from `[resolved]` to `[compiler]` on all four callers (acme: 63 `compiler_verified` calls edges).
+- After `catl scip`, the same `callers UsersService.findOne` query went from `[resolved]` to `[compiler]` on all four callers (acme: 63 `compiler_verified` calls edges).
 - Degraded paths surface: with `max_file_bytes` lowered, the header said `skipped 1 files (see status)` and `status` named the file and sizes; an unreadable file produced `DEGRADED: 1 file(s) or repo(s) failed` with the reason and its symbols disappeared rather than going stale.
 - `query similar roundHalfUp` returned `behaviour unverified` and a caveat that similarity is evidence, not a decision.
 
@@ -51,7 +51,7 @@ Negative (status rechecked at `6e68c91`)
 
 - `callees Point::manhattan` on `macro-heavy-rust` printed `none found` without a caveat, although three `macro_generated` unresolved references from that method are stored (`debug dump-file`). `callers` does list unresolved references that carry the target's name; `callees` and `impact` do not list the target's own. Status: fixed in `bbbd680`; `callees`, `dependencies` and `impact` now list the three names as possibly macro-generated.
 - `search "user lookup"` on acme returned nine "exact name" hits that matched only the token `user` (fields like `Order.userId`, a hook `useUser`). The group heading overstates the match. Status: fixed in `bbbd680` (whole-token equality required; the same query now shows a "strong" group).
-- `project config --scip off` is accepted and stored, but `code-atlas scip` still ran. `scip.enabled` and `scip.debounce_secs` are not read by anything. Status: fixed in `4a3dc42`; `scip.enabled` is read, opt-in and default off, and applies to automatic runs only (explicit `code-atlas scip` always runs).
+- `project config --scip off` is accepted and stored, but `catl scip` still ran. `scip.enabled` and `scip.debounce_secs` are not read by anything. Status: fixed in `4a3dc42`; `scip.enabled` is read, opt-in and default off, and applies to automatic runs only (explicit `catl scip` always runs).
 - The committed quality report (`eval/reports/2026-10-04/quality.md`, 96/98 edges) is older than the code; re-running at `a03744e` gives 98/98. Regenerate before quoting. Status: regenerated in `14124c2` (98/98).
 - The `connect claude` guidance block says "untagged results are authoritative", while some lines (entity listings) carry no tag at all, and `[compiler]` is the rendered tag whereas the MCP server instructions refer to `[compiler_verified]`. Wording to reconcile. Status: fixed in `bbbd680`; every uncertain entity is tagged, tags render `[compiler]` everywhere, and the guidance explains entity versus relation tags.
 

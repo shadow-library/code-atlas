@@ -15,7 +15,7 @@ use atlas_lsp::{
 };
 use tempfile::TempDir;
 
-const HINT: &str = "typescript-language-server not found. Install it (npm i -g typescript-language-server typescript@5), set code-atlas project config <p> --lsp-ts-command <path>, or allow download with --lsp-download on.";
+const HINT: &str = "typescript-language-server not found. Install it (npm i -g typescript-language-server typescript@5), set catl project config <p> --lsp-ts-command <path>, or allow download with --lsp-download on.";
 const TS7: &str = "TypeScript 7 has no tsserver; install typescript@5 alongside or use the bundled one";
 
 static EXEC_LOCK: RwLock<()> = RwLock::new(());

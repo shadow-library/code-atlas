@@ -79,7 +79,7 @@ Rendering rules: a fact is stated plainly only if authoritative. Every non-autho
 
 `Evidence` = `{ repo, path, span, content_hash, producer, note }`. The `content_hash` is the hash of the file when the fact was produced, which is what makes staleness checkable. `Producer` = `{ name, version }` (for example `atlas-lang-ts@1`, `atlas-detect.events@1`, `atlas-resolve@1`, `scip:<tool>`).
 
-`code-atlas query explain <target>` shows the merged fact, every assertion with its owner, certainty and evidence spans, and the file's last indexed run. Example (acme, `GET /users/{id}`): the endpoint is `[syntactic]` from the file owner, while the `link` pass asserts a `[heuristic 0.50]` annotation on the same key.
+`catl query explain <target>` shows the merged fact, every assertion with its owner, certainty and evidence spans, and the file's last indexed run. Example (acme, `GET /users/{id}`): the endpoint is `[syntactic]` from the file owner, while the `link` pass asserts a `[heuristic 0.50]` annotation on the same key.
 
 ## Per-attribute provenance
 
@@ -113,7 +113,7 @@ Freshness is computed from evidence hashes (`Freshness::of_evidence`):
 | `stale` | `stale` | an evidence file changed or no longer exists |
 | `needs_revalidation` | `needs-revalidation` | a subject was renamed or moved (lineage); an inferred client-call link also needs revalidation when the client file or the candidate endpoint set changes (queries recompute the set live; `explain` says why a link is settled or stale and, if a static link now exists, its tag) |
 
-Stale and low-confidence (below 0.5) facts are excluded from default query results; `--include-stale` shows stale ones. Deterministic facts are never stale: they are re-derived or deleted when their file changes. `code-atlas enrich` re-runs due facts through the provider (cached by prompt hash).
+Stale and low-confidence (below 0.5) facts are excluded from default query results; `--include-stale` shows stale ones. Deterministic facts are never stale: they are re-derived or deleted when their file changes. `catl enrich` re-runs due facts through the provider (cached by prompt hash).
 
 ## Lineage
 

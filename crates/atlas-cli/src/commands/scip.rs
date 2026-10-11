@@ -18,7 +18,7 @@ pub fn run(ctx: &Context) -> CliResult<Outcome> {
   emit_line(format!("scip run {}: {} packages", report.run, report.packages.len()))?;
   if !project.settings.scip.enabled {
     emit_line(format!(
-      "automatic SCIP is off for this project; enable it with `code-atlas project config {} --scip on`",
+      "automatic SCIP is off for this project; enable it with `catl project config {} --scip on`",
       project.name
     ))?;
   }

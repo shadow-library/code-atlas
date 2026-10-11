@@ -170,11 +170,11 @@ fn locate_atlas_bin(explicit: Option<&Path>, repo_root: &Path) -> Option<PathBuf
   }
   let built = ["release", "debug"]
     .iter()
-    .map(|profile| repo_root.join("target").join(profile).join("code-atlas"))
+    .map(|profile| repo_root.join("target").join(profile).join("catl"))
     .find(|path| path.is_file());
   built.or_else(|| {
     std::env::var_os("PATH")
-      .map(|paths| std::env::split_paths(&paths).map(|dir| dir.join("code-atlas")).collect::<Vec<_>>())
+      .map(|paths| std::env::split_paths(&paths).map(|dir| dir.join("catl")).collect::<Vec<_>>())
       .unwrap_or_default()
       .into_iter()
       .find(|path| path.is_file())
@@ -215,9 +215,9 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
     let mut notes: Vec<String> = tasks.iter().map(|task| source_note(task, args.repo_override.as_deref())).collect();
     if conditions.contains(&Condition::Atlas) {
       notes.push(match &atlas_bin {
-        Some(path) if path.is_file() => format!("code-atlas binary: {}", path.display()),
-        Some(path) => format!("code-atlas binary {} does not exist yet; atlas runs would fail at setup", path.display()),
-        None => "no code-atlas binary found (target/release, target/debug, PATH); atlas runs would fail at setup — pass --atlas-bin".to_owned(),
+        Some(path) if path.is_file() => format!("catl binary: {}", path.display()),
+        Some(path) => format!("catl binary {} does not exist yet; atlas runs would fail at setup", path.display()),
+        None => "no catl binary found (target/release, target/debug, PATH); atlas runs would fail at setup — pass --atlas-bin".to_owned(),
       });
     }
     let context = DryRunContext {
@@ -244,7 +244,7 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
     tree_root: args.tree_root.clone().unwrap_or_else(std::env::temp_dir),
     keep_trees: args.keep_trees,
     claude: args.claude.config(),
-    atlas_bin: atlas_bin.unwrap_or_else(|| PathBuf::from("code-atlas")),
+    atlas_bin: atlas_bin.unwrap_or_else(|| PathBuf::from("catl")),
     repo_override: args.repo_override.clone(),
     judge: args.judge,
     parallel: args.parallel,

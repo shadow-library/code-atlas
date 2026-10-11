@@ -263,7 +263,7 @@ pub fn unit_detail(unit: &UnitCheck, current_exclude: &[String]) -> (String, Vec
           [
             format!("workspace health error: {health}"),
             format!(
-              "exact answers from this server are marked PARTIAL and edits are refused until it loads; exclude the failing Cargo projects (for example fixtures); --lsp-exclude replaces the list, so repeat the current globs: code-atlas project config <project>{suggested} --lsp-exclude <glob>"
+              "exact answers from this server are marked PARTIAL and edits are refused until it loads; exclude the failing Cargo projects (for example fixtures); --lsp-exclude replaces the list, so repeat the current globs: catl project config <project>{suggested} --lsp-exclude <glob>"
             ),
           ]
         })

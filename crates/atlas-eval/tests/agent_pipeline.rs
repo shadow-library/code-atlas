@@ -53,7 +53,7 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"duration_m
 
 const FAKE_ATLAS: &str = r#"#!/bin/sh
 case "$1" in
-  --version) echo "code-atlas 0.0.0-fake" ;;
+  --version) echo "catl 0.0.0-fake" ;;
   project) [ -n "$CODE_ATLAS_HOME" ] || exit 9 ;;
   index)
     [ -n "$CODE_ATLAS_HOME" ] || exit 9
@@ -125,7 +125,7 @@ impl Fixture {
         judge_model: "claude-sonnet-5-5".to_owned(),
         config_isolation: ConfigIsolation::User,
       },
-      atlas_bin: self.bin.join("code-atlas"),
+      atlas_bin: self.bin.join("catl"),
       repo_override: Some(self.source.clone()),
       judge: JudgeMode::Off,
       parallel,
@@ -158,7 +158,7 @@ fn fixture() -> Fixture {
   write(&source.join("CLAUDE.md"), "Use two-space indentation.\n");
   let bin = root.path().join("bin");
   executable(&bin.join("claude"), FAKE_CLAUDE);
-  executable(&bin.join("code-atlas"), FAKE_ATLAS);
+  executable(&bin.join("catl"), FAKE_ATLAS);
   let eval_home = root.path().join("eval");
   let batch = eval_home.join("runs/batch");
   let trees = root.path().join("trees");
@@ -182,8 +182,8 @@ fn should_run_score_and_report_both_conditions_with_fake_binaries() {
   let config = fixture.config(2, None);
   let manifest = agent::run_batch(&config, &tasks, planned).unwrap();
   assert_eq!(manifest.spent_usd, 0.02);
-  assert_eq!(manifest.environment.code_atlas_version.as_deref(), Some("code-atlas 0.0.0-fake"));
-  let fake_atlas = fs::read(fixture.bin.join("code-atlas")).unwrap();
+  assert_eq!(manifest.environment.code_atlas_version.as_deref(), Some("catl 0.0.0-fake"));
+  let fake_atlas = fs::read(fixture.bin.join("catl")).unwrap();
   assert_eq!(manifest.environment.atlas_bin_blake3, Some(blake3::hash(&fake_atlas).to_hex().to_string()));
 
   for condition in Condition::ALL {

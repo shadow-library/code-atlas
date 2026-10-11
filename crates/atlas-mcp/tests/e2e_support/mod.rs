@@ -21,7 +21,7 @@ pub fn fixtures() -> PathBuf {
   Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures")
 }
 
-// The binary lives in atlas-cli, so Cargo gives this crate no CARGO_BIN_EXE_code-atlas; build it into the same target dir and profile.
+// The binary lives in atlas-cli, so Cargo gives this crate no CARGO_BIN_EXE_catl; build it into the same target dir and profile.
 pub fn binary() -> &'static Path {
   static BINARY: OnceLock<PathBuf> = OnceLock::new();
   BINARY.get_or_init(|| {
@@ -37,13 +37,13 @@ pub fn binary() -> &'static Path {
     };
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let status = Command::new(cargo)
-      .args(["build", "--quiet", "-p", "atlas-cli", "--bin", "code-atlas", "--profile", &profile, "--target-dir"])
+      .args(["build", "--quiet", "-p", "atlas-cli", "--bin", "catl", "--profile", &profile, "--target-dir"])
       .arg(target_dir)
       .current_dir(env!("CARGO_MANIFEST_DIR"))
       .status()
       .unwrap();
-    assert!(status.success(), "building code-atlas failed");
-    fs::canonicalize(profile_dir.join("code-atlas")).unwrap()
+    assert!(status.success(), "building catl failed");
+    fs::canonicalize(profile_dir.join("catl")).unwrap()
   })
 }
 
@@ -112,7 +112,7 @@ impl Sandbox {
 
   pub fn cli_ok(&self, cwd: &Path, args: &[&str]) -> CliRun {
     let run = self.cli(cwd, args);
-    assert_eq!(run.code, 0, "code-atlas {args:?} failed\n{}\n{}", run.stdout, run.stderr);
+    assert_eq!(run.code, 0, "catl {args:?} failed\n{}\n{}", run.stdout, run.stderr);
     run
   }
 

@@ -189,7 +189,7 @@ fn language_servers(project: Option<&Project>) -> Vec<Check> {
     checks.push(Check::new(
       Level::Warn,
       "language servers",
-      format!("disabled for {scope} (lsp.enabled = false); exact operations refuse until `code-atlas project config <project> --lsp on`"),
+      format!("disabled for {scope} (lsp.enabled = false); exact operations refuse until `catl project config <project> --lsp on`"),
     ));
   }
   match lsp_probe::probe_rust_analyzer().result {
@@ -211,7 +211,7 @@ fn language_servers(project: Option<&Project>) -> Vec<Check> {
     .iter()
     .map(|step| match settings.download && step.label.starts_with("download (") {
       true => format!(
-        "{}: skipped by doctor (no network); lsp.download = on; `code-atlas lsp check` probes the npm registry",
+        "{}: skipped by doctor (no network); lsp.download = on; `catl lsp check` probes the npm registry",
         step.label
       ),
       false => step.text(),

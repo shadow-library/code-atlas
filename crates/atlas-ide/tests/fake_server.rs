@@ -220,7 +220,7 @@ fn should_refuse_exact_modes_when_language_servers_are_disabled() {
 
   assert_eq!(
     outline,
-    "language servers are disabled for project demo (lsp.enabled = false); enable them with `code-atlas project config demo --lsp on`; retry with source='graph' for tagged graph results"
+    "language servers are disabled for project demo (lsp.enabled = false); enable them with `catl project config demo --lsp on`; retry with source='graph' for tagged graph results"
   );
   assert!(text(&graph).starts_with("outline web:src/money.ts source=graph"), "{}", text(&graph));
 }

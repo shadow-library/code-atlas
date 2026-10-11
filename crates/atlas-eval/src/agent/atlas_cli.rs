@@ -194,10 +194,10 @@ mod tests {
 
   #[test]
   fn should_render_the_mcp_config_with_an_isolated_home() {
-    let cli = AtlasCli::new("/bin/code-atlas", "/runs/r1/atlas", Duration::from_secs(1));
+    let cli = AtlasCli::new("/bin/catl", "/runs/r1/atlas", Duration::from_secs(1));
     assert_eq!(
       cli.mcp_config("eval-r1"),
-      json!({"mcpServers": {"code-atlas": {"type": "stdio", "command": "/bin/code-atlas", "args": ["mcp", "--project", "eval-r1"], "env": {"CODE_ATLAS_HOME": "/runs/r1/atlas"}}}})
+      json!({"mcpServers": {"code-atlas": {"type": "stdio", "command": "/bin/catl", "args": ["mcp", "--project", "eval-r1"], "env": {"CODE_ATLAS_HOME": "/runs/r1/atlas"}}}})
     );
   }
 
@@ -264,7 +264,7 @@ mod tests {
 
   #[test]
   fn should_surface_a_missing_binary_as_a_command_error() {
-    let cli = AtlasCli::new("/definitely/missing/code-atlas", "/tmp/atlas-home", Duration::from_secs(1));
+    let cli = AtlasCli::new("/definitely/missing/catl", "/tmp/atlas-home", Duration::from_secs(1));
     let error = cli.index("p", Path::new("/")).unwrap_err();
     assert!(matches!(error, AgentError::Command { .. }), "got {error:?}");
   }

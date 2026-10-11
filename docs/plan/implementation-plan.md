@@ -147,7 +147,7 @@ Every query runs a **freshness barrier** first:
 2. If anything changed, run an incremental update before answering. Incremental cost is proportional to the changed files plus their dependents.
 3. The response carries a `freshness` header: index run id, update duration, files updated, and whether SCIP lags behind.
 
-When the optional `code-atlas watch` daemon is running and reports a clean state, the barrier skips the scan. Branch switches need no special handling: they look like many file changes, and content hashing makes this correct.
+When the optional `catl watch` daemon is running and reports a clean state, the barrier skips the scan. Branch switches need no special handling: they look like many file changes, and content hashing makes this correct.
 
 Correctness rule: **no query ever answers from an index known to be older than the working tree.** If the update fails, the query returns an explicit error or a `degraded` marker naming the affected files. It never silently returns old data.
 
@@ -192,13 +192,13 @@ Output is a compact, token-efficient text format by default, with `--json` for m
 ### 1.8 Developer experience
 
 ```
-code-atlas project create acme --repo ~/src/acme-web --repo ~/src/acme-api --repo ~/src/acme-sdk
-code-atlas project add-repo acme ~/src/acme-infra
-code-atlas index                    # project inferred from cwd; --project to override
-code-atlas query impact UsersService.findOne
-code-atlas connect claude           # writes .mcp.json + agent guidance snippet (AGENTS.md / CLAUDE.md)
-code-atlas mcp                      # stdio MCP server, project inferred from cwd or --project
-code-atlas watch                    # optional low-latency freshness daemon
+catl project create acme --repo ~/src/acme-web --repo ~/src/acme-api --repo ~/src/acme-sdk
+catl project add-repo acme ~/src/acme-infra
+catl index                    # project inferred from cwd; --project to override
+catl query impact UsersService.findOne
+catl connect claude           # writes .mcp.json + agent guidance snippet (AGENTS.md / CLAUDE.md)
+catl mcp                      # stdio MCP server, project inferred from cwd or --project
+catl watch                    # optional low-latency freshness daemon
 ```
 
 - The registry is stored at `$XDG_CONFIG_HOME/code-atlas/projects.toml`. Data goes to `$XDG_DATA_HOME/code-atlas/<project>/atlas.db`.
@@ -209,7 +209,7 @@ code-atlas watch                    # optional low-latency freshness daemon
 
 - `tracing` spans per phase.
 - An `index_runs` table holding a per-phase timing, counts and the change set.
-- `code-atlas status`, plus `code-atlas debug run <id>`, which shows what changed in that run and which facts were added or removed.
+- `catl status`, plus `catl debug run <id>`, which shows what changed in that run and which facts were added or removed.
 - `explain` for any fact.
 - `context --explain`, which shows the scores, expansions and omissions.
 - An LLM call ledger recording tokens, cache hits and cost.

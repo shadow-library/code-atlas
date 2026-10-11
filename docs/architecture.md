@@ -22,7 +22,7 @@ Code Atlas is a Cargo workspace of 20 product crates plus the unpublished test c
 | `atlas-edit` | edit plans, path-guarded atomic application with rollback, text operations, symbol regions. No LSP, no engine; depends on `atlas-core` and `atlas-project` |
 | `atlas-ide` | `IdeService`: exact operations over language servers (references, declaration, implementations, outline, diagnostics, rename, safe delete) plus graph extras, symbol and text edits, plan files. Shared by CLI and MCP |
 | `atlas-mcp` | MCP stdio server (15 tools) |
-| `atlas-cli` | the `code-atlas` binary |
+| `atlas-cli` | the `catl` binary |
 | `atlas-test-lsp` | unpublished (`publish = false`) test crate that owns the only fake language-server binary; tests locate it with `atlas_test_lsp::fake_lsp_path()`; it is a dev-dependency only, so no product build includes it |
 | `atlas-bench`, `atlas-eval` | performance harness and evaluation harness (quality and agent A/B) |
 
@@ -51,14 +51,14 @@ Dependency direction: `core` at the bottom; analyzers and `atlas-lsp` depend on 
  +---------------------------------------------------------------------------------------------------+
         |                                            ^
         v                                            | out of band, never inside the barrier
- SQLite (WAL) ---- atlas-query ---- CLI / MCP     code-atlas scip  -> scip:<repo>:<path> owners
-        |                                          code-atlas enrich -> inferred facts (LLM)
+ SQLite (WAL) ---- atlas-query ---- CLI / MCP     catl scip  -> scip:<repo>:<path> owners
+        |                                          catl enrich -> inferred facts (LLM)
         +-- file owners, project-pass owners, SCIP owners, inferred facts, blobs, run ledger
 ```
 
 Language servers sit beside this flow, not in it. `atlas-ide` runs the barrier first, syncs a server (one per language by default, started by the first exact call, kept warm under MCP and one-shot under the CLI) to the working tree from the run ledger, then asks it. Exact answers are rendered `[compiler]` and are never written to the store. Edits go through `Engine::write_then_refresh`, which holds the engine mutex and the index lock across the atomic write and an incremental refresh, so no barrier in any process indexes a half-applied edit. Lock order is IDE edit mutex, barrier, language-server unit mutex, then engine mutex, index lock and `<db>.edit.lock`. See `crates/atlas-ide/CLAUDE.md` and the [operations](operations.md#language-servers) page.
 
-Pipeline phases as reported by `code-atlas debug run <id>`: `plan, analyze, symbols, load, resolve, manifests, existence, lineage_inputs, encode, persist, dependents, similarity, lineage, passes, finish`.
+Pipeline phases as reported by `catl debug run <id>`: `plan, analyze, symbols, load, resolve, manifests, existence, lineage_inputs, encode, persist, dependents, similarity, lineage, passes, finish`.
 
 ## Storage
 

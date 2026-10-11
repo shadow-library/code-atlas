@@ -46,7 +46,7 @@ pub enum ProjectError {
   Name(#[from] CoreError),
   #[error("{} is inside several projects ({}); pass --project to choose", .cwd.display(), .candidates.join(", "))]
   Ambiguous { cwd: PathBuf, candidates: Vec<String> },
-  #[error("{} is not inside any registered project; register it with `code-atlas project create` or pass --project", .cwd.display())]
+  #[error("{} is not inside any registered project; register it with `catl project create` or pass --project", .cwd.display())]
   NotInProject { cwd: PathBuf },
   #[error("invalid project marker {}: {message}", .path.display())]
   InvalidMarker { path: PathBuf, message: String },

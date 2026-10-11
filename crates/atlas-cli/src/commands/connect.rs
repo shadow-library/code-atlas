@@ -44,7 +44,7 @@ fn claude(ctx: &Context, args: ConnectClaudeArgs) -> CliResult<Outcome> {
   let project = ctx.resolve()?;
   let executable = std::env::current_exe()
     .and_then(fs::canonicalize)
-    .map_err(|source| CliError::io("locate", "the code-atlas executable", source))?;
+    .map_err(|source| CliError::io("locate", "the catl executable", source))?;
   let root = connection_root(ctx, &project)?;
   let atlas_home = std::env::var_os(HOME_VAR).filter(|value| !value.is_empty());
   let user_scope = args.scope == ConnectScope::User;

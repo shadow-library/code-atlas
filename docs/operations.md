@@ -7,7 +7,7 @@ The language-server, edit-command and parse-budget material was not part of that
 ## Building and the SQLite flag
 
 ```sh
-cargo build --release                  # code-atlas, atlas-bench, atlas-eval in target/release
+cargo build --release                  # catl, atlas-bench, atlas-eval in target/release
 cargo install --path crates/atlas-cli
 ./scripts/check.sh                     # fmt --check, clippy -D warnings, test --workspace
 ```
@@ -15,9 +15,9 @@ cargo install --path crates/atlas-cli
 The repository's `.cargo/config.toml` sets `LIBSQLITE3_FLAGS="-USQLITE_ENABLE_MEMORY_MANAGEMENT -DSQLITE_DEFAULT_MEMSTATUS=0"`. Without those flags the bundled SQLite uses one process-wide page cache behind a global mutex, so concurrent queries serialise.
 
 - The flag applies to workspace builds and `cargo install --path crates/atlas-cli`.
-- It is not applied by `cargo install --git`. Pass it explicitly: `LIBSQLITE3_FLAGS="-USQLITE_ENABLE_MEMORY_MANAGEMENT -DSQLITE_DEFAULT_MEMSTATUS=0" cargo install --git <url> code-atlas`.
+- It is not applied by `cargo install --git`. Pass it explicitly: `LIBSQLITE3_FLAGS="-USQLITE_ENABLE_MEMORY_MANAGEMENT -DSQLITE_DEFAULT_MEMSTATUS=0" cargo install --git <url> atlas-cli`.
 - Losing it costs throughput, never correctness.
-- `code-atlas doctor` reports it under a check called "sqlite build" (ok: "per-connection page caches"; warn when compiled with ENABLE_MEMORY_MANAGEMENT).
+- `catl doctor` reports it under a check called "sqlite build" (ok: "per-connection page caches"; warn when compiled with ENABLE_MEMORY_MANAGEMENT).
 - The MCP server uses max(configured readers, cores) read connections; the default is 4 readers.
 
 ## Where things live
@@ -29,6 +29,8 @@ The repository's `.cargo/config.toml` sets `LIBSQLITE3_FLAGS="-USQLITE_ENABLE_ME
 | SCIP cache | `<data dir>/<project>/scip-cache/` |
 | Repo marker | `.code-atlas.toml` in a repo (`project = "<name>"`), written by `init` |
 | Bench corpora | `<data dir>/bench-corpora/` |
+
+The command is `catl`. The home directories, `CODE_ATLAS_HOME`, the `.code-atlas.toml` marker and the MCP server name keep the project name `code-atlas`.
 
 Resolution order for the home:
 
@@ -89,7 +91,7 @@ Global flags: `-p, --project <NAME>`, `--log-level <FILTER>` (overrides `RUST_LO
 | `debug run <ID>`, `debug explain-context <TASK>`, `debug dump-file <REPO:PATH>` | per-run phase timings and counts, context scoring, raw facts of a file |
 | `doctor [--lsp]` | check home, registry, repos, database integrity, index lock, `rust-analyzer`, `typescript-language-server` discovery (one line per candidate), TypeScript 7 repos, `npx`, `claude`, SQLite build; `--lsp` also starts each language server and reports its health (slow) |
 
-Every query accepts `--json`. Other flags are per command (`code-atlas query <command> --help` is authoritative):
+Every query accepts `--json`. Other flags are per command (`catl query <command> --help` is authoritative):
 
 | Command | Flags |
 |---|---|
@@ -114,7 +116,7 @@ Quickstart output (acme): `indexed acme: run 1, 58 files updated`; `status` show
 
 ## Project config
 
-`code-atlas project config <PROJECT>` prints settings; flags change them (`--reset` restores defaults first):
+`catl project config <PROJECT>` prints settings; flags change them (`--reset` restores defaults first):
 
 | Setting | Flag | Default |
 |---|---|---|
@@ -161,13 +163,13 @@ Exact reads (`outline`, `refs`, `decl`, `impls`, `diagnostics`) and exact edits 
 
 **Lifecycle.**
 
-- MCP (`code-atlas mcp`): servers are started by the first exact call, kept warm and shared across calls, at most `lsp.max_servers` (2: one per language by default), the least recently used evicted over the cap, idle ones stopped after `lsp.idle_secs`. There is no prewarm, so the first call per language pays the cold start. A server that crashes is restarted on the next call; three failures within 10 minutes pause that server for 10 minutes. Servers are stopped on SIGTERM and SIGINT.
+- MCP (`catl mcp`): servers are started by the first exact call, kept warm and shared across calls, at most `lsp.max_servers` (2: one per language by default), the least recently used evicted over the cap, idle ones stopped after `lsp.idle_secs`. There is no prewarm, so the first call per language pays the cold start. A server that crashes is restarted on the next call; three failures within 10 minutes pause that server for 10 minutes. Servers are stopped on SIGTERM and SIGINT.
 - CLI: one-shot. `outline`, `refs`, `decl`, `impls`, `diagnostics`, `edit rename`, `edit safe-delete` and `lsp check` start a server, wait for readiness, answer and stop it. `edit replace-body`, `insert-before` and `insert-after` start none (they cross-check against a server only when one is already warm, which a one-shot process never has). Cold start, measured: 2 to 5 s for TypeScript on fixtures; 20 to 65 s for rust-analyzer (22 s for a 2-crate workspace, 64 s for `acme-billing`, from the `--help` text), longer on large workspaces. Measured in review, not in a checked-in report: about 58 s cold and 6 s warm on this workspace, with about 2.1 GB resident. Use the MCP server, not repeated CLI calls, for interactive work.
 - Servers sync to the working tree before every call from the index run ledger. An unknown change set (a gap in the ledger, more than 1,000 changed files) restarts the server.
 
 **Settings that matter.**
 
-- `lsp.exclude` drops matching Cargo projects from rust-analyzer's `linkedProjects` and refuses exact operations on files under them (for TypeScript it only refuses files, since workspace folders are repo roots). A repository that contains fixture crates needs it: rust-analyzer reported `health = error` on a full copy of this repository until the fixtures were excluded. For this repository: `code-atlas project config <p> --lsp-exclude 'fixtures/**' --lsp-exclude 'crates/*/tests/pin-corpus/**' --lsp-exclude 'eval/**'`. While a server reports `health = error`, reads are answered `PARTIAL` with its message and edits refuse.
+- `lsp.exclude` drops matching Cargo projects from rust-analyzer's `linkedProjects` and refuses exact operations on files under them (for TypeScript it only refuses files, since workspace folders are repo roots). A repository that contains fixture crates needs it: rust-analyzer reported `health = error` on a full copy of this repository until the fixtures were excluded. For this repository: `catl project config <p> --lsp-exclude 'fixtures/**' --lsp-exclude 'crates/*/tests/pin-corpus/**' --lsp-exclude 'eval/**'`. While a server reports `health = error`, reads are answered `PARTIAL` with its message and edits refuse.
 - `lsp.unit = repo` runs one server per repo instead of per language.
 
 **Side effects and limits.**
@@ -177,7 +179,7 @@ Exact reads (`outline`, `refs`, `decl`, `impls`, `diagnostics`) and exact edits 
 - Edit results report native diagnostics only: for Rust, rust-analyzer's own errors with `cargo check` not run.
 - Manifest edits (`Cargo.toml`, `package.json`, `tsconfig*.json`) are not in the engine's change set. atlas-ide compares the root and package manifests on every sync and restarts or caveats the server; this is a workaround, tracked as ENGINE-1.
 
-**Checking.** `code-atlas doctor` shows discovery without starting anything (it does not probe the npm registry); `code-atlas doctor --lsp` and `code-atlas lsp check` start each server once and report versions, readiness time and workspace health; `atlas_status` lists running servers with phase, uptime, idle time and resident memory.
+**Checking.** `catl doctor` shows discovery without starting anything (it does not probe the npm registry); `catl doctor --lsp` and `catl lsp check` start each server once and report versions, readiness time and workspace health; `atlas_status` lists running servers with phase, uptime, idle time and resident memory.
 
 ## Parse budget
 
@@ -193,9 +195,9 @@ You never need `watch` for correctness: every query runs the freshness barrier. 
 
 ## SCIP
 
-`code-atlas scip` runs `rust-analyzer scip` once per Cargo workspace (at the workspace root; standalone crates per package) and `npx @sourcegraph/scip-typescript` per npm package, ingests the results as `compiler_verified` edges, and prints per-package counts (`acme-api:package.json [scip-typescript] ingested 32 files, 118 edges`). Afterwards `status` shows `scip: current (47/58 files covered)` and edge histograms gain `compiler_verified` counts (acme: `calls: compiler_verified 63, heuristic 10, resolved 65`).
+`catl scip` runs `rust-analyzer scip` once per Cargo workspace (at the workspace root; standalone crates per package) and `npx @sourcegraph/scip-typescript` per npm package, ingests the results as `compiler_verified` edges, and prints per-package counts (`acme-api:package.json [scip-typescript] ingested 32 files, 118 edges`). Afterwards `status` shows `scip: current (47/58 files covered)` and edge histograms gain `compiler_verified` counts (acme: `calls: compiler_verified 63, heuristic 10, resolved 65`).
 
-- Never inside a query. By default it only runs on `code-atlas scip`; any file re-indexed later is marked lagging until the next run. With `project config <p> --scip on`, a watcher (`watch`, `mcp --watch`) schedules a run once no file event has arrived for `scip.debounce_secs`, on its own thread, never blocking queries. One SCIP run per project at a time (`atlas.db.scip.lock`; explicit runs wait, automatic runs skip, `status` shows "in progress"). An unavailable indexer pauses automatic runs for an hour; a failed package is held while its inputs are unchanged (up to an hour).
+- Never inside a query. By default it only runs on `catl scip`; any file re-indexed later is marked lagging until the next run. With `project config <p> --scip on`, a watcher (`watch`, `mcp --watch`) schedules a run once no file event has arrived for `scip.debounce_secs`, on its own thread, never blocking queries. One SCIP run per project at a time (`atlas.db.scip.lock`; explicit runs wait, automatic runs skip, `status` shows "in progress"). An unavailable indexer pauses automatic runs for an hour; a failed package is held while its inputs are unchanged (up to an hour).
 - Needs `rust-analyzer` (PATH or `rustup which`) and `npx` (cached package or `npm ping`); `doctor` checks both. Default timeout 10 minutes per package; rust-analyzer needs about 2 GB RSS and builds the workspace.
 - Runners leave no files in the repo (`CARGO_TARGET_DIR` is redirected into the cache; `Cargo.lock` is restored; missing `tsconfig.json` is inferred via a symlink overlay).
 - Results are cached under `scip-cache/` per indexer and root, keyed by indexer version and input file hashes; the newest 2 entries per root are kept. An index whose inputs changed during the run is returned but never cached.
@@ -206,10 +208,10 @@ You never need `watch` for correctness: every query runs the freshness barrier. 
 Disabled by default. Enable per project:
 
 ```sh
-code-atlas project config acme --llm on --llm-provider claude-cli      # uses the local `claude` CLI session
-code-atlas project config acme --llm on --llm-provider anthropic       # needs ANTHROPIC_API_KEY
-code-atlas project config acme --llm on --llm-provider openai-compatible --llm-model <model>   # needs OPENAI_BASE_URL (and OPENAI_API_KEY)
-code-atlas -p acme enrich --budget-calls 50 --budget-tokens 200000
+catl project config acme --llm on --llm-provider claude-cli      # uses the local `claude` CLI session
+catl project config acme --llm on --llm-provider anthropic       # needs ANTHROPIC_API_KEY
+catl project config acme --llm on --llm-provider openai-compatible --llm-model <model>   # needs OPENAI_BASE_URL (and OPENAI_API_KEY)
+catl -p acme enrich --budget-calls 50 --budget-tokens 200000
 ```
 
 - `enrich` runs, within one shared budget: LLM link tasks for client calls the link pass could not match (candidates are same-method endpoints), similarity classification of structural pairs and of lexical candidates (shared name words, signatures, BM25 neighbours), optional capability summaries (`--summaries`), and revalidation of stale facts. Results are stored as `inferred` facts; a link goes stale when its client file or candidate set changes. Nothing else is sent to a provider. `--dry-run` prints what each task would see.
@@ -220,7 +222,7 @@ code-atlas -p acme enrich --budget-calls 50 --budget-tokens 200000
 
 ## Doctor
 
-`code-atlas doctor` prints one line per check (`ok`, `warn`, `fail`) and a summary (`0 failures, 0 warnings`): home paths, registry parse, whether the working directory is in a project, every repo path, database integrity (`PRAGMA integrity_check`), index lock state, `rust-analyzer`, `typescript-language-server` discovery and TypeScript 7 repos, `npx`, `claude` versions, and the SQLite build flags. With `--lsp` it also starts each language server of the project in scope and reports its readiness and health. It exits 3 when there are warnings and 1 on failures. Run it first when something looks wrong; follow with `status` and `debug run <id>`.
+`catl doctor` prints one line per check (`ok`, `warn`, `fail`) and a summary (`0 failures, 0 warnings`): home paths, registry parse, whether the working directory is in a project, every repo path, database integrity (`PRAGMA integrity_check`), index lock state, `rust-analyzer`, `typescript-language-server` discovery and TypeScript 7 repos, `npx`, `claude` versions, and the SQLite build flags. With `--lsp` it also starts each language server of the project in scope and reports its readiness and health. It exits 3 when there are warnings and 1 on failures. Run it first when something looks wrong; follow with `status` and `debug run <id>`.
 
 ## Logging
 

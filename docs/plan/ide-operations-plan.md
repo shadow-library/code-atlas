@@ -151,7 +151,7 @@ MCP/CLI ─▶ IdeService
 4. npx cache without network: `npx --no-install typescript-language-server --version`.
 5. Only if `lsp.download = on` (default **off**): `npx --yes -p typescript-language-server@5 -p typescript@5 typescript-language-server --stdio`. `npm ping` must answer first, as in `atlas-scip/src/typescript.rs`.
 6. Otherwise `LspError::Unavailable` with the exact hint:
-   > `typescript-language-server not found. Install it (npm i -g typescript-language-server typescript@5), set code-atlas project config <p> --lsp-ts-command <path>, or allow download with --lsp-download on.`
+   > `typescript-language-server not found. Install it (npm i -g typescript-language-server typescript@5), set catl project config <p> --lsp-ts-command <path>, or allow download with --lsp-download on.`
 
 **tsserver selection:**
 - Use `<repo>/node_modules/typescript/lib/tsserver.js` when present and its version is below 7. This matches the IDE's "workspace version", which is deterministic for agents.
@@ -160,7 +160,7 @@ MCP/CLI ─▶ IdeService
 - A TS ≥ 7 workspace install gives `Unavailable("TypeScript 7 has no tsserver; install typescript@5 alongside or use the bundled one")`.
 - The chosen versions (server, TypeScript) appear in every answer header.
 
-`code-atlas doctor` prints each step's result. `atlas_status` shows the state of the servers.
+`catl doctor` prints each step's result. `atlas_status` shows the state of the servers.
 
 ### 3.3 Initialization and readiness
 
@@ -238,7 +238,7 @@ Server-to-client requests answered:
   - TS fixtures: 2–5 s.
   - rust-analyzer on fixtures: 5–15 s.
   - rust-analyzer on this workspace: 30–90 s cold. Build scripts (including the tree-sitter C grammars) are cached in `lsp-target/`, so later runs take 10–25 s.
-- `code-atlas lsp check` spawns each unit once and reports readiness time. The CLI one-shot mode is meant for scripts and CI, not interactive loops.
+- `catl lsp check` spawns each unit once and reports readiness time. The CLI one-shot mode is meant for scripts and CI, not interactive loops.
 
 ---
 
@@ -615,22 +615,22 @@ C1 measures the real value before and after. It adds `should_keep_tool_schemas_w
 ## 14. CLI (`atlas-cli/src/cli.rs`, `commands/ide.rs`, `commands/edit.rs`)
 
 ```
-code-atlas find <NAME_PATH> [--path P] [--depth N] [--body] [--substring] [--kind K]… [--exclude-kind K]… [--max N] [--json]
-code-atlas outline <[repo:]PATH> [--depth N] [--source graph]
-code-atlas refs <TARGET> [--source graph]
-code-atlas decl <[repo:]PATH:LINE:COL> | decl --path P --regex R
-code-atlas impls <TARGET>
-code-atlas hierarchy <TARGET> [--depth N]
-code-atlas diagnostics <[repo:]PATH> [--lines A-B] [--min-severity warning]
-code-atlas edit rename <TARGET> <NEW> [--cross-repo report|apply]
-code-atlas edit replace-body|insert-before|insert-after <TARGET> (--text T | --text-file F|-)
-code-atlas edit safe-delete <TARGET>
-code-atlas edit replace <[repo:]PATH> --pattern P --text T [--regex] [--all]
-code-atlas edit replace-in-files --pattern P --text T [--regex] [--include G]… [--exclude G]… [--occurrence ID]… [--expected-count N]
-code-atlas edit apply <PLAN.json>                    # every edit subcommand: --dry-run, --plan-out F, --json
-code-atlas lsp check                                 # spawn, ready, report per unit
-code-atlas query callers|callees … --via-http ;  query similar --code - --language ts
-code-atlas project config <p> --lsp on|off --lsp-download on|off --lsp-ts-command PATH --lsp-idle-secs N --lsp-max-servers N --lsp-unit project|repo
+catl find <NAME_PATH> [--path P] [--depth N] [--body] [--substring] [--kind K]… [--exclude-kind K]… [--max N] [--json]
+catl outline <[repo:]PATH> [--depth N] [--source graph]
+catl refs <TARGET> [--source graph]
+catl decl <[repo:]PATH:LINE:COL> | decl --path P --regex R
+catl impls <TARGET>
+catl hierarchy <TARGET> [--depth N]
+catl diagnostics <[repo:]PATH> [--lines A-B] [--min-severity warning]
+catl edit rename <TARGET> <NEW> [--cross-repo report|apply]
+catl edit replace-body|insert-before|insert-after <TARGET> (--text T | --text-file F|-)
+catl edit safe-delete <TARGET>
+catl edit replace <[repo:]PATH> --pattern P --text T [--regex] [--all]
+catl edit replace-in-files --pattern P --text T [--regex] [--include G]… [--exclude G]… [--occurrence ID]… [--expected-count N]
+catl edit apply <PLAN.json>                    # every edit subcommand: --dry-run, --plan-out F, --json
+catl lsp check                                 # spawn, ready, report per unit
+catl query callers|callees … --via-http ;  query similar --code - --language ts
+catl project config <p> --lsp on|off --lsp-download on|off --lsp-ts-command PATH --lsp-idle-secs N --lsp-max-servers N --lsp-unit project|repo
 ```
 
 - Exit code `5`: edit refused (stale plan, references block safe_delete, ambiguous target, scope violation).
@@ -810,7 +810,7 @@ Serial constraints:
 - **Q3.** Should the post-edit flycheck (cargo check) stay off in `atlas_edit` answers, with native diagnostics only? Full flycheck can take tens of seconds per edit.
 - **Q4.** Is one server per project (cross-repo Rust path dependencies renamed exactly, more memory per process) the right default over one per repo?
 - **Q5.** rust-analyzer may create or update `Cargo.lock`. Should we warn only (proposed), or refuse to start the server when the lock is missing or stale?
-- **Q6.** Should warm servers be shared across processes (a `code-atlas lsp daemon` or the `watch` process)? Not in scope; it would fix N × 3 GB with several agent sessions.
+- **Q6.** Should warm servers be shared across processes (a `catl lsp daemon` or the `watch` process)? Not in scope; it would fix N × 3 GB with several agent sessions.
 - **Q7.** Is `cross_repo: "apply"` limited to authoritative graph sites acceptable, or should cross-repo sites never be editable in v1?
 - **Q8.** Should a TypeScript 7 native LSP backend (`tsgo --lsp`) be added later as the TS server once TS 7 is mainstream?
 

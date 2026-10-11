@@ -107,7 +107,7 @@ fn should_time_out_waiting_for_readiness_with_an_actionable_message() {
 
   assert_eq!(
     error.to_string(),
-    "rust-analyzer was not ready after 0.3s (indexing: Loading proc-macros); check it with `code-atlas lsp check`, and on a large workspace raise lsp.ready_timeout_secs in the project config"
+    "rust-analyzer was not ready after 0.3s (indexing: Loading proc-macros); check it with `catl lsp check`, and on a large workspace raise lsp.ready_timeout_secs in the project config"
   );
   assert_eq!(pool.status(), vec![]);
 }

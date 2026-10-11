@@ -172,7 +172,7 @@ Both batches used the same tasks, model, seed, Code Atlas binary and 2 runs per 
 
 **Contamination detection.** Every tool call is scanned for paths outside the tree (path fields and, best effort, absolute, `~` and `..` paths in Bash), ignoring toolchain and system locations. A run that touched the repository root, the eval home or another run's scratch directory is `contaminated`: listed at the top of the report, counted per condition and excluded from all statistics. Bash is not sandboxed, so detection is after the fact.
 
-**Version drift.** Self tasks freeze the tree at `base_commit`, but the atlas binary does not. The batch records the evaluation repository commit, the binary's build commit (`code-atlas --version`) and its blake3 hash (`atlas_bin_blake3`). A binary built after a task's feature landed can leak the answer (t05 asks for the `atlas_dependents`/`atlas_dependencies` MCP tools; t01 asks for cwd-relative CLI targets). Compare the build commit with each self task's `base_commit`; prefer a binary built from `base_commit` for those tasks. `--repo-override` marks a batch not reproducible from a commit. Always pass `--atlas-bin` explicitly.
+**Version drift.** Self tasks freeze the tree at `base_commit`, but the atlas binary does not. The batch records the evaluation repository commit, the binary's build commit (`catl --version`) and its blake3 hash (`atlas_bin_blake3`). A binary built after a task's feature landed can leak the answer (t05 asks for the `atlas_dependents`/`atlas_dependencies` MCP tools; t01 asks for cwd-relative CLI targets). Compare the build commit with each self task's `base_commit`; prefer a binary built from `base_commit` for those tasks. `--repo-override` marks a batch not reproducible from a commit. Always pass `--atlas-bin` explicitly.
 
 **Limits.** Few runs per condition and few tasks: differences are noisy and the judge is a model. Tasks are authored by the system's developers. Sessions are cost-bounded (`--budget-usd`, and `max_turns` and `timeout_minutes` set per task in `task.toml`). Metrics have documented caveats (partial output-token counts per turn, best-effort Bash read parsing, heuristic density, atlas relations reported as unverified without a SCIP reconciliation helper).
 
@@ -182,7 +182,7 @@ Both batches used the same tasks, model, seed, Code Atlas binary and 2 runs per 
 cargo build --release
 target/release/atlas-eval agent run --dry-run [--task t00-smoke]          # planned order and rough cost
 target/release/atlas-eval agent run --task t00-smoke --runs-per-condition 1 \
-  --atlas-bin target/release/code-atlas --budget-usd 2                    # resumable per batch
+  --atlas-bin target/release/catl --budget-usd 2                    # resumable per batch
 target/release/atlas-eval agent report --runs eval/runs/<batch> --out eval/reports/<date>/agent \
   --compare eval/reports/<previous>/agent.json
 target/release/atlas-eval agent probe --out /tmp/probe

@@ -522,7 +522,7 @@ mod tests {
 
     assert_eq!(
       error.to_string(),
-      "rust-analyzer was not ready after 0.05s (indexing: Building CrateGraph 2/9); check it with `code-atlas lsp check`, and on a large workspace raise lsp.ready_timeout_secs in the project config"
+      "rust-analyzer was not ready after 0.05s (indexing: Building CrateGraph 2/9); check it with `catl lsp check`, and on a large workspace raise lsp.ready_timeout_secs in the project config"
     );
   }
 

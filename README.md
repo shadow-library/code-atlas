@@ -1,6 +1,6 @@
 # Code Atlas
 
-Code Atlas indexes a group of Rust and TypeScript/JavaScript repositories (a *project*) into one SQLite knowledge graph and serves it to coding agents over a CLI (`code-atlas`) and an MCP stdio server. Exact IDE operations (references, declaration, implementations, diagnostics, renames, symbol and text edits) run through rust-analyzer and typescript-language-server, with the graph adding cross-repo, HTTP, mock and reuse context. The graph holds symbols, calls, references, imports, HTTP endpoints and their cross-repo clients, auth schemes, env/config reads, tests, and a few experimental domains (events, jobs, database tables). Queries answer questions such as "what breaks if I change this", "which tests cover it", "does something like this already exist" and "which repos call this endpoint".
+Code Atlas indexes a group of Rust and TypeScript/JavaScript repositories (a *project*) into one SQLite knowledge graph and serves it to coding agents over a CLI (`catl`) and an MCP stdio server. Exact IDE operations (references, declaration, implementations, diagnostics, renames, symbol and text edits) run through rust-analyzer and typescript-language-server, with the graph adding cross-repo, HTTP, mock and reuse context. The graph holds symbols, calls, references, imports, HTTP endpoints and their cross-repo clients, auth schemes, env/config reads, tests, and a few experimental domains (events, jobs, database tables). Queries answer questions such as "what breaks if I change this", "which tests cover it", "does something like this already exist" and "which repos call this endpoint".
 
 Every fact carries exactly one certainty class and evidence (file, span, content hash, producer). Queries run a freshness barrier first, so an answer reflects the working tree at the time of the call; when the index cannot be brought up to date the answer says `DEGRADED`. Facts that are not exact derivations are tagged and hedged (`possibly calls`, `[heuristic 0.72]`), and an empty result comes with the caveats that could hide relations. LLM use is optional, off by default, and only ever produces facts tagged `inferred`.
 
@@ -9,17 +9,17 @@ Residual freshness risk: with an active watcher the barrier may skip the scan, a
 ## Building
 
 ```sh
-cargo build --release                      # binaries in target/release: code-atlas, atlas-bench, atlas-eval
-cargo install --path crates/atlas-cli      # installs code-atlas
+cargo build --release                      # binaries in target/release: catl, atlas-bench, atlas-eval
+cargo install --path crates/atlas-cli      # installs catl
 ```
 
 The repository's `.cargo/config.toml` sets `LIBSQLITE3_FLAGS="-USQLITE_ENABLE_MEMORY_MANAGEMENT -DSQLITE_DEFAULT_MEMSTATUS=0"`. Without it the bundled SQLite uses one process-wide page cache behind a global mutex and concurrent queries serialise. The flag applies to workspace builds and `cargo install --path`, but not to `cargo install --git`; for that, pass it explicitly:
 
 ```sh
-LIBSQLITE3_FLAGS="-USQLITE_ENABLE_MEMORY_MANAGEMENT -DSQLITE_DEFAULT_MEMSTATUS=0" cargo install --git <url> code-atlas
+LIBSQLITE3_FLAGS="-USQLITE_ENABLE_MEMORY_MANAGEMENT -DSQLITE_DEFAULT_MEMSTATUS=0" cargo install --git <url> atlas-cli
 ```
 
-Losing the flag costs throughput, never correctness. `code-atlas doctor` reports the state under the check "sqlite build" (a warning when the build kept memory management). The MCP server uses max(configured readers, cores) read connections (the default is 4 readers).
+Losing the flag costs throughput, never correctness. `catl doctor` reports the state under the check "sqlite build" (a warning when the build kept memory management). The MCP server uses max(configured readers, cores) read connections (the default is 4 readers).
 
 ## Quickstart
 
@@ -29,19 +29,19 @@ Requires a Rust toolchain (edition 2024 in `Cargo.toml`; `rust-toolchain.toml` p
 cargo build --release
 export PATH="$PWD/target/release:$PATH"
 
-code-atlas project create acme \
+catl project create acme \
   --repo fixtures/acme/acme-api --repo fixtures/acme/acme-sdk \
   --repo fixtures/acme/acme-web --repo fixtures/acme/acme-billing
-code-atlas -p acme index
+catl -p acme index
 
-code-atlas -p acme query overview
-code-atlas -p acme search "user lookup"
-code-atlas -p acme impact UsersService.findOne
-code-atlas -p acme api
-code-atlas -p acme query unused
+catl -p acme query overview
+catl -p acme search "user lookup"
+catl -p acme impact UsersService.findOne
+catl -p acme api
+catl -p acme query unused
 
 cd fixtures/acme/acme-api
-code-atlas connect claude
+catl connect claude
 ```
 
 Inside a registered repo the `-p acme` flag is inferred from the working directory. Set `CODE_ATLAS_HOME=/tmp/atlas-scratch` to keep experiments out of your real registry and databases. `connect claude` writes `.mcp.json` and a guidance block into `AGENTS.md` (or an existing `CLAUDE.md`); `--scope user` registers the server with `claude mcp add-json` instead. Nothing else is needed to use the index: there is no separate reindex step, because every query refreshes it.
@@ -49,12 +49,12 @@ Inside a registered repo the `-p acme` flag is inferred from the working directo
 Exact reads and edits (the first call per language starts a server: 2 to 5 s for TypeScript, 20 to 65 s cold for rust-analyzer; the MCP server keeps it warm):
 
 ```sh
-code-atlas -p acme refs UsersService.findOne
-code-atlas -p acme edit rename UsersService.findOne findUser --dry-run --plan-out plan.json
-code-atlas -p acme edit apply plan.json
+catl -p acme refs UsersService.findOne
+catl -p acme edit rename UsersService.findOne findUser --dry-run --plan-out plan.json
+catl -p acme edit apply plan.json
 ```
 
-Optional accuracy upgrade: `code-atlas -p acme scip` runs rust-analyzer and scip-typescript and promotes matching edges to `compiler_verified`. Cargo workspaces are indexed at the workspace root, so cross-crate references are verified too. With `project config acme --scip on`, SCIP also runs automatically while `watch` or `mcp --watch` is active.
+Optional accuracy upgrade: `catl -p acme scip` runs rust-analyzer and scip-typescript and promotes matching edges to `compiler_verified`. Cargo workspaces are indexed at the workspace root, so cross-crate references are verified too. With `project config acme --scip on`, SCIP also runs automatically while `watch` or `mcp --watch` is active.
 
 ## Trust model
 
@@ -107,7 +107,7 @@ State as of this documentation pass. "Implemented" means covered by tests and th
 | CLI and MCP server (15 tools) | Implemented | shared query layer; `--json` and MCP `format: "json"`; `atlas_edit` makes the MCP server writable |
 | Exact IDE operations (references, declaration, implementations, outline, diagnostics) | Implemented, needs a language server | rust-analyzer and typescript-language-server 5.x (TypeScript 7 refused); answers are live `[compiler]`, never stored; `PARTIAL` when the server's view is incomplete |
 | Exact edits (rename, safe delete, symbol and text edits, plan files) | Implemented | atomic with rollback, refuses stale or unverified plans (exit codes 5 to 7); rename determinism is scoped (see limitations); no agent evaluation |
-| SCIP ingestion (`compiler_verified`) | Implemented, opt-in | manual `code-atlas scip`; never runs inside a query |
+| SCIP ingestion (`compiler_verified`) | Implemented, opt-in | manual `catl scip`; never runs inside a query |
 | Near-duplicate and lexical search | Implemented | similarity is evidence, never equivalence |
 | Events, jobs, DB tables/queries | Experimental | entities and edges carry an `experimental` attribute (not shown in text output); heuristic only; project-scoped assumptions |
 | LLM enrichment (`enrich`: similarity verdicts, links for unmatched client calls, optional capability summaries) | Experimental, off by default | results are `inferred`, tagged, and go stale with their evidence; `enrich --dry-run` previews candidates; no verdicts exist in the published fixtures |

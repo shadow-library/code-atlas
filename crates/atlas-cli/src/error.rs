@@ -148,23 +148,23 @@ impl CliError {
 
   fn hint(&self) -> Option<&'static str> {
     match self {
-      Self::Project(ProjectError::ProjectNotFound(_)) => Some("list registered projects with `code-atlas project list`"),
-      Self::Project(ProjectError::Ambiguous { .. }) => Some("pass --project <name>, or run `code-atlas init --project <name>` in the repo to pin one"),
-      Self::Project(ProjectError::NotInProject { .. }) => Some("run `code-atlas init` in the repo, or `code-atlas project create <name> --repo <path>`, or pass --project <name>"),
+      Self::Project(ProjectError::ProjectNotFound(_)) => Some("list registered projects with `catl project list`"),
+      Self::Project(ProjectError::Ambiguous { .. }) => Some("pass --project <name>, or run `catl init --project <name>` in the repo to pin one"),
+      Self::Project(ProjectError::NotInProject { .. }) => Some("run `catl init` in the repo, or `catl project create <name> --repo <path>`, or pass --project <name>"),
       Self::Project(ProjectError::InvalidGlob { .. }) => {
         Some("globs use gitignore syntax, e.g. 'src/**', 'legacy/' or '*.generated.ts'; quote them so the shell does not expand them")
       }
-      Self::Project(ProjectError::RepoNotFound { .. }) => Some("list a project's repos with `code-atlas project show <name>`"),
+      Self::Project(ProjectError::RepoNotFound { .. }) => Some("list a project's repos with `catl project show <name>`"),
       Self::Engine(EngineError::IndexLockTimeout { .. }) => Some("another index run holds the lock; retry when it finishes"),
       Self::Engine(EngineError::ProjectConfigChanged) => Some("another process changed the project; retry the command"),
       Self::ConfirmationRequired { .. } => Some("pass --yes to proceed without a prompt"),
       Self::ClaudeUnavailable { .. } => None,
       Self::Mcp(_) => Some("the MCP client must speak JSON-RPC over this process's stdin and stdout"),
-      Self::RunNotFound(_) => Some("list recent runs with `code-atlas status`"),
-      Self::FileNotIndexed { .. } => Some("check the repo name with `code-atlas project show` and the path relative to the repo root"),
+      Self::RunNotFound(_) => Some("list recent runs with `catl status`"),
+      Self::FileNotIndexed { .. } => Some("check the repo name with `catl project show` and the path relative to the repo root"),
       Self::Ide(error) => ide_hint(error),
       Self::EditRefused(error) => error.hint(),
-      Self::InvalidPlan { .. } => Some("make a plan with `code-atlas edit <operation> --dry-run --plan-out plan.json`"),
+      Self::InvalidPlan { .. } => Some("make a plan with `catl edit <operation> --dry-run --plan-out plan.json`"),
       Self::MalformedGuidance(_) => Some("fix or delete the code-atlas:begin / code-atlas:end markers, then rerun"),
       Self::InvalidConfig { .. } => Some("fix the file by hand; Code Atlas will not overwrite it"),
       _ => None,
@@ -233,7 +233,7 @@ fn ide_hint(error: &IdeError) -> Option<&'static str> {
     IdeError::Unavailable { alternative: Some(_), .. } | IdeError::Disabled { alternative: Some(_), .. } | IdeError::ServerFailed { alternative: Some(_), .. } => {
       Some("pass --source graph for tagged graph results that need no language server")
     }
-    IdeError::Unavailable { .. } | IdeError::ServerFailed { .. } => Some("check the language servers with `code-atlas lsp check` and `code-atlas doctor`"),
+    IdeError::Unavailable { .. } | IdeError::ServerFailed { .. } => Some("check the language servers with `catl lsp check` and `catl doctor`"),
     _ => None,
   }
 }

@@ -1,6 +1,6 @@
 # Agent integration
 
-Code Atlas reaches agents two ways: an MCP stdio server (`code-atlas mcp`) and the CLI (`code-atlas ... --json`). Both call the same query layer, so the answers, tags and caveats are identical.
+Code Atlas reaches agents two ways: an MCP stdio server (`catl mcp`) and the CLI (`catl ... --json`). Both call the same query layer, so the answers, tags and caveats are identical.
 
 ## MCP tools
 
@@ -92,8 +92,8 @@ Compiler-verified relations render as `[compiler]` everywhere in text output (to
 
 ```sh
 cd <a registered repo>
-code-atlas connect claude            # project scope
-code-atlas connect claude --scope user
+catl connect claude            # project scope
+catl connect claude --scope user
 ```
 
 - Project scope writes `.mcp.json` at the repo root (`{"mcpServers":{"code-atlas":{"type":"stdio","command":<absolute path to this binary>,"args":["mcp","--project",<name>]}}}`) and adds a marked block (`<!-- code-atlas:begin -->` ... `end`) to `CLAUDE.md` or `AGENTS.md` (the first that exists; otherwise a new `AGENTS.md`). The block tells the agent to start with `context`, run `impact` before changing shared symbols, `search` and `similar` before writing helpers, `explain` for decisions, to use `atlas_edit` to rename or rewrite a symbol (and to re-read a file after `atlas_edit` changed it before editing it itself), to use `atlas_symbol mode=source` only for code it will not edit, to treat heuristic and inferred results as leads, and to verify `DEGRADED` answers. Its meaning matches the MCP server instructions (`crates/atlas-mcp/src/descriptions.rs`).
@@ -101,14 +101,14 @@ code-atlas connect claude --scope user
 - `CODE_ATLAS_HOME` is deliberately left out of the project `.mcp.json` because that file is usually committed; a warning says so.
 - Existing files are shown as a diff and changed only after confirmation (`--yes` skips the prompt). Re-running is idempotent.
 
-The project must exist first (`project create`, or `init` inside a repo that should join an existing project). `code-atlas doctor` checks the registry, databases, locks and tool availability.
+The project must exist first (`project create`, or `init` inside a repo that should join an existing project). `catl doctor` checks the registry, databases, locks and tool availability.
 
 ## Other agents
 
 The MCP server is vendor-neutral stdio, protocol-compliant with any client that can launch a command:
 
 ```json
-{ "mcpServers": { "code-atlas": { "command": "/abs/path/code-atlas", "args": ["mcp", "--project", "acme"] } } }
+{ "mcpServers": { "code-atlas": { "command": "/abs/path/catl", "args": ["mcp", "--project", "acme"] } } }
 ```
 
 Add `"env": { "CODE_ATLAS_HOME": "..." }` if the registry is not in the default location, and `--watch` to the args to keep the index fresh between calls (otherwise each call refreshes it on demand). Put the guidance from the block above into whatever instruction file your agent reads (`AGENTS.md`, rules files, a system prompt). Because `atlas_edit` writes files, clients that gate tools by annotation will treat it as destructive; approve it deliberately. The MCP server keeps language servers warm (rust-analyzer can hold about 2 GB; see [operations](operations.md#language-servers)).
@@ -116,11 +116,11 @@ Add `"env": { "CODE_ATLAS_HOME": "..." }` if the registry is not in the default 
 Agents without MCP can shell out. All query commands accept `--json` and exit non-zero as documented in [operations](operations.md#exit-codes); edit commands use exit codes 5 to 7 for refused, rolled-back and partially applied edits:
 
 ```sh
-code-atlas -p acme impact UsersService.findOne --json
-code-atlas -p acme query tests-for UsersService.findOne --json
-code-atlas -p acme query similar --snippet src/money.ts:1-7 --json   # path relative to cwd, or repo:path:1-7
-code-atlas -p acme refs UsersService.findOne --json                  # exact, from the language server
-code-atlas -p acme edit rename UsersService.findOne findUser --dry-run --plan-out plan.json
+catl -p acme impact UsersService.findOne --json
+catl -p acme query tests-for UsersService.findOne --json
+catl -p acme query similar --snippet src/money.ts:1-7 --json   # path relative to cwd, or repo:path:1-7
+catl -p acme refs UsersService.findOne --json                  # exact, from the language server
+catl -p acme edit rename UsersService.findOne findUser --dry-run --plan-out plan.json
 ```
 
 JSON responses are `{ "freshness": {...}, "answer": {...} }`. Check `freshness.state` and exit code 3 before trusting `answer`, and read `answer.caveats`.

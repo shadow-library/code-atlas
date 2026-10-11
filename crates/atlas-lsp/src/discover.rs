@@ -22,7 +22,7 @@ const SERVER_BIN: &str = "typescript-language-server";
 const DOWNLOAD_PACKAGES: [&str; 2] = ["typescript-language-server@5", "typescript@5"];
 const PINNED_TYPESCRIPT: &str = "typescript@5 (pinned by the download command)";
 const UNVERIFIED_TYPESCRIPT: &str = "bundled typescript (version not verified)";
-const NOT_FOUND_HINT: &str = "typescript-language-server not found. Install it (npm i -g typescript-language-server typescript@5), set code-atlas project config <p> --lsp-ts-command <path>, or allow download with --lsp-download on.";
+const NOT_FOUND_HINT: &str = "typescript-language-server not found. Install it (npm i -g typescript-language-server typescript@5), set catl project config <p> --lsp-ts-command <path>, or allow download with --lsp-download on.";
 const TYPESCRIPT_7_HINT: &str = "TypeScript 7 has no tsserver; install typescript@5 alongside or use the bundled one";
 
 #[derive(Debug, Clone, Copy)]

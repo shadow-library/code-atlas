@@ -44,7 +44,7 @@ impl fmt::Display for Run {
   fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(
       formatter,
-      "`code-atlas {}` exited {}\n--- stdout\n{}\n--- stderr\n{}",
+      "`catl {}` exited {}\n--- stdout\n{}\n--- stderr\n{}",
       self.args.join(" "),
       self.code,
       self.stdout,
@@ -109,7 +109,7 @@ impl Sandbox {
   }
 
   pub fn command(&self, cwd: &Path, args: &[&str]) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_code-atlas"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_catl"));
     command
       .args(args)
       .current_dir(cwd)

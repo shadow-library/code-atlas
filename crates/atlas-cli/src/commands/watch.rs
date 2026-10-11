@@ -66,7 +66,7 @@ pub fn run(ctx: &Context) -> CliResult<Outcome> {
   note(format!("watching {} ({} repos); press Ctrl-C to stop", project.name, project.repos.len()));
   note(match project.settings.scip.enabled {
     true => format!("automatic SCIP runs after {}s without file changes", project.settings.scip.debounce_secs),
-    false => format!("automatic SCIP is off; enable it with `code-atlas project config {} --scip on`", project.name),
+    false => format!("automatic SCIP is off; enable it with `catl project config {} --scip on`", project.name),
   });
   while let Wake::Tick = shutdown.wait() {
     if !config_changed(&engine.ensure_fresh()?) {

@@ -49,7 +49,7 @@ Each case maps to an adversarial fixture under `fixtures/adversarial/`, whose `e
 `table[methodName]()`, `target[name]()`, `require(variable)`, template-literal `import()` and `eval` are not resolved and no edge is invented; each is stored as an unresolved `dynamic` reference. Callers queries name them:
 
 ```
-$ code-atlas -p adv callers stop
+$ catl -p adv callers stop
 callers of stop function dynamic-ts:src/handlers.ts:5 depth=1
   none found over calls, instantiates
 caveats:
@@ -154,7 +154,7 @@ Concrete items, grouped by area. Source: reviewer findings accepted as known gap
 
 - Cargo workspace members are indexed as one rust-analyzer run at the workspace root, so cross-crate edges can be `compiler_verified`. scip-typescript still runs per npm package: cross-package references inside an npm workspace stay unverified. Standalone crates run per package.
 - rust-analyzer builds the workspace (build scripts): about 2 GB RSS and tens of seconds cold. scip-typescript needs `npx` and either a cached package or network access.
-- SCIP covers `calls`, `references`, `instantiates`, `implements` and `extends` only, and only in files the indexer covered. A file changed after the last SCIP run is lagging and its edges stay at `resolved`. Automatic SCIP is opt-in (`project config <p> --scip on`) and runs only while a watcher is active, after the debounce; it starts rust-analyzer or `npx scip-typescript` unasked, and a failed package is held for up to an hour unless its inputs change (changes to lockfiles, `rust-toolchain*` or `.cargo/config*` alone do not lift the hold). Without a watcher SCIP runs only on `code-atlas scip`.
+- SCIP covers `calls`, `references`, `instantiates`, `implements` and `extends` only, and only in files the indexer covered. A file changed after the last SCIP run is lagging and its edges stay at `resolved`. Automatic SCIP is opt-in (`project config <p> --scip on`) and runs only while a watcher is active, after the debounce; it starts rust-analyzer or `npx scip-typescript` unasked, and a failed package is held for up to an hour unless its inputs change (changes to lockfiles, `rust-toolchain*` or `.cargo/config*` alone do not lift the hold). Without a watcher SCIP runs only on `catl scip`.
 
 ### Similarity and LLM
 
@@ -264,7 +264,7 @@ Measured 2026-10-05 and 2026-10-06. Numbers marked *review* come from the advers
 | Project configuration changed under a running engine | `DEGRADED: project configuration changed; reopen the engine` | `watch` and `mcp` reload automatically; one-shot CLI reopens |
 | Crashed run | recovered at next lock: orphaned runs marked `failed`, all files re-resolved | none after recovery |
 | SCIP behind | `status`: `scip: current (47/58 files covered)` or behind N; JSON `scip.state` | edges of lagging files stay `resolved`/`heuristic` |
-| SCIP indexer unavailable, timed out, or network failure | `code-atlas scip` reports per package; `doctor` shows tool availability | no `compiler_verified` upgrade for that package |
+| SCIP indexer unavailable, timed out, or network failure | `catl scip` reports per package; `doctor` shows tool availability | no `compiler_verified` upgrade for that package |
 | LLM provider unavailable or over budget | `enrich` prints skipped task counts, run recorded `partial`, exit code 3; `status` shows the run | no new inferred facts |
 | Stale inferred facts | tag suffix `stale` or `needs-revalidation`; `status` counts; hidden unless `--include-stale` | excluded from default results |
 | Inferred client-call link whose candidate endpoints changed | queries (`api`, `impact`, `unused`, `explain`) recompute the candidate set live and tag the link `needs-revalidation`; `status` counts it as current until the next `enrich` marks it | hidden from default results; the next `enrich` re-asks the model |
