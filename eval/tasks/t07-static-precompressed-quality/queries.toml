@@ -1,0 +1,10 @@
+# `atlas_context` calls recorded from agent transcripts, replayed by `atlas-eval retrieval` as the `agent` query variants.
+# One entry per distinct (task, seeds); see docs/evaluation/methodology.md (Retrieval eval) for the extraction rule.
+
+[[query]]
+task = "Make serveStatic precompressed lookup negotiate Accept-Encoding with q values"
+sent_by = [{ batch = "2026-10-05-directed", run = "t07-static-precompressed-quality.atlas.r0" }]
+
+[[query]]
+task = "Make serveStatic precompressed negotiate Accept-Encoding with quality values"
+sent_by = [{ batch = "2026-10-05-directed", run = "t07-static-precompressed-quality.atlas.r1" }]

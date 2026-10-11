@@ -1,0 +1,10 @@
+# `atlas_context` calls recorded from agent transcripts, replayed by `atlas-eval retrieval` as the `agent` query variants.
+# One entry per distinct (task, seeds); see docs/evaluation/methodology.md (Retrieval eval) for the extraction rule.
+
+[[query]]
+task = "Express router mounts across files: nested mounts (router.use('/x', otherRouter)) not composed into endpoint paths"
+sent_by = [{ batch = "2026-10-05-directed", run = "t03-nested-router-links.atlas.r0" }]
+
+[[query]]
+task = "Fix Express nested router mounts across files not composing endpoint paths (mounts edges, mount_prefix, router_relative) and linking"
+sent_by = [{ batch = "2026-10-05-directed", run = "t03-nested-router-links.atlas.r1" }]

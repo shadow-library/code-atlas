@@ -1,0 +1,12 @@
+# `atlas_context` calls recorded from agent transcripts, replayed by `atlas-eval retrieval` as the `agent` query variants.
+# One entry per distinct (task, seeds); see docs/evaluation/methodology.md (Retrieval eval) for the extraction rule.
+
+[[query]]
+task = "Add atlas_dependents and atlas_dependencies MCP tools mirroring atlas_callers/atlas_callees and CLI query dependents/dependencies"
+seeds = ["atlas_callers", "atlas_callees"]
+sent_by = [{ batch = "2026-10-05-directed", run = "t05-mcp-dependency-tools.atlas.r0" }]
+
+[[query]]
+task = "Add MCP tools atlas_dependents and atlas_dependencies mirroring atlas_callers/atlas_callees and CLI query dependents/dependencies"
+seeds = ["atlas_callers", "crates/atlas-mcp"]
+sent_by = [{ batch = "2026-10-05-directed", run = "t05-mcp-dependency-tools.atlas.r1" }]

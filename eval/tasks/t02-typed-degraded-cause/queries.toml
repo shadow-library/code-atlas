@@ -1,0 +1,10 @@
+# `atlas_context` calls recorded from agent transcripts, replayed by `atlas-eval retrieval` as the `agent` query variants.
+# One entry per distinct (task, seeds); see docs/evaluation/methodology.md (Retrieval eval) for the extraction rule.
+
+[[query]]
+task = "Replace FreshnessReport::Degraded reason String with typed DegradedCause"
+sent_by = [{ batch = "2026-10-05-directed", run = "t02-typed-degraded-cause.atlas.r0" }]
+
+[[query]]
+task = "Replace FreshnessReport::Degraded reason String with typed DegradedCause enum"
+sent_by = [{ batch = "2026-10-05-directed", run = "t02-typed-degraded-cause.atlas.r1" }]

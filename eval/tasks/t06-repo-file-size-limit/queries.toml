@@ -1,0 +1,10 @@
+# `atlas_context` calls recorded from agent transcripts, replayed by `atlas-eval retrieval` as the `agent` query variants.
+# One entry per distinct (task, seeds); see docs/evaluation/methodology.md (Retrieval eval) for the extraction rule.
+
+[[query]]
+task = "Add per-repo optional max_file_bytes override in projects.toml, honoured in discovery, full index, freshness scans, incremental updates"
+sent_by = [{ batch = "2026-10-05-directed", run = "t06-repo-file-size-limit.atlas.r0" }]
+
+[[query]]
+task = "Add optional per-repo max_file_bytes override in projects.toml, honoured in full index, freshness scans, incremental updates"
+sent_by = [{ batch = "2026-10-05-directed", run = "t06-repo-file-size-limit.atlas.r1" }]

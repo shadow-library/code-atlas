@@ -1,0 +1,10 @@
+# `atlas_context` calls recorded from agent transcripts, replayed by `atlas-eval retrieval` as the `agent` query variants.
+# One entry per distinct (task, seeds); see docs/evaluation/methodology.md (Retrieval eval) for the extraction rule.
+
+[[query]]
+task = "Escape quoted-string auth-params in WWW-Authenticate headers in all built-in auth middleware (bearer, basic, digest)"
+sent_by = [{ batch = "2026-10-05-directed", run = "t10-auth-challenge-quoting.atlas.r0" }]
+
+[[query]]
+task = "Escape quoted-string auth-params in WWW-Authenticate headers across built-in auth middlewares (bearer, basic, digest)"
+sent_by = [{ batch = "2026-10-05-directed", run = "t10-auth-challenge-quoting.atlas.r1" }]

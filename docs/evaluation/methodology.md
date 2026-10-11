@@ -50,17 +50,29 @@ Other flags: `--repo-root`, `--date`, `--scip-work`, `--scip-only`, `--scip-time
 
 ## Retrieval eval
 
-**Question.** Before the agent edits anything, does Code Atlas surface the files and symbols the task needs, from the prompt alone? It is deterministic: no LLM and no agent sessions.
+**Question.** Before the agent edits anything, does Code Atlas surface the files, symbols and lines the task needs, from the full prompt and from the short query an agent really sends? It is deterministic: no LLM and no agent sessions.
 
 **Trees.** For every task in `eval/tasks` (`t00` to `t10`), the base tree is built the way the agent harness builds it: `git archive` at `base_commit` (or the pinned hono commit, from the clone cache shared with `agent run`, `eval/runs/.cache`), the same stripping, then `base.patch`. `setup` commands are skipped because they only install dependencies, and discovery excludes `node_modules` anyway. The tree is indexed in process with the production engine and the repos the harness registers (`atlas_repos`, or the tree root, named `tree`).
 
-**Queries** (built from `prompt` only, never from ground truth):
+**Query variants.** Each task is queried once per variant, never from ground truth:
 
-1. `context(prompt)` at the default budget (6000 tokens; the CLI and MCP defaults are the same).
-2. `search` (default limit 10) with the whole prompt, then once per significant phrase:
+- `full`: the whole task prompt. This is what reports before 2026-10-12 scored, and their unprefixed metric names are today's `full.*`.
+- `agent`: the `task` argument of every distinct `atlas_context` call recorded for the task, without its seeds.
+- `agent-seeded`: every distinct recorded call as it was sent, the `task` argument with its `seeds`. Seeds reach `context` only; `search` and `similar` get the same text as `agent`. On a task whose recorded calls carry no seeds it equals `agent`.
+- `first-line`: the first sentence of the prompt, so a task without transcripts still has a short query. The rule: take the prompt's first paragraph (the text before the first blank line, lines joined by a space) and cut it before the first `.`, `?` or `!` that follows a letter or digit, lies outside a backtick code span and is followed by whitespace or the end of the paragraph. Without such a character the whole paragraph is the query. An abbreviation such as `e.g.` followed by a space ends the sentence early.
+
+A task with several queries for a variant is scored on each and the scores are averaged per task. A task with no recorded call is `n/a` for `agent` and `agent-seeded` and leaves their means; it is never scored 0.
+
+**Recorded calls.** `eval/tasks/<task>/queries.toml` (format in `eval/README.md`) is extracted from `eval/runs/<batch>/<task>.atlas.r<i>/transcript.jsonl`: every `tool_use` block whose tool name ends in `atlas_context` contributes its `task` and `seeds` arguments verbatim. Calls with the same task text and seeds are merged into one entry that lists every run that sent it (`batch` is the batch directory name, `run` the run id). Atlas runs of the batch without such a call are listed under `no_call`. The checked-in files come from the batch `2026-10-05-directed`, in which 21 of 22 atlas runs made exactly one call and none passed another argument. The queries were written by agents talking to an older build; replaying them shows what today's build returns for the same words, not what those agents saw.
+
+**Pipeline per query** (text = the variant's query):
+
+1. `context(text)` at the default budget (6000 tokens; the CLI and MCP defaults are the same), with the recorded seeds for `agent-seeded`.
+2. `search` (default limit 10) with the whole text, then once per significant phrase:
    - code spans: up to 8 backtick spans in order of appearance, at least 3 characters, case-insensitive duplicates dropped, fenced code blocks ignored;
-   - prose phrases: up to 4. The prompt outside code is cut at punctuation and at a fixed stopword list. Runs of at least two remaining words are kept, and a longer run keeps its last four words.
+   - prose phrases: up to 4. The text outside code is cut at punctuation and at a fixed stopword list. Runs of at least two remaining words are kept, and a longer run keeps its last four words.
 3. `similar` on the first function or method hit of each search (exact name, then strong, then related), up to 5 distinct seeds. The prompts contain no in-tree code range, so `similar --snippet` does not apply.
+4. `context(text)` again at budgets 4000, 8000 and 16000 for the budgeted yield.
 
 **Scoring.**
 
@@ -70,26 +82,37 @@ Other flags: `--repo-root`, `--date`, `--scip-work`, `--scip-only`, `--scip-time
   - search;
   - similar;
   - any, the union of pack, search and similar.
-- Per channel: recall of `must_change`, recall and precision of `relevant_files`, recall of `must_consider`. A ground-truth file that does not exist in the base tree, or exists but is never indexed (for example `CLAUDE.md`, or a file that failed analysis, which the report's degraded line would show), is listed separately as absent or unindexable and left out of the denominator. The blast-radius expectation leaves them out too.
+- Per channel: recall of `must_change`, recall and precision of `relevant_files`, recall of `must_consider`. A ground-truth file that does not exist in the base tree, or exists but is never indexed (for example `CLAUDE.md`, or a file that failed analysis, which the report's degraded line would show), is listed separately as absent or unindexable and left out of the denominator. The blast-radius expectation leaves them out too. Precision is undefined for a channel that returned no file, so an empty MUST READ section leaves the precision mean instead of lowering it; the report counts the queries with an empty MUST READ and an empty pack per variant.
+- F0.5 per channel: `1.25 x hits / (0.25 x gold + retrieved)`, which is `(1 + b^2) x P x R / (b^2 x P + R)` with `b = 0.5`, so precision weighs twice as much as recall. It is 0 when no gold file is retrieved, an empty channel included, and undefined only when the gold set is empty. Precision and recall need one gold set: it is `relevant_files` (those present in the index), the only labelled set these reports already score for both, so F0.5 follows from the two `relevant_files` rows. `must_change` is a subset of `relevant_files` in ten tasks; `t06` lists eight `must_change` files, all of them test files, outside `relevant_files`, and retrieving one of them counts as a false positive, in F0.5 as in the precision row. The aggregate also carries `must_change.f05.*`, the strict reading with `must_change` as gold.
+- Line F0.5, for MUST READ and the whole pack:
+  - Gold is the set of old-side (file, line) pairs `reference.patch` changes in files of the base tree: every removed line, and for an insertion that replaces nothing the old line directly before it and the one directly after it (those inside the file). An insertion next to a removed line is a replacement and adds nothing.
+  - Files the patch adds have no base lines; they are left out and listed. A file the patch changes that is missing from the base tree is listed too.
+  - Gold lines in base files the index does not hold (`CLAUDE.md` in `t02`) stay in the gold set, because the change needs them, and their count is shown per task. `t00` has no `reference.patch` and no line score.
+  - Retrieved is the union of the indexed line spans (`start_line` to `end_line`) of the entities the pack items name. This is the range an item points the agent at, not the lines the pack prints: MUST READ bodies are cut at 80 lines and SKIM items show a signature, a doc line and a member outline. An item whose entity has no span retrieves no line and is counted.
+  - Precision, recall and F0.5 are over (file, line) pairs with the same formula. A changed line between two symbols can only be covered by an item whose span contains the gap.
+- Budgeted yield: recall of `must_change` in MUST READ and in the whole pack when `context` runs with `budget` 4000, 8000 and 16000. The budget is the query's own parameter, so the product's token estimate decides what fits; the report shows the estimate and the rendered bytes at every budget, and counts the queries for which the budget changes the pack or the recall.
 - `reuse_targets` recall per channel: a target is found when a returned entity key ends with the target's last two path segments, the matcher the agent harness uses for duplication.
 - Pack size: bytes of the rendered text answer (without the freshness header, which carries timings) and the product's own token estimate.
-- Blast radius, for tasks in the `blast-radius` category (`t02`, `t06`). The seeds are the innermost indexed symbols (function, method, type, variant, constant or macro) in the first `must_change` file, the definition site, that enclose a line `reference.patch` removes or an insertion it makes. `impact` runs once on all seeds, at the default group limit (what an agent sees) and unlimited, and recall is over the other `must_change` files. The report also shows how many files each view retrieved and the precision against `must_change`, which is low by design because `impact` lists every dependent. Here ground truth chooses the query input: this measures how complete `impact` is once the target is known, not whether an agent would find the target.
-- The aggregate is the mean over the tasks that define each metric. A task that cannot be materialised or indexed is reported as not scored, with its stage and error, and is excluded; the command still writes the report, then exits non-zero.
+- Blast radius, for tasks in the `blast-radius` category (`t02`, `t06`). The seeds are the innermost indexed symbols (function, method, type, variant, constant or macro) in the first `must_change` file, the definition site, that enclose a line `reference.patch` removes or an insertion it makes. `impact` runs once on all seeds, at the default group limit (what an agent sees) and unlimited, and recall is over the other `must_change` files. The report also shows how many files each view retrieved and the precision against `must_change`, which is low by design because `impact` lists every dependent. Here ground truth chooses the query input: this measures how complete `impact` is once the target is known, not whether an agent would find the target. It does not depend on the query variant.
+- Aggregates are means over the tasks that define each metric, named `<variant>.<metric>`, each with its task count. The headline table condenses them for MUST READ and the whole pack. The comparison of each short variant with `full` is paired: it uses only the tasks that define the metric for both and counts the tasks on which the variant is higher, equal and lower. A task that cannot be materialised or indexed is reported as not scored, with its stage and error, and is excluded; the command still writes the report, then exits non-zero.
 
 **Determinism.** Each task uses its own scratch directory under `--work-dir`, named by process id and a per-process sequence so concurrent runs never share or delete each other's trees, and removed afterwards. The output holds no timings, dates or absolute paths. The report records the repository HEAD and says when product sources have uncommitted changes. Two runs produce byte-identical files.
 
 **Limits.**
 
 - Dev set, same authors: printed at the top of every report.
+- Eleven tasks. The paired counts show direction; they are not a significance test.
+- The agent queries come from one batch, one model and one preamble (`directed`), two runs per task.
 - The phrase extraction is a heuristic without part-of-speech tagging; environment notes in the hono prompts become search phrases too.
 - "Any" assumes the agent reads every hit, so its precision is low by design.
+- Line gold comes from one reference solution; another correct fix could change other lines. Pure insertions count as two lines however much they add.
 - Blast-radius seeds rely on task authors listing the definition file first in `must_change`.
 
 **Re-run.**
 
 ```sh
 cargo build --release -p atlas-eval
-target/release/atlas-eval retrieval --out eval/reports/$(date +%F)/retrieval     # all tasks; hono needs the cached clone or network
+target/release/atlas-eval retrieval --out eval/reports/$(date +%F)/retrieval     # all tasks, about 15 s; hono needs the cached clone or network
 target/release/atlas-eval retrieval --task t00-smoke --out /tmp/retrieval          # about 1 s
 ```
 

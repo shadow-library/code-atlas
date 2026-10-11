@@ -1,0 +1,10 @@
+# `atlas_context` calls recorded from agent transcripts, replayed by `atlas-eval retrieval` as the `agent` query variants.
+# One entry per distinct (task, seeds); see docs/evaluation/methodology.md (Retrieval eval) for the extraction rule.
+
+[[query]]
+task = "Default SameSite=Lax in hono/cookie setCookie, setSignedCookie, generateCookie, generateSignedCookie, deleteCookie"
+sent_by = [{ batch = "2026-10-05-directed", run = "t08-cookie-samesite-default.atlas.r0" }]
+
+[[query]]
+task = "Default SameSite=Lax in hono/cookie helpers (setCookie, setSignedCookie, generateCookie, generateSignedCookie, deleteCookie)"
+sent_by = [{ batch = "2026-10-05-directed", run = "t08-cookie-samesite-default.atlas.r1" }]

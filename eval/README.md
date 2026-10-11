@@ -15,7 +15,8 @@ Runs headless Claude Code sessions on the same task in two conditions and scores
 eval/tasks/<id>/task.toml        task spec (committed)
 eval/tasks/<id>/hidden/...       hidden validation files, copied into the tree only after the session
 eval/tasks/<id>/base.patch       optional planted change applied to the archived tree before the base commit
-eval/tasks/<id>/reference.patch  reference solution (relative to the base, after base.patch); never read by the harness
+eval/tasks/<id>/reference.patch  reference solution (relative to the base, after base.patch); never read by the agent harness, read by `retrieval` only to score
+eval/tasks/<id>/queries.toml     optional: `atlas_context` calls recorded from agent transcripts, replayed by `retrieval`
 eval/tasks/README.md             task catalogue; eval/tasks/VERIFICATION.md records the hidden-test verification
 eval/runs/<batch>/               run artifacts (gitignored)
 eval/reports/<date>/agent.{md,json}
@@ -68,7 +69,20 @@ atlas-eval agent probe --out <dir> [--model …]
 atlas-eval retrieval [--task t00-smoke] [--out eval/reports/<date>/retrieval]   # deterministic, no sessions
 ```
 
-`atlas-eval retrieval` reuses the task specs, tree materialisation and clone cache, indexes each base tree in process and scores what `context`, `search` and `similar` return for the prompt against the task's ground truth. It never runs a session. Method and limits: `docs/evaluation/methodology.md` (Retrieval eval).
+`atlas-eval retrieval` reuses the task specs, tree materialisation and clone cache, indexes each base tree in process and scores what `context`, `search` and `similar` return against the task's ground truth. It never runs a session. Every task is queried four ways: with the whole prompt (`full`), with the `task` text agents really sent to `atlas_context` (`agent`), with those calls as sent, seeds included (`agent-seeded`), and with the first sentence of the prompt (`first-line`). Method, metrics and limits: `docs/evaluation/methodology.md` (Retrieval eval).
+
+`queries.toml` holds the recorded calls of one task, one `[[query]]` per distinct (task, seeds) pair, so the report reproduces without the gitignored transcripts:
+
+```toml
+no_call = [{ batch = "<batch>", run = "<task>.atlas.r0" }]   # optional: atlas runs of the batch that never called atlas_context
+
+[[query]]
+task = "…"                                                   # the `task` argument, verbatim
+seeds = ["…"]                                                # optional: the `seeds` argument, when one was sent
+sent_by = [{ batch = "<batch>", run = "<task>.atlas.r1" }]   # every run that sent exactly this call
+```
+
+A task without the file, or with no `[[query]]`, is `n/a` for the two agent variants and leaves their means; it is never scored 0. A malformed file fails the task at stage `queries`.
 
 Run flags: `--tree-root` (system temp dir), `--keep-trees`, `--runs-per-condition` (2), `--condition baseline|atlas` (both), `--seed` (1), `--parallel` (2), `--budget-usd` (stop starting runs once the reported spend exceeds it), `--judge claude|off`, `--no-probe`, `--claude-config user|isolated`, `--validation-timeout-secs`, `--atlas-timeout-secs`, `--eval-home` (`eval`), `--batch` (`<date>-seed<seed>`). A batch is resumable: runs that already have `score.json` are reused.
 

@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -18,28 +18,53 @@ impl OldLineChange {
   }
 }
 
-pub fn old_side_changes(patch: &str, path: &str) -> BTreeSet<OldLineChange> {
-  let mut changes = BTreeSet::new();
-  let mut in_file = false;
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PatchFiles {
+  pub existing: BTreeMap<String, BTreeSet<OldLineChange>>,
+  pub added: BTreeSet<String>,
+}
+
+enum Section {
+  Outside,
+  Existing(String),
+  Added,
+}
+
+pub fn patch_files(patch: &str) -> PatchFiles {
+  let mut files = PatchFiles::default();
+  let mut section = Section::Outside;
   let mut old_line: Option<u32> = None;
   for line in patch.lines() {
     if line.starts_with("diff --git ") {
-      in_file = false;
+      section = Section::Outside;
       old_line = None;
       continue;
     }
     if let Some(old_path) = line.strip_prefix("--- ").filter(|_| old_line.is_none()) {
-      in_file = old_path.strip_prefix("a/") == Some(path);
+      section = match old_path.strip_prefix("a/") {
+        Some(path) => {
+          files.existing.entry(path.to_owned()).or_default();
+          Section::Existing(path.to_owned())
+        }
+        None if old_path == "/dev/null" => Section::Added,
+        None => Section::Outside,
+      };
       continue;
     }
-    if !in_file {
+    if let Some(new_path) = line.strip_prefix("+++ ").filter(|_| old_line.is_none()) {
+      if let (Section::Added, Some(path)) = (&section, new_path.strip_prefix("b/")) {
+        files.added.insert(path.to_owned());
+      }
       continue;
     }
     if let Some(header) = line.strip_prefix("@@ ") {
       old_line = old_hunk_start(header);
       continue;
     }
-    let Some(current) = old_line.as_mut() else {
+    let (Some(current), Section::Existing(path)) = (old_line.as_mut(), &section) else {
+      continue;
+    };
+    let Some(changes) = files.existing.get_mut(path) else {
       continue;
     };
     match line.chars().next() {
@@ -57,7 +82,11 @@ pub fn old_side_changes(patch: &str, path: &str) -> BTreeSet<OldLineChange> {
       _ => {}
     }
   }
-  changes
+  files
+}
+
+pub fn old_side_changes(patch: &str, path: &str) -> BTreeSet<OldLineChange> {
+  patch_files(patch).existing.remove(path).unwrap_or_default()
 }
 
 fn is_identifier_char(character: char) -> bool {
@@ -209,6 +238,39 @@ diff --git a/src/other.rs b/src/other.rs
         OldLineChange::InsertedBetween { before: 4, after: 5 },
       ]
     );
+  }
+
+  const ADDING_PATCH: &str = "diff --git a/src/new.rs b/src/new.rs
+new file mode 100644
+index 0000000..ad7fd14
+--- /dev/null
++++ b/src/new.rs
+@@ -0,0 +1,2 @@
++pub fn fresh() {}
++--- not a header
+diff --git a/src/kept.rs b/src/kept.rs
+--- a/src/kept.rs
++++ b/src/kept.rs
+@@ -7,3 +7,2 @@
+ keep
+-gone
+ keep
+diff --git a/src/mode.rs b/src/mode.rs
+old mode 100644
+new mode 100755
+";
+
+  #[test]
+  fn should_list_added_files_apart_from_the_old_side_changes_of_existing_ones() {
+    let files = patch_files(ADDING_PATCH);
+    assert_eq!(files.added, BTreeSet::from(["src/new.rs".to_owned()]));
+    assert_eq!(
+      files.existing,
+      BTreeMap::from([("src/kept.rs".to_owned(), BTreeSet::from([OldLineChange::Removed { line: 8 }]))])
+    );
+    let both = patch_files(PATCH);
+    assert_eq!(both.existing.keys().collect::<Vec<_>>(), vec!["src/other.rs", "src/report.rs"]);
+    assert_eq!(both.added, BTreeSet::new());
   }
 
   const RENAME_PATCH: &str = "diff --git a/src/a.ts b/src/a.ts

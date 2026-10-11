@@ -1,0 +1,7 @@
+# `atlas_context` calls recorded from agent transcripts, replayed by `atlas-eval retrieval` as the `agent` query variants.
+# One entry per distinct (task, seeds); see docs/evaluation/methodology.md (Retrieval eval) for the extraction rule.
+
+[[query]]
+task = "Add nullable deletedAt soft-delete column to User entity in acme-api and return it from UsersService.findOne"
+seeds = ["UsersService.findOne", "User"]
+sent_by = [{ batch = "2026-10-05-directed", run = "t00-smoke.atlas.r0" }, { batch = "2026-10-05-directed", run = "t00-smoke.atlas.r1" }]

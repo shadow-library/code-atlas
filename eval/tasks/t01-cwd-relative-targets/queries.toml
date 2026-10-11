@@ -1,0 +1,11 @@
+# `atlas_context` calls recorded from agent transcripts, replayed by `atlas-eval retrieval` as the `agent` query variants.
+# One entry per distinct (task, seeds); see docs/evaluation/methodology.md (Retrieval eval) for the extraction rule.
+
+[[query]]
+task = "Make CLI query file targets resolve against cwd like the similar --snippet option does"
+sent_by = [{ batch = "2026-10-05-directed", run = "t01-cwd-relative-targets.atlas.r0" }]
+
+[[query]]
+task = "CLI query subcommands: resolve file targets against cwd like the --snippet option does"
+seeds = ["crates/atlas-cli"]
+sent_by = [{ batch = "2026-10-05-directed", run = "t01-cwd-relative-targets.atlas.r1" }]

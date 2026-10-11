@@ -31,6 +31,35 @@ pub struct ChannelScores {
   pub any: SetOverlap,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ChannelValues {
+  pub must_read: Option<f64>,
+  pub pack: Option<f64>,
+  pub search: Option<f64>,
+  pub similar: Option<f64>,
+  pub any: Option<f64>,
+}
+
+pub const F_BETA: f64 = 0.5;
+
+pub fn f_beta(overlap: &SetOverlap, beta: f64) -> Option<f64> {
+  if overlap.relevant == 0 {
+    return None;
+  }
+  let weight = beta * beta;
+  Some((1.0 + weight) * overlap.hits as f64 / (weight * overlap.relevant as f64 + overlap.retrieved as f64))
+}
+
+pub fn counted_overlap(retrieved: usize, relevant: usize, hits: usize) -> SetOverlap {
+  SetOverlap {
+    retrieved,
+    relevant,
+    hits,
+    precision: fraction(hits, retrieved).filter(|_| relevant > 0),
+    recall: fraction(hits, relevant),
+  }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BaseFile {
@@ -46,6 +75,7 @@ pub struct FileScore {
   #[serde(default)]
   pub unindexable: Vec<String>,
   pub channels: ChannelScores,
+  pub f05: ChannelValues,
   pub missed: Vec<String>,
 }
 
@@ -62,15 +92,23 @@ pub fn score_files(retrieved: &Retrieved, expected: &[String], classify: impl Fn
   }
   let relevant: BTreeSet<String> = indexed.iter().cloned().collect();
   let any = retrieved.any_files();
+  let channels = ChannelScores {
+    must_read: overlap(&retrieved.must_read_files, &relevant),
+    pack: overlap(&retrieved.pack_files, &relevant),
+    search: overlap(&retrieved.search_files, &relevant),
+    similar: overlap(&retrieved.similar_files, &relevant),
+    any: overlap(&any, &relevant),
+  };
   FileScore {
     missed: relevant.difference(&any).cloned().collect(),
-    channels: ChannelScores {
-      must_read: overlap(&retrieved.must_read_files, &relevant),
-      pack: overlap(&retrieved.pack_files, &relevant),
-      search: overlap(&retrieved.search_files, &relevant),
-      similar: overlap(&retrieved.similar_files, &relevant),
-      any: overlap(&any, &relevant),
+    f05: ChannelValues {
+      must_read: f_beta(&channels.must_read, F_BETA),
+      pack: f_beta(&channels.pack, F_BETA),
+      search: f_beta(&channels.search, F_BETA),
+      similar: f_beta(&channels.similar, F_BETA),
+      any: f_beta(&channels.any, F_BETA),
     },
+    channels,
     expected: indexed,
     absent_at_base: absent,
     unindexable,
@@ -139,6 +177,34 @@ pub fn score_rename_sites(expected: &BTreeSet<(String, u32)>, planned: &BTreeSet
     sites: overlap(&planned_labels, &expected_labels),
     missed: expected_labels.difference(&planned_labels).cloned().collect(),
     unexpected: planned_labels.difference(&expected_labels).cloned().collect(),
+  }
+}
+
+pub const YIELD_BUDGETS: [usize; 3] = [4_000, 8_000, 16_000];
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct BudgetYield {
+  pub budget: usize,
+  pub estimated_tokens: usize,
+  pub bytes: usize,
+  pub must_read: SetOverlap,
+  pub pack: SetOverlap,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PackCost {
+  pub budget: usize,
+  pub estimated_tokens: usize,
+  pub bytes: usize,
+}
+
+pub fn budget_yield(cost: PackCost, retrieved: &Retrieved, must_change: &BTreeSet<String>) -> BudgetYield {
+  BudgetYield {
+    budget: cost.budget,
+    estimated_tokens: cost.estimated_tokens,
+    bytes: cost.bytes,
+    must_read: overlap(&retrieved.must_read_files, must_change),
+    pack: overlap(&retrieved.pack_files, must_change),
   }
 }
 
@@ -211,6 +277,69 @@ mod tests {
     assert_eq!((score.channels.any.retrieved, score.channels.any.hits), (4, 2));
     assert_eq!(score.channels.any.recall, Some(2.0 / 3.0));
     assert_eq!(score.channels.any.precision, Some(0.5));
+    assert_eq!(
+      score.f05,
+      ChannelValues {
+        must_read: Some(1.25 / 1.75),
+        pack: Some(1.25 / 3.75),
+        search: Some(1.25 / 2.75),
+        similar: Some(0.0),
+        any: Some(2.5 / 4.75),
+      }
+    );
+  }
+
+  fn counts(retrieved: usize, relevant: usize, hits: usize) -> SetOverlap {
+    counted_overlap(retrieved, relevant, hits)
+  }
+
+  #[test]
+  fn should_weight_precision_twice_as_heavily_as_recall_in_f_half() {
+    assert_eq!(f_beta(&counts(4, 8, 2), F_BETA), Some(2.5 / 6.0));
+    assert_eq!(f_beta(&counts(1, 2, 1), F_BETA), Some(1.25 / 1.5));
+    assert_eq!(f_beta(&counts(2, 1, 1), F_BETA), Some(1.25 / 2.25));
+    assert_eq!(f_beta(&counts(3, 3, 3), F_BETA), Some(1.0));
+    assert_eq!(f_beta(&counts(2, 1, 1), 1.0), Some(2.0 / 3.0));
+  }
+
+  #[test]
+  fn should_agree_with_the_precision_and_recall_form_of_f_beta() {
+    let overlap = counts(5, 7, 3);
+    let (precision, recall) = (overlap.precision.unwrap(), overlap.recall.unwrap());
+    let from_rates = 1.25 * precision * recall / (0.25 * precision + recall);
+    assert!((f_beta(&overlap, F_BETA).unwrap() - from_rates).abs() < 1e-12);
+  }
+
+  #[test]
+  fn should_score_f_half_zero_without_hits_and_leave_it_undefined_without_gold() {
+    assert_eq!(f_beta(&counts(0, 3, 0), F_BETA), Some(0.0));
+    assert_eq!(f_beta(&counts(5, 3, 0), F_BETA), Some(0.0));
+    assert_eq!(f_beta(&counts(3, 0, 0), F_BETA), None);
+    assert_eq!(f_beta(&counts(0, 0, 0), F_BETA), None);
+  }
+
+  #[test]
+  fn should_leave_precision_undefined_for_an_empty_retrieval_or_an_empty_gold_set() {
+    assert_eq!((counts(0, 3, 0).precision, counts(0, 3, 0).recall), (None, Some(0.0)));
+    assert_eq!((counts(4, 0, 0).precision, counts(4, 0, 0).recall), (None, None));
+    assert_eq!((counts(4, 2, 1).precision, counts(4, 2, 1).recall), (Some(0.25), Some(0.5)));
+  }
+
+  #[test]
+  fn should_yield_the_must_change_share_each_pack_section_delivers_at_a_budget() {
+    let cost = PackCost {
+      budget: 4_000,
+      estimated_tokens: 3_650,
+      bytes: 19_000,
+    };
+    let at_budget = budget_yield(cost, &retrieved(), &set(&["a.rs", "b.rs", "c.rs"]));
+    assert_eq!((at_budget.budget, at_budget.estimated_tokens, at_budget.bytes), (4_000, 3_650, 19_000));
+    assert_eq!((at_budget.must_read.hits, at_budget.must_read.recall), (1, Some(1.0 / 3.0)));
+    assert_eq!((at_budget.pack.hits, at_budget.pack.recall), (2, Some(2.0 / 3.0)));
+    let nothing_to_change = budget_yield(cost, &retrieved(), &BTreeSet::new());
+    assert_eq!((nothing_to_change.must_read.recall, nothing_to_change.pack.recall), (None, None));
+    let empty_pack = budget_yield(cost, &Retrieved::default(), &set(&["a.rs"]));
+    assert_eq!((empty_pack.must_read.recall, empty_pack.pack.recall), (Some(0.0), Some(0.0)));
   }
 
   #[test]

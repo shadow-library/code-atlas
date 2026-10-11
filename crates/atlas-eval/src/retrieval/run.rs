@@ -5,7 +5,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use atlas_core::{EntityKind, RelPath, RepoName};
+use atlas_core::{Entity, EntityId, EntityKind, RelPath, RepoName};
 use atlas_engine::{Engine, EngineOptions, FreshnessReport};
 use atlas_ide::{CrossRepo, DiscoveryLauncher};
 use atlas_project::{AtlasHome, Project, Registry, RepoSpec};
@@ -15,13 +15,15 @@ use atlas_query::{
 use atlas_store::EntityFilter;
 
 use super::error::{RetrievalError, RetrievalResult};
-use super::patch::{OldLineChange, old_side_changes, renamed_old_lines};
+use super::lines::{ItemSpans, LineGoldSummary, LineScores, LineSet, line_count, line_gold, score_lines};
+use super::patch::{OldLineChange, old_side_changes, patch_files, renamed_old_lines};
 use super::phrases::{MAX_CODE_SPANS, MAX_PROSE_PHRASES, significant_phrases};
+use super::queries::{NO_RECORDED_QUERY, QueryVariant, RecordedQueries, VariantQuery, load_recorded_queries, variant_queries};
 use super::report::{
-  BlastRadius, DEV_SET_CAVEAT, IndexSummary, PackSize, QueryLog, RenameRetrieval, RetrievalReport, RetrievalSettings, SeedOutcome, SimilarSeed, TaskEntry, TaskOutcome,
-  TaskRetrieval, aggregate,
+  BlastRadius, IndexSummary, PackSize, QueryLog, QueryScore, RenameRetrieval, RetrievalReport, RetrievalSettings, SeedOutcome, SimilarSeed, TaskEntry, TaskOutcome, TaskRetrieval,
+  VariantOutcome, VariantResult,
 };
-use super::score::{BaseFile, Retrieved, score_files, score_rename_sites, score_reuse, tree_path};
+use super::score::{BaseFile, PackCost, Retrieved, YIELD_BUDGETS, budget_yield, score_files, score_rename_sites, score_reuse, tree_path};
 use crate::agent::{LoadedTask, RenameSpec, StripPlan, apply_patch, atlas_repos, load_tasks, materialize, resolve_source};
 use crate::quality::{DryRunError, DryRunRequest, RenameOptions, dry_run_rename, observe, overlap, rename_settings};
 
@@ -63,6 +65,7 @@ pub fn settings() -> RetrievalSettings {
     max_prose_phrases: MAX_PROSE_PHRASES,
     max_similar_seeds: MAX_SIMILAR_SEEDS,
     impact_group_limit: ImpactRequest::new([""]).limit,
+    yield_budgets: YIELD_BUDGETS.to_vec(),
   }
 }
 
@@ -88,13 +91,7 @@ pub fn run_retrieval(options: &RetrievalOptions) -> RetrievalResult<RetrievalRep
       outcome,
     });
   }
-  Ok(RetrievalReport {
-    caveat: DEV_SET_CAVEAT.to_owned(),
-    code_atlas_revision: product_revision(&options.repo_root),
-    settings: settings(),
-    aggregate: aggregate(&entries),
-    tasks: entries,
-  })
+  Ok(RetrievalReport::new(product_revision(&options.repo_root), settings(), entries))
 }
 
 struct StageFailure {
@@ -150,6 +147,7 @@ struct Indexed {
 fn evaluate_task(task: &LoadedTask, options: &RetrievalOptions) -> Result<TaskRetrieval, StageFailure> {
   let digest = blake3::hash(task.spec.id.as_bytes()).to_hex();
   let unique = format!("{}-{}", std::process::id(), SCRATCH_SEQUENCE.fetch_add(1, Ordering::Relaxed));
+  let recorded = load_recorded_queries(&task.dir).at("queries")?;
   let scratch = Scratch::create(options.work_dir.join(format!("{SCRATCH_PREFIX}{unique}-{}", &digest[..12]))).at("scratch")?;
   let tree = scratch.dir.join("tree");
   let source = resolve_source(task, &options.repo_root, None, &options.cache_dir).at("source")?;
@@ -159,7 +157,7 @@ fn evaluate_task(task: &LoadedTask, options: &RetrievalOptions) -> Result<TaskRe
   }
   let indexed = index(task, &scratch.dir, &tree).at("index")?;
   let (index, files) = index_summary(&indexed).at("index")?;
-  query_task(task, &indexed, index, &files).at("query")
+  query_task(task, &indexed, index, &files, &recorded).at("query")
 }
 
 fn index(task: &LoadedTask, scratch: &Path, tree: &Path) -> RetrievalResult<Indexed> {
@@ -218,13 +216,70 @@ fn classify(indexed: &Indexed, files: &BTreeSet<String>, path: &str) -> BaseFile
   }
 }
 
-fn query_task(task: &LoadedTask, indexed: &Indexed, index: IndexSummary, files: &BTreeSet<String>) -> RetrievalResult<TaskRetrieval> {
-  let prompt = task.spec.prompt.as_str();
+struct TaskTruth<'a> {
+  task: &'a LoadedTask,
+  indexed: &'a Indexed,
+  files: &'a BTreeSet<String>,
+  gold_lines: Option<LineSet>,
+}
+
+fn query_task(task: &LoadedTask, indexed: &Indexed, index: IndexSummary, files: &BTreeSet<String>, recorded: &RecordedQueries) -> RetrievalResult<TaskRetrieval> {
+  let (gold_lines, line_gold) = task_line_gold(task, indexed, files);
+  let truth = TaskTruth { task, indexed, files, gold_lines };
+  let mut variants = Vec::new();
+  for variant in QueryVariant::ALL {
+    let queries = variant_queries(variant, &task.spec.prompt, recorded);
+    let outcome = match queries.is_empty() {
+      true => VariantOutcome::Unavailable {
+        reason: NO_RECORDED_QUERY.to_owned(),
+      },
+      false => VariantOutcome::Scored {
+        queries: queries.into_iter().map(|query| score_query(&truth, query)).collect::<RetrievalResult<_>>()?,
+      },
+    };
+    variants.push(VariantResult { variant, outcome });
+  }
+  let blast_radius = task
+    .spec
+    .category
+    .iter()
+    .any(|category| category == BLAST_RADIUS_CATEGORY)
+    .then(|| blast_radius(task, indexed, files))
+    .transpose()?;
+  Ok(TaskRetrieval {
+    index,
+    line_gold,
+    no_call: recorded.no_call.clone(),
+    variants,
+    blast_radius,
+    rename: task.spec.rename.as_ref().map(|rename| rename_retrieval(task, rename, indexed)),
+  })
+}
+
+fn task_line_gold(task: &LoadedTask, indexed: &Indexed, files: &BTreeSet<String>) -> (Option<LineSet>, LineGoldSummary) {
+  let Ok(patch) = fs::read_to_string(task.dir.join(REFERENCE_PATCH)) else {
+    let reason = format!("the task has no readable {REFERENCE_PATCH}");
+    return (None, LineGoldSummary::Unavailable { reason });
+  };
+  let (gold, summary) = line_gold(&patch_files(&patch), |path| {
+    let state = classify(indexed, files, path);
+    let lines = fs::read(indexed.tree.join(path)).map(|bytes| line_count(&bytes)).unwrap_or(0);
+    (state, lines)
+  });
+  (Some(gold), summary)
+}
+
+fn score_query(truth: &TaskTruth<'_>, query: VariantQuery) -> RetrievalResult<QueryScore> {
+  let indexed = truth.indexed;
+  let request = ContextRequest {
+    seeds: query.seeds.clone(),
+    ..ContextRequest::new(query.text.as_str())
+  };
+  let context = indexed.query.context(&request)?.answer;
   let mut retrieved = Retrieved::default();
-  let context = indexed.query.context(&ContextRequest::new(prompt))?.answer;
   collect_pack(indexed, &context, &mut retrieved);
-  let phrases = significant_phrases(prompt);
-  let texts = std::iter::once(prompt.to_owned()).chain(phrases.iter().map(|phrase| phrase.text.clone()));
+  let phrases = significant_phrases(&query.text);
+  let texts = std::iter::once(query.text.clone()).chain(phrases.iter().map(|phrase| phrase.text.clone()));
   let mut seeds: Vec<String> = Vec::new();
   for text in texts {
     let answer = indexed.query.search(&SearchRequest::new(text))?.answer;
@@ -258,29 +313,64 @@ fn query_task(task: &LoadedTask, indexed: &Indexed, index: IndexSummary, files: 
     };
     similar_seeds.push(SimilarSeed { key, outcome });
   }
-  let truth = &task.spec.ground_truth;
-  let base_file = |path: &str| classify(indexed, files, path);
-  let blast_radius = task
-    .spec
-    .category
-    .iter()
-    .any(|category| category == BLAST_RADIUS_CATEGORY)
-    .then(|| blast_radius(task, indexed, files))
-    .transpose()?;
-  Ok(TaskRetrieval {
-    index,
-    queries: QueryLog {
+  let labelled = &truth.task.spec.ground_truth;
+  let base_file = |path: &str| classify(indexed, truth.files, path);
+  let must_change = score_files(&retrieved, &labelled.must_change, base_file);
+  let must_change_at_base: BTreeSet<String> = must_change.expected.iter().cloned().collect();
+  let mut yields = Vec::new();
+  for budget in YIELD_BUDGETS {
+    let answer = indexed.query.context(&ContextRequest { budget, ..request.clone() })?.answer;
+    let mut at_budget = Retrieved::default();
+    collect_pack(indexed, &answer, &mut at_budget);
+    let size = pack_size(&answer);
+    let cost = PackCost {
+      budget,
+      estimated_tokens: size.estimated_tokens,
+      bytes: size.bytes,
+    };
+    yields.push(budget_yield(cost, &at_budget, &must_change_at_base));
+  }
+  let lines = match &truth.gold_lines {
+    None => None,
+    Some(gold) => Some(LineScores {
+      must_read: score_lines(&item_spans(indexed, context.must_read.iter())?, gold),
+      pack: score_lines(&item_spans(indexed, pack_sections(&context).into_iter().flatten())?, gold),
+    }),
+  };
+  Ok(QueryScore {
+    query,
+    searches: QueryLog {
       search_phrases: phrases,
       similar_seeds,
     },
     pack: pack_size(&context),
-    must_change: score_files(&retrieved, &truth.must_change, base_file),
-    relevant_files: score_files(&retrieved, &truth.relevant_files, base_file),
-    must_consider: score_files(&retrieved, &truth.must_consider, base_file),
-    reuse: (!truth.reuse_targets.is_empty()).then(|| score_reuse(&retrieved, &truth.reuse_targets)),
-    blast_radius,
-    rename: task.spec.rename.as_ref().map(|rename| rename_retrieval(task, rename, indexed)),
+    must_change,
+    relevant_files: score_files(&retrieved, &labelled.relevant_files, base_file),
+    must_consider: score_files(&retrieved, &labelled.must_consider, base_file),
+    reuse: (!labelled.reuse_targets.is_empty()).then(|| score_reuse(&retrieved, &labelled.reuse_targets)),
+    lines,
+    yields,
   })
+}
+
+fn item_spans<'a>(indexed: &Indexed, items: impl Iterator<Item = &'a ContextItem>) -> RetrievalResult<ItemSpans> {
+  indexed.engine.store().read(|tx| -> RetrievalResult<ItemSpans> {
+    let mut spans = ItemSpans::default();
+    for item in items {
+      let entity = match item.entity.id.parse::<EntityId>() {
+        Ok(id) => tx.entity(id)?,
+        Err(_) => None,
+      };
+      spans.add(entity.as_ref().and_then(|entity| entity_span(indexed, entity)));
+    }
+    Ok(spans)
+  })
+}
+
+fn entity_span(indexed: &Indexed, entity: &Entity) -> Option<(String, u32, u32)> {
+  let span = entity.span?;
+  let file = tree_path(&indexed.prefixes, entity.repo.as_ref()?.as_str(), entity.path.as_ref()?.as_str())?;
+  Some((file, span.start_line, span.end_line))
 }
 
 fn rename_retrieval(task: &LoadedTask, rename: &RenameSpec, indexed: &Indexed) -> RenameRetrieval {

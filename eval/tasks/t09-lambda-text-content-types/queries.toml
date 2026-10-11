@@ -1,0 +1,8 @@
+# `atlas_context` calls recorded from agent transcripts, replayed by `atlas-eval retrieval` as the `agent` query variants.
+# One entry per distinct (task, seeds); see docs/evaluation/methodology.md (Retrieval eval) for the extraction rule.
+
+no_call = [{ batch = "2026-10-05-directed", run = "t09-lambda-text-content-types.atlas.r0" }]
+
+[[query]]
+task = "Fix isContentTypeBinary in aws-lambda and lambda-edge adapters (built-in and standalone packages) to treat all text/*, application/javascript, x-www-form-urlencoded as text"
+sent_by = [{ batch = "2026-10-05-directed", run = "t09-lambda-text-content-types.atlas.r1" }]

@@ -1,0 +1,10 @@
+# `atlas_context` calls recorded from agent transcripts, replayed by `atlas-eval retrieval` as the `agent` query variants.
+# One entry per distinct (task, seeds); see docs/evaluation/methodology.md (Retrieval eval) for the extraction rule.
+
+[[query]]
+task = "Extract shared import-checking abstraction in atlas-detect detectors replacing ImportFact matching"
+sent_by = [{ batch = "2026-10-05-directed", run = "t04-detector-import-gates.atlas.r0" }]
+
+[[query]]
+task = "Extract shared import-detection abstraction in atlas-detect replacing ImportFact matching in detectors"
+sent_by = [{ batch = "2026-10-05-directed", run = "t04-detector-import-gates.atlas.r1" }]

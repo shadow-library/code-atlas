@@ -24,6 +24,8 @@ pub enum RetrievalError {
   Query(#[from] atlas_query::QueryError),
   #[error("project error: {0}")]
   Project(#[from] atlas_project::ProjectError),
+  #[error("invalid {}: {reason}", path.display())]
+  InvalidQueries { path: PathBuf, reason: String },
   #[error("{failed} of {total} tasks could not be scored; see {}", report.display())]
   TasksFailed { failed: usize, total: usize, report: PathBuf },
 }
