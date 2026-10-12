@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use super::error::{AgentError, AgentResult};
+use super::tree_edit::SectionRef;
 
 pub const TASK_FILE: &str = "task.toml";
 pub const HIDDEN_DIR: &str = "hidden";
@@ -86,6 +87,24 @@ impl RenameSpec {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptLeak {
+  Handed,
+  Guided,
+  Open,
+}
+
+impl PromptLeak {
+  pub fn label(self) -> &'static str {
+    match self {
+      Self::Handed => "handed",
+      Self::Guided => "guided",
+      Self::Open => "open",
+    }
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TaskSpec {
@@ -111,6 +130,12 @@ pub struct TaskSpec {
   pub ground_truth: GroundTruth,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub rename: Option<RenameSpec>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub prompt_leak: Option<PromptLeak>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub strip: Vec<String>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub drop_instruction_sections: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -231,8 +256,24 @@ fn validate(spec: &TaskSpec) -> Result<(), String> {
   if let Some(rename) = &spec.rename {
     validate_rename(rename)?;
   }
+  let sections = spec
+    .drop_instruction_sections
+    .iter()
+    .map(|entry| SectionRef::parse(entry).filter(|section| is_relative_inside(section.file)).ok_or(entry));
+  if let Some(bad) = sections.filter_map(Result::err).next() {
+    return Err(format!("drop_instruction_sections entry `{bad}` must be `<relative file>#<heading>`"));
+  }
+  if let Some(bad) = spec.strip.iter().find(|path| path.split('/').any(|segment| segment.is_empty() || segment == ".")) {
+    return Err(format!("strip path `{bad}` must name a file or directory below the tree root"));
+  }
   let truth = &spec.ground_truth;
-  let paths = truth.relevant_files.iter().chain(&truth.must_change).chain(&truth.must_consider).chain(&spec.atlas_repos);
+  let paths = truth
+    .relevant_files
+    .iter()
+    .chain(&truth.must_change)
+    .chain(&truth.must_consider)
+    .chain(&spec.atlas_repos)
+    .chain(&spec.strip);
   if let Some(bad) = paths.into_iter().find(|path| !is_relative_inside(path)) {
     return Err(format!("path `{bad}` must be relative to the tree root without `..`"));
   }
@@ -365,6 +406,45 @@ reuse_targets = ["UsersService.findOne"]
       "symbol = \"A.\"\nnew_name = \"c\"",
     ] {
       assert!(parse(&format!("{SPEC}\n[rename]\n{section}\n")).is_err(), "{section}");
+    }
+  }
+
+  #[test]
+  fn should_parse_the_declared_prompt_leak_class_and_leave_it_unset_by_default() {
+    assert_eq!(parse(SPEC).unwrap().prompt_leak, None);
+    for (text, class) in [("handed", PromptLeak::Handed), ("guided", PromptLeak::Guided), ("open", PromptLeak::Open)] {
+      let spec = parse(&SPEC.replace("max_turns = 30", &format!("max_turns = 30\nprompt_leak = \"{text}\""))).unwrap();
+      assert_eq!(spec.prompt_leak, Some(class));
+      assert_eq!(class.label(), text);
+    }
+    assert!(parse(&SPEC.replace("max_turns = 30", "max_turns = 30\nprompt_leak = \"leaky\"")).is_err());
+    assert!(!serde_json::to_string(&parse(SPEC).unwrap()).unwrap().contains("prompt_leak"));
+  }
+
+  #[test]
+  fn should_parse_paths_to_strip_and_instruction_sections_to_drop_and_leave_both_out_when_unset() {
+    let declared = "max_turns = 30\nstrip = [\"acme-e2e\", \"docs/postmortem.md\"]\ndrop_instruction_sections = [\"AGENTS.md#Code search\"]";
+    let spec = parse(&SPEC.replace("max_turns = 30", declared)).unwrap();
+    assert_eq!(spec.strip, vec!["acme-e2e", "docs/postmortem.md"]);
+    assert_eq!(spec.drop_instruction_sections, vec!["AGENTS.md#Code search"]);
+    let plain = serde_json::to_string(&parse(SPEC).unwrap()).unwrap();
+    assert!(!plain.contains("strip") && !plain.contains("drop_instruction_sections"), "{plain}");
+  }
+
+  #[test]
+  fn should_reject_strip_paths_and_section_files_that_leave_the_tree_and_sections_without_a_heading() {
+    for field in [
+      "strip = [\"../acme-e2e\"]",
+      "strip = [\"/tmp/acme-e2e\"]",
+      "strip = [\"\"]",
+      "strip = [\".\"]",
+      "strip = [\"docs/./notes\"]",
+      "strip = [\"docs//notes\"]",
+      "drop_instruction_sections = [\"AGENTS.md\"]",
+      "drop_instruction_sections = [\"AGENTS.md#\"]",
+      "drop_instruction_sections = [\"../AGENTS.md#Code search\"]",
+    ] {
+      assert!(parse(&SPEC.replace("max_turns = 30", &format!("max_turns = 30\n{field}"))).is_err(), "{field}");
     }
   }
 

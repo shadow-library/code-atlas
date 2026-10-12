@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
@@ -242,6 +242,8 @@ pub struct BatchManifest {
   pub planned: Vec<PlannedRun>,
   pub skipped_for_budget: Vec<String>,
   pub spent_usd: f64,
+  #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+  pub instruction_sections_dropped: BTreeMap<String, Vec<String>>,
 }
 
 pub fn read_json<T: DeserializeOwned>(path: &Path) -> AgentResult<T> {

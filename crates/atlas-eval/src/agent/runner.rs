@@ -28,7 +28,7 @@ use super::spec::LoadedTask;
 use super::transcript::{TokenUsage, Transcript};
 use super::validation::{SuiteResult, regressions, run_command, run_suite};
 use super::workspace::{
-  StripPlan, TreeSource, apply_patch, base_file, check_isolated_location, copy_hidden, diff_against, head_commit, init_base, materialize, resolve_source, scratch_dir,
+  StripPlan, TreeSource, base_file, check_isolated_location, copy_hidden, diff_against, head_commit, init_base, local_source_path, materialize_task, resolve_source, scratch_dir,
 };
 
 const MAX_TURNS_SUBTYPE: &str = "error_max_turns";
@@ -161,6 +161,11 @@ pub fn run_batch(config: &RunnerConfig, tasks: &[LoadedTask], planned: Vec<Plann
     planned,
     skipped_for_budget: skipped.into_inner().unwrap_or_else(PoisonError::into_inner),
     spent_usd: spent.into_inner().unwrap_or_else(PoisonError::into_inner),
+    instruction_sections_dropped: tasks
+      .iter()
+      .filter(|task| !task.spec.drop_instruction_sections.is_empty())
+      .map(|task| (task.spec.id.clone(), task.spec.drop_instruction_sections.clone()))
+      .collect(),
   };
   write_json(&config.batch_dir.join(BATCH_FILE), &manifest)?;
   Ok(manifest)
@@ -347,7 +352,7 @@ fn score_session(context: &RunContext<'_>, scratch: &Path, tree: &Path, base_sha
     changed_files: &changed,
     wall_ms: manifest.wall_ms,
   });
-  metrics.out_of_tree_accesses = out_of_tree_accesses(&session, &access_policy(context.config, scratch, tree, &session));
+  metrics.out_of_tree_accesses = out_of_tree_accesses(&session, &access_policy(context, scratch, tree, &session));
   metrics.contaminated = contaminated(&metrics.out_of_tree_accesses);
   if metrics.contaminated {
     tracing::warn!(
@@ -375,7 +380,16 @@ fn score_session(context: &RunContext<'_>, scratch: &Path, tree: &Path, base_sha
   Ok(manifest.cost_usd)
 }
 
-fn access_policy(config: &RunnerConfig, scratch: &Path, tree: &Path, session: &Transcript) -> AccessPolicy {
+fn source_roots(task: &LoadedTask, source: &TreeSource, cache_dir: &Path) -> Vec<PathBuf> {
+  let archived_from = match source {
+    TreeSource::GitArchive { repo, .. } => Some(repo.canonicalize().unwrap_or_else(|_| repo.clone())),
+    TreeSource::Directory { path } => Some(path.canonicalize().unwrap_or_else(|_| path.clone())),
+  };
+  local_source_path(&task.spec.repo, cache_dir).into_iter().chain(archived_from).collect()
+}
+
+fn access_policy(context: &RunContext<'_>, scratch: &Path, tree: &Path, session: &Transcript) -> AccessPolicy {
+  let config = context.config;
   let mut trees = vec![tree.to_owned(), scratch.join(CARGO_TARGET)];
   trees.extend(tree.canonicalize().ok());
   trees.extend(session.init.as_ref().and_then(|init| init.cwd.as_deref()).map(PathBuf::from));
@@ -386,6 +400,7 @@ fn access_policy(config: &RunnerConfig, scratch: &Path, tree: &Path, session: &T
     eval_home: config.eval_home.canonicalize().unwrap_or_else(|_| config.eval_home.clone()),
     scratch_root: config.tree_root.canonicalize().unwrap_or_else(|_| config.tree_root.clone()),
     own_scratch: scratch.canonicalize().unwrap_or_else(|_| scratch.to_owned()),
+    source_roots: source_roots(context.task, context.source, &config.cache_dir),
   }
 }
 
@@ -430,10 +445,7 @@ fn build_base_tree(
   env: &[(String, String)],
   timeout: Duration,
 ) -> Result<String, (&'static str, AgentError)> {
-  materialize(source, tree, strip).map_err(|error| ("materialize", error))?;
-  if let Some(patch) = task.base_patch_file() {
-    apply_patch(tree, &patch).map_err(|error| ("materialize", error))?;
-  }
+  materialize_task(task, source, tree, strip).map_err(|error| ("materialize", error))?;
   run_setup(&task.spec.setup, tree, env, timeout).map_err(|error| ("setup", error))?;
   init_base(tree).map_err(|error| ("git-base", error))
 }

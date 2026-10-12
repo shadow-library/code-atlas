@@ -5,8 +5,8 @@ use std::time::Duration;
 use clap::{Args, Parser, Subcommand};
 
 use atlas_eval::agent::{
-  self, AgentError, AgentReport, ClaudeConfig, Condition, ConfigIsolation, DEFAULT_JUDGE_MODEL, DEFAULT_SESSION_MODEL, DryRunContext, JudgeMode, LoadedTask, PreambleVariant,
-  RepoSource, RunnerConfig,
+  self, AgentError, AgentReport, ClaudeConfig, Condition, ConfigIsolation, DEFAULT_JUDGE_MODEL, DEFAULT_SESSION_MODEL, DryRunContext, EvalHome, JudgeMode, LoadedTask,
+  PreambleVariant, RepoSource, RunnerConfig,
 };
 use atlas_eval::quality::{self, QualityArgs};
 use atlas_eval::retrieval::{self, RetrievalArgs};
@@ -42,6 +42,8 @@ enum AgentCommand {
   Headroom(HeadroomArgs),
   #[command(about = "From recorded runs: how much every report metric differs between runs of the same condition, next to the A/B effects")]
   Noise(NoiseArgs),
+  #[command(about = "Per task, without a session: which prompt terms return a file the task must change, and the leak class that follows")]
+  LeakAudit(LeakAuditArgs),
 }
 
 #[derive(Debug, Args)]
@@ -91,6 +93,12 @@ struct RunArgs {
   budget_usd: Option<f64>,
   #[arg(long)]
   dry_run: bool,
+  #[arg(
+    long,
+    conflicts_with = "dry_run",
+    help = "Run the base check of every task (setup, hidden tests, regression on the untouched base tree) and start no session"
+  )]
+  base_only: bool,
   #[arg(long)]
   atlas_bin: Option<PathBuf>,
   #[arg(long)]
@@ -148,6 +156,26 @@ struct NoiseArgs {
 }
 
 #[derive(Debug, Args)]
+struct LeakAuditArgs {
+  #[arg(
+    long,
+    help = "Repository root holding eval/tasks and the task base commits (default: the git top level of the working directory)"
+  )]
+  repo_root: Option<PathBuf>,
+  #[arg(long, help = "Task directory (default: <repo-root>/eval/tasks)")]
+  tasks: Option<PathBuf>,
+  #[arg(long = "task", help = "Only audit this task id (repeatable)")]
+  only: Vec<String>,
+  #[arg(long, help = "Output base path; .md and .json are appended (default: reports/<date>/leak-audit beside the task directory)")]
+  out: Option<PathBuf>,
+  #[arg(
+    long,
+    help = "Clone cache for external task repositories (default: runs/.cache beside the task directory, shared with `agent run`)"
+  )]
+  cache_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
 struct ProbeArgs {
   #[arg(long)]
   out: PathBuf,
@@ -190,6 +218,7 @@ fn main() -> ExitCode {
     Command::Agent(AgentCommand::Surface(args)) => surface(&args).map_err(Into::into),
     Command::Agent(AgentCommand::Headroom(args)) => headroom(&args).map_err(Into::into),
     Command::Agent(AgentCommand::Noise(args)) => noise(&args).map_err(Into::into),
+    Command::Agent(AgentCommand::LeakAudit(args)) => leak_audit(&args).map_err(Into::into),
     Command::Quality(args) => run_quality(&args).map_err(Into::into),
     Command::Retrieval(args) => run_retrieval(&args),
   };
@@ -263,7 +292,7 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
   let mut conditions = args.condition.clone();
   conditions.sort();
   conditions.dedup();
-  let planned = agent::plan_runs(&tasks, &conditions, args.runs_per_condition, args.seed);
+  let planned = planned_runs(args, &tasks, &conditions);
   let atlas_bin = locate_atlas_bin(args.atlas_bin.as_deref(), &repo_root);
   let judge_model = (args.judge == JudgeMode::Claude).then_some(args.claude.judge_model.as_str());
   if args.dry_run {
@@ -289,13 +318,36 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
     print!("{}", agent::render_dry_run(&context));
     return Ok(());
   }
-  let eval_home = args.eval_home.clone().unwrap_or_else(|| repo_root.join("eval"));
+  let home = match &args.eval_home {
+    Some(path) => EvalHome::new(path),
+    None => EvalHome::of_tasks(&tasks_dir)?,
+  };
+  agent::keep_private_untracked(&[&tasks_dir], &[home.root()])?;
+  let config = runner_config(args, repo_root, &home, atlas_bin);
+  let manifest = agent::run_batch(&config, &tasks, planned)?;
+  tracing::info!(
+    batch = %config.batch_dir.display(),
+    spent_usd = manifest.spent_usd,
+    skipped = manifest.skipped_for_budget.len(),
+    "batch finished; run `atlas-eval agent report --runs <batch>` to aggregate it"
+  );
+  Ok(())
+}
+
+fn planned_runs(args: &RunArgs, tasks: &[LoadedTask], conditions: &[Condition]) -> Vec<agent::PlannedRun> {
+  if args.base_only {
+    return Vec::new();
+  }
+  agent::plan_runs(tasks, conditions, args.runs_per_condition, args.seed)
+}
+
+fn runner_config(args: &RunArgs, repo_root: PathBuf, home: &EvalHome, atlas_bin: Option<PathBuf>) -> RunnerConfig {
   let batch = args.batch.clone().unwrap_or_else(|| format!("{}-seed{}", agent::today_utc(), args.seed));
-  let config = RunnerConfig {
+  RunnerConfig {
     repo_root,
-    batch_dir: eval_home.join("runs").join(batch),
-    cache_dir: eval_home.join("runs").join(".cache"),
-    eval_home,
+    batch_dir: home.batch(&batch),
+    cache_dir: home.clone_cache(),
+    eval_home: home.root().to_owned(),
     tree_root: args.tree_root.clone().unwrap_or_else(std::env::temp_dir),
     keep_trees: args.keep_trees,
     claude: args.claude.config(),
@@ -307,17 +359,9 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
     validation_timeout: Duration::from_secs(args.validation_timeout_secs),
     atlas_timeout: Duration::from_secs(args.atlas_timeout_secs),
     seed: args.seed,
-    probe: !args.no_probe,
+    probe: !args.no_probe && !args.base_only,
     preamble: args.atlas_preamble,
-  };
-  let manifest = agent::run_batch(&config, &tasks, planned)?;
-  tracing::info!(
-    batch = %config.batch_dir.display(),
-    spent_usd = manifest.spent_usd,
-    skipped = manifest.skipped_for_budget.len(),
-    "batch finished; run `atlas-eval agent report --runs <batch>` to aggregate it"
-  );
-  Ok(())
+  }
 }
 
 fn report(args: &ReportArgs) -> Result<(), AgentError> {
@@ -326,43 +370,56 @@ fn report(args: &ReportArgs) -> Result<(), AgentError> {
   let previous: Option<AgentReport> = args.compare.as_deref().map(agent::read_json).transpose()?;
   let report = agent::build_report(batch.as_ref(), &records, previous.as_ref());
   let date = batch.as_ref().map_or_else(agent::today_utc, |batch| batch.environment.date.clone());
-  let out = args.out.clone().unwrap_or_else(|| PathBuf::from("eval").join("reports").join(date).join("agent"));
-  let base = match out.extension().and_then(|extension| extension.to_str()) {
-    Some("md" | "json") => out.with_extension(""),
-    _ => out,
-  };
+  let base = agent::batch_report_base(std::slice::from_ref(&args.runs), &[], args.out.as_deref(), &date, "agent")?;
   let (markdown, json) = agent::write_report(&report, &base)?;
   tracing::info!(markdown = %markdown.display(), json = %json.display(), runs = records.len(), "report written");
   Ok(())
 }
 
-fn report_base(out: Option<&Path>, name: &str) -> PathBuf {
-  let out = out.map_or_else(|| PathBuf::from("eval").join("reports").join(agent::today_utc()).join(name), Path::to_owned);
-  match out.extension().and_then(|extension| extension.to_str()) {
-    Some("md" | "json") => out.with_extension(""),
-    _ => out,
+fn headroom_tasks(args: &HeadroomArgs) -> Result<PathBuf, AgentError> {
+  if let Some(path) = &args.tasks {
+    return Ok(path.clone());
   }
-}
-
-fn tasks_dir(explicit: Option<&Path>, root: Option<&Path>) -> Result<PathBuf, AgentError> {
-  match explicit {
-    Some(path) => Ok(path.to_owned()),
-    None => Ok(repo_root(root)?.join("eval").join("tasks")),
+  let beside_runs = args.runs.first().and_then(|batch| EvalHome::of_batch(batch).ok()).map(|home| home.tasks());
+  match beside_runs.filter(|tasks| args.repo_root.is_none() && tasks.is_dir()) {
+    Some(tasks) => Ok(tasks),
+    None => Ok(repo_root(args.repo_root.as_deref())?.join("eval").join("tasks")),
   }
 }
 
 fn headroom(args: &HeadroomArgs) -> Result<(), AgentError> {
-  let report = agent::load_headroom(&args.runs, &tasks_dir(args.tasks.as_deref(), args.repo_root.as_deref())?)?;
-  let (markdown, json) = agent::write_headroom(&report, &report_base(args.out.as_deref(), "headroom"))?;
+  let tasks_dir = headroom_tasks(args)?;
+  let base = agent::batch_report_base(&args.runs, &[&tasks_dir], args.out.as_deref(), &agent::today_utc(), "headroom")?;
+  let report = agent::load_headroom(&args.runs, &tasks_dir)?;
+  let (markdown, json) = agent::write_headroom(&report, &base)?;
   tracing::info!(markdown = %markdown.display(), json = %json.display(), sessions = report.sessions.len(), "headroom report written");
   Ok(())
 }
 
 fn noise(args: &NoiseArgs) -> Result<(), AgentError> {
+  let compared: Vec<&Path> = args.ab_report.iter().map(PathBuf::as_path).collect();
+  let base = agent::batch_report_base(&args.runs, &compared, args.out.as_deref(), &agent::today_utc(), "noise-floor")?;
   let report = agent::load_noise(&args.runs, &args.ab_report, repo_root(args.repo_root.as_deref()).ok().as_deref())?;
-  let (markdown, json) = agent::write_noise(&report, &report_base(args.out.as_deref(), "noise-floor"))?;
+  let (markdown, json) = agent::write_noise(&report, &base)?;
   tracing::info!(markdown = %markdown.display(), json = %json.display(), metrics = report.metrics.len(), "noise-floor report written");
   Ok(())
+}
+
+fn leak_audit(args: &LeakAuditArgs) -> Result<(), AgentError> {
+  let repo_root = repo_root(args.repo_root.as_deref())?;
+  let tasks_dir = args.tasks.clone().unwrap_or_else(|| repo_root.join("eval").join("tasks"));
+  let cache_dir = match &args.cache_dir {
+    Some(path) => path.clone(),
+    None => EvalHome::of_tasks(&tasks_dir)?.clone_cache(),
+  };
+  let base = agent::task_report_base(&tasks_dir, args.out.as_deref(), &[&cache_dir], &agent::today_utc(), "leak-audit")?;
+  let report = agent::audit_leaks(&agent::load_tasks(&tasks_dir, &args.only)?, &repo_root, &cache_dir)?;
+  let (markdown, json) = agent::write_leak_report(&report, &base)?;
+  tracing::info!(markdown = %markdown.display(), json = %json.display(), tasks = report.tasks.len(), "leak audit written");
+  match report.tasks.iter().filter(|task| task.disagrees()).count() {
+    0 => Ok(()),
+    count => Err(AgentError::LeakClassMismatch { count, report: markdown }),
+  }
 }
 
 fn run_quality(args: &QualityArgs) -> Result<(), quality::QualityError> {
@@ -422,4 +479,33 @@ fn probe(args: &ProbeArgs) -> Result<(), AgentError> {
   })?;
   println!("{rendered}");
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn run_args(flags: &[&str]) -> RunArgs {
+    let cli = Cli::try_parse_from(["atlas-eval", "agent", "run"].iter().chain(flags)).unwrap();
+    match cli.command {
+      Command::Agent(AgentCommand::Run(args)) => *args,
+      other => panic!("{other:?}"),
+    }
+  }
+
+  fn config(flags: &[&str]) -> RunnerConfig {
+    runner_config(&run_args(flags), PathBuf::from("/work"), &EvalHome::new("/work/eval"), None)
+  }
+
+  #[test]
+  fn should_start_no_probe_and_plan_no_run_for_a_base_only_batch() {
+    let base_only = run_args(&["--base-only", "--batch", "verify"]);
+    assert_eq!(planned_runs(&base_only, &[], &Condition::ALL), Vec::new());
+    let checked = config(&["--base-only", "--batch", "verify"]);
+    assert_eq!((checked.probe, checked.batch_dir), (false, PathBuf::from("/work/eval/runs/verify")));
+    assert_eq!(checked.cache_dir, PathBuf::from("/work/eval/runs/.cache"));
+    assert!(config(&[]).probe);
+    assert!(!config(&["--no-probe"]).probe);
+    assert!(Cli::try_parse_from(["atlas-eval", "agent", "run", "--base-only", "--dry-run"]).is_err());
+  }
 }

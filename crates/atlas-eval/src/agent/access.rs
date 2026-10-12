@@ -15,6 +15,7 @@ pub enum Contamination {
   RepositoryRoot,
   EvalHome,
   OtherRunScratch,
+  TaskSource,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,6 +33,7 @@ pub struct AccessPolicy {
   pub eval_home: PathBuf,
   pub scratch_root: PathBuf,
   pub own_scratch: PathBuf,
+  pub source_roots: Vec<PathBuf>,
 }
 
 impl AccessPolicy {
@@ -53,6 +55,9 @@ impl AccessPolicy {
     }
     if path.starts_with(normalize(&self.repo_root)) {
       return Some(Contamination::RepositoryRoot);
+    }
+    if self.source_roots.iter().any(|root| path.starts_with(normalize(root))) {
+      return Some(Contamination::TaskSource);
     }
     let scratch_root = normalize(&self.scratch_root);
     let own = normalize(&self.own_scratch);
@@ -158,6 +163,7 @@ mod tests {
       eval_home: PathBuf::from("/Users/dev/src/code-atlas/eval"),
       scratch_root: PathBuf::from("/var/tmp/T"),
       own_scratch: PathBuf::from("/var/tmp/T/ae-111"),
+      source_roots: vec![PathBuf::from("/Users/dev/src/storefront"), PathBuf::from("/private/var/cache/clones/storefront.git")],
     }
   }
 
@@ -206,6 +212,38 @@ mod tests {
       ]
     );
     assert!(contaminated(&accesses));
+  }
+
+  #[test]
+  fn should_mark_a_run_contaminated_when_it_reaches_the_repository_or_clone_its_task_was_archived_from() {
+    let transcript = Transcript {
+      tool_calls: vec![
+        call("Read", json!({"file_path": "/Users/dev/src/storefront/api/src/orders.ts"})),
+        call(
+          "Bash",
+          json!({"command": "git -C /var/cache/clones/storefront.git log -3 && ls /Users/dev/src/storefront-notes"}),
+        ),
+        call("Grep", json!({"pattern": "settle", "path": "../../../../../Users/dev/src/storefront"})),
+      ],
+      ..Transcript::default()
+    };
+    let accesses = out_of_tree_accesses(&transcript, &policy());
+    let summary: Vec<(&str, &str, Option<Contamination>)> = accesses.iter().map(|access| (access.tool.as_str(), access.path.as_str(), access.contamination)).collect();
+    assert_eq!(
+      summary,
+      vec![
+        ("Read", "/Users/dev/src/storefront/api/src/orders.ts", Some(Contamination::TaskSource)),
+        ("Bash", "/var/cache/clones/storefront.git", Some(Contamination::TaskSource)),
+        ("Bash", "/Users/dev/src/storefront-notes", None),
+        ("Grep", "/Users/dev/src/storefront", Some(Contamination::TaskSource)),
+      ]
+    );
+    assert!(contaminated(&accesses));
+    let elsewhere = AccessPolicy {
+      source_roots: Vec::new(),
+      ..policy()
+    };
+    assert!(!contaminated(&out_of_tree_accesses(&transcript, &elsewhere)));
   }
 
   #[test]

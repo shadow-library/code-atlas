@@ -385,6 +385,72 @@ fn should_build_the_base_from_the_patched_tree_after_setup() {
 }
 
 #[test]
+fn should_run_the_base_check_alone_when_no_run_is_planned() {
+  let fixture = fixture();
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let manifest = agent::run_batch(&fixture.config(1, None), &tasks, Vec::new()).unwrap();
+
+  assert_eq!(manifest.tasks, vec!["t99-pipeline"]);
+  assert_eq!((manifest.planned.len(), manifest.spent_usd), (0, 0.0));
+  let base: agent::BaseCheck = agent::read_json(&fixture.batch.join("_base/t99-pipeline/base.json")).unwrap();
+  assert_eq!((base.validation.commands.len(), base.validation.all_passed()), (1, false));
+  let mut entries: Vec<String> = fs::read_dir(&fixture.batch)
+    .unwrap()
+    .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+    .collect();
+  entries.sort();
+  assert_eq!(entries, vec!["_base", "batch.json"]);
+}
+
+#[test]
+fn should_strip_declared_paths_and_instruction_sections_in_both_conditions_and_record_the_dropped_sections() {
+  let fixture = fixture();
+  write(
+    &fixture.source.join("CLAUDE.md"),
+    "# Conventions\n\nUse two-space indentation.\n\n## Search\n\nAsk the index daemon before any grep.\n\n## Tests\n\nRun the suite.\n",
+  );
+  write(&fixture.source.join("acme-e2e/checkout.spec.ts"), "// skipped: the cause is in user.entity.ts\n");
+  let edited = "max_turns = 5\nstrip = [\"acme-e2e\"]\ndrop_instruction_sections = [\"CLAUDE.md#Search\"]";
+  write(&fixture.tasks.join("t99-pipeline/task.toml"), &TASK.replace("max_turns = 5", edited));
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let config = RunnerConfig {
+    keep_trees: true,
+    ..fixture.config(2, None)
+  };
+
+  let manifest = agent::run_batch(&config, &tasks, agent::plan_runs(&tasks, &Condition::ALL, 1, 3)).unwrap();
+
+  let dropped = vec![("t99-pipeline".to_owned(), vec!["CLAUDE.md#Search".to_owned()])];
+  assert_eq!(manifest.instruction_sections_dropped.clone().into_iter().collect::<Vec<_>>(), dropped);
+  let batch: serde_json::Value = agent::read_json(&fixture.batch.join("batch.json")).unwrap();
+  assert_eq!(batch["instruction_sections_dropped"]["t99-pipeline"][0], "CLAUDE.md#Search");
+  for condition in ["baseline", "atlas"] {
+    let run: RunManifest = agent::read_json(&fixture.batch.join(format!("t99-pipeline.{condition}.r0")).join(RUN_FILE)).unwrap();
+    let position = run.args.iter().position(|arg| arg == "--append-system-prompt").unwrap();
+    let instructions = &run.args[position + 1];
+    assert!(
+      instructions.contains("Use two-space indentation.") && instructions.contains("Run the suite."),
+      "{instructions}"
+    );
+    assert!(!instructions.contains("index daemon"), "{instructions}");
+    let tree = PathBuf::from(run.tree.unwrap());
+    assert!(!tree.join("acme-e2e").exists() && tree.join("acme-api/src/users/user.entity.ts").is_file());
+    assert!(!fs::read_to_string(tree.join("CLAUDE.md")).unwrap().contains("index daemon"));
+    let diff = fs::read_to_string(fixture.batch.join(format!("t99-pipeline.{condition}.r0/diff.patch"))).unwrap();
+    assert!(!diff.contains("acme-e2e") && !diff.contains("CLAUDE.md"), "{diff}");
+  }
+}
+
+#[test]
+fn should_leave_dropped_sections_out_of_the_batch_file_when_no_task_declares_any() {
+  let fixture = fixture();
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let manifest = agent::run_batch(&fixture.config(1, None), &tasks, Vec::new()).unwrap();
+  assert!(manifest.instruction_sections_dropped.is_empty());
+  assert!(!fs::read_to_string(fixture.batch.join("batch.json")).unwrap().contains("instruction_sections_dropped"));
+}
+
+#[test]
 fn should_fail_the_batch_when_setup_fails_on_the_base_tree() {
   let fixture = fixture();
   let continued = fixture.trees.join("setup-continued");

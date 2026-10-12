@@ -116,7 +116,7 @@ target/release/atlas-eval retrieval --out eval/reports/$(date +%F)/retrieval    
 target/release/atlas-eval retrieval --task t00-smoke --out /tmp/retrieval          # about 1 s
 ```
 
-Other flags: `--repo-root`, `--tasks`, `--cache-dir` (`eval/runs/.cache`), `--work-dir` (system temp dir).
+Other flags: `--repo-root`, `--tasks`, `--cache-dir` (`runs/.cache` beside the task directory, so `eval/runs/.cache`), `--work-dir` (system temp dir). `--out` defaults to `reports/<date>/retrieval` beside the task directory.
 
 ## Performance bench
 
@@ -193,7 +193,7 @@ Both batches used the same tasks, model, seed, Code Atlas binary and 2 runs per 
 
 **Aggregation.** Means of per-task means over tasks scored in both conditions (paired); per-metric sample size is shown when below the run count; outcome counts (completed, max turns, error, timeout, no result, setup failed) are reported per task, and a higher atlas rate of timeouts or max-turn hits is listed as a negative result. Setup failures are excluded and listed by stage.
 
-**Contamination detection.** Every tool call is scanned for paths outside the tree (path fields and, best effort, absolute, `~` and `..` paths in Bash), ignoring toolchain and system locations. A run that touched the repository root, the eval home or another run's scratch directory is `contaminated`: listed at the top of the report, counted per condition and excluded from all statistics. Bash is not sandboxed, so detection is after the fact.
+**Contamination detection.** Every tool call is scanned for paths outside the tree (path fields and, best effort, absolute, `~` and `..` paths in Bash), ignoring toolchain and system locations. A run that touched the repository root, the eval home, another run's scratch directory or the repository its own tree was archived from (a local `repo.git` directory, the clone, an override directory) is `contaminated`: listed at the top of the report, counted per condition and excluded from all statistics. Bash is not sandboxed, so detection is after the fact.
 
 **Version drift.** Self tasks freeze the tree at `base_commit`, but the atlas binary does not. The batch records the evaluation repository commit, the binary's build commit (`catl --version`) and its blake3 hash (`atlas_bin_blake3`). A binary built after a task's feature landed can leak the answer (t05 asks for the `atlas_dependents`/`atlas_dependencies` MCP tools; t01 asks for cwd-relative CLI targets). Compare the build commit with each self task's `base_commit`; prefer a binary built from `base_commit` for those tasks. `--repo-override` marks a batch not reproducible from a commit. Always pass `--atlas-bin` explicitly.
 
@@ -212,6 +212,17 @@ target/release/atlas-eval agent probe --out /tmp/probe
 ```
 
 Other `run` flags: `--tasks`, `--eval-home`, `--batch` (default `<date>-seed<seed>`), `--condition`, `--seed`, `--parallel` (2), `--judge claude|off`, `--atlas-preamble standard|directed`, `--no-probe`, `--validation-timeout-secs`, `--atlas-timeout-secs`, `--tree-root`, `--keep-trees`, `--claude-bin`, `--model`, `--judge-model`, `--claude-config user|isolated`. A batch is resumable: runs with a `score.json` are reused. Artifacts per run (`eval/runs/<batch>/<task>.<condition>.r<i>/`): `run.json`, `transcript.jsonl`, `diff.patch`, `metrics.json`, `score.json`, `atlas-review.json`. External tasks need network once for the pnpm install step; real runs need the `claude` CLI.
+
+### Private task sets
+
+The eleven tasks above were written by the developers of Code Atlas, mostly on its own repository, and every session passes them. A task set drawn from merged work in a repository the tool was not written for can exist beside them without being published: it lives in `eval/private/<name>/` (git-ignored) with its own `tasks/`, `runs/` and `reports/`. Nothing derived from that repository appears in a tracked file; tracked docs say only that such a set can exist, how one is built and how to point the harness at it (`eval/README.md`, "Private task sets").
+
+- **Where results go.** Every command derives the eval home from its input (the parent of the task directory, or the directory two levels above a batch) and writes runs, the clone cache and reports there. A command refuses to write what derives from a git-ignored task set to a path git would track, and treats a path inside a repository as private or tracked when git cannot answer. A set or batch outside any repository is not recognised as private; `eval/README.md` lists exactly what is refused.
+- **What both arms do not see.** A task can remove files or directories from its tree (`strip`) and a section from an instruction file (`drop_instruction_sections`), in both conditions and in the tree the deterministic commands read. The first is for text in the base tree that states the diagnosis, the second for project instructions that direct the agent to a tool no session has, which would otherwise weigh differently on the two arms. `batch.json` records the dropped sections.
+- **How a task is built.** From one merged commit: the base is its parent, the reference patch is the change minus the hidden tests, and the hidden tests are the cases the commit added, moved into new files and reduced to what the prompt states. `agent run --base-only` verifies it without a session: validation fails and regression passes at the base, and both pass on a copy whose base patch is the reference.
+- **Classes.** `feature` (at least 3 source files in at least 2 packages), `bugfix` (a failing test before the fix and a failure output that can be quoted), `refactor` (a rename, move or signature change with uses in at least 4 files, with a check for leftovers) and `control` (a correct single-file change, where a context tool should not help and only its overhead shows).
+- **Prompts and the leak audit.** Prompts state the behaviour wanted or the symptom seen in product terms. `agent leak-audit` then searches every prompt term in the base tree and classes the task `handed`, `guided` or `open` by whether a term returns a file the task must change, or a file that names one, and among how many files. Labels and messages are quoted in the prompt so that they count as terms. The class is recorded in the task (`prompt_leak`), so results can be read per class; a realistic prompt is kept even when it is `handed`.
+- **Limits.** A hidden test taken from a commit can pin names the commit introduced; such assertions are dropped or rewritten against code that exists at the base, which makes the hidden test weaker than the original. The leak class measures the distance from the prompt to the first file, not to every file a change needs. The audit does not see what a command named in the prompt would print. The guard knows a set is private only through git's ignore rules.
 
 ### Headroom from recorded sessions
 

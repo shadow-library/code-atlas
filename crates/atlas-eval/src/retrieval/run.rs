@@ -24,7 +24,7 @@ use super::report::{
   VariantOutcome, VariantResult,
 };
 use super::score::{BaseFile, PackCost, Retrieved, YIELD_BUDGETS, budget_yield, score_files, score_rename_sites, score_reuse, tree_path};
-use crate::agent::{LoadedTask, RenameSpec, StripPlan, apply_patch, atlas_repos, load_tasks, materialize, resolve_source};
+use crate::agent::{LoadedTask, RenameSpec, StripPlan, atlas_repos, load_tasks, materialize_task, resolve_source};
 use crate::quality::{DryRunError, DryRunRequest, RenameOptions, dry_run_rename, observe, overlap, rename_settings};
 
 pub const MAX_SIMILAR_SEEDS: usize = 5;
@@ -151,10 +151,7 @@ fn evaluate_task(task: &LoadedTask, options: &RetrievalOptions) -> Result<TaskRe
   let scratch = Scratch::create(options.work_dir.join(format!("{SCRATCH_PREFIX}{unique}-{}", &digest[..12]))).at("scratch")?;
   let tree = scratch.dir.join("tree");
   let source = resolve_source(task, &options.repo_root, None, &options.cache_dir).at("source")?;
-  materialize(&source, &tree, &StripPlan::for_task(task, false)).at("materialize")?;
-  if let Some(patch) = task.base_patch_file() {
-    apply_patch(&tree, &patch).at("materialize")?;
-  }
+  materialize_task(task, &source, &tree, &StripPlan::for_task(task, false)).at("materialize")?;
   let indexed = index(task, &scratch.dir, &tree).at("index")?;
   let (index, files) = index_summary(&indexed).at("index")?;
   query_task(task, &indexed, index, &files, &recorded).at("query")

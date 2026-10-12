@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::error::{AgentError, AgentResult};
 use super::process::{ProcessExit, run_captured, tail};
 use super::spec::{HIDDEN_DIR, LoadedTask, RepoSource, hidden_destination};
+use super::tree_edit::{drop_sections, remove_paths};
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(600);
 const STRIPPED_ROOT_DIRS: [&str; 3] = ["eval", "scratch-pad", HIDDEN_DIR];
@@ -130,6 +131,29 @@ pub fn materialize(source: &TreeSource, tree: &Path, plan: &StripPlan) -> AgentR
     TreeSource::Directory { path } => copy_dir(path, tree)?,
   }
   strip(tree, plan)
+}
+
+pub fn materialize_task(task: &LoadedTask, source: &TreeSource, tree: &Path, plan: &StripPlan) -> AgentResult<()> {
+  materialize(source, tree, plan)?;
+  if let Some(patch) = task.base_patch_file() {
+    apply_patch(tree, &patch)?;
+  }
+  remove_paths(tree, &task.spec.strip)?;
+  drop_sections(tree, &task.spec.drop_instruction_sections)
+}
+
+pub fn local_source_path(source: &RepoSource, cache_dir: &Path) -> Option<PathBuf> {
+  let RepoSource::Git { url, .. } = source else {
+    return None;
+  };
+  let location = url.strip_prefix("file://").unwrap_or(url);
+  let host_before_path = location.split('/').next().is_some_and(|first| first.contains(':'));
+  if location.contains("://") || host_before_path {
+    return None;
+  }
+  // `ensure_clone` runs `git clone` in the cache directory, so that is what a relative source resolves against.
+  let path = cache_dir.join(location);
+  Some(path.canonicalize().unwrap_or_else(|_| std::path::absolute(&path).unwrap_or(path)))
 }
 
 pub fn apply_patch(tree: &Path, patch: &Path) -> AgentResult<()> {
@@ -291,7 +315,7 @@ pub fn head_commit(repo: &Path) -> Option<String> {
   git(repo, &["rev-parse", "HEAD"]).ok().map(|sha| sha.trim().to_owned())
 }
 
-fn git_command(cwd: &Path) -> Command {
+pub(super) fn git_command(cwd: &Path) -> Command {
   let mut command = Command::new("git");
   command
     .current_dir(cwd)
@@ -472,6 +496,84 @@ mod tests {
     let base = init_base(&tree).unwrap();
     assert_eq!(base_file(&tree, &base, "src/lib.rs").as_deref(), Some("pub fn a() -> u8 { 1 }\n"));
     assert_eq!(diff_against(&tree, &base).unwrap(), "");
+  }
+
+  fn task_with(extra: &str, patch: Option<&str>) -> (tempfile::TempDir, LoadedTask) {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("t97-edited-tree");
+    let spec =
+      format!("id = \"t97-edited-tree\"\ntitle = \"Edited tree\"\nrepo = \"self\"\nbase_commit = \"abcdef1\"\nprompt = \"do it\"\ntimeout_minutes = 5\nmax_turns = 30\n{extra}\n");
+    write(&dir.join("task.toml"), &spec);
+    if let Some(patch) = patch {
+      write(&dir.join("base.patch"), patch);
+    }
+    let task = super::super::spec::load_task(&dir).unwrap();
+    (root, task)
+  }
+
+  #[test]
+  fn should_strip_declared_paths_and_drop_declared_sections_after_the_base_patch() {
+    let repo = source_repo();
+    write(
+      &repo.path().join("AGENTS.md"),
+      "# Agents\n\n## Search\n\nUse the index daemon.\n\n## Style\n\nTwo spaces.\n",
+    );
+    write(&repo.path().join("suite/checkout.spec.ts"), "// the cause is in src/lib.rs\n");
+    let patch = "--- a/suite/checkout.spec.ts\n+++ b/suite/checkout.spec.ts\n@@ -1 +1 @@\n-// the cause is in src/lib.rs\n+// planted\n";
+    let (_root, task) = task_with(
+      "base_patch = \"base.patch\"\nstrip = [\"suite\", \"docs/guide.md\"]\ndrop_instruction_sections = [\"AGENTS.md#Search\"]",
+      Some(patch),
+    );
+    let out = tempfile::tempdir().unwrap();
+    let tree = out.path().join("tree");
+    let source = TreeSource::Directory { path: repo.path().to_owned() };
+
+    materialize_task(&task, &source, &tree, &plan(StripProfile::External)).unwrap();
+
+    let files = files_under(&tree);
+    assert!(!files.iter().any(|file| file.starts_with("suite/") || file == "docs/guide.md"), "{files:?}");
+    assert!(
+      files.contains(&"src/lib.rs".to_owned()) && files.contains(&"docs/plan/implementation-plan.md".to_owned()),
+      "{files:?}"
+    );
+    assert_eq!(fs::read_to_string(tree.join("AGENTS.md")).unwrap(), "# Agents\n\n## Style\n\nTwo spaces.\n");
+  }
+
+  #[test]
+  fn should_fail_to_build_a_tree_whose_declared_strip_path_or_section_is_missing() {
+    let repo = source_repo();
+    let source = TreeSource::Directory { path: repo.path().to_owned() };
+    for extra in ["strip = [\"suite\"]", "drop_instruction_sections = [\"docs/guide.md#Search\"]"] {
+      let (_root, task) = task_with(extra, None);
+      let out = tempfile::tempdir().unwrap();
+      let built = materialize_task(&task, &source, &out.path().join("tree"), &plan(StripProfile::External));
+      assert!(matches!(built, Err(AgentError::InvalidArgument(_))), "{extra}: {built:?}");
+    }
+  }
+
+  #[test]
+  fn should_name_the_local_directory_of_a_git_source_and_nothing_for_a_remote_or_another_kind() {
+    let local = tempfile::tempdir().unwrap();
+    let canonical = local.path().canonicalize().unwrap();
+    let git = |url: String| RepoSource::Git {
+      url,
+      commit: "abcdef1".to_owned(),
+    };
+    let cache = canonical.join("home/runs/.cache");
+    fs::create_dir_all(&cache).unwrap();
+    fs::create_dir_all(canonical.join("storefront")).unwrap();
+    assert_eq!(local_source_path(&git(local.path().display().to_string()), &cache), Some(canonical.clone()));
+    assert_eq!(local_source_path(&git(format!("file://{}", local.path().display())), &cache), Some(canonical.clone()));
+    assert_eq!(
+      local_source_path(&git("/nonexistent/storefront".to_owned()), &cache),
+      Some(PathBuf::from("/nonexistent/storefront"))
+    );
+    assert_eq!(local_source_path(&git("../../../storefront".to_owned()), &cache), Some(canonical.join("storefront")));
+    assert_eq!(local_source_path(&git("absent/storefront".to_owned()), &cache), Some(cache.join("absent/storefront")));
+    assert_eq!(local_source_path(&git("https://example.test/r.git".to_owned()), &cache), None);
+    assert_eq!(local_source_path(&git("ssh://git@example.test/team/r.git".to_owned()), &cache), None);
+    assert_eq!(local_source_path(&git("git@example.test:team/r.git".to_owned()), &cache), None);
+    assert_eq!(local_source_path(&RepoSource::SelfRepo, &cache), None);
   }
 
   #[test]

@@ -24,6 +24,10 @@ pub enum AgentError {
   MixedPreamble(String),
   #[error("invalid argument: {0}")]
   InvalidArgument(String),
+  #[error("`{path}` reaches outside the tree through the symbolic link `{link}`; a task may only edit files of its own tree")]
+  TreePathThroughSymlink { path: String, link: String },
+  #[error("{count} task(s) declare a prompt_leak class that differs from the audit; see {}", report.display())]
+  LeakClassMismatch { count: usize, report: PathBuf },
 }
 
 impl AgentError {

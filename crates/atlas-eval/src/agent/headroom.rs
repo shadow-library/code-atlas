@@ -15,7 +15,7 @@ use super::spec::{GroundTruth, LoadedTask, RepoSource, load_tasks};
 use super::touch::{FileTouches, Ordinal, Presence, SessionTouches, TouchDiagnostics, TouchEvent, session_touches};
 use super::transcript::Transcript;
 use super::tree_index::TreeIndex;
-use super::workspace::{StripPlan, TreeSource, apply_patch, materialize};
+use super::workspace::{StripPlan, TreeSource, materialize_task};
 
 pub const WITHIN_LIMITS: [u32; 4] = [1, 2, 3, 5];
 const EARLY_READ_TURN: u32 = 2;
@@ -646,7 +646,7 @@ pub fn build_headroom(batches: Vec<HeadroomBatch>, sessions: Vec<SessionHeadroom
   }
 }
 
-fn read_tree(dir: &Path, prefix: &str, contents: &mut BTreeMap<String, String>) -> AgentResult<()> {
+pub(super) fn read_tree(dir: &Path, prefix: &str, contents: &mut BTreeMap<String, String>) -> AgentResult<()> {
   let entries = fs::read_dir(dir).map_err(|error| AgentError::io(dir, error))?;
   for entry in entries {
     let entry = entry.map_err(|error| AgentError::io(dir, error))?;
@@ -667,10 +667,7 @@ fn base_contents(record: &RunRecord, task: &LoadedTask) -> AgentResult<BTreeMap<
   let scratch = tempfile::tempdir().map_err(|error| AgentError::io(std::env::temp_dir(), error))?;
   let tree = scratch.path().join("tree");
   let overridden = matches!(record.manifest.source, TreeSource::Directory { .. });
-  materialize(&record.manifest.source, &tree, &StripPlan::for_task(task, overridden))?;
-  if let Some(patch) = task.base_patch_file() {
-    apply_patch(&tree, &patch)?;
-  }
+  materialize_task(task, &record.manifest.source, &tree, &StripPlan::for_task(task, overridden))?;
   let mut contents = BTreeMap::new();
   read_tree(&tree, "", &mut contents)?;
   Ok(contents)

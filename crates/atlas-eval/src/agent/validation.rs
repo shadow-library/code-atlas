@@ -88,7 +88,38 @@ pub fn run_command(command: &str, tree: &Path, env: &[(String, String)], timeout
 
 pub fn parse_counts(output: &str) -> Option<TestCounts> {
   let total = output.lines().filter_map(|line| summary_counts(line.trim())).reduce(|total, counts| total.add(&counts));
-  total.or_else(|| tap_counts(output))
+  total.or_else(|| tap_counts(output)).or_else(|| bun_counts(output))
+}
+
+fn bun_counts(output: &str) -> Option<TestCounts> {
+  let lines: Vec<&str> = output.lines().map(str::trim).collect();
+  let closes_summary = |line: &str| line.starts_with("Ran ") && (line.contains(" tests across ") || line.contains(" test across "));
+  let mut total: Option<TestCounts> = None;
+  for end in (0..lines.len()).filter(|index| closes_summary(lines[*index])) {
+    let block = lines[..end].iter().rev().map_while(|line| bun_summary_line(line));
+    let counts = block.fold(TestCounts::default(), |counts, (count, label)| match label {
+      "pass" => TestCounts {
+        passed: counts.passed + count,
+        ..counts
+      },
+      "fail" => TestCounts {
+        failed: counts.failed + count,
+        ..counts
+      },
+      "skip" | "todo" => TestCounts {
+        ignored: counts.ignored + count,
+        ..counts
+      },
+      _ => counts,
+    });
+    total = Some(total.map_or(counts, |sum| sum.add(&counts)));
+  }
+  total
+}
+
+fn bun_summary_line(line: &str) -> Option<(u64, &str)> {
+  let (count, label) = line.split_once(' ')?;
+  Some((count.parse().ok()?, label.trim()))
 }
 
 fn summary_counts(line: &str) -> Option<TestCounts> {
@@ -137,6 +168,9 @@ pub fn failing_tests(output: &str) -> Vec<String> {
       if let Some(name) = trimmed.strip_prefix("✕ ").or_else(|| trimmed.strip_prefix("× ")) {
         return Some(strip_duration(name).to_owned());
       }
+      if let Some(name) = trimmed.strip_prefix("(fail) ") {
+        return Some(strip_bun_duration(name).to_owned());
+      }
       trimmed.strip_prefix("not ok ").map(|rest| rest.split_once(" - ").map_or(rest, |(_, name)| name).to_owned())
     })
     .collect();
@@ -148,6 +182,13 @@ pub fn failing_tests(output: &str) -> Vec<String> {
 fn strip_duration(name: &str) -> &str {
   match name.rsplit_once(" (") {
     Some((head, tail)) if tail.ends_with("ms)") || tail.ends_with(" s)") => head,
+    _ => name,
+  }
+}
+
+fn strip_bun_duration(name: &str) -> &str {
+  match name.rsplit_once(" [") {
+    Some((head, tail)) if tail.ends_with("ms]") || tail.ends_with("s]") => head,
     _ => name,
   }
 }
@@ -247,6 +288,36 @@ mod tests {
     let output = "not ok 2 - deleted_at is exposed\n# pass 1\n# fail 1\n";
     assert_eq!(parse_counts(output), Some(TestCounts { passed: 1, failed: 1, ignored: 0 }));
     assert_eq!(failing_tests(output), vec!["deleted_at is exposed"]);
+  }
+
+  #[test]
+  fn should_parse_bun_test_summaries_and_failing_test_names() {
+    let output = "tests/billing/invoice.spec.ts:\n(pass) settleInvoice > should keep a paid invoice paid [0.05ms]\n(fail) settleInvoice > should refuse a second [partial] payment [1.25ms]\n\n 1 pass\n 2 skip\n 1 fail\n 7 expect() calls\nRan 4 tests across 1 file. [90.00ms]\n";
+    assert_eq!(parse_counts(output), Some(TestCounts { passed: 1, failed: 1, ignored: 2 }));
+    assert_eq!(failing_tests(output), vec!["settleInvoice > should refuse a second [partial] payment"]);
+    let two_suites = "\n 41 pass\n 0 fail\nRan 41 tests across 5 files. [70.00ms]\n\n 12 pass\n 1 todo\n 3 fail\nRan 16 tests across 2 files. [1.20s]\n";
+    assert_eq!(
+      parse_counts(two_suites),
+      Some(TestCounts {
+        passed: 53,
+        failed: 3,
+        ignored: 1
+      })
+    );
+    assert_eq!(
+      parse_counts("\n 1 pass\n 0 fail\nRan 1 test across 1 file. [8.00ms]\n"),
+      Some(TestCounts { passed: 1, failed: 0, ignored: 0 })
+    );
+    assert_eq!(parse_counts("the queue has 3 pass\n 2 fail\n"), None);
+  }
+
+  #[test]
+  fn should_count_only_the_bun_summary_block_when_a_test_prints_lines_that_look_like_it() {
+    let output = "till.test.ts:\n(fail) till > should balance [0.10ms]\n 7 fail\n12 pass\n(pass) till > should print its own tally [0.20ms]\n(fail) till > should close the day [50.00ms]\n  ^ this test timed out after 50ms.\n\n 2 pass\n 1 skip\n 1 todo\n 4 fail\n 5 expect() calls\nRan 8 tests across 1 file. [60.00ms]\n";
+    assert_eq!(parse_counts(output), Some(TestCounts { passed: 2, failed: 4, ignored: 2 }));
+    let printed_last = "(pass) till > should print a tally [0.20ms]\n 9 fail\n\n 1 pass\n 0 fail\nRan 1 test across 1 file. [5.00ms]\n";
+    assert_eq!(parse_counts(printed_last), Some(TestCounts { passed: 1, failed: 0, ignored: 0 }));
+    assert_eq!(parse_counts("Ran 0 tests across 1 file. [2.00ms]\n"), Some(TestCounts::default()));
   }
 
   #[test]

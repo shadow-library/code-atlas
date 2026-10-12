@@ -1167,6 +1167,7 @@ mod tests {
       planned: Vec::new(),
       skipped_for_budget: Vec::new(),
       spent_usd: 2.0,
+      instruction_sections_dropped: BTreeMap::new(),
     }
   }
 

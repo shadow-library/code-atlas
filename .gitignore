@@ -3,3 +3,4 @@ scratch-pad
 /target/
 **/target/
 eval/runs/
+eval/private/
