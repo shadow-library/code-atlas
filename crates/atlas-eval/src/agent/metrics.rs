@@ -392,7 +392,9 @@ mod tests {
       result: Some(ToolResult {
         text: result.to_owned(),
         is_error: false,
+        ..ToolResult::default()
       }),
+      turn: 1,
     }
   }
 

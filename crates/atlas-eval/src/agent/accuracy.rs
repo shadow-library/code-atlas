@@ -106,7 +106,9 @@ mod tests {
       result: Some(ToolResult {
         text: text.to_owned(),
         is_error: false,
+        ..ToolResult::default()
       }),
+      turn: 1,
     }
   }
 

@@ -4,6 +4,7 @@ use std::path::Path;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use super::accuracy::AtlasAccuracy;
 use super::claude::ConfigIsolation;
@@ -27,6 +28,8 @@ pub const TRANSCRIPT_FILE: &str = "transcript.jsonl";
 pub const OFFSETS_FILE: &str = "transcript.offsets.json";
 pub const DIFF_FILE: &str = "diff.patch";
 pub const BASE_DIR: &str = "_base";
+const DENSE_JSON_WIDTH: usize = 160;
+const DENSE_JSON_INDENT: usize = 2;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
@@ -257,6 +260,55 @@ pub fn write_json(path: &Path, value: &impl Serialize) -> AgentResult<()> {
   fs::write(path, text + "\n").map_err(|error| AgentError::io(path, error))
 }
 
+pub fn write_json_dense(path: &Path, value: &impl Serialize) -> AgentResult<()> {
+  let value = serde_json::to_value(value).map_err(|error| AgentError::Parse {
+    path: path.to_owned(),
+    reason: error.to_string(),
+  })?;
+  let mut text = String::new();
+  render_dense(&value, 0, &mut text);
+  fs::write(path, text + "\n").map_err(|error| AgentError::io(path, error))
+}
+
+fn inline_json(value: &Value) -> String {
+  match value {
+    Value::Array(items) => format!("[{}]", items.iter().map(inline_json).collect::<Vec<_>>().join(", ")),
+    Value::Object(fields) => {
+      let fields: Vec<String> = fields
+        .iter()
+        .map(|(key, value)| format!("{}: {}", Value::String(key.clone()), inline_json(value)))
+        .collect();
+      format!("{{{}}}", fields.join(", "))
+    }
+    scalar => scalar.to_string(),
+  }
+}
+
+fn render_dense(value: &Value, indent: usize, out: &mut String) {
+  let flat = inline_json(value);
+  let fits = indent + flat.len() <= DENSE_JSON_WIDTH;
+  let (members, open, close): (Vec<(Option<&String>, &Value)>, char, char) = match value {
+    Value::Array(items) if !fits => (items.iter().map(|item| (None, item)).collect(), '[', ']'),
+    Value::Object(fields) if !fits => (fields.iter().map(|(key, value)| (Some(key), value)).collect(), '{', '}'),
+    _ => {
+      out.push_str(&flat);
+      return;
+    }
+  };
+  out.push(open);
+  for (index, (key, member)) in members.iter().enumerate() {
+    out.push_str(if index == 0 { "\n" } else { ",\n" });
+    out.push_str(&" ".repeat(indent + DENSE_JSON_INDENT));
+    if let Some(key) = key {
+      out.push_str(&format!("{}: ", Value::String((*key).clone())));
+    }
+    render_dense(member, indent + DENSE_JSON_INDENT, out);
+  }
+  out.push('\n');
+  out.push_str(&" ".repeat(indent));
+  out.push(close);
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -284,6 +336,26 @@ mod tests {
     assert_eq!(checked(Vec::new()).lexical_candidate_count(), Some(1));
     assert_eq!(checked(vec!["src/a.ts:1: timed out".to_owned()]).lexical_candidate_count(), None);
     assert_eq!(DuplicationCheck::Unavailable { reason: "no binary".to_owned() }.lexical_candidate_count(), None);
+  }
+
+  #[test]
+  fn should_keep_small_json_values_on_one_line_and_break_large_ones() {
+    let long: Vec<String> = (0..12).map(|index| format!("crates/atlas-engine/tests/file-{index}.rs")).collect();
+    let value = serde_json::json!({"read": {"turn": 2, "call": 3, "via": "say \"hi\""}, "files": long, "none": null, "empty": []});
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("dense.json");
+    write_json_dense(&path, &value).unwrap();
+    let text = fs::read_to_string(&path).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 19);
+    assert_eq!(lines[0], "{");
+    assert_eq!(lines[1], "  \"empty\": [],");
+    assert_eq!(lines[2], "  \"files\": [");
+    assert_eq!(lines[3], "    \"crates/atlas-engine/tests/file-0.rs\",");
+    assert_eq!(lines[14], "    \"crates/atlas-engine/tests/file-11.rs\"");
+    assert_eq!(lines[15], "  ],");
+    assert_eq!(lines[17], "  \"read\": {\"call\": 3, \"turn\": 2, \"via\": \"say \\\"hi\\\"\"}");
+    assert_eq!(read_json::<Value>(&path).unwrap(), value);
   }
 
   #[test]

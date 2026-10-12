@@ -38,6 +38,10 @@ enum AgentCommand {
   Probe(ProbeArgs),
   #[command(about = "Measure what the MCP tool surface costs per request: bytes of tools/list and instructions, and tokens in tiny sessions")]
   Surface(SurfaceArgs),
+  #[command(about = "From recorded sessions: the turn at which each session first sees, reads and edits the files its task must change")]
+  Headroom(HeadroomArgs),
+  #[command(about = "From recorded runs: how much every report metric differs between runs of the same condition, next to the A/B effects")]
+  Noise(NoiseArgs),
 }
 
 #[derive(Debug, Args)]
@@ -120,6 +124,30 @@ struct ReportArgs {
 }
 
 #[derive(Debug, Args)]
+struct HeadroomArgs {
+  #[arg(long, required = true, num_args = 1..)]
+  runs: Vec<PathBuf>,
+  #[arg(long)]
+  out: Option<PathBuf>,
+  #[arg(long)]
+  repo_root: Option<PathBuf>,
+  #[arg(long)]
+  tasks: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+struct NoiseArgs {
+  #[arg(long, required = true, num_args = 1..)]
+  runs: Vec<PathBuf>,
+  #[arg(long, num_args = 1..)]
+  ab_report: Vec<PathBuf>,
+  #[arg(long)]
+  out: Option<PathBuf>,
+  #[arg(long)]
+  repo_root: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
 struct ProbeArgs {
   #[arg(long)]
   out: PathBuf,
@@ -160,6 +188,8 @@ fn main() -> ExitCode {
     Command::Agent(AgentCommand::Report(args)) => report(&args).map_err(Into::into),
     Command::Agent(AgentCommand::Probe(args)) => probe(&args).map_err(Into::into),
     Command::Agent(AgentCommand::Surface(args)) => surface(&args).map_err(Into::into),
+    Command::Agent(AgentCommand::Headroom(args)) => headroom(&args).map_err(Into::into),
+    Command::Agent(AgentCommand::Noise(args)) => noise(&args).map_err(Into::into),
     Command::Quality(args) => run_quality(&args).map_err(Into::into),
     Command::Retrieval(args) => run_retrieval(&args),
   };
@@ -303,6 +333,35 @@ fn report(args: &ReportArgs) -> Result<(), AgentError> {
   };
   let (markdown, json) = agent::write_report(&report, &base)?;
   tracing::info!(markdown = %markdown.display(), json = %json.display(), runs = records.len(), "report written");
+  Ok(())
+}
+
+fn report_base(out: Option<&Path>, name: &str) -> PathBuf {
+  let out = out.map_or_else(|| PathBuf::from("eval").join("reports").join(agent::today_utc()).join(name), Path::to_owned);
+  match out.extension().and_then(|extension| extension.to_str()) {
+    Some("md" | "json") => out.with_extension(""),
+    _ => out,
+  }
+}
+
+fn tasks_dir(explicit: Option<&Path>, root: Option<&Path>) -> Result<PathBuf, AgentError> {
+  match explicit {
+    Some(path) => Ok(path.to_owned()),
+    None => Ok(repo_root(root)?.join("eval").join("tasks")),
+  }
+}
+
+fn headroom(args: &HeadroomArgs) -> Result<(), AgentError> {
+  let report = agent::load_headroom(&args.runs, &tasks_dir(args.tasks.as_deref(), args.repo_root.as_deref())?)?;
+  let (markdown, json) = agent::write_headroom(&report, &report_base(args.out.as_deref(), "headroom"))?;
+  tracing::info!(markdown = %markdown.display(), json = %json.display(), sessions = report.sessions.len(), "headroom report written");
+  Ok(())
+}
+
+fn noise(args: &NoiseArgs) -> Result<(), AgentError> {
+  let report = agent::load_noise(&args.runs, &args.ab_report, repo_root(args.repo_root.as_deref()).ok().as_deref())?;
+  let (markdown, json) = agent::write_noise(&report, &report_base(args.out.as_deref(), "noise-floor"))?;
+  tracing::info!(markdown = %markdown.display(), json = %json.display(), metrics = report.metrics.len(), "noise-floor report written");
   Ok(())
 }
 

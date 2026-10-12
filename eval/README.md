@@ -66,6 +66,9 @@ atlas-eval agent run --task t00-smoke --model claude-haiku-4-5-20251001 --judge-
   --runs-per-condition 1 --atlas-bin target/release/catl --budget-usd 2
 atlas-eval agent report --runs eval/runs/<batch> [--out eval/reports/<date>/agent] [--compare previous/agent.json]
 atlas-eval agent probe --out <dir> [--model …]
+atlas-eval agent headroom --runs eval/runs/<batch>... [--out eval/reports/<date>/headroom]         # recorded sessions only
+atlas-eval agent noise --runs eval/runs/<batch>... [--ab-report eval/reports/<date>/agent.json...] \
+  [--out eval/reports/<date>/noise-floor]                                                         # recorded runs only
 atlas-eval retrieval [--task t00-smoke] [--out eval/reports/<date>/retrieval]   # deterministic, no sessions
 ```
 
@@ -87,6 +90,26 @@ A task without the file, or with no `[[query]]`, is `n/a` for the two agent vari
 Run flags: `--tree-root` (system temp dir), `--keep-trees`, `--runs-per-condition` (2), `--condition baseline|atlas` (both), `--seed` (1), `--parallel` (2), `--budget-usd` (stop starting runs once the reported spend exceeds it), `--judge claude|off`, `--no-probe`, `--claude-config user|isolated`, `--validation-timeout-secs`, `--atlas-timeout-secs`, `--eval-home` (`eval`), `--batch` (`<date>-seed<seed>`). A batch is resumable: runs that already have `score.json` are reused.
 
 Per run (`eval/runs/<batch>/<task>.<condition>.r<i>/`): `run.json`, `transcript.jsonl` (+ `transcript.offsets.json`, ms since spawn per line), `diff.patch`, `metrics.json`, `score.json`, and for atlas runs `atlas-review.json` (the unblinded "did Code Atlas mislead the agent" review, never used in the blinded scores). `_base/<task>/base.json` holds the validation and regression results on the untouched base tree; regressions are failures that were not already failing there.
+
+## Analyses of recorded runs
+
+`agent headroom` and `agent noise` read batches that already exist under `eval/runs/` and start no session. Both write a `.md` and a `.json` and take several batch directories. Their reports carry the full definitions; the summary below is what to know before reading one.
+
+**`agent headroom`** reports when a session reaches the files its task must change, and where it got its entry point from. For every completed, uncontaminated session it finds, per `must_change` and `relevant_files` entry, the first call at which the file is *named* in a result of a Grep, Glob, Bash or MCP call that did not itself name it, *shown* (a result carries lines of it), *searched* (a search addressed to that one file), *read* (Read, or `cat`/`head`/`tail`/`sed -n` in Bash) and *edited* (Edit/Write, `sed -i`, `perl -i`, a redirect, `tee`, or a Python script that writes and names the file).
+
+- Two views are given side by side: the **first file** of the set (when the session has an entry point) and **every file** of the set (when the last file is first read or first touched), plus counts pooled over files. The first-file view alone says nothing about locating the rest of a multi-file change.
+- **Where the entry point comes from.** Per task, the identifiers, code spans and quoted phrases of the prompt, and separately of the injected project instructions, are grepped as fixed strings in the base tree; the report says which return a `must_change` file and how many files they return. Per session, the search pattern (or opened path) that first reached a `must_change` file is compared word by word with the prompt and the instructions.
+- Ordinals are given on two scales. A *turn* is one model response (one assistant `message.id`), which may issue several tool calls. The *tool-call ordinal* is the position of the call in the transcript. The `num_turns` that `agent report` prints as "turns" is on the tool-call scale: in the recorded batches it equals tool calls + 1.
+- Files absent from the base tree (the task creates them) are listed separately and excluded. The base tree is materialised the way a run does it (archive of the repository and commit recorded in `run.json`, stripped paths removed, `base.patch` applied), so the command needs that repository; for `git` tasks that is the clone cache under `eval/runs/.cache`.
+- Bash is interpreted lexically. The shell's working directory is followed across calls the way Claude Code keeps it: a command's final directory persists only if the command exits 0, which the transcript records per call (`is_error`, `returnCodeInterpretation`, a backgrounded command's `backgroundCwdHint`). The stored `files_read` metric resolves paths against a `cd` inside the same command only, so it can differ.
+- Baseline sessions of all batches are pooled; atlas sessions are grouped by preamble variant. The report states its own limits (few tasks, repeated runs, same-author prompts that name code) and ends with detection checks: mentions in unrecognised forms, `cd` failures, and recognised edits compared with each session's final diff.
+
+**`agent noise`** is an A/A analysis: how much each metric of `agent report` (plus `cache_weighted_tokens` = input + 1.25 × cache-creation + 0.1 × cache-read tokens) differs between runs of the same condition.
+
+- It first checks whether the baseline is the same session in every pair of batches (model, CLI version, config, probe, and per run the spec hash, tree source, base commit, masked command line and environment names). Tasks that differ are left out of the across-batch comparison; a differing session field cancels it.
+- A/A differences are the second run minus the first run of a task within one batch and condition, and the baseline per-task mean of one batch minus the other. Each comparison reports pairs, median absolute and relative difference, range, and the paired statistic of the A/B report (difference of the means of per-task means).
+- Each A/B effect (atlas minus baseline over the tasks that have the metric in both conditions) is set against a noise bound: the largest of 2 × the replicate standard error of that batch, 2 × the pooled one, and the largest paired A/A difference seen for the metric, the last brought to the scale of an A/B effect (a single-run difference is divided by √2 with two runs per cell). The effect is `inside` or `outside` that bound, or `no difference`. Beside every class the report prints the effect in standard errors and how many tasks, left out one at a time, move it across the bound. `--ab-report` names committed `agent.json` files; their means are checked against the recomputation from the run records. `--repo-root` lets it list what changed in the harness between the commits of two batches.
+- With two runs per cell this is a rough scale, not a significance test, and it describes the task set that was run, not a harder one.
 
 ## Isolation
 

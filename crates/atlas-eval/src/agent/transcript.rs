@@ -75,10 +75,42 @@ pub struct AssistantTurn {
   pub elapsed_ms: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Completion {
+  #[default]
+  Unreported,
+  Finished {
+    exit_note: Option<String>,
+  },
+  Backgrounded {
+    cwd_hint: Option<String>,
+  },
+}
+
+impl Completion {
+  fn from_tool_use_result(report: &Value) -> Self {
+    let text = |field: &str| report.get(field).and_then(Value::as_str).map(str::to_owned);
+    if !report.is_object() {
+      return Self::Unreported;
+    }
+    if report.get("backgroundTaskId").is_some() {
+      return Self::Backgrounded {
+        cwd_hint: text("backgroundCwdHint"),
+      };
+    }
+    Self::Finished {
+      exit_note: text("returnCodeInterpretation"),
+    }
+  }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolResult {
   pub text: String,
   pub is_error: bool,
+  #[serde(default)]
+  pub completion: Completion,
 }
 
 impl ToolResult {
@@ -98,6 +130,8 @@ pub struct ToolCall {
   pub input: Value,
   pub elapsed_ms: Option<u64>,
   pub result: Option<ToolResult>,
+  #[serde(default)]
+  pub turn: u32,
 }
 
 impl ToolCall {
@@ -199,16 +233,23 @@ impl Transcript {
     let message_id = message.get("id").and_then(Value::as_str).unwrap_or_default().to_owned();
     let usage = message.get("usage").map(TokenUsage::from_api).unwrap_or_default();
     let model = message.get("model").and_then(Value::as_str).map(str::to_owned);
-    match self.turns.iter_mut().find(|turn| !message_id.is_empty() && turn.message_id == message_id) {
-      Some(turn) if usage.output >= turn.usage.output => turn.usage = usage,
-      Some(_) => {}
-      None => self.turns.push(AssistantTurn {
-        message_id,
-        model,
-        usage,
-        elapsed_ms,
-      }),
-    }
+    let turn = match self.turns.iter().position(|turn| !message_id.is_empty() && turn.message_id == message_id) {
+      Some(index) => {
+        if usage.output >= self.turns[index].usage.output {
+          self.turns[index].usage = usage;
+        }
+        index
+      }
+      None => {
+        self.turns.push(AssistantTurn {
+          message_id,
+          model,
+          usage,
+          elapsed_ms,
+        });
+        self.turns.len() - 1
+      }
+    };
     for block in content_blocks(message) {
       match block.get("type").and_then(Value::as_str) {
         Some("tool_use") => self.tool_calls.push(ToolCall {
@@ -217,6 +258,7 @@ impl Transcript {
           input: block.get("input").cloned().unwrap_or(Value::Null),
           elapsed_ms,
           result: None,
+          turn: turn as u32 + 1,
         }),
         Some("text") => {
           if let Some(text) = block.get("text").and_then(Value::as_str) {
@@ -232,14 +274,14 @@ impl Transcript {
     let Some(message) = event.get("message") else {
       return;
     };
-    for block in content_blocks(message) {
-      if block.get("type").and_then(Value::as_str) != Some("tool_result") {
-        continue;
-      }
+    let results = content_blocks(message).filter(|block| block.get("type").and_then(Value::as_str) == Some("tool_result"));
+    let report = event.get("tool_use_result").filter(|_| results.clone().count() == 1);
+    for block in results {
       let id = block.get("tool_use_id").and_then(Value::as_str).unwrap_or_default();
       let result = ToolResult {
         text: result_text(block.get("content")),
         is_error: block.get("is_error").and_then(Value::as_bool).unwrap_or(false),
+        completion: report.map(Completion::from_tool_use_result).unwrap_or_default(),
       };
       match self.tool_calls.iter_mut().rev().find(|call| call.id == id) {
         Some(call) => call.result = Some(result),
@@ -249,7 +291,7 @@ impl Transcript {
   }
 }
 
-fn content_blocks(message: &Value) -> impl Iterator<Item = &Value> {
+fn content_blocks(message: &Value) -> impl Iterator<Item = &Value> + Clone {
   message.get("content").and_then(Value::as_array).into_iter().flatten()
 }
 
@@ -361,6 +403,7 @@ mod tests {
     assert_eq!(write.name, "Write");
     assert_eq!(write.input_str("file_path"), Some("/eval/runs/probe/tree/hello.txt"));
     assert_eq!(write.elapsed_ms, Some(500));
+    assert_eq!(write.turn, 1);
     assert!(write.result.as_ref().unwrap().text.starts_with("File created successfully"));
     let result = transcript.result.clone().unwrap();
     assert_eq!(result.subtype.as_deref(), Some("success"));
@@ -394,10 +437,51 @@ mod tests {
     let transcript = Transcript::parse(&text, &[]);
     assert_eq!(transcript.turns.len(), 1);
     assert_eq!(transcript.turns[0].usage.output, 9);
+    assert_eq!(transcript.tool_calls[0].turn, 1);
     assert_eq!(transcript.tool_calls[0].result_bytes(), 5);
     assert_eq!(transcript.tool_calls[0].result.as_ref().unwrap().lines(), 2);
     assert_eq!(transcript.orphan_tool_results, 1);
     assert_eq!(transcript.unparsed_lines, 1);
     assert_eq!(transcript.usage_total().output, 9);
+  }
+
+  #[test]
+  fn should_read_how_a_command_completed_from_the_structured_tool_result() {
+    let call = |id: &str| format!(r#"{{"type":"assistant","message":{{"id":"m-{id}","content":[{{"type":"tool_use","id":"{id}","name":"Bash","input":{{}}}}]}}}}"#);
+    let result =
+      |id: &str, report: &str| format!(r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"{id}","content":"x"}}]}},"tool_use_result":{report}}}"#);
+    let text = [
+      call("a"),
+      result("a", r#"{"stdout":"x","stderr":"","interrupted":false}"#),
+      call("b"),
+      result("b", r#"{"stdout":"","returnCodeInterpretation":"No matches found"}"#),
+      call("c"),
+      result(
+        "c",
+        r#"{"stdout":"","backgroundTaskId":"b1","backgroundCwdHint":"Session cwd remains /tree/src; directory changes do not apply."}"#,
+      ),
+      call("d"),
+      result("d", r#""Error: Exit code 1""#),
+      call("e"),
+      r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"e","content":"x"}]}}"#.to_owned(),
+    ]
+    .join("\n");
+    let transcript = Transcript::parse(&text, &[]);
+    let completions: Vec<Completion> = transcript.tool_calls.iter().map(|call| call.result.clone().unwrap().completion).collect();
+    assert_eq!(
+      completions,
+      vec![
+        Completion::Finished { exit_note: None },
+        Completion::Finished {
+          exit_note: Some("No matches found".to_owned())
+        },
+        Completion::Backgrounded {
+          cwd_hint: Some("Session cwd remains /tree/src; directory changes do not apply.".to_owned())
+        },
+        Completion::Unreported,
+        Completion::Unreported,
+      ]
+    );
+    assert_eq!(transcript.tool_calls.iter().map(|call| call.turn).collect::<Vec<_>>(), vec![1, 2, 3, 4, 5]);
   }
 }

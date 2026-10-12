@@ -168,6 +168,7 @@ mod tests {
       input,
       elapsed_ms: None,
       result: None,
+      turn: 1,
     }
   }
 

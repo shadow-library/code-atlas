@@ -262,6 +262,89 @@ fn should_run_score_and_report_both_conditions_with_fake_binaries() {
 }
 
 #[test]
+fn should_measure_headroom_and_noise_from_a_recorded_batch() {
+  let fixture = fixture();
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  agent::run_batch(&fixture.config(2, None), &tasks, agent::plan_runs(&tasks, &Condition::ALL, 2, 3)).unwrap();
+  let entity = "acme-api/src/users/user.entity.ts".to_owned();
+  let service = "acme-api/src/users/users.service.ts".to_owned();
+
+  let headroom = agent::load_headroom(std::slice::from_ref(&fixture.batch), &fixture.tasks).unwrap();
+  assert_eq!(
+    headroom.overall.iter().map(|group| (group.group.as_str(), group.sessions)).collect::<Vec<_>>(),
+    vec![("baseline", 2), ("atlas (standard)", 2)]
+  );
+  assert_eq!(headroom.sessions.len(), 4);
+  for session in &headroom.sessions {
+    assert_eq!((session.turns, session.tool_calls, session.reported_num_turns), (2, 2, Some(3)), "{}", session.run_id);
+    assert_eq!(session.must_change.first_read, Some(agent::Ordinal { call: 1, turn: 1 }), "{}", session.run_id);
+    assert_eq!(session.must_change.first_read_via.as_deref(), Some("Read"));
+    assert_eq!(session.must_change.first_edited, Some(agent::Ordinal { call: 2, turn: 2 }));
+    assert_eq!(session.must_change.first_named, None);
+    assert_eq!(session.must_change.before_first_read.map(|share| (share.turns, share.tool_calls)), Some((0.0, 0.0)));
+    assert_eq!(session.relevant.without_touch, vec![service.clone()]);
+    assert_eq!(
+      (session.must_change.all_read, session.must_change.all_touched),
+      (Some(agent::Ordinal { call: 1, turn: 1 }), Some(agent::Ordinal { call: 1, turn: 1 }))
+    );
+    assert_eq!(
+      session.entry.as_ref().map(|entry| (entry.kind, entry.source)),
+      Some((agent::EntryKind::Opened, agent::EntrySource::PromptIdentifier))
+    );
+    assert_eq!(session.edit_check.changed_without_edit_event, vec![service.clone()]);
+    assert_eq!(
+      session.files.iter().map(|file| file.path.clone()).collect::<Vec<_>>(),
+      vec![entity.clone(), service.clone()]
+    );
+  }
+  let within_one_turn = headroom.overall[0].must_change.read_within[0];
+  assert_eq!((within_one_turn.limit, within_one_turn.by_turn, within_one_turn.by_tool_call), (1, 2, 2));
+  let within_one_turn = headroom.baseline_tasks_with_median_within[0];
+  assert_eq!((within_one_turn.first_read, within_one_turn.all_read, within_one_turn.all_touched), (1, 1, 1));
+  let facts = headroom.tasks[0].facts.as_ref().unwrap();
+  assert_eq!(
+    (facts.repository.as_str(), facts.reach.prompt.terms, facts.reach.prompt.reaching),
+    ("fixture `acme` of this repository", 1, 0)
+  );
+  assert_eq!(facts.reach.instructions.as_ref().map(|reach| (reach.terms, reach.reaching)), Some((1, 0)));
+  assert!(headroom.notes.iter().any(|note| note.contains("override directory")), "{:?}", headroom.notes);
+  let (markdown, json) = agent::write_headroom(&headroom, &fixture.batch.join("report/headroom")).unwrap();
+  let rendered = fs::read_to_string(markdown).unwrap();
+  assert!(rendered.contains("| 1 | 2/2 (100%) | 2/2 (100%) | 2/2 (100%) | 2/2 (100%) |"), "{rendered}");
+  let scratch_root = fixture.trees.display().to_string();
+  assert!(!rendered.contains(&scratch_root) && !fs::read_to_string(json).unwrap().contains(&scratch_root));
+
+  let (batch, records) = agent::load_runs(&fixture.batch).unwrap();
+  let (_, committed) = agent::write_report(&agent::build_report(batch.as_ref(), &records, None), &fixture.batch.join("report/agent")).unwrap();
+  let noise = agent::load_noise(std::slice::from_ref(&fixture.batch), std::slice::from_ref(&committed), None).unwrap();
+  assert_eq!(noise.baseline_identity, Vec::new());
+  assert_eq!((noise.batches[0].scored_runs, noise.batches[0].tasks), (4, 1));
+  assert!(noise.batches[0].reported_metrics_compared > 20, "{:?}", noise.batches[0]);
+  assert_eq!(noise.batches[0].reported_metrics_differing, Vec::<String>::new());
+  let tokens = noise.metrics.iter().find(|metric| metric.metric == "total_tokens").unwrap();
+  assert_eq!(
+    tokens
+      .repetitions
+      .iter()
+      .map(|comparison| (comparison.spread.pairs, comparison.spread.mean_a, comparison.spread.paired_difference))
+      .collect::<Vec<_>>(),
+    vec![(1, 307.0, 0.0), (1, 307.0, 0.0)]
+  );
+  assert_eq!((tokens.effects[0].effect, tokens.effects[0].class), (0.0, agent::NoiseClass::NoDifference));
+  let weighted = noise.metrics.iter().find(|metric| metric.metric == "cache_weighted_tokens").unwrap();
+  assert_eq!(weighted.effects[0].baseline_mean, 22.0 + 1.25 * 20.0 + 0.1 * 220.0);
+  let (markdown, _) = agent::write_noise(&noise, &fixture.batch.join("report/noise-floor")).unwrap();
+  assert!(fs::read_to_string(markdown).unwrap().contains("Only one batch was given"));
+
+  let mut foreign: serde_json::Value = agent::read_json(&committed).unwrap();
+  foreign["environment"]["seed"] = serde_json::json!(99);
+  let foreign_path = fixture.batch.join("report/foreign.json");
+  fs::write(&foreign_path, foreign.to_string()).unwrap();
+  let error = agent::load_noise(std::slice::from_ref(&fixture.batch), std::slice::from_ref(&foreign_path), None).unwrap_err();
+  assert!(matches!(error, agent::AgentError::InvalidArgument(_)), "{error}");
+}
+
+#[test]
 fn should_reuse_scored_runs_when_resumed() {
   let fixture = fixture();
   let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();

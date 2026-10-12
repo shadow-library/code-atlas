@@ -49,14 +49,14 @@ pub enum Better {
   Neutral,
 }
 
-struct MetricDef {
-  name: &'static str,
-  group: MetricGroup,
-  better: Better,
-  extract: fn(&RunRecord) -> Option<f64>,
+pub(super) struct MetricDef {
+  pub(super) name: &'static str,
+  pub(super) group: MetricGroup,
+  pub(super) better: Better,
+  pub(super) extract: fn(&RunRecord) -> Option<f64>,
 }
 
-fn metrics_of(record: &RunRecord) -> Option<&Metrics> {
+pub(super) fn metrics_of(record: &RunRecord) -> Option<&Metrics> {
   record.metrics.as_ref()
 }
 
@@ -76,7 +76,7 @@ fn count(value: u64) -> f64 {
   value as f64
 }
 
-const METRICS: &[MetricDef] = &[
+pub(super) const METRICS: &[MetricDef] = &[
   MetricDef {
     name: "hidden_tests_pass",
     group: MetricGroup::Correctness,
@@ -486,10 +486,7 @@ fn task_report(task_id: &str, records: &[RunRecord]) -> TaskReport {
     let mut outcomes = OutcomeCounts::default();
     runs.iter().for_each(|record| outcomes.record(&record.manifest.status));
     outcomes.contaminated = runs.iter().filter(|record| is_contaminated(record)).count();
-    let scored: Vec<&&RunRecord> = runs
-      .iter()
-      .filter(|record| matches!(record.manifest.status, RunStatus::Completed { .. }) && !is_contaminated(record))
-      .collect();
+    let scored: Vec<&&RunRecord> = runs.iter().filter(|record| is_scored(record)).collect();
     let metrics = METRICS
       .iter()
       .filter_map(|def| {
@@ -515,6 +512,10 @@ fn task_report(task_id: &str, records: &[RunRecord]) -> TaskReport {
 
 fn is_contaminated(record: &RunRecord) -> bool {
   record.metrics.as_ref().is_some_and(|metrics| metrics.contaminated)
+}
+
+pub(super) fn is_scored(record: &RunRecord) -> bool {
+  matches!(record.manifest.status, RunStatus::Completed { .. }) && !is_contaminated(record)
 }
 
 fn contaminated_runs(records: &[RunRecord]) -> Vec<ContaminatedRun> {
@@ -662,7 +663,7 @@ fn compare(previous: &AgentReport, current: &AgentReport) -> Vec<Delta> {
   deltas
 }
 
-fn number(value: f64) -> String {
+pub(super) fn number(value: f64) -> String {
   if value.fract().abs() < 1e-9 {
     return format!("{value:.0}");
   }

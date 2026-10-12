@@ -12,9 +12,9 @@ pub struct BashAnalysis {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Word {
-  text: String,
-  dynamic: bool,
+pub(super) struct Word {
+  pub(super) text: String,
+  pub(super) dynamic: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -54,7 +54,7 @@ pub fn analyze_bash(command: &str) -> BashAnalysis {
   analysis
 }
 
-enum ReadTargets {
+pub(super) enum ReadTargets {
   NotARead,
   Unparsed,
   Files(Vec<String>),
@@ -66,7 +66,10 @@ fn read_targets(program: &str, segment: &Segment) -> ReadTargets {
     .iter()
     .position(|word| !SHELL_KEYWORDS.contains(&word.text.as_str()))
     .map_or(segment.words.len(), |index| index + 1);
-  let args = &segment.words[start..];
+  read_operands(program, &segment.words[start..], segment.piped_input)
+}
+
+pub(super) fn read_operands(program: &str, args: &[Word], piped_input: bool) -> ReadTargets {
   let operands = match program {
     "cat" => Some(plain_operands(args, &[])),
     "head" | "tail" => Some(plain_operands(args, &["-n", "-c", "--lines", "--bytes"])),
@@ -77,7 +80,7 @@ fn read_targets(program: &str, segment: &Segment) -> ReadTargets {
     return ReadTargets::NotARead;
   };
   if operands.is_empty() {
-    return if segment.piped_input { ReadTargets::NotARead } else { ReadTargets::Unparsed };
+    return if piped_input { ReadTargets::NotARead } else { ReadTargets::Unparsed };
   }
   if operands.iter().any(|word| word.dynamic || word.text == "-") {
     return ReadTargets::Unparsed;

@@ -240,6 +240,7 @@ mod tests {
       input: json!({"file_path": "/tree/CLAUDE.md"}),
       elapsed_ms: None,
       result: None,
+      turn: 1,
     };
     let transcript = answered(&format!("PROJECT_CANARY={PROJECT_CANARY}\nUSER_MD_HEADING=none"), vec![read]);
     let report = analyze_probe(ProcessExit::Exited { code: Some(0) }, &transcript, &Some("bye".to_owned()), None);
