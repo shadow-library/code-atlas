@@ -222,6 +222,7 @@ fn traversal(graph: &Graph<'_, '_>, kind: TraversalKind, request: &TraverseReque
   if hidden > 0 {
     caveats.push(Caveat::BelowConfidenceFloor {
       hidden,
+      fallback_tests: 0,
       floor: graph.policy.min_confidence,
     });
   }

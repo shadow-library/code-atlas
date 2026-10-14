@@ -195,14 +195,24 @@ fn should_list_tests_that_call_the_method_on_a_factory_built_value_as_hedged_fal
   assert_eq!(
     names,
     [
-      "barrel.updates through the barrel",
-      "cache.updates an unrelated cache",
       "mocked project service.updates beside a mock",
-      "module mocked.updates beside a module mock",
       "ProjectService.updates a project",
       "spied project service.updates beside a spy",
+      "barrel.updates through the barrel",
+      "cache.updates an unrelated cache",
+      "module mocked.updates beside a module mock",
     ]
   );
+  let confidences: Vec<Option<f32>> = answer
+    .fallback
+    .as_ref()
+    .expect("fallback")
+    .tests
+    .items
+    .iter()
+    .map(|test| test.relation.certainty.confidence)
+    .collect();
+  assert_eq!(confidences, [Some(0.4), Some(0.4), Some(0.4), Some(0.35), Some(0.35), Some(0.35)]);
   let fallback = answer.fallback.as_ref().expect("fallback");
   assert_eq!(fallback.tests.total, 6);
   assert!(
@@ -213,7 +223,7 @@ fn should_list_tests_that_call_the_method_on_a_factory_built_value_as_hedged_fal
       .all(|test| test.reach == TestReach::PossibleCall && test.uncertain && !test.relation.certainty.authoritative)
   );
   assert_eq!(
-    fallback.tests.items[4].relation.phrase,
+    fallback.tests.items[1].relation.phrase,
     "calls `.update(` on a value of unknown type at tests/project.spec.ts:7 (+1 more call sites); the file imports"
   );
 }
@@ -314,15 +324,37 @@ fn should_hide_fallback_items_below_the_confidence_floor_with_one_caveat() {
       "spied project service.updates beside a spy"
     ]
   );
-  let floors: Vec<usize> = answer
+  let floors: Vec<(usize, usize)> = answer
     .caveats
     .iter()
     .filter_map(|caveat| match caveat {
-      Caveat::BelowConfidenceFloor { hidden, .. } => Some(*hidden),
+      Caveat::BelowConfidenceFloor { hidden, fallback_tests, .. } => Some((*hidden, *fallback_tests)),
       _ => None,
     })
     .collect();
-  assert_eq!(floors, [3]);
+  assert_eq!(floors, [(0, 3)]);
+}
+
+#[test]
+fn should_word_the_floor_caveat_for_fallback_tests_apart_from_walk_relations() {
+  let fixture = common::single_repo("projects", &FILES);
+  let mut request = TestsForRequest::new("ProjectService.update");
+  request.min_confidence = Some(0.38);
+  let text = render_text(&fixture.query.tests_for(&request).unwrap());
+
+  assert!(text.contains("3 possible tests below confidence 0.38 hidden (lower min_confidence)"), "{text}");
+  assert!(!text.contains("relations below confidence"), "{text}");
+}
+
+#[test]
+fn should_say_the_module_a_jest_or_vitest_mock_replaces_is_not_visible_to_the_index() {
+  let fallback = answer("ProjectService.update", |_| {}).fallback.expect("fallback");
+
+  assert!(
+    fallback.explanation.ends_with("the module a jest.mock/vi.mock call replaces is not visible to the index"),
+    "{}",
+    fallback.explanation
+  );
 }
 
 #[test]

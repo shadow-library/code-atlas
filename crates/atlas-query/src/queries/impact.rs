@@ -12,6 +12,7 @@ use crate::model::{Caveat, EntityRef, Hop, MacroGapScope, Response, Targeted};
 use crate::policy::{Direction, Policy};
 use crate::queries::common::{MAX_NODES, file_entity, file_symbols, is_test, package_key, resolve_one};
 use crate::queries::inferred_links::{LinkEnd, LinkScan, inferred_links};
+use crate::queries::tests_for::is_mock_edge;
 use crate::queries::traverse::{dispatch_caveat, risk_name};
 use crate::target::TargetFilter;
 
@@ -169,7 +170,7 @@ enum Bucket {
 }
 
 fn bucket(entity: &Entity, reached: &Reached) -> Bucket {
-  if is_test(entity) {
+  if is_test(entity) || reached.hops.iter().any(|hop| is_mock_edge(&hop.edge)) {
     return Bucket::Test;
   }
   match entity.kind {
@@ -322,6 +323,7 @@ fn impact(graph: &Graph<'_, '_>, targets: &[Entity], request: &ImpactRequest) ->
   if hidden > 0 {
     caveats.push(Caveat::BelowConfidenceFloor {
       hidden,
+      fallback_tests: 0,
       floor: graph.policy.min_confidence,
     });
   }

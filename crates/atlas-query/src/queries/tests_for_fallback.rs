@@ -133,9 +133,12 @@ pub(crate) fn possible_tests(graph: &Graph<'_, '_>, target: &Entity, found: &[Te
     fallback.items.push(item(&test, name, &class, via.as_ref(), &sites, certainty, notes));
   }
   fallback.replaced = replaced.into_iter().collect();
-  fallback
-    .items
-    .sort_by(|left, right| location_key(left).cmp(&location_key(right)).then_with(|| left.test.key.cmp(&right.test.key)));
+  fallback.items.sort_by(|left, right| {
+    confidence_of(right)
+      .total_cmp(&confidence_of(left))
+      .then_with(|| location_key(left).cmp(&location_key(right)))
+      .then_with(|| left.test.key.cmp(&right.test.key))
+  });
   Ok(fallback)
 }
 
@@ -150,6 +153,10 @@ fn calls_module_mock(graph: &Graph<'_, '_>, repo: &RepoName, path: &RelPath) -> 
       .iter()
       .any(|reference| matches!(reference.path.as_slice(), [owner, method] if MODULE_MOCK_OWNERS.contains(&owner.as_str()) && method == "mock")),
   )
+}
+
+fn confidence_of(item: &TestItem) -> f32 {
+  item.relation.certainty.confidence.unwrap_or(0.0)
 }
 
 fn location_key(item: &TestItem) -> (Option<&str>, Option<u32>) {

@@ -228,6 +228,10 @@ pub enum MacroGapScope {
   Impact,
 }
 
+fn is_zero(count: &usize) -> bool {
+  *count == 0
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "caveat", rename_all = "snake_case")]
 pub enum Caveat {
@@ -256,6 +260,8 @@ pub enum Caveat {
   },
   BelowConfidenceFloor {
     hidden: usize,
+    #[serde(skip_serializing_if = "is_zero")]
+    fallback_tests: usize,
     floor: f32,
   },
   InferredHidden {

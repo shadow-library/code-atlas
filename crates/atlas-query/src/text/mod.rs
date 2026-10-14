@@ -215,7 +215,14 @@ fn caveat_line(out: &mut TextOut, caveat: &Caveat) {
       }
       omitted(out, 2, total.saturating_sub(files.len()));
     }
-    Caveat::BelowConfidenceFloor { hidden, floor } => out.line(1, format!("{hidden} relations below confidence {floor:.2} hidden (lower min_confidence)")),
+    Caveat::BelowConfidenceFloor { hidden, fallback_tests, floor } => {
+      let hidden_items = match (*hidden, *fallback_tests) {
+        (relations, 0) => format!("{relations} relations"),
+        (0, tests) => counted(tests, "possible test"),
+        (relations, tests) => format!("{relations} relations and {}", counted(tests, "possible test")),
+      };
+      out.line(1, format!("{hidden_items} below confidence {floor:.2} hidden (lower min_confidence)"));
+    }
     Caveat::InferredHidden { stale, low_confidence } => {
       let mut parts = Vec::new();
       if *stale > 0 {

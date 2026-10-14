@@ -149,7 +149,14 @@ fn should_hide_http_links_below_the_confidence_floor_and_count_them() {
 
   let answer = answer(&response);
   assert_eq!(reached(answer), [(1, "AcmeClient.getUser")]);
-  assert_eq!(answer.caveats, [Caveat::BelowConfidenceFloor { hidden: 1, floor: 0.5 }]);
+  assert_eq!(
+    answer.caveats,
+    [Caveat::BelowConfidenceFloor {
+      hidden: 1,
+      fallback_tests: 0,
+      floor: 0.5
+    }]
+  );
 }
 
 #[test]
@@ -382,7 +389,14 @@ fn should_not_count_a_hidden_link_twice_when_the_walk_already_steps_over_it() {
       .cloned()
       .collect()
   };
-  assert_eq!(floor(&plain), [Caveat::BelowConfidenceFloor { hidden: 1, floor: 0.5 }]);
+  assert_eq!(
+    floor(&plain),
+    [Caveat::BelowConfidenceFloor {
+      hidden: 1,
+      fallback_tests: 0,
+      floor: 0.5
+    }]
+  );
   assert_eq!(floor(&bridged), floor(&plain));
 }
 
@@ -488,8 +502,22 @@ fn should_say_http_links_exist_below_the_floor_instead_of_claiming_none_exist() 
     ..floored(1, "GET /users/{id}")
   };
   let plain = fixture.query.dependents(&plain).unwrap();
-  assert_eq!(answer(&plain).caveats, [Caveat::BelowConfidenceFloor { hidden: 2, floor: 0.8 }]);
-  assert_eq!(answer(&endpoint).caveats[0], Caveat::BelowConfidenceFloor { hidden: 2, floor: 0.8 });
+  assert_eq!(
+    answer(&plain).caveats,
+    [Caveat::BelowConfidenceFloor {
+      hidden: 2,
+      fallback_tests: 0,
+      floor: 0.8
+    }]
+  );
+  assert_eq!(
+    answer(&endpoint).caveats[0],
+    Caveat::BelowConfidenceFloor {
+      hidden: 2,
+      fallback_tests: 0,
+      floor: 0.8
+    }
+  );
 }
 
 #[test]

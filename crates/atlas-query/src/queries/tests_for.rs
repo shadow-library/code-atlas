@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use atlas_core::{ATTR_MOCK, ATTR_TEST, Edge, EdgeKind, Entity, EntityId, EntityKey, EntityKind, LanguageFamily, TestInfo};
+use atlas_core::{ATTR_MOCK, ATTR_MOCK_TYPE, ATTR_TEST, Edge, EdgeKind, Entity, EntityId, EntityKey, EntityKind, LanguageFamily, TestInfo};
 use atlas_store::EntityFilter;
 use serde::Serialize;
 use serde_json::Value;
@@ -19,6 +19,9 @@ use crate::target::TargetFilter;
 const TEST_DEPTH: u32 = 3;
 const ATTR_SITE_ATTRS: &str = "site_attrs";
 const MOCK_REPLACED: &str = "replaced";
+const ATTR_MOCK_SITE: &str = "mock_site";
+const MOCK_SITE_MODULE: &str = "module";
+const MOCK_TYPE_MODULE_FILE: &str = "module_file";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestsForRequest {
@@ -136,12 +139,13 @@ fn fallback_tests(graph: &Graph<'_, '_>, target: &Entity, tests: &[TestItem], li
   if found.hidden_below_floor > 0 {
     let floor = graph.policy.min_confidence;
     match caveats.iter_mut().find_map(|caveat| match caveat {
-      Caveat::BelowConfidenceFloor { hidden, .. } => Some(hidden),
+      Caveat::BelowConfidenceFloor { fallback_tests, .. } => Some(fallback_tests),
       _ => None,
     }) {
       Some(hidden) => *hidden += found.hidden_below_floor,
       None => caveats.push(Caveat::BelowConfidenceFloor {
-        hidden: found.hidden_below_floor,
+        hidden: 0,
+        fallback_tests: found.hidden_below_floor,
         floor,
       }),
     }
@@ -152,7 +156,7 @@ fn fallback_tests(graph: &Graph<'_, '_>, target: &Entity, tests: &[TestItem], li
   let shown = limit.min(FALLBACK_CAP);
   let capped_at = (found.items.len() > shown && limit > FALLBACK_CAP).then_some(FALLBACK_CAP);
   let explanation = format!(
-    "no test reaches the method through the call graph; these tests call a method of this name on a value of unknown type in a file that imports the class directly [heuristic {:.2}] or through a test helper [heuristic {:.2}]; the receiver may be another type, and jest.mock/vi.mock of the module is not visible to the index",
+    "no test reaches the method through the call graph; these tests call a method of this name on a value of unknown type in a file that imports the class directly [heuristic {:.2}] or through a test helper [heuristic {:.2}]; the receiver may be another type, and the module a jest.mock/vi.mock call replaces is not visible to the index",
     DIRECT_CONFIDENCE, HELPER_CONFIDENCE
   );
   Ok(Some(FallbackTests {
@@ -287,6 +291,7 @@ pub(crate) fn tests_of(graph: &Graph<'_, '_>, target: &Entity, depth: u32, scope
   if walk.hidden_below_floor > 0 {
     caveats.push(Caveat::BelowConfidenceFloor {
       hidden: walk.hidden_below_floor,
+      fallback_tests: 0,
       floor: graph.policy.min_confidence,
     });
   }
@@ -322,14 +327,24 @@ fn add_importing_tests(graph: &Graph<'_, '_>, seeds: &[EntityId], found: &mut BT
 enum Mocking {
   Spied,
   Replaced,
+  ModuleFile,
+  ModuleExport,
 }
 
 impl Mocking {
   fn reach(self) -> TestReach {
     match self {
       Self::Spied => TestReach::Spied,
-      Self::Replaced => TestReach::Mocked,
+      Self::Replaced | Self::ModuleFile | Self::ModuleExport => TestReach::Mocked,
     }
+  }
+
+  fn replaces(self) -> bool {
+    self >= Self::Replaced
+  }
+
+  fn replaces_module(self) -> bool {
+    self >= Self::ModuleFile
   }
 }
 
@@ -337,18 +352,35 @@ fn mocking_of(edge: &Edge) -> Option<Mocking> {
   if edge.kind != EdgeKind::References {
     return None;
   }
-  let sites = edge.attrs.get(ATTR_SITE_ATTRS).and_then(Value::as_array).into_iter().flatten();
-  let site_values = sites.filter_map(|site| site.get("attrs").and_then(|attrs| attrs.get(ATTR_MOCK)));
-  edge
-    .attrs
-    .get(ATTR_MOCK)
-    .into_iter()
-    .chain(site_values)
-    .map(|value| match value.as_str() == Some(MOCK_REPLACED) {
-      true => Mocking::Replaced,
-      false => Mocking::Spied,
-    })
-    .max()
+  let values = |name: &'static str| {
+    let sites = edge.attrs.get(ATTR_SITE_ATTRS).and_then(Value::as_array).into_iter().flatten();
+    edge
+      .attrs
+      .get(name)
+      .into_iter()
+      .chain(sites.filter_map(move |site| site.get("attrs").and_then(|attrs| attrs.get(name))))
+  };
+  let has = |name: &'static str, expected: &str| values(name).any(|value| value.as_str() == Some(expected));
+  values(ATTR_MOCK).next()?;
+  match (
+    has(ATTR_MOCK, MOCK_REPLACED),
+    has(ATTR_MOCK_SITE, MOCK_SITE_MODULE),
+    has(ATTR_MOCK_TYPE, MOCK_TYPE_MODULE_FILE),
+  ) {
+    (false, _, _) => Some(Mocking::Spied),
+    (true, false, _) => Some(Mocking::Replaced),
+    (true, true, true) => Some(Mocking::ModuleFile),
+    (true, true, false) => Some(Mocking::ModuleExport),
+  }
+}
+
+pub(crate) fn is_mock_edge(edge: &Edge) -> bool {
+  mocking_of(edge).is_some()
+}
+
+fn module_scope(graph: &Graph<'_, '_>, edge: &Edge) -> QueryResult<EntityId> {
+  let file = graph.entity(edge.from)?.as_ref().and_then(file_entity).map(|key| EntityId::of(&key));
+  Ok(file.unwrap_or(edge.from))
 }
 
 pub(crate) struct MockEdge {
@@ -358,7 +390,15 @@ pub(crate) struct MockEdge {
 
 impl MockEdge {
   pub(crate) fn replaces(&self) -> bool {
-    self.mocking == Mocking::Replaced
+    self.mocking.replaces()
+  }
+
+  fn replaces_module(&self) -> bool {
+    self.mocking.replaces_module()
+  }
+
+  fn names_target(&self) -> bool {
+    self.mocking != Mocking::ModuleFile
   }
 
   pub(crate) fn mocked(&self) -> EntityId {
@@ -368,11 +408,27 @@ impl MockEdge {
 
 pub(crate) fn mock_edges(graph: &Graph<'_, '_>, seeds: &[EntityId]) -> QueryResult<BTreeMap<EntityId, MockEdge>> {
   let mut mocks: BTreeMap<EntityId, MockEdge> = BTreeMap::new();
+  let mut targets = seeds.to_vec();
   for seed in seeds {
-    for edge in graph.edges_in(*seed, &[EdgeKind::References])? {
+    let Some(file) = graph.entity(*seed)?.as_ref().and_then(file_entity).map(|key| EntityId::of(&key)) else {
+      continue;
+    };
+    if !targets.contains(&file) {
+      targets.push(file);
+    }
+  }
+  for target in targets {
+    for edge in graph.edges_in(target, &[EdgeKind::References])? {
       let Some(mocking) = mocking_of(&edge) else { continue };
-      if mocks.get(&edge.from).is_none_or(|existing| existing.mocking < mocking) {
-        mocks.insert(edge.from, MockEdge { edge, mocking });
+      if !seeds.contains(&target) && !mocking.replaces_module() {
+        continue;
+      }
+      let scope = match mocking.replaces_module() {
+        true => module_scope(graph, &edge)?,
+        false => edge.from,
+      };
+      if mocks.get(&scope).is_none_or(|existing| existing.mocking < mocking) {
+        mocks.insert(scope, MockEdge { edge, mocking });
       }
     }
   }
@@ -402,21 +458,29 @@ impl<'m> MockScopes<'_, '_, '_, 'm> {
       if matches!(item.reach, TestReach::Spied | TestReach::Mocked) {
         continue;
       }
-      item.note = self.scope_note(*id)?;
+      let Some((scope, mock)) = self.scope_mock(*id)? else { continue };
+      if mock.replaces_module() {
+        item.reach = TestReach::ScopeMocked;
+      }
+      item.note = Some(self.note_of(&scope, mock)?);
     }
     Ok(())
   }
 
   pub(crate) fn scope_note(&mut self, test: EntityId) -> QueryResult<Option<String>> {
     let Some((scope, mock)) = self.scope_mock(test)? else { return Ok(None) };
-    let relation = self.scope_relation(&scope, mock)?;
-    Ok(Some(format!("{} {} {}", relation.phrase, relation.entity, relation.certainty.tag)))
+    self.note_of(&scope, mock).map(Some)
+  }
+
+  fn note_of(&self, scope: &Entity, mock: &MockEdge) -> QueryResult<String> {
+    let relation = self.scope_relation(scope, mock)?;
+    Ok(format!("{} {} {}", relation.phrase, relation.entity, relation.certainty.tag))
   }
 
   fn add_scope_only_tests(&mut self, found: &mut BTreeMap<EntityId, TestItem>) -> QueryResult<()> {
     let mut sources: Vec<(&EntityId, &MockEdge)> = self.mocks.iter().collect();
     sources.sort_by_key(|(id, mock)| (std::cmp::Reverse(mock.mocking), **id));
-    for (source, mock) in sources {
+    for (source, mock) in sources.into_iter().filter(|(_, mock)| mock.names_target()) {
       let Some(scope) = self.graph.entity(*source)? else { continue };
       let relation = self.scope_relation(&scope, mock)?;
       for test in self.tests_under(&scope)? {
@@ -466,7 +530,7 @@ impl<'m> MockScopes<'_, '_, '_, 'm> {
   }
 
   fn scope_relation(&self, scope: &Entity, mock: &MockEdge) -> QueryResult<Hop> {
-    let mut relation = self.graph.relation(&mock.edge, scope.id)?;
+    let mut relation = self.graph.relation(&mock.edge, mock.edge.from)?;
     let role = match scope.kind {
       EntityKind::TestSuite => "suite",
       EntityKind::Test => "test",
@@ -474,8 +538,8 @@ impl<'m> MockScopes<'_, '_, '_, 'm> {
       _ => "helper",
     };
     let verb = match mock.mocking {
-      Mocking::Replaced => "mocks",
       Mocking::Spied => "spies on",
+      Mocking::Replaced | Mocking::ModuleFile | Mocking::ModuleExport => "mocks",
     };
     relation.phrase = format!("{role} {} {verb}", short_name(&scope.key));
     Ok(relation)
@@ -594,7 +658,7 @@ pub(crate) fn run_hint(entity: &Entity) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-  use atlas_core::{ATTR_MOCK_TYPE, Certainty, EntityKey, RepoName};
+  use atlas_core::{Certainty, EntityKey, RepoName};
   use serde_json::json;
 
   use super::*;

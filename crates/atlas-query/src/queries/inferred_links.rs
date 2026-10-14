@@ -100,6 +100,7 @@ impl LinkScan {
   pub(crate) fn caveats(&self, floor: f32) -> Vec<Caveat> {
     let below = (self.below_floor() > 0).then_some(Caveat::BelowConfidenceFloor {
       hidden: self.below_floor(),
+      fallback_tests: 0,
       floor,
     });
     self.inferred_hidden().into_iter().chain(below).collect()
