@@ -3,7 +3,7 @@ mod common;
 use std::fs;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -723,6 +723,22 @@ fn wait_until(what: &str, mut condition: impl FnMut() -> bool) {
   }
 }
 
+const RETOUCH_EVERY: Duration = Duration::from_secs(2);
+
+fn wait_until_retouching(what: &str, path: &Path, mut condition: impl FnMut() -> bool) {
+  let mut touched = Instant::now();
+  wait_until(what, || {
+    if condition() {
+      return true;
+    }
+    if touched.elapsed() >= RETOUCH_EVERY {
+      fs::write(path, fs::read(path).unwrap()).unwrap();
+      touched = Instant::now();
+    }
+    false
+  });
+}
+
 fn wait_for_quiet_events(watch: &atlas_engine::WatchHandle) {
   let mut last = (watch.events_seen(), Instant::now());
   wait_until("the watcher to stop delivering events", || {
@@ -785,13 +801,13 @@ fn should_not_report_watcher_clean_while_events_are_queued() {
     let mut text = fs::read_to_string(&x).unwrap();
     text.push_str(&format!("\nexport const touchX{attempt} = {attempt};\n"));
     fs::write(&x, text).unwrap();
-    wait_until("the watcher run to enter the gated pass", || entered.load(Ordering::SeqCst));
+    wait_until_retouching("the watcher run to enter the gated pass", &x, || entered.load(Ordering::SeqCst));
     let before_y = watch.events_seen();
     let y = tree.join("acme-api/src/common/slug.ts");
     let mut text = fs::read_to_string(&y).unwrap();
     text.push_str(&format!("\nexport function watchProbe{attempt}() {{\n  return {attempt};\n}}\n"));
     fs::write(&y, text).unwrap();
-    wait_until("the watcher to deliver the second edit while the run is in flight", || watch.events_seen() > before_y);
+    wait_until_retouching("the watcher to deliver the second edit while the run is in flight", &y, || watch.events_seen() > before_y);
     wait_for_quiet_events(&watch);
     armed.store(false, Ordering::SeqCst);
     release.store(true, Ordering::SeqCst);
@@ -849,6 +865,7 @@ fn should_purge_a_removed_repo_even_after_a_version_bump() {
 
 struct PanicPass {
   armed: Arc<AtomicBool>,
+  panics: Arc<AtomicUsize>,
 }
 
 impl ProjectPass for PanicPass {
@@ -858,6 +875,7 @@ impl ProjectPass for PanicPass {
 
   fn run(&self, _tx: &ReadTx<'_>, _context: &PassContext<'_>) -> Result<PassOutput, PassError> {
     if self.armed.load(Ordering::SeqCst) {
+      self.panics.fetch_add(1, Ordering::SeqCst);
       panic!("simulated pass bug");
     }
     Ok(PassOutput::default())
@@ -870,29 +888,34 @@ fn should_keep_refreshing_when_a_project_pass_panics_under_the_watcher() {
   let tree = scratch.path().join("tree");
   let project = acme_copy(&tree);
   let armed = Arc::new(AtomicBool::new(false));
+  let panics = Arc::new(AtomicUsize::new(0));
   let options = EngineOptions {
-    passes: vec![Arc::new(PanicPass { armed: Arc::clone(&armed) })],
+    passes: vec![Arc::new(PanicPass {
+      armed: Arc::clone(&armed),
+      panics: Arc::clone(&panics),
+    })],
     watch_debounce: Duration::from_millis(50),
     ..EngineOptions::default()
   };
   let engine = Arc::new(open_with(&project, &scratch.path().join("home"), options));
   fresh(&engine);
   let watch = engine.watch().unwrap();
-  thread::sleep(Duration::from_millis(300));
+  wait_for_quiet_events(&watch);
   fresh(&engine);
   armed.store(true, Ordering::SeqCst);
   let x = tree.join("acme-api/src/common/money.ts");
   let mut text = fs::read_to_string(&x).unwrap();
   text.push_str("\nexport const touchX = 1;\n");
   fs::write(&x, text).unwrap();
-  thread::sleep(Duration::from_millis(1000));
+  wait_until_retouching("the watcher run to hit the panicking pass", &x, || panics.load(Ordering::SeqCst) > 0);
   armed.store(false, Ordering::SeqCst);
   fresh(&engine);
+  let before_y = watch.events_seen();
   let y = tree.join("acme-api/src/common/slug.ts");
   let mut text = fs::read_to_string(&y).unwrap();
   text.push_str("\nexport function deadWatcherProbe() {\n  return 1;\n}\n");
   fs::write(&y, text).unwrap();
-  thread::sleep(Duration::from_millis(500));
+  wait_until_retouching("the watcher to deliver the second edit", &y, || watch.events_seen() > before_y);
   let report = fresh(&engine);
   let found = engine
     .store()

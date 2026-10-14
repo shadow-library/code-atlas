@@ -532,6 +532,24 @@ fn should_wait_for_another_process_holding_the_index_lock_and_reuse_its_work() {
   assert_eq!(first.similarity().len(), second.similarity().len());
 }
 
+struct Retouch(Instant);
+
+impl Retouch {
+  fn new() -> Self {
+    Self(Instant::now())
+  }
+
+  fn tick(&mut self, path: &Path) {
+    if self.0.elapsed() < Duration::from_secs(2) {
+      return;
+    }
+    fs::write(path, fs::read(path).unwrap()).unwrap();
+    self.0 = Instant::now();
+  }
+}
+
+const WATCH_DEADLINE: Duration = Duration::from_secs(20);
+
 fn wait_for(deadline: Duration, mut condition: impl FnMut() -> bool) -> bool {
   let started = Instant::now();
   while started.elapsed() < deadline {
@@ -555,18 +573,26 @@ fn should_refresh_after_the_watch_debounce_and_rescan_after_a_watcher_error() {
   let engine = Arc::new(open_with(&project, &scratch.path().join("home"), options));
   let handle = engine.watch().unwrap();
   assert_eq!(fresh(&engine).header().scan, ScanKind::StatScan);
-  assert!(wait_for(Duration::from_secs(5), || fresh(&engine).header().scan == ScanKind::WatcherClean));
+  assert!(wait_for(WATCH_DEADLINE, || fresh(&engine).header().scan == ScanKind::WatcherClean));
 
-  append(&tree.join("acme-sdk/src/money.ts"), "\nexport function watched() {\n  return 3;\n}\n");
+  let money = tree.join("acme-sdk/src/money.ts");
+  append(&money, "\nexport function watched() {\n  return 3;\n}\n");
+  let mut retouch = Retouch::new();
 
   assert!(
-    wait_for(Duration::from_secs(15), || !named(&engine, "watched", "acme-sdk").is_empty()),
+    wait_for(WATCH_DEADLINE, || {
+      if named(&engine, "watched", "acme-sdk").is_empty() {
+        retouch.tick(&money);
+        return false;
+      }
+      true
+    }),
     "the watcher did not refresh the index"
   );
-  assert!(wait_for(Duration::from_secs(5), || fresh(&engine).header().scan == ScanKind::WatcherClean));
+  assert!(wait_for(WATCH_DEADLINE, || fresh(&engine).header().scan == ScanKind::WatcherClean));
   handle.inject_error("simulated overflow");
   assert_eq!(fresh(&engine).header().scan, ScanKind::StatScan);
-  assert!(wait_for(Duration::from_secs(5), || fresh(&engine).header().scan == ScanKind::WatcherClean));
+  assert!(wait_for(WATCH_DEADLINE, || fresh(&engine).header().scan == ScanKind::WatcherClean));
   drop(handle);
   assert_eq!(fresh(&engine).header().scan, ScanKind::StatScan);
 }

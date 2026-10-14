@@ -8,8 +8,8 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use atlas_core::{Availability, Certainty, EdgeKind, Owner, RelPath, RepoName};
-use atlas_engine::{AutoScipOptions, AutoScipOutcome, AutoScipSetting, Engine, EngineOptions, ScipLag};
+use atlas_core::{Availability, Certainty, ContentHash, EdgeKind, Owner, RelPath, RepoName};
+use atlas_engine::{AutoScipOptions, AutoScipOutcome, AutoScipSetting, Engine, EngineOptions, IndexMode, ScipLag};
 use atlas_project::Project;
 use atlas_scip::{CacheStatus, ScipFacts, ScipIndexer, ScipOutcome, ScipRequest, ScipRun};
 use common::{fresh, open_with, project, repo_config};
@@ -17,6 +17,8 @@ use protobuf::{EnumOrUnknown, Message};
 use scip::types::{Document, Index, Metadata, Occurrence, PositionEncoding, SymbolRole, ToolInfo};
 
 const WAIT_DEADLINE: Duration = Duration::from_secs(30);
+const EVENT_QUIET: Duration = Duration::from_millis(300);
+const NO_RETRY_WINDOW: Duration = Duration::from_millis(2_500);
 const A_SOURCE: &str = "export function load(n: number) {\n  return n;\n}\n";
 const B_SOURCE: &str = "import { load } from './a';\nexport function run() {\n  return load(1);\n}\n";
 
@@ -206,8 +208,27 @@ fn file_owner_facts(engine: &Engine) -> BTreeMap<String, String> {
     .collect()
 }
 
-fn barrier_runs(engine: &Engine) -> usize {
-  engine.store().read(|tx| tx.runs(200)).unwrap().iter().filter(|run| run.trigger == "barrier").count()
+fn indexed_hash(engine: &Engine, path: &str) -> Option<ContentHash> {
+  engine
+    .store()
+    .read(|tx| tx.file(&RepoName::new("demo").unwrap(), &RelPath::new(path).unwrap()))
+    .unwrap()
+    .map(|file| file.content_hash)
+}
+
+fn index_edit(engine: &Engine) {
+  engine.index(IndexMode::Incremental).unwrap();
+}
+
+fn wait_for_quiet_events(watch: &atlas_engine::WatchHandle) {
+  let mut last = (watch.events_seen(), Instant::now());
+  wait_until("the watcher to stop delivering events", || {
+    let seen = watch.events_seen();
+    if seen != last.0 {
+      last = (seen, Instant::now());
+    }
+    last.1.elapsed() >= EVENT_QUIET
+  });
 }
 
 fn append(path: &Path, text: &str) {
@@ -224,7 +245,8 @@ fn should_clear_the_scip_lag_after_the_debounce_without_an_explicit_run() {
 
   wait_until("the first automatic run", || fresh(&fixture.engine).header().scip == ScipLag::Current);
   append(&fixture.root.join("src/b.ts"), "export const later = 1;\n");
-  wait_until("the edit to be indexed", || fresh(&fixture.engine).header().scip == ScipLag::Behind { files: 1 });
+  index_edit(&fixture.engine);
+  wait_until("the second automatic run to start", || fixture.calls.load(Ordering::SeqCst) == 2);
   wait_until("the lag to clear", || fresh(&fixture.engine).header().scip == ScipLag::Current);
 
   assert_eq!(fixture.calls.load(Ordering::SeqCst), 2);
@@ -246,7 +268,7 @@ fn should_not_run_automatically_when_scip_is_disabled_but_still_run_explicitly()
   let fixture = fixture(false, Behaviour::Index, Duration::from_secs(3600));
   let watch = fixture.engine.watch().unwrap();
 
-  thread::sleep(Duration::from_millis(2_500));
+  thread::sleep(NO_RETRY_WINDOW);
 
   assert_eq!(fixture.calls.load(Ordering::SeqCst), 0);
   assert_eq!(fresh(&fixture.engine).header().scip, ScipLag::NeverRun);
@@ -271,14 +293,17 @@ fn should_not_run_automatically_when_scip_is_disabled_but_still_run_explicitly()
 #[test]
 fn should_back_off_when_the_indexer_is_unavailable_without_degrading_barriers() {
   let fixture = fixture(true, Behaviour::Unavailable, Duration::from_secs(3600));
-  let _watch = fixture.engine.watch().unwrap();
+  let watch = fixture.engine.watch().unwrap();
 
   wait_until("the first attempt", || fixture.calls.load(Ordering::SeqCst) == 1);
   wait_until("the backoff to be recorded", || !fixture.engine.status().unwrap().scip.auto.backoff.is_empty());
-  let before = barrier_runs(&fixture.engine);
+  let before = indexed_hash(&fixture.engine, "src/b.ts");
   append(&fixture.root.join("src/b.ts"), "export const later = 1;\n");
-  wait_until("the edit to be indexed", || fresh(&fixture.engine).is_fresh() && barrier_runs(&fixture.engine) > before);
-  thread::sleep(Duration::from_millis(2_500));
+  wait_until("the edit to be indexed", || {
+    fresh(&fixture.engine).is_fresh() && indexed_hash(&fixture.engine, "src/b.ts") != before
+  });
+  wait_for_quiet_events(&watch);
+  thread::sleep(NO_RETRY_WINDOW);
 
   assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
   let report = fresh(&fixture.engine);
@@ -308,14 +333,17 @@ fn should_answer_barriers_while_a_run_indexes_and_leave_files_edited_meanwhile_l
   wait_until("the automatic run to start", || fixture.calls.load(Ordering::SeqCst) == 1);
   assert!(fixture.engine.status().unwrap().scip.auto.in_progress);
 
-  let before = barrier_runs(&fixture.engine);
+  let before = indexed_hash(&fixture.engine, "src/b.ts");
   append(&fixture.root.join("src/b.ts"), "export const later = 1;\n");
   let mut barrier = Duration::ZERO;
   wait_until("the edit to be indexed", || {
     let started = Instant::now();
     fixture.engine.ensure_fresh().unwrap();
+    if indexed_hash(&fixture.engine, "src/b.ts") == before {
+      index_edit(&fixture.engine);
+    }
     barrier = barrier.max(started.elapsed());
-    barrier_runs(&fixture.engine) > before
+    indexed_hash(&fixture.engine, "src/b.ts") != before
   });
   let file_owners = file_owner_facts(&fixture.engine);
   gate.release();
@@ -337,7 +365,7 @@ fn should_answer_barriers_while_a_run_indexes_and_leave_files_edited_meanwhile_l
 #[test]
 fn should_skip_a_failing_package_until_its_inputs_change() {
   let fixture = fixture(true, Behaviour::Failing, Duration::from_secs(3600));
-  let _watch = fixture.engine.watch().unwrap();
+  let watch = fixture.engine.watch().unwrap();
   wait_until("the failing attempt to be recorded", || fixture.engine.status().unwrap().scip.auto.last_run.is_some());
   let auto = fixture.engine.status().unwrap().scip.auto;
   assert_eq!(auto.backoff.len(), 1);
@@ -346,15 +374,15 @@ fn should_skip_a_failing_package_until_its_inputs_change() {
     (Some("demo:package.json"), "fake-scip exited with status 101")
   );
 
-  let before = barrier_runs(&fixture.engine);
   fs::write(fixture.root.join("notes.rs"), "pub fn note() {}\n").unwrap();
-  wait_until("the unrelated file to be indexed", || {
-    fresh(&fixture.engine).is_fresh() && barrier_runs(&fixture.engine) > before
-  });
-  thread::sleep(Duration::from_millis(2_500));
+  index_edit(&fixture.engine);
+  assert!(indexed_hash(&fixture.engine, "notes.rs").is_some());
+  wait_for_quiet_events(&watch);
+  thread::sleep(NO_RETRY_WINDOW);
   assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
 
   append(&fixture.root.join("src/b.ts"), "export const later = 1;\n");
+  index_edit(&fixture.engine);
   wait_until("a retry after the package changed", || fixture.calls.load(Ordering::SeqCst) == 2);
   assert!(fresh(&fixture.engine).is_fresh());
 }
