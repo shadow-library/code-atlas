@@ -13,6 +13,7 @@ const RETRY: RetryPolicy = RetryPolicy::new(&[429, 529]);
 
 pub struct AnthropicHttpProvider {
   model: String,
+  api_key_env: String,
   api_key: Option<String>,
   base_url: String,
   retry: RetryPolicy,
@@ -20,9 +21,15 @@ pub struct AnthropicHttpProvider {
 
 impl AnthropicHttpProvider {
   pub fn from_env(model: impl Into<String>) -> Self {
-    let api_key = std::env::var(ANTHROPIC_API_KEY_ENV).ok().filter(|key| !key.trim().is_empty());
+    Self::from_env_var(model, ANTHROPIC_API_KEY_ENV)
+  }
+
+  pub fn from_env_var(model: impl Into<String>, api_key_env: impl Into<String>) -> Self {
+    let api_key_env = api_key_env.into();
+    let api_key = std::env::var(&api_key_env).ok().filter(|key| !key.trim().is_empty());
     Self {
       model: model.into(),
+      api_key_env,
       api_key,
       base_url: DEFAULT_BASE_URL.to_owned(),
       retry: RETRY,
@@ -58,13 +65,13 @@ impl LlmProvider for AnthropicHttpProvider {
     match self.api_key {
       Some(_) => Availability::Available,
       None => Availability::Unavailable {
-        reason: format!("{ANTHROPIC_API_KEY_ENV} is not set"),
+        reason: format!("{} is not set", self.api_key_env),
       },
     }
   }
 
   fn complete(&self, request: &LlmRequest) -> Result<LlmResponse, LlmError> {
-    let api_key = self.api_key.as_ref().ok_or_else(|| LlmError::Unavailable(format!("{ANTHROPIC_API_KEY_ENV} is not set")))?;
+    let api_key = self.api_key.as_ref().ok_or_else(|| LlmError::Unavailable(format!("{} is not set", self.api_key_env)))?;
     let body = json!({
       "model": self.model,
       "max_tokens": request.max_output_tokens,
@@ -210,6 +217,7 @@ mod tests {
   fn should_be_unavailable_without_an_api_key() {
     let provider = AnthropicHttpProvider {
       model: "m".into(),
+      api_key_env: ANTHROPIC_API_KEY_ENV.to_owned(),
       api_key: None,
       base_url: String::new(),
       retry: RETRY,

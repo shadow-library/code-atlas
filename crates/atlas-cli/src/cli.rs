@@ -33,6 +33,8 @@ pub enum LogFormat {
 pub enum Command {
   #[command(subcommand, about = "Manage registered projects and their repos")]
   Project(ProjectCommand),
+  #[command(subcommand, about = "Show the layered configuration and where each value comes from")]
+  Config(ConfigCommand),
   #[command(about = "Pin the current repo to a project with a .code-atlas.toml marker")]
   Init,
   #[command(about = "Index the project now")]
@@ -261,7 +263,10 @@ pub struct ConfigArgs {
   pub lsp_exclude: Vec<String>,
   #[arg(long, conflicts_with = "lsp_exclude", help = "Remove every lsp exclude glob")]
   pub lsp_exclude_clear: bool,
-  #[arg(long, help = "Restore every setting to its default before applying the other flags")]
+  #[arg(
+    long,
+    help = "Forget every setting this project stores in projects.toml (config.toml defaults apply again) before applying the other flags"
+  )]
   pub reset: bool,
   #[arg(long)]
   pub json: bool,
@@ -275,8 +280,29 @@ pub struct IndexArgs {
 
 #[derive(Debug, Args)]
 pub struct McpArgs {
-  #[arg(long, help = "Also watch the repos so answers stay fresh between calls")]
+  #[arg(long, help = "Also watch the repos so answers stay fresh between calls (default: [mcp] watch in config.toml)")]
   pub watch: bool,
+  #[arg(long, conflicts_with = "watch", help = "Do not watch, even when config.toml or CODE_ATLAS_MCP_WATCH turns watching on")]
+  pub no_watch: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigCommand {
+  #[command(about = "Print configuration keys with their values; -p or the working directory selects the project")]
+  Show(ConfigShowArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ConfigShowArgs {
+  #[arg(long, help = "Also list keys that still have their built-in value")]
+  pub effective: bool,
+  #[arg(
+    long,
+    help = "Prefix each key with the layer it came from: built-in, config.toml, projects.toml, <repo>/.code-atlas.toml, env:<VAR> or flag:<FLAG>"
+  )]
+  pub origin: bool,
+  #[arg(long)]
+  pub json: bool,
 }
 
 #[derive(Debug, Args)]

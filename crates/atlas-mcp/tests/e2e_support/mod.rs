@@ -95,7 +95,7 @@ impl Sandbox {
   }
 
   pub fn cli(&self, cwd: &Path, args: &[&str]) -> CliRun {
-    let output = Command::new(binary())
+    let output = without_atlas_settings(Command::new(binary()))
       .args(args)
       .current_dir(cwd)
       .env("CODE_ATLAS_HOME", self.home())
@@ -142,6 +142,15 @@ impl Sandbox {
   }
 }
 
+fn without_atlas_settings(mut command: Command) -> Command {
+  for (name, _) in std::env::vars_os() {
+    if name.to_string_lossy().starts_with("CODE_ATLAS_") {
+      command.env_remove(name);
+    }
+  }
+  command
+}
+
 pub struct Server {
   pub client: RunningService<RoleClient, ()>,
   child: Child,
@@ -149,7 +158,7 @@ pub struct Server {
 
 impl Server {
   pub async fn spawn(command: &Path, args: &[&str], cwd: &Path, home: &Path) -> Self {
-    let mut child = tokio::process::Command::new(command)
+    let mut child = tokio::process::Command::from(without_atlas_settings(Command::new(command)))
       .args(args)
       .current_dir(cwd)
       .env("CODE_ATLAS_HOME", home)

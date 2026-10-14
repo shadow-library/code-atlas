@@ -123,6 +123,7 @@ impl Binding {
 pub struct Resolution {
   pub project: Project,
   pub binding: Binding,
+  pub warnings: Vec<String>,
 }
 
 enum Relation {

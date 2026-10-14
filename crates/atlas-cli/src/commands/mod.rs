@@ -1,3 +1,4 @@
+mod config;
 mod connect;
 mod debug;
 mod doctor;
@@ -25,6 +26,7 @@ pub fn run(project: Option<String>, command: Command) -> CliResult<Outcome> {
   let ctx = Context::load(project)?;
   match command {
     Command::Project(command) => project::run(&ctx, command),
+    Command::Config(command) => config::run(&ctx, command),
     Command::Init => init::run(&ctx),
     Command::Index(args) => index::run(&ctx, args),
     Command::Status(args) => query::status(&ctx, args),

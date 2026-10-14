@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -7,12 +8,14 @@ use fd_lock::RwLock;
 use serde::{Deserialize, Serialize};
 
 use crate::binding::{Binding, Locator, Resolution};
+use crate::config::{ConfigEntry, ConfigEnv, Keyed, McpFlags, PROJECT_KEYS, ProjectView, UserConfig, default_entries, inherited_settings, resolve_mcp, resolve_project};
+use crate::document::merge_or_fresh;
 use crate::error::ProjectError;
 use crate::globs::PathGlobs;
 use crate::home::AtlasHome;
+use crate::marker::{MARKER_FILE, RepoFile};
 
 const LOCK_FILE: &str = "projects.toml.lock";
-const MARKER_FILE: &str = ".code-atlas.toml";
 const MAX_REPO_NAME_LEN: usize = 128;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,6 +37,8 @@ pub struct LlmSettings {
   pub provider: Option<String>,
   pub model: Option<String>,
   pub enabled: bool,
+  pub openai_base_url: Option<String>,
+  pub api_key_env: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -153,8 +158,37 @@ pub struct ProjectSettings {
   pub max_file_bytes: u64,
 }
 
+impl LlmSettings {
+  pub fn validate(&self) -> Result<(), String> {
+    if let Some(name) = &self.api_key_env
+      && !is_variable_name(name)
+    {
+      return Err(
+        "llm.api_key_env must name an environment variable (letters, digits and underscores, not starting with a digit); the value is not shown in case it is a key".to_owned(),
+      );
+    }
+    let Some(url) = &self.openai_base_url else {
+      return Ok(());
+    };
+    let Some(rest) = url.strip_prefix("https://").or_else(|| url.strip_prefix("http://")) else {
+      return Err("llm.openai_base_url must start with http:// or https://; the value is not shown in case it holds a credential".to_owned());
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    match authority.contains('@') {
+      true => Err("llm.openai_base_url must not carry credentials (user:password@); name the key variable with llm.api_key_env instead".to_owned()),
+      false => Ok(()),
+    }
+  }
+}
+
+fn is_variable_name(name: &str) -> bool {
+  let mut characters = name.chars();
+  characters.next().is_some_and(|first| first.is_ascii_alphabetic() || first == '_') && characters.all(|character| character.is_ascii_alphanumeric() || character == '_')
+}
+
 impl ProjectSettings {
   pub fn validate(&self) -> Result<(), String> {
+    self.llm.validate()?;
     self.lsp.validate()
   }
 }
@@ -219,30 +253,143 @@ pub struct RepoFilters {
   pub languages: Option<Vec<Language>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsUpdate {
+  pub values: ProjectSettings,
+  pub explicit: Vec<String>,
+  pub reset: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StoredProject {
+  pub(crate) project: Project,
+  pub(crate) pinned: BTreeSet<String>,
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RegistryFile {
   #[serde(default, rename = "project")]
-  projects: Vec<Project>,
+  projects: Vec<ProjectRecord>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct MarkerFile {
-  project: String,
+struct ProjectRecord {
+  name: ProjectName,
+  #[serde(default)]
+  settings: SettingsRecord,
+  #[serde(default, rename = "repo")]
+  repos: Vec<RepoConfig>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+struct SettingsRecord {
+  llm: LlmSettings,
+  scip: ScipSettings,
+  #[serde(skip_serializing_if = "LspSettings::is_default")]
+  lsp: LspSettings,
+  max_file_bytes: u64,
+  #[serde(skip_serializing_if = "BTreeSet::is_empty")]
+  pinned: BTreeSet<String>,
+}
+
+impl Default for SettingsRecord {
+  fn default() -> Self {
+    Self::new(ProjectSettings::default(), BTreeSet::new())
+  }
+}
+
+impl SettingsRecord {
+  fn new(settings: ProjectSettings, pinned: BTreeSet<String>) -> Self {
+    Self {
+      llm: settings.llm,
+      scip: settings.scip,
+      lsp: settings.lsp,
+      max_file_bytes: settings.max_file_bytes,
+      pinned,
+    }
+  }
+}
+
+impl From<ProjectRecord> for StoredProject {
+  fn from(record: ProjectRecord) -> Self {
+    let SettingsRecord {
+      llm,
+      scip,
+      lsp,
+      max_file_bytes,
+      pinned,
+    } = record.settings;
+    Self {
+      project: Project {
+        name: record.name,
+        settings: ProjectSettings { llm, scip, lsp, max_file_bytes },
+        repos: record.repos,
+      },
+      pinned,
+    }
+  }
+}
+
+impl From<&StoredProject> for ProjectRecord {
+  fn from(stored: &StoredProject) -> Self {
+    Self {
+      name: stored.project.name.clone(),
+      settings: SettingsRecord::new(stored.project.settings.clone(), stored.pinned.clone()),
+      repos: stored.project.repos.clone(),
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConfigReport {
+  pub entries: Vec<ConfigEntry>,
+  pub warnings: Vec<String>,
+}
+
+#[derive(Debug)]
+pub struct ResolutionTrace {
+  pub steps: Vec<String>,
+  pub outcome: Result<Resolution, ProjectError>,
+}
+
+#[derive(Debug)]
+struct Explained {
+  entries: Vec<ConfigEntry>,
+  warnings: Vec<String>,
 }
 
 #[derive(Debug)]
 pub struct Registry {
   registry_path: PathBuf,
+  config: UserConfig,
+  env: ConfigEnv,
+  stored: Vec<StoredProject>,
   projects: Vec<Project>,
+  explained: Vec<Explained>,
 }
 
 impl Registry {
   pub fn load(home: &AtlasHome) -> Result<Self, ProjectError> {
+    Self::load_with(home, ConfigEnv::from_process())
+  }
+
+  pub fn load_with(home: &AtlasHome, env: ConfigEnv) -> Result<Self, ProjectError> {
+    let config = UserConfig::load(home)?;
     let registry_path = home.registry_path();
-    let projects = read_projects(&registry_path)?;
-    Ok(Self { registry_path, projects })
+    let stored = read_projects(&registry_path, read_text(&registry_path)?.as_deref())?;
+    let mut registry = Self {
+      registry_path,
+      config,
+      env,
+      stored: Vec::new(),
+      projects: Vec::new(),
+      explained: Vec::new(),
+    };
+    registry.adopt(stored);
+    Ok(registry)
   }
 
   pub fn list(&self) -> &[Project] {
@@ -250,17 +397,52 @@ impl Registry {
   }
 
   pub fn project(&self, name: &str) -> Result<&Project, ProjectError> {
-    self
-      .projects
-      .iter()
-      .find(|project| project.name.as_str() == name)
-      .ok_or_else(|| ProjectError::ProjectNotFound(name.to_owned()))
+    self.position(name).map(|index| &self.projects[index])
+  }
+
+  pub fn user_config(&self) -> &UserConfig {
+    &self.config
+  }
+
+  pub fn env(&self) -> &ConfigEnv {
+    &self.env
+  }
+
+  pub fn stored_settings(&self, name: &str) -> Result<&ProjectSettings, ProjectError> {
+    self.position(name).map(|index| &self.stored[index].project.settings)
+  }
+
+  pub fn warnings(&self, project: Option<&str>) -> Vec<String> {
+    let mut warnings = self.config.warnings().to_vec();
+    warnings.extend(self.env.warnings());
+    if let Some(index) = project.and_then(|name| self.position(name).ok()) {
+      warnings.extend(self.explained[index].warnings.iter().cloned());
+    }
+    warnings
+  }
+
+  pub fn explain(&self, project: Option<&str>) -> Result<ConfigReport, ProjectError> {
+    let (mut entries, mut warnings) = match project {
+      Some(name) => {
+        let explained = &self.explained[self.position(name)?];
+        (explained.entries.clone(), self.warnings(Some(name)))
+      }
+      None => {
+        let (entries, warnings) = default_entries(&self.config, &self.env);
+        (entries, self.warnings(None).into_iter().chain(warnings).collect())
+      }
+    };
+    let mcp = resolve_mcp(&self.config, &self.env, McpFlags::default());
+    entries.extend(mcp.entries);
+    entries.extend(self.config.reserved_entries());
+    warnings.extend(mcp.warnings);
+    Ok(ConfigReport { entries, warnings })
   }
 
   pub fn create_project(&mut self, name: &str, repos: Vec<RepoSpec>) -> Result<&Project, ProjectError> {
     let name = ProjectName::new(name)?;
     self.mutate(|projects| {
-      if projects.iter().any(|project| project.name == name) {
+      if projects.iter().any(|stored| stored.project.name == name) {
         return Err(ProjectError::ProjectExists(name.to_string()));
       }
       let mut project = Project {
@@ -272,7 +454,7 @@ impl Registry {
         let repo = build_repo(&project, spec)?;
         project.repos.push(repo);
       }
-      projects.push(project);
+      projects.push(StoredProject { project, pinned: BTreeSet::new() });
       Ok(())
     })?;
     self.project(name.as_str())
@@ -282,9 +464,9 @@ impl Registry {
     self.mutate(|projects| {
       let index = projects
         .iter()
-        .position(|project| project.name.as_str() == name)
+        .position(|stored| stored.project.name.as_str() == name)
         .ok_or_else(|| ProjectError::ProjectNotFound(name.to_owned()))?;
-      Ok(projects.remove(index))
+      Ok(projects.remove(index).project)
     })
   }
 
@@ -345,41 +527,118 @@ impl Registry {
   }
 
   pub fn set_settings(&mut self, project: &str, settings: ProjectSettings) -> Result<(), ProjectError> {
-    settings.validate().map_err(|message| ProjectError::InvalidSettings {
+    self.update_settings(
+      project,
+      SettingsUpdate {
+        values: settings,
+        explicit: Vec::new(),
+        reset: false,
+      },
+    )
+  }
+
+  pub fn update_settings(&mut self, project: &str, update: SettingsUpdate) -> Result<(), ProjectError> {
+    let invalid = |message: String| ProjectError::InvalidSettings {
       project: project.to_owned(),
       message,
-    })?;
+    };
+    update.values.validate().map_err(invalid)?;
+    if let Some(unknown) = update.explicit.iter().find(|key| !PROJECT_KEYS.iter().any(|spec| spec.name == key.as_str())) {
+      return Err(invalid(format!("unknown setting {unknown}")));
+    }
+    let built_in = ProjectSettings::default();
+    let inherited = inherited_settings(&self.config);
     self.mutate(|projects| {
-      find_project_mut(projects, project)?.settings = settings;
+      let target = projects
+        .iter_mut()
+        .find(|stored| stored.project.name.as_str() == project)
+        .ok_or_else(|| ProjectError::ProjectNotFound(project.to_owned()))?;
+      if update.reset {
+        target.pinned.clear();
+      }
+      for key in &update.explicit {
+        let value = update.values.get(key);
+        match value.is_some() && value == built_in.get(key) && inherited.get(key) != value {
+          true => target.pinned.insert(key.clone()),
+          false => target.pinned.remove(key),
+        };
+      }
+      target.pinned.retain(|key| update.values.get(key) == built_in.get(key));
+      target.project.settings = update.values;
       Ok(())
     })
   }
 
   pub fn resolve_project(&self, cwd: &Path, explicit: Option<&str>) -> Result<&Project, ProjectError> {
-    self.locate(cwd, explicit).map(|(project, _)| project)
+    self.locate(cwd, explicit, &mut Lookup::default()).map(|(project, _)| project)
   }
 
   pub fn resolve(&self, cwd: &Path, explicit: Option<&str>) -> Result<Resolution, ProjectError> {
-    let (project, binding) = self.locate(cwd, explicit)?;
+    let mut lookup = Lookup::default();
+    let (project, binding) = self.locate(cwd, explicit, &mut lookup)?;
     Ok(Resolution {
       project: project.clone(),
       binding,
+      warnings: lookup.warnings,
     })
   }
 
-  fn locate(&self, cwd: &Path, explicit: Option<&str>) -> Result<(&Project, Binding), ProjectError> {
+  pub fn trace(&self, cwd: &Path, explicit: Option<&str>) -> ResolutionTrace {
+    let mut lookup = Lookup::default();
+    let outcome = self.locate(cwd, explicit, &mut lookup).map(|(project, binding)| Resolution {
+      project: project.clone(),
+      binding,
+      warnings: lookup.warnings.clone(),
+    });
+    let mut steps = lookup.steps;
+    match &outcome {
+      Ok(resolution) => steps.push(format!("resolved project {}{}", resolution.project.name, binding_note(&resolution.binding))),
+      Err(error) => steps.push(format!("no project: {error}")),
+    }
+    ResolutionTrace { steps, outcome }
+  }
+
+  fn is_repo_root(&self, directory: &Path) -> bool {
+    self.stored.iter().flat_map(|stored| &stored.project.repos).any(|repo| repo.path == directory)
+  }
+
+  fn find_marker(&self, canonical_cwd: &Path, lookup: &mut Lookup) -> Result<Option<(PathBuf, String)>, ProjectError> {
+    for directory in canonical_cwd.ancestors() {
+      let marker = directory.join(MARKER_FILE);
+      let Some(file) = RepoFile::read(&marker)? else { continue };
+      if !self.is_repo_root(directory) {
+        lookup.warn_outside_repo_root(&marker, &file);
+      }
+      match file.project {
+        Some(project) => {
+          lookup.steps.push(format!("{} pins project {project}", marker.display()));
+          return Ok(Some((marker, project)));
+        }
+        None => lookup.steps.push(format!("{} has no `project` key, so it pins nothing", marker.display())),
+      }
+    }
+    lookup.steps.push("no .code-atlas.toml pins a project; matching registered repo paths".to_owned());
+    Ok(None)
+  }
+
+  fn locate(&self, cwd: &Path, explicit: Option<&str>, lookup: &mut Lookup) -> Result<(&Project, Binding), ProjectError> {
     if let Some(name) = explicit {
+      lookup.steps.push(format!("--project {name} given explicitly"));
       let project = self.project(name)?;
       let binding = fs::canonicalize(cwd).ok().map(Locator::new).and_then(|locator| locator.bind(project));
       return Ok((project, binding.unwrap_or(Binding::Direct)));
     }
     let canonical = fs::canonicalize(cwd).map_err(|source| ProjectError::io("canonicalize", cwd, source))?;
+    lookup.steps.push(format!("working directory {}", canonical.display()));
     let locator = Locator::new(canonical);
-    if let Some((marker, name)) = find_marker(&locator.cwd)? {
+    if let Some((marker, name)) = self.find_marker(&locator.cwd, lookup)? {
       let project = self.project(&name).map_err(|_| ProjectError::MarkerProjectNotFound { path: marker, project: name })?;
       return Ok((project, locator.bind(project).unwrap_or(Binding::Direct)));
     }
     let bound: Vec<(&Project, Binding)> = self.projects.iter().filter_map(|project| locator.bind(project).map(|binding| (project, binding))).collect();
+    for (project, binding) in &bound {
+      lookup.steps.push(format!("project {} contains it{}", project.name, binding_note(binding)));
+    }
     let any_direct = bound.iter().any(|(_, binding)| *binding == Binding::Direct);
     let mut candidates: Vec<(&Project, Binding)> = bound.into_iter().filter(|(_, binding)| !any_direct || *binding == Binding::Direct).collect();
     candidates.sort_by(|a, b| a.0.name.cmp(&b.0.name));
@@ -393,7 +652,31 @@ impl Registry {
     }
   }
 
-  fn mutate<T>(&mut self, apply: impl FnOnce(&mut Vec<Project>) -> Result<T, ProjectError>) -> Result<T, ProjectError> {
+  fn position(&self, name: &str) -> Result<usize, ProjectError> {
+    self
+      .projects
+      .iter()
+      .position(|project| project.name.as_str() == name)
+      .ok_or_else(|| ProjectError::ProjectNotFound(name.to_owned()))
+  }
+
+  fn adopt(&mut self, stored: Vec<StoredProject>) {
+    let views: Vec<ProjectView> = stored
+      .iter()
+      .map(|project| resolve_project(project, &self.registry_path, &self.config, &self.env))
+      .collect();
+    self.projects = views.iter().map(|view| view.project.clone()).collect();
+    self.explained = views
+      .into_iter()
+      .map(|view| Explained {
+        entries: view.entries,
+        warnings: view.warnings,
+      })
+      .collect();
+    self.stored = stored;
+  }
+
+  fn mutate<T>(&mut self, apply: impl FnOnce(&mut Vec<StoredProject>) -> Result<T, ProjectError>) -> Result<T, ProjectError> {
     let directory = self.registry_path.parent().unwrap_or(Path::new("."));
     fs::create_dir_all(directory).map_err(|source| ProjectError::io("create directory", directory, source))?;
     let lock_path = directory.join(LOCK_FILE);
@@ -405,17 +688,29 @@ impl Registry {
       .map_err(|source| ProjectError::io("open lock", &lock_path, source))?;
     let mut lock = RwLock::new(lock_file);
     let _guard = lock.write().map_err(|source| ProjectError::io("acquire lock", &lock_path, source))?;
-    let mut projects = read_projects(&self.registry_path)?;
+    let text = read_text(&self.registry_path)?;
+    let before = read_projects(&self.registry_path, text.as_deref())?;
+    let mut projects = before.clone();
     let outcome = apply(&mut projects)?;
-    write_projects(&self.registry_path, &projects)?;
-    self.projects = projects;
+    let rendered = render_projects(&self.registry_path, text.as_deref(), &before, &projects)?;
+    write_projects(&self.registry_path, &rendered)?;
+    self.adopt(projects);
     Ok(outcome)
   }
 }
 
-fn find_project_mut<'a>(projects: &'a mut [Project], name: &str) -> Result<&'a mut Project, ProjectError> {
+fn binding_note(binding: &Binding) -> String {
+  match binding {
+    Binding::Direct => String::new(),
+    Binding::Worktree(worktree) => format!(" through the git worktree at {} (repo {})", worktree.worktree.display(), worktree.repo),
+    Binding::UnresolvedWorktree(unresolved) => format!(" through an unresolvable .git entry at {} (repo {})", unresolved.root.display(), unresolved.repo),
+  }
+}
+
+fn find_project_mut<'a>(projects: &'a mut [StoredProject], name: &str) -> Result<&'a mut Project, ProjectError> {
   projects
     .iter_mut()
+    .map(|stored| &mut stored.project)
     .find(|project| project.name.as_str() == name)
     .ok_or_else(|| ProjectError::ProjectNotFound(name.to_owned()))
 }
@@ -493,43 +788,57 @@ pub fn slugify(raw: &str) -> Option<String> {
   if truncated.is_empty() { None } else { Some(truncated) }
 }
 
-fn find_marker(canonical_cwd: &Path) -> Result<Option<(PathBuf, String)>, ProjectError> {
-  for directory in canonical_cwd.ancestors() {
-    let marker = directory.join(MARKER_FILE);
-    if !marker.is_file() {
-      continue;
-    }
-    let text = fs::read_to_string(&marker).map_err(|source| ProjectError::io("read", &marker, source))?;
-    let parsed: MarkerFile = toml::from_str(&text).map_err(|error| ProjectError::InvalidMarker {
-      path: marker.clone(),
-      message: error.to_string(),
-    })?;
-    return Ok(Some((marker, parsed.project)));
-  }
-  Ok(None)
+#[derive(Default)]
+struct Lookup {
+  steps: Vec<String>,
+  warnings: Vec<String>,
 }
 
-fn read_projects(path: &Path) -> Result<Vec<Project>, ProjectError> {
-  let text = match fs::read_to_string(path) {
-    Ok(text) => text,
-    Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-    Err(source) => return Err(ProjectError::io("read", path, source)),
-  };
-  let file: RegistryFile = toml::from_str(&text).map_err(|error| ProjectError::RegistryParse {
+impl Lookup {
+  fn warn_outside_repo_root(&mut self, marker: &Path, file: &RepoFile) {
+    let mut warnings: Vec<String> = file.warnings.iter().map(|warning| format!("{}: {warning}", marker.display())).collect();
+    let configures = !file.include.is_empty() || !file.exclude.is_empty() || file.languages.is_some() || !file.settings.is_empty();
+    if configures {
+      warnings.push(format!(
+        "{}: only `project` is read here; settings and [index] keys apply only in the .code-atlas.toml at a registered repo root",
+        marker.display()
+      ));
+    }
+    self.steps.extend(warnings.iter().map(|warning| format!("warning: {warning}")));
+    self.warnings.extend(warnings);
+  }
+}
+
+fn read_text(path: &Path) -> Result<Option<String>, ProjectError> {
+  match fs::read_to_string(path) {
+    Ok(text) => Ok(Some(text)),
+    Err(source) if source.kind() == io::ErrorKind::NotFound => Ok(None),
+    Err(source) => Err(ProjectError::io("read", path, source)),
+  }
+}
+
+fn read_projects(path: &Path, text: Option<&str>) -> Result<Vec<StoredProject>, ProjectError> {
+  let Some(text) = text else { return Ok(Vec::new()) };
+  let file: RegistryFile = toml::from_str(text).map_err(|error| ProjectError::RegistryParse {
     path: path.to_owned(),
     message: error.to_string(),
   })?;
-  validate_loaded(path, &file.projects)?;
-  Ok(file.projects)
+  let projects: Vec<StoredProject> = file.projects.into_iter().map(StoredProject::from).collect();
+  validate_loaded(path, &projects)?;
+  Ok(projects)
 }
 
-fn validate_loaded(path: &Path, projects: &[Project]) -> Result<(), ProjectError> {
+fn validate_loaded(path: &Path, projects: &[StoredProject]) -> Result<(), ProjectError> {
   let invalid = |message: String| ProjectError::RegistryParse { path: path.to_owned(), message };
-  for (index, project) in projects.iter().enumerate() {
+  for (index, stored) in projects.iter().enumerate() {
+    let project = &stored.project;
     if let Err(message) = project.settings.validate() {
       return Err(invalid(format!("project {:?}: {message}", project.name.as_str())));
     }
-    if projects[..index].iter().any(|earlier| earlier.name == project.name) {
+    if let Some(unknown) = stored.pinned.iter().find(|key| !PROJECT_KEYS.iter().any(|spec| spec.name == key.as_str())) {
+      return Err(invalid(format!("project {:?}: pinned names unknown setting {unknown:?}", project.name.as_str())));
+    }
+    if projects[..index].iter().any(|earlier| earlier.project.name == project.name) {
       return Err(invalid(format!("project {:?} is defined twice", project.name.as_str())));
     }
     for (position, repo) in project.repos.iter().enumerate() {
@@ -545,10 +854,21 @@ fn validate_loaded(path: &Path, projects: &[Project]) -> Result<(), ProjectError
   Ok(())
 }
 
-fn write_projects(path: &Path, projects: &[Project]) -> Result<(), ProjectError> {
+fn render_projects(path: &Path, previous: Option<&str>, before: &[StoredProject], after: &[StoredProject]) -> Result<String, ProjectError> {
+  let file = RegistryFileRef {
+    projects: after.iter().map(ProjectRecord::from).collect(),
+  };
+  let fresh = toml::to_string_pretty(&file).map_err(|error| ProjectError::RegistrySerialize(error.to_string()))?;
+  let Some(previous) = previous.filter(|text| !text.trim().is_empty()) else {
+    return Ok(fresh);
+  };
+  let unchanged = |index: usize| before.get(index).is_some_and(|old| after.iter().any(|new| new == old));
+  let reproduces = |merged: &str| read_projects(path, Some(merged)).is_ok_and(|parsed| parsed == after);
+  Ok(merge_or_fresh(previous, &fresh, unchanged, reproduces))
+}
+
+fn write_projects(path: &Path, text: &str) -> Result<(), ProjectError> {
   let directory = path.parent().unwrap_or(Path::new("."));
-  let file = RegistryFileRef { projects };
-  let text = toml::to_string_pretty(&file).map_err(|error| ProjectError::RegistrySerialize(error.to_string()))?;
   let mut temp = tempfile::NamedTempFile::new_in(directory).map_err(|source| ProjectError::io("create temp file", directory, source))?;
   temp.write_all(text.as_bytes()).map_err(|source| ProjectError::io("write", temp.path(), source))?;
   temp.as_file().sync_all().map_err(|source| ProjectError::io("sync", temp.path(), source))?;
@@ -564,9 +884,9 @@ fn sync_directory(directory: &Path) {
 }
 
 #[derive(Serialize)]
-struct RegistryFileRef<'a> {
+struct RegistryFileRef {
   #[serde(rename = "project")]
-  projects: &'a [Project],
+  projects: Vec<ProjectRecord>,
 }
 
 #[cfg(test)]
@@ -601,7 +921,7 @@ mod tests {
     }
 
     fn registry(&self) -> Registry {
-      Registry::load(&self.home).unwrap()
+      Registry::load_with(&self.home, ConfigEnv::default()).unwrap()
     }
   }
 
@@ -838,6 +1158,7 @@ mod tests {
         provider: Some("anthropic".to_owned()),
         model: Some("m".to_owned()),
         enabled: true,
+        ..LlmSettings::default()
       },
       scip: ScipSettings { enabled: false, debounce_secs: 5 },
       lsp: LspSettings {
@@ -1114,11 +1435,13 @@ mod tests {
   }
 
   #[test]
-  fn should_reject_a_malformed_marker() {
+  fn should_ignore_unknown_marker_keys_but_reject_broken_syntax() {
     let sandbox = Sandbox::new();
     let dir = sandbox.repo_dir("one");
-    let registry = registry_with(&sandbox, &[("acme", &[&dir])]);
-    fs::write(dir.join(MARKER_FILE), "projekt = \"acme\"\n").unwrap();
+    let registry = registry_with(&sandbox, &[("acme", &[&dir]), ("globex", &[])]);
+    fs::write(dir.join(MARKER_FILE), "projekt = \"globex\"\n[[detect.routes]]\npack = \"x\"\n").unwrap();
+    assert_eq!(registry.resolve_project(&dir, None).unwrap().name.as_str(), "acme");
+    fs::write(dir.join(MARKER_FILE), "project = \n").unwrap();
     assert!(matches!(registry.resolve_project(&dir, None), Err(ProjectError::InvalidMarker { .. })));
   }
 
@@ -1184,6 +1507,252 @@ mod tests {
     std::os::unix::fs::symlink(&dir, &link).unwrap();
     let registry = registry_with(&sandbox, &[("acme", &[&dir])]);
     assert_eq!(registry.resolve_project(&link.join("sub"), None).unwrap().name.as_str(), "acme");
+  }
+
+  fn write_config(sandbox: &Sandbox, text: &str) {
+    fs::create_dir_all(sandbox.home.config_dir()).unwrap();
+    fs::write(sandbox.home.config_path(), text).unwrap();
+  }
+
+  fn origin_of(registry: &Registry, project: &str, key: &str) -> Vec<String> {
+    let report = registry.explain(Some(project)).unwrap();
+    let entry = report.entries.iter().find(|entry| entry.key == key).unwrap_or_else(|| panic!("no entry {key}"));
+    entry.origins.iter().map(ToString::to_string).collect()
+  }
+
+  #[test]
+  fn should_resolve_every_project_exactly_as_stored_without_config_toml_or_repo_files() {
+    let sandbox = Sandbox::new();
+    let dir = sandbox.repo_dir("one");
+    let mut spec = RepoSpec::new(&dir);
+    spec.exclude = vec!["dist/".to_owned(), "dist/".to_owned()];
+    spec.languages = Some(vec![Language::Rust]);
+    let mut registry = sandbox.registry();
+    registry.create_project("acme", vec![spec]).unwrap();
+    let mut settings = ProjectSettings::default();
+    settings.scip.enabled = true;
+    registry.set_settings("acme", settings.clone()).unwrap();
+
+    let reloaded = sandbox.registry();
+    let project = reloaded.project("acme").unwrap();
+
+    assert_eq!(project.settings, settings);
+    assert_eq!(project.repos[0].exclude, ["dist/", "dist/"]);
+    assert_eq!(project.repos[0].languages, Some(vec![Language::Rust]));
+    assert!(reloaded.warnings(Some("acme")).is_empty());
+  }
+
+  #[test]
+  fn should_layer_config_defaults_under_sparse_project_settings_and_the_repo_layer_above_them() {
+    let sandbox = Sandbox::new();
+    let one = sandbox.repo_dir("one");
+    let mut registry = sandbox.registry();
+    let mut spec = RepoSpec::new(&one);
+    spec.exclude = vec!["dist/".to_owned()];
+    registry.create_project("acme", vec![spec]).unwrap();
+    let mut settings = ProjectSettings::default();
+    settings.lsp.max_servers = 5;
+    settings.max_file_bytes = 4096;
+    registry.set_settings("acme", settings).unwrap();
+    write_config(
+      &sandbox,
+      "version = 1\n[defaults]\nmax_file_bytes = 2048\nexclude = [\"**/*.gen.ts\", \"dist/\"]\n[defaults.lsp]\nmax_servers = 3\nenabled = false\n[defaults.scip]\nenabled = true\n",
+    );
+    fs::write(one.join(MARKER_FILE), "project = \"acme\"\nmax_file_bytes = 8192\n[index]\nexclude = [\"legacy/**\"]\n").unwrap();
+    let env = ConfigEnv::from_pairs([("CODE_ATLAS_SCIP_ENABLED", "false"), ("CODE_ATLAS_MAX_FILE_BYTES", "1")]);
+
+    let registry = Registry::load_with(&sandbox.home, env).unwrap();
+    let project = registry.project("acme").unwrap();
+
+    assert_eq!(
+      (
+        project.settings.lsp.enabled,
+        project.settings.lsp.max_servers,
+        project.settings.scip.enabled,
+        project.settings.max_file_bytes
+      ),
+      (false, 5, false, 8192)
+    );
+    assert_eq!(project.repos[0].exclude, ["dist/", "**/*.gen.ts", "legacy/**"]);
+    assert_eq!(origin_of(&registry, "acme", "lsp.enabled"), ["config.toml"]);
+    assert_eq!(origin_of(&registry, "acme", "lsp.max_servers"), ["projects.toml"]);
+    assert_eq!(origin_of(&registry, "acme", "scip.enabled"), ["env:CODE_ATLAS_SCIP_ENABLED"]);
+    assert_eq!(origin_of(&registry, "acme", "max_file_bytes"), ["one/.code-atlas.toml"]);
+    assert_eq!(origin_of(&registry, "acme", "lsp.idle_secs"), ["built-in"]);
+    assert_eq!(origin_of(&registry, "acme", "repo.one.exclude"), ["projects.toml", "config.toml", "one/.code-atlas.toml"]);
+    assert_eq!(
+      registry.warnings(Some("acme")),
+      ["env:CODE_ATLAS_MAX_FILE_BYTES: max_file_bytes ignored: it changes indexed facts, so only config.toml, projects.toml or a repository's .code-atlas.toml may set it"]
+    );
+  }
+
+  #[test]
+  fn should_let_a_global_default_reach_a_project_that_stored_the_old_built_in_defaults() {
+    let sandbox = Sandbox::new();
+    sandbox.registry().create_project("acme", vec![]).unwrap();
+    let stored = fs::read_to_string(sandbox.home.registry_path()).unwrap();
+    assert!(stored.contains("max_file_bytes = 1048576") && stored.contains("debounce_secs = 30"), "{stored}");
+    write_config(&sandbox, "[defaults]\nmax_file_bytes = 2048\n[defaults.scip]\ndebounce_secs = 5\n");
+
+    let registry = sandbox.registry();
+
+    assert_eq!(registry.project("acme").unwrap().settings.max_file_bytes, 2048);
+    assert_eq!(registry.project("acme").unwrap().settings.scip.debounce_secs, 5);
+    assert_eq!(origin_of(&registry, "acme", "scip.debounce_secs"), ["config.toml"]);
+  }
+
+  #[test]
+  fn should_pin_an_explicit_built_in_value_only_when_a_global_default_would_override_it() {
+    let sandbox = Sandbox::new();
+    let mut registry = sandbox.registry();
+    registry.create_project("acme", vec![]).unwrap();
+    let pristine = fs::read_to_string(sandbox.home.registry_path()).unwrap();
+    let explicit_scip_off = |registry: &mut Registry| {
+      let values = registry.stored_settings("acme").unwrap().clone();
+      let update = SettingsUpdate {
+        values,
+        explicit: vec!["scip.enabled".to_owned()],
+        reset: false,
+      };
+      registry.update_settings("acme", update).unwrap();
+    };
+
+    explicit_scip_off(&mut registry);
+    assert_eq!(fs::read_to_string(sandbox.home.registry_path()).unwrap(), pristine);
+
+    write_config(&sandbox, "[defaults.scip]\nenabled = true\n");
+    let mut registry = sandbox.registry();
+    assert!(registry.project("acme").unwrap().settings.scip.enabled);
+    explicit_scip_off(&mut registry);
+
+    let written = fs::read_to_string(sandbox.home.registry_path()).unwrap();
+    assert!(written.contains("pinned = [\"scip.enabled\"]"), "{written}");
+    let reloaded = sandbox.registry();
+    assert!(!reloaded.project("acme").unwrap().settings.scip.enabled);
+    assert_eq!(origin_of(&reloaded, "acme", "scip.enabled"), ["projects.toml"]);
+
+    let mut reloaded = reloaded;
+    let reset = SettingsUpdate {
+      values: ProjectSettings::default(),
+      explicit: Vec::new(),
+      reset: true,
+    };
+    reloaded.update_settings("acme", reset).unwrap();
+    assert_eq!(fs::read_to_string(sandbox.home.registry_path()).unwrap(), pristine);
+  }
+
+  #[test]
+  fn should_reject_an_unknown_pinned_setting() {
+    let sandbox = Sandbox::new();
+    fs::create_dir_all(sandbox.home.config_dir()).unwrap();
+    fs::write(sandbox.home.registry_path(), "[[project]]\nname = \"a\"\n[project.settings]\npinned = [\"scip.enabld\"]\n").unwrap();
+    let error = Registry::load_with(&sandbox.home, ConfigEnv::default()).unwrap_err();
+    assert!(error.to_string().ends_with("project \"a\": pinned names unknown setting \"scip.enabld\""), "{error}");
+  }
+
+  #[test]
+  fn should_keep_comments_and_untouched_projects_when_writing_the_registry() {
+    let sandbox = Sandbox::new();
+    let one = sandbox.repo_dir("one");
+    fs::create_dir_all(sandbox.home.config_dir()).unwrap();
+    let hand_written = format!(
+      "# Code Atlas projects, edited by hand\n\n[[project]]\nname = \"acme\" # the main one\n\n[project.settings]\nmax_file_bytes = 1048576 # keep small\n\n[[project.repo]]\nname = \"one\"\npath = \"{}\" # checkout\n\n[[project]]\nname = \"sparse\"\n# no settings on purpose\n",
+      one.display()
+    );
+    fs::write(sandbox.home.registry_path(), &hand_written).unwrap();
+    let mut registry = sandbox.registry();
+
+    let mut settings = registry.stored_settings("acme").unwrap().clone();
+    settings.max_file_bytes = 42;
+    registry.set_settings("acme", settings).unwrap();
+    registry.rename_repo("acme", "one", "primary").unwrap();
+    registry.create_project("globex", vec![]).unwrap();
+
+    let written = fs::read_to_string(sandbox.home.registry_path()).unwrap();
+    for kept in [
+      "# Code Atlas projects, edited by hand\n",
+      "name = \"acme\" # the main one\n",
+      "max_file_bytes = 42 # keep small\n",
+      "name = \"primary\"\n",
+      "\" # checkout\n",
+      "[[project]]\nname = \"sparse\"\n\n[[project]]\nname = \"globex\"\n",
+      "# no settings on purpose\n",
+    ] {
+      assert!(written.contains(kept), "missing {kept:?} in\n{written}");
+    }
+    let reloaded = sandbox.registry();
+    let names: Vec<&str> = reloaded.list().iter().map(|project| project.name.as_str()).collect();
+    assert_eq!(names, ["acme", "sparse", "globex"]);
+    assert_eq!(reloaded.project("acme").unwrap().settings.max_file_bytes, 42);
+  }
+
+  #[test]
+  fn should_keep_crlf_line_endings_when_writing_the_registry() {
+    let sandbox = Sandbox::new();
+    fs::create_dir_all(sandbox.home.config_dir()).unwrap();
+    fs::write(sandbox.home.registry_path(), "# windows\r\n[[project]]\r\nname = \"acme\"\r\nrepo = []\r\n").unwrap();
+
+    sandbox.registry().create_project("globex", vec![]).unwrap();
+
+    let written = fs::read_to_string(sandbox.home.registry_path()).unwrap();
+    assert!(written.starts_with("# windows\r\n[[project]]\r\nname = \"acme\"\r\n"), "{written:?}");
+    assert_eq!(written.matches('\n').count(), written.matches("\r\n").count(), "{written:?}");
+    assert_eq!(sandbox.registry().list().len(), 2);
+  }
+
+  #[test]
+  fn should_ignore_a_repo_layer_value_that_two_repos_disagree_on() {
+    let sandbox = Sandbox::new();
+    let one = sandbox.repo_dir("one");
+    let two = sandbox.repo_dir("two");
+    let registry = registry_with(&sandbox, &[("acme", &[&one, &two])]);
+    drop(registry);
+    fs::write(one.join(MARKER_FILE), "max_file_bytes = 10\n").unwrap();
+    fs::write(two.join(MARKER_FILE), "max_file_bytes = 20\n[lsp]\ntypescript_command = [\"/tmp/evil\"]\n").unwrap();
+
+    let registry = sandbox.registry();
+
+    assert_eq!(registry.project("acme").unwrap().settings.max_file_bytes, 1024 * 1024);
+    assert_eq!(registry.project("acme").unwrap().settings.lsp.typescript_command, None);
+    assert_eq!(
+      registry.warnings(Some("acme")),
+      [
+        "max_file_bytes differs between repo-0/.code-atlas.toml (10) and repo-1/.code-atlas.toml (20); both ignored",
+        "repo-1/.code-atlas.toml: lsp.typescript_command ignored: a repository file may not name an executable",
+      ]
+    );
+  }
+
+  #[test]
+  fn should_trace_how_the_project_was_chosen() {
+    let sandbox = Sandbox::new();
+    let dir = sandbox.repo_dir("one");
+    let nested = dir.join("src");
+    fs::create_dir_all(&nested).unwrap();
+    let registry = registry_with(&sandbox, &[("acme", &[&dir])]);
+    fs::write(nested.join(MARKER_FILE), "[index]\nexclude = [\"x\"]\n").unwrap();
+
+    let trace = registry.trace(&nested, None);
+
+    assert_eq!(
+      trace.steps,
+      [
+        format!("working directory {}", nested.display()),
+        format!(
+          "warning: {}: only `project` is read here; settings and [index] keys apply only in the .code-atlas.toml at a registered repo root",
+          nested.join(MARKER_FILE).display()
+        ),
+        format!("{} has no `project` key, so it pins nothing", nested.join(MARKER_FILE).display()),
+        "no .code-atlas.toml pins a project; matching registered repo paths".to_owned(),
+        "project acme contains it".to_owned(),
+        "resolved project acme".to_owned(),
+      ]
+    );
+    assert_eq!(registry.resolve(&nested, None).unwrap().warnings.len(), 1);
+    fs::write(dir.join(MARKER_FILE), "project = \"acme\"\nfuture = 1\n").unwrap();
+    assert!(registry.resolve(&dir, None).unwrap().warnings.is_empty());
+    let pinned = registry.trace(&nested, Some("acme"));
+    assert_eq!(pinned.steps, ["--project acme given explicitly", "resolved project acme"]);
   }
 
   fn worktree_of(project: &str, repo: &str, worktree: &Path, main: &Path) -> Binding {

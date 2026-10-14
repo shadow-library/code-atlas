@@ -24,10 +24,11 @@ The repository's `.cargo/config.toml` sets `LIBSQLITE3_FLAGS="-USQLITE_ENABLE_ME
 
 | Item | Location |
 |---|---|
+| Global defaults | `<config dir>/config.toml` (optional; see [Configuration layers](#configuration-layers)) |
 | Registry | `<config dir>/projects.toml` (locked by `projects.toml.lock` while written) |
 | Project database | `<data dir>/<project>/atlas.db` (plus `-wal`, `-shm`, `atlas.db.index.lock`) |
 | SCIP cache | `<data dir>/<project>/scip-cache/` |
-| Repo marker | `.code-atlas.toml` in a repo (`project = "<name>"`), written by `init` |
+| Repo marker and repo layer | `.code-atlas.toml` in a repo (`project = "<name>"` pin, optional `[index]` keys), pin written by `init` |
 | Bench corpora | `<data dir>/bench-corpora/` |
 
 The command is `catl`. The home directories, `CODE_ATLAS_HOME`, the `.code-atlas.toml` marker and the MCP server name keep the project name `code-atlas`.
@@ -37,7 +38,7 @@ Resolution order for the home:
 1. `CODE_ATLAS_HOME=<root>`: config in `<root>/config`, data in `<root>/data`. Use it for experiments, tests and CI.
 2. Otherwise XDG: config `$XDG_CONFIG_HOME/code-atlas` (default `~/.config/code-atlas`), data `$XDG_DATA_HOME/code-atlas` (default `~/.local/share/code-atlas`). Relative or empty XDG values are ignored.
 
-Project resolution (for commands without `-p`): the `.code-atlas.toml` marker found walking up from the working directory; otherwise the single project having a repo that contains the working directory. No match exits 2 with a hint; several matches exit 2 listing the candidates.
+Project resolution (for commands without `-p`): the nearest `.code-atlas.toml` with a `project` key, walking up from the working directory (a marker without one pins nothing and the walk continues); otherwise the single project having a repo that contains the working directory. No match exits 2 with a hint; several matches exit 2 listing the candidates. `doctor` prints each step of this resolution.
 
 ## Exit codes
 
@@ -67,7 +68,8 @@ Global flags: `-p, --project <NAME>`, `--log-level <FILTER>` (overrides `RUST_LO
 | `project add-repo <PROJECT> <PATH> [--name] [--include GLOB]... [--exclude GLOB]... [--languages rust,ts]`, `remove-repo`, `rename-repo <PROJECT> <OLD> <NEW>`, `set-repo <PROJECT> <REPO> (--include\|--exclude\|--languages\|--clear-filters)` | edit repos (`set-repo` replaces the given filters atomically); removed or renamed repos are dropped or re-keyed on the next query or index |
 | `project list [--json]`, `project show <NAME> [--json]` | inspect the registry |
 | `project delete <NAME> [--purge-data] [-y]` | unregister; `--purge-data` also deletes the database and caches |
-| `project config <PROJECT> [flags]` | show or change settings (below) |
+| `project config <PROJECT> [flags]` | show the effective settings or change the ones stored in `projects.toml` (below) |
+| `config show [--effective] [--origin] [--json]` | print configuration keys of the project in scope (`-p` or the working directory; global keys only outside every project): by default only keys set somewhere, `--effective` all of them, `--origin` with the layer each value came from |
 | `init` | write `.code-atlas.toml` and add the current directory as a repo of `-p <project>` (created if missing) |
 | `index [--full]` | index now; `--full` re-analyzes every file |
 | `status [--json]` | freshness, parse and skip counts, unresolved reasons, edge certainty histogram per kind, SCIP coverage, inferred-fact counts, LLM spend, recent runs |
@@ -89,7 +91,7 @@ Global flags: `-p, --project <NAME>`, `--log-level <FILTER>` (overrides `RUST_LO
 | `connect claude [--scope project\|user] [-y]` | wire into Claude Code: user scope registers `catl mcp --watch` (project inferred per session), project scope writes `.mcp.json` with `catl mcp --project <p> --watch`; see [agent integration](agent-integration.md) |
 | `mcp [--watch]` | serve MCP on stdio for the project of `-p` or the working directory; where no project resolves it serves only `atlas_status`, which explains how to register the repo |
 | `debug run <ID>`, `debug explain-context <TASK>`, `debug dump-file <REPO:PATH>` | per-run phase timings and counts, context scoring, raw facts of a file |
-| `doctor [--lsp]` | check home, registry, repos, database integrity, index lock, `rust-analyzer`, `typescript-language-server` discovery (one line per candidate), TypeScript 7 repos, `npx`, `claude`, SQLite build; `--lsp` also starts each language server and reports its health (slow) |
+| `doctor [--lsp]` | check home, `config.toml`, registry, the project resolution trace, ignored configuration values, a user-scope Claude Code entry that still pins `--project`, repos, database integrity, index lock, `rust-analyzer`, `typescript-language-server` discovery (one line per candidate), TypeScript 7 repos, `npx`, `claude`, SQLite build; `--lsp` also starts each language server and reports its health (slow) |
 
 Every query accepts `--json`. Other flags are per command (`catl query <command> --help` is authoritative):
 
@@ -127,9 +129,85 @@ Worktrees are not indexed yet. A directory inside a git worktree of a registered
 - Limitation: the MCP server decides its binding once, from the directory it starts in. An agent whose server started in the main checkout and that then moves into a worktree (or subagents that share the parent session's servers) is not protected: answers carry no caveat and `atlas_edit` writes into the main checkout. Start the agent session inside the worktree. The CLI resolves on every call, so it has no such gap.
 - The watcher ignores `.worktrees` and `.claude/worktrees` under a repo, so work in a worktree does not wake the main project's index. Submodules are separate checkouts, not worktrees.
 
+## Configuration layers
+
+Every setting resolves through these layers, later ones winning:
+
+1. built-in defaults;
+2. `<config dir>/config.toml` (optional, per user): `[defaults]` for every project, plus `[mcp]`, `[agents]` and `[worktrees]`;
+3. `projects.toml`: the project's own `[project.settings]` and repo filters;
+4. `<repo>/.code-atlas.toml` of each registered repo (committable);
+5. environment variables `CODE_ATLAS_<KEY>`, the key upper-cased with dots as underscores (`CODE_ATLAS_LSP_ENABLED=false`, `CODE_ATLAS_MCP_WATCH=true`; lists as TOML arrays, `CODE_ATLAS_LSP_EXCLUDE='["fixtures/**"]'`);
+6. command-line flags (`mcp --watch` / `--no-watch`).
+
+Two rules cut across the order:
+
+- **Fact keys** change what is indexed: `max_file_bytes` and each repo's `include`, `exclude` and `languages`. They stop at the repo layer and enter the project fingerprint, so changing them makes every engine re-adopt the project and re-index what changed. Environment variables and flags never change them (`CODE_ATLAS_MAX_FILE_BYTES` is ignored with a warning), so two processes with different environments cannot write different facts into one database.
+- **A repository file is data only.** `.code-atlas.toml` may set `project`, `[index] include`, `exclude`, `languages` (for its own repo) and `max_file_bytes` (for the whole project, applied only when every repo that sets it agrees). Executables (`lsp.typescript_command`, `agents.binary`), credential settings (`llm.api_key_env`, `llm.openai_base_url`) and machine settings (`lsp.*`, `scip.*`, `llm.*`, `mcp.*`) are ignored there with a warning, because cloning a repository must never run its command or redirect a key.
+
+List values combine instead of replacing: a repo's effective `exclude` is its `projects.toml` globs, then `[defaults] exclude`, then the repo file's `[index] exclude`; `include` likewise without the defaults. A repo file's `languages` replaces the registry's.
+
+`config.toml` rejects invalid values of known keys, broken syntax and a `version` other than 1 with an error naming the file (exit 2). Unknown keys and tables there are ignored with a warning, so a file written for a newer `catl` still loads in an older one or in a running MCP server. Without the file everything behaves as before it existed. `llm.api_key_env` must be a variable name and `llm.openai_base_url` an `http(s)://` URL without `user:password@`; neither error echoes the value, in case a key was pasted there. A `.code-atlas.toml` is lenient: unknown keys (for example keys a newer `catl` writes) and invalid values, including an empty `languages = []`, are ignored with a warning, and only broken TOML syntax or a non-string `project` is an error. A marker above or below a repo root only pins `project`; its other keys are ignored with a warning. Warnings print once per command on stderr, in the MCP server log, and in `doctor`.
+
+```toml
+# ~/.config/code-atlas/config.toml
+version = 1
+
+[defaults]
+max_file_bytes = 2097152
+exclude = ["**/*.gen.ts"]          # appended to every repo's exclude
+
+[defaults.lsp]
+max_servers = 3
+
+[defaults.scip]
+enabled = true
+
+[defaults.llm]
+provider = "openai-compatible"
+openai_base_url = "http://localhost:8080/v1"   # wins over OPENAI_BASE_URL
+api_key_env = "LOCAL_LLM_KEY"                  # names the variable; never the key itself
+
+[mcp]
+watch = true                       # what `catl mcp` does without --watch / --no-watch
+max_output_bytes = 100000
+max_body_lines = 400
+tools = "full"                     # stored and validated; not acted on yet
+
+[agents]                           # validated; not acted on yet
+binary = "catl"
+guidance = "auto"
+
+[worktrees]                        # validated; not acted on yet
+mode = "overlay"
+gc_after_days = 14
+```
+
+```toml
+# <repo>/.code-atlas.toml
+project = "acme"
+
+[index]
+exclude = ["apps/legacy/**"]
+```
+
+`catl config show --origin` prints each key with its layer (`built-in`, `config.toml`, `projects.toml`, `<repo>/.code-atlas.toml`, `env:<VAR>`, `flag:<FLAG>`; list keys name every contributing layer):
+
+```
+projects.toml                       scip.debounce_secs = 10
+env:CODE_ATLAS_LSP_ENABLED          lsp.enabled = false
+config.toml + app/.code-atlas.toml  repo.app.exclude = ["**/*.gen.ts", "legacy/**"]
+```
+
+**Sparse project settings.** `projects.toml` keeps its format, and every project written before `config.toml` existed stores the built-in defaults explicitly. A stored value equal to the built-in default therefore counts as unset, so a `[defaults]` value reaches it. To keep a built-in value against a different global default, set it with `project config` (for example `--scip off` while `[defaults.scip] enabled = true`): the key is then listed in `pinned = [...]` under `[project.settings]`, which a `catl` older than this layer cannot read. Optional values (`llm.provider`, `llm.model`, `lsp.typescript_command`) cannot be pinned back to unset. `--reset` forgets the project's stored settings and pins.
+
+**Writes keep comments.** `project` commands edit `projects.toml` in place: comments, key order, CRLF line endings and untouched projects are kept, and only changed values are rewritten. `init` adds or changes the `project` key of an existing `.code-atlas.toml` and keeps the rest of it. Each edited text is parsed back and compared with the intended content; if they differ, the file is written as a fresh serialisation without comments and a warning is logged.
+
+**Reloading.** The CLI reads every layer on each command. The MCP server re-reads the project layers before each tool call and reloads when the effective project changed, so an edited `config.toml [defaults]`, registry or repo file applies at the next call; `watch` reloads when another process has re-adopted the project. `[mcp]` keys and `CODE_ATLAS_MCP_*` are read once when `catl mcp` starts; restart the server to change them.
+
 ## Project config
 
-`catl project config <PROJECT>` prints settings; flags change them (`--reset` restores defaults first):
+`catl project config <PROJECT>` prints the effective settings; flags change the values stored in `projects.toml` and print what changed in the effective settings. A flag whose key an environment variable or a repo file overrides prints a warning. `--reset` forgets the stored values first:
 
 | Setting | Flag | Default |
 |---|---|---|
@@ -227,6 +305,8 @@ catl project config acme --llm on --llm-provider openai-compatible --llm-model <
 catl -p acme enrich --budget-calls 50 --budget-tokens 200000
 ```
 
+`llm.openai_base_url` and `llm.api_key_env` (in `config.toml [defaults.llm]` or a project's `[project.settings.llm]`) replace `OPENAI_BASE_URL` and the key variable (`OPENAI_API_KEY`, or `ANTHROPIC_API_KEY` for `anthropic`); the key itself is only ever read from the environment.
+
 - `enrich` runs, within one shared budget: LLM link tasks for client calls the link pass could not match (candidates are same-method endpoints), similarity classification of structural pairs and of lexical candidates (shared name words, signatures, BM25 neighbours), optional capability summaries (`--summaries`), and revalidation of stale facts. Results are stored as `inferred` facts; a link goes stale when its client file or candidate set changes. Nothing else is sent to a provider. `--dry-run` prints what each task would see.
 - Defaults per run: 50 calls, 200,000 input tokens, concurrency 4; the dry run prints the split (links up to 1/5, structural pairs next (no fixed share), lexical pairs up to 2/5, summaries up to 1/5 when enabled, revalidation the rest). Calls are skipped (and reported) once the budget is exhausted. Responses are cached by prompt hash, so repeated runs on unchanged code make no calls.
 - Default models: `claude-sonnet-5-5` for similarity, `claude-haiku-4-5-20251001` for lighter tasks; `--llm-model` overrides all tasks. The `claude-cli` provider runs `claude -p` without tools, settings or session persistence.
@@ -235,7 +315,7 @@ catl -p acme enrich --budget-calls 50 --budget-tokens 200000
 
 ## Doctor
 
-`catl doctor` prints one line per check (`ok`, `warn`, `fail`) and a summary (`0 failures, 0 warnings`): home paths, registry parse, whether the working directory is in a project, every repo path, database integrity (`PRAGMA integrity_check`), index lock state, `rust-analyzer`, `typescript-language-server` discovery and TypeScript 7 repos, `npx`, `claude` versions, and the SQLite build flags. With `--lsp` it also starts each language server of the project in scope and reports its readiness and health. It exits 3 when there are warnings and 1 on failures. Run it first when something looks wrong; follow with `status` and `debug run <id>`.
+`catl doctor` prints one line per check (`ok`, `warn`, `fail`) and a summary (`0 failures, 0 warnings`): home paths, `config.toml` parse, registry parse, whether the working directory is in a project with the resolution trace (`-p` is not consulted here), ignored configuration values, a user-scope Claude Code `code-atlas` entry that still pins `--project` (read from `$CLAUDE_CONFIG_DIR/.claude.json` or `~/.claude.json`, never written), every repo path, database integrity (`PRAGMA integrity_check`), index lock state, `rust-analyzer`, `typescript-language-server` discovery and TypeScript 7 repos, `npx`, `claude` versions, and the SQLite build flags. With `--lsp` it also starts each language server of the project in scope and reports its readiness and health. It exits 3 when there are warnings and 1 on failures. Run it first when something looks wrong; follow with `status` and `debug run <id>`.
 
 ## Logging
 

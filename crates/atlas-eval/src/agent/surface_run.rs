@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
-use super::atlas_cli::AtlasCli;
+use super::atlas_cli::{AtlasCli, isolated_command};
 use super::claude::{ClaudeConfig, EMPTY_MCP_CONFIG, SessionRequest, host_env, session_invocation};
 use super::error::{AgentError, AgentResult};
 use super::process::{ProcessExit, run_captured, run_streaming};
@@ -86,7 +86,7 @@ fn claude_version(binary: &Path) -> Option<String> {
 }
 
 pub fn fetch_mcp_surface(binary: &Path, home: &Path, project: &str, cwd: &Path) -> AgentResult<(Value, Value)> {
-  let mut child = Command::new(binary)
+  let mut child = isolated_command(binary)
     .args(["mcp", "--project", project])
     .current_dir(cwd)
     .env("CODE_ATLAS_HOME", home)

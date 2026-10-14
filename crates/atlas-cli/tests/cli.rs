@@ -33,10 +33,17 @@ impl Sandbox {
   }
 
   fn run_env(&self, cwd: &Path, args: &[&str], envs: &[(&str, &str)]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_catl"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_catl"));
+    for (name, _) in std::env::vars_os() {
+      if name.to_string_lossy().starts_with("CODE_ATLAS_") {
+        command.env_remove(name);
+      }
+    }
+    command
       .args(args)
       .current_dir(cwd)
       .env("CODE_ATLAS_HOME", self.home.path())
+      .env("CLAUDE_CONFIG_DIR", self.home.path().join("claude"))
       .env_remove("RUST_LOG")
       .envs(envs.iter().copied())
       .stdin(Stdio::null())
@@ -1557,4 +1564,179 @@ fn should_find_code_similar_to_a_draft_on_stdin_and_follow_http_hops() {
   assert!([0, 3].contains(&code(&http)), "{}", stderr(&http));
   assert_eq!(json(&http)["answer"]["via_http"], true);
   assert_eq!(json(&plain)["answer"].get("via_http"), None);
+}
+
+fn solo_repo(sandbox: &Sandbox, name: &str) -> PathBuf {
+  let repo = sandbox.work().join(name);
+  fs::create_dir_all(repo.join("src")).unwrap();
+  fs::create_dir_all(repo.join("legacy")).unwrap();
+  fs::write(repo.join("src/lib.rs"), "pub fn answer() -> u32 {\n  42\n}\n").unwrap();
+  fs::write(repo.join("legacy/old.rs"), "pub fn ancient() -> u32 {\n  7\n}\n").unwrap();
+  fs::write(repo.join("Cargo.toml"), format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n")).unwrap();
+  repo
+}
+
+fn write_user_config(sandbox: &Sandbox, text: &str) {
+  let config = sandbox.home.path().join("config");
+  fs::create_dir_all(&config).unwrap();
+  fs::write(config.join("config.toml"), text).unwrap();
+}
+
+#[test]
+fn should_show_each_set_key_with_the_layer_it_came_from() {
+  let sandbox = Sandbox::new();
+  let app = solo_repo(&sandbox, "app");
+  assert_ok(&sandbox.run(&app, &["project", "create", "acme", "--repo", app.to_str().unwrap()]));
+  assert_ok(&sandbox.run(&app, &["project", "config", "acme", "--scip-debounce", "10"]));
+  write_user_config(
+    &sandbox,
+    "version = 1\n\n[defaults]\nexclude = [\"**/*.gen.ts\"]\n\n[defaults.lsp]\nmax_servers = 3\n\n[mcp]\nmax_body_lines = 200\n\n[worktrees]\nmode = \"main\"\n",
+  );
+  fs::write(
+    app.join(".code-atlas.toml"),
+    "project = \"acme\"\n\n[index]\nexclude = [\"legacy/**\"]\n\n[lsp]\ntypescript_command = [\"/bin/sh\"]\n",
+  )
+  .unwrap();
+  let envs = [("CODE_ATLAS_LSP_ENABLED", "false"), ("CODE_ATLAS_MAX_FILE_BYTES", "5")];
+
+  let shown = sandbox.run_env(&app, &["config", "show", "--origin"], &envs);
+
+  assert_ok(&shown);
+  assert_eq!(
+    stdout(&shown),
+    format!(
+      "projects.toml                       scip.debounce_secs = 10\n\
+       env:CODE_ATLAS_LSP_ENABLED          lsp.enabled = false\n\
+       config.toml                         lsp.max_servers = 3\n\
+       projects.toml                       repo.app.path = \"{}\"\n\
+       config.toml + app/.code-atlas.toml  repo.app.exclude = [\"**/*.gen.ts\", \"legacy/**\"]\n\
+       config.toml                         mcp.max_body_lines = 200\n\
+       config.toml                         worktrees.mode = \"main\"\n",
+      app.display()
+    )
+  );
+  assert_eq!(
+    stderr(&shown),
+    "warning: env:CODE_ATLAS_MAX_FILE_BYTES: max_file_bytes ignored: it changes indexed facts, so only config.toml, projects.toml or a repository's .code-atlas.toml may set it\n\
+     warning: app/.code-atlas.toml: lsp.typescript_command ignored: a repository file may not name an executable\n"
+  );
+  let plain = stdout(&sandbox.run_env(&app, &["config", "show"], &envs));
+  assert!(plain.starts_with("scip.debounce_secs = 10\nlsp.enabled = false\n"), "{plain}");
+  let effective = stdout(&sandbox.run_env(&app, &["config", "show", "--effective", "--origin"], &envs));
+  assert!(effective.contains("built-in                            max_file_bytes = 1048576\n"), "{effective}");
+  assert!(effective.contains("built-in                            mcp.tools = \"full\"\n"), "{effective}");
+  let listed = json(&sandbox.run_env(&app, &["config", "show", "--json"], &envs));
+  assert_eq!(listed["project"], "acme");
+  assert_eq!(listed["entries"][1]["origins"][0], serde_json::json!({ "layer": "env", "var": "CODE_ATLAS_LSP_ENABLED" }));
+}
+
+#[test]
+fn should_show_only_global_keys_outside_every_project() {
+  let sandbox = Sandbox::new();
+  let elsewhere = sandbox.work();
+  write_user_config(&sandbox, "[defaults]\nexclude = [\"tmp/\"]\n[defaults.scip]\nenabled = true\n");
+
+  let shown = sandbox.run(&elsewhere, &["config", "show", "--origin"]);
+
+  assert_ok(&shown);
+  assert_eq!(stdout(&shown), "config.toml  scip.enabled = true\nconfig.toml  defaults.exclude = [\"tmp/\"]\n");
+  write_user_config(&sandbox, "[defaults]\nbogus = 1\n");
+  let newer = sandbox.run(&elsewhere, &["config", "show"]);
+  assert_ok(&newer);
+  assert_eq!(
+    stderr(&newer),
+    "warning: config.toml: unknown key defaults.bogus ignored\nevery key has its built-in value; pass --effective to list them\n"
+  );
+  write_user_config(&sandbox, "[defaults.lsp]\nmax_servers = 0\n");
+  let broken = sandbox.run(&elsewhere, &["config", "show"]);
+  assert_eq!(code(&broken), 2, "{}", stderr(&broken));
+  assert!(stderr(&broken).contains("config.toml: lsp.max_servers must be at least 1"), "{}", stderr(&broken));
+}
+
+#[test]
+fn should_index_with_repo_layer_excludes_and_ignore_fact_keys_from_the_environment() {
+  let sandbox = Sandbox::new();
+  let repo = solo_repo(&sandbox, "solo");
+  assert_ok(&sandbox.run(&repo, &["init"]));
+  assert_ok(&sandbox.run(&repo, &["index"]));
+  assert_ok(&sandbox.run(&repo, &["symbol", "ancient"]));
+
+  let marker = fs::read_to_string(repo.join(".code-atlas.toml")).unwrap();
+  fs::write(repo.join(".code-atlas.toml"), format!("{marker}\n[index]\nexclude = [\"legacy/**\"]\n")).unwrap();
+  let envs = [("CODE_ATLAS_MAX_FILE_BYTES", "1")];
+
+  let excluded = sandbox.run_env(&repo, &["symbol", "ancient"], &envs);
+  let kept = sandbox.run_env(&repo, &["symbol", "answer"], &envs);
+
+  assert_eq!(code(&excluded), 4, "{}\n{}", stdout(&excluded), stderr(&excluded));
+  assert!(
+    stderr(&excluded).contains("warning: env:CODE_ATLAS_MAX_FILE_BYTES: max_file_bytes ignored"),
+    "{}",
+    stderr(&excluded)
+  );
+  assert_ok(&kept);
+  assert!(stdout(&kept).contains("answer function solo:src/lib.rs"), "{}", stdout(&kept));
+}
+
+#[test]
+fn should_pin_the_project_in_init_without_dropping_other_marker_keys() {
+  let sandbox = Sandbox::new();
+  let repo = solo_repo(&sandbox, "solo");
+  fs::write(repo.join(".code-atlas.toml"), "# shared with the team\n[index]\nexclude = [\"legacy/**\"]\n").unwrap();
+
+  let output = sandbox.run(&repo, &["init"]);
+
+  assert_ok(&output);
+  assert_eq!(
+    fs::read_to_string(repo.join(".code-atlas.toml")).unwrap(),
+    "project = \"solo\"\n# shared with the team\n[index]\nexclude = [\"legacy/**\"]\n"
+  );
+}
+
+#[test]
+fn should_keep_an_explicit_project_value_over_a_global_default() {
+  let sandbox = Sandbox::new();
+  let repo = solo_repo(&sandbox, "solo");
+  assert_ok(&sandbox.run(&repo, &["init"]));
+  write_user_config(&sandbox, "[defaults.scip]\nenabled = true\n");
+  assert_eq!(json(&sandbox.run(&repo, &["project", "config", "solo", "--json"]))["scip"]["enabled"], true);
+
+  let changed = sandbox.run(&repo, &["project", "config", "solo", "--scip", "off"]);
+  let overridden = sandbox.run_env(&repo, &["project", "config", "solo", "--scip", "off"], &[("CODE_ATLAS_SCIP_ENABLED", "on")]);
+
+  assert_eq!(stdout(&changed), "scip.enabled: true -> false\n");
+  let registry = fs::read_to_string(sandbox.home.path().join("config/projects.toml")).unwrap();
+  assert!(registry.contains("pinned = [\"scip.enabled\"]"), "{registry}");
+  assert_eq!(json(&sandbox.run(&repo, &["project", "config", "solo", "--json"]))["scip"]["enabled"], false);
+  assert_eq!(stdout(&overridden), "no changes\n");
+  assert!(
+    stderr(&overridden).contains("warning: scip.enabled is saved in projects.toml, but env:CODE_ATLAS_SCIP_ENABLED overrides it"),
+    "{}",
+    stderr(&overridden)
+  );
+}
+
+#[test]
+fn should_trace_the_project_resolution_and_flag_a_pinned_user_scope_server_in_doctor() {
+  let sandbox = Sandbox::new();
+  let repo = solo_repo(&sandbox, "solo");
+  assert_ok(&sandbox.run(&repo, &["init"]));
+  let claude = sandbox.home.path().join("claude");
+  fs::create_dir_all(&claude).unwrap();
+  let entry = serde_json::json!({ "mcpServers": { "code-atlas": { "command": "catl", "args": ["mcp", "--project", "globex"] } } });
+  fs::write(claude.join(".claude.json"), entry.to_string()).unwrap();
+
+  let report = stdout(&sandbox.run(&repo.join("src"), &["doctor"]));
+
+  for expected in [
+    "ok    config: ".to_owned(),
+    "config.toml absent; built-in defaults apply".to_owned(),
+    format!("      working directory {}\n", repo.join("src").display()),
+    format!("      {} pins project solo\n", repo.join(".code-atlas.toml").display()),
+    "      resolved project solo\n".to_owned(),
+    "warn  claude user scope: the user-scope code-atlas server in ".to_owned(),
+    "pins --project globex, so every repo without its own .mcp.json talks to globex".to_owned(),
+  ] {
+    assert!(report.contains(&expected), "missing {expected:?} in {report}");
+  }
 }

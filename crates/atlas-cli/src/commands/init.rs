@@ -2,18 +2,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use atlas_core::ProjectName;
-use atlas_project::{ProjectError, RepoSpec, slugify};
+use atlas_project::{MARKER_FILE, ProjectError, RepoFile, RepoSpec, slugify, write_marker_project};
 
 use crate::context::Context;
 use crate::error::{CliError, CliResult};
 use crate::output::{Outcome, emit_line};
 
-const MARKER_FILE: &str = ".code-atlas.toml";
-
 pub fn run(ctx: &Context) -> CliResult<Outcome> {
   let root = repo_root(&ctx.cwd)?;
   let marker = root.join(MARKER_FILE);
-  let pinned = read_marker(&marker)?;
+  let pinned = RepoFile::read(&marker)?.and_then(|file| file.project);
   if let (Some(existing), Some(requested)) = (&pinned, &ctx.project)
     && existing != requested
   {
@@ -44,7 +42,7 @@ pub fn run(ctx: &Context) -> CliResult<Outcome> {
   let pin = if pinned.as_deref() == Some(name.as_str()) {
     "unchanged"
   } else {
-    fs::write(&marker, format!("project = \"{name}\"\n")).map_err(|source| CliError::io("write", &marker, source))?;
+    write_marker_project(&marker, &name)?;
     "written"
   };
   emit_line(format!("project {name}: {registration} ({})", root.display()))?;
@@ -64,21 +62,4 @@ fn derive_name(root: &Path) -> CliResult<String> {
     .and_then(|name| name.to_str())
     .and_then(slugify)
     .ok_or_else(|| CliError::ProjectNameUnderivable(root.to_path_buf()))
-}
-
-fn read_marker(marker: &Path) -> CliResult<Option<String>> {
-  let text = match fs::read_to_string(marker) {
-    Ok(text) => text,
-    Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-    Err(source) => return Err(CliError::io("read", marker, source)),
-  };
-  let table: toml::Table = toml::from_str(&text).map_err(|error| CliError::InvalidConfig {
-    path: marker.to_path_buf(),
-    message: error.to_string(),
-  })?;
-  let project = table.get("project").and_then(toml::Value::as_str).map(str::to_owned);
-  project.map(Some).ok_or_else(|| CliError::InvalidConfig {
-    path: marker.to_path_buf(),
-    message: "missing string key `project`".to_owned(),
-  })
 }

@@ -3,10 +3,12 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-use atlas_project::{Project, Registry};
+use atlas_project::{Project, ProjectError, Registry, UserConfig};
 use rusqlite::{Connection, OpenFlags};
+use serde_json::Value;
 
 use crate::cli::DoctorArgs;
+use crate::commands::connect::{SERVER_NAME, claude_config_path};
 use crate::commands::ide::{check_outcome, check_servers, resolved_text, unit_detail};
 use crate::commands::lsp_probe::{self, Resolved};
 use crate::context::Context;
@@ -52,6 +54,7 @@ pub fn run(ctx: &Context, args: DoctorArgs) -> CliResult<Outcome> {
     "home",
     format!("config {}, data {}", ctx.home.config_dir().display(), ctx.home.data_dir().display()),
   )];
+  checks.push(user_config(ctx));
   let mut focus = None;
   match Registry::load(&ctx.home) {
     Err(error) => checks.push(Check::new(Level::Fail, "registry", error.to_string())),
@@ -63,11 +66,13 @@ pub fn run(ctx: &Context, args: DoctorArgs) -> CliResult<Outcome> {
         format!("{} projects in {}", registry.list().len(), ctx.home.registry_path().display()),
       ));
       checks.push(cwd_project(ctx, &registry));
+      checks.extend(config_warnings(&registry, focus.as_ref()));
       for project in registry.list() {
         checks.extend(project_checks(ctx, project));
       }
     }
   }
+  checks.extend(claude_user_scope());
   checks.push(sqlite_build());
   checks.extend(language_servers(focus.as_ref()));
   if args.lsp {
@@ -96,12 +101,51 @@ pub fn run(ctx: &Context, args: DoctorArgs) -> CliResult<Outcome> {
   })
 }
 
-fn cwd_project(ctx: &Context, registry: &Registry) -> Check {
-  match registry.resolve_project(&ctx.cwd, None) {
-    Ok(project) => Check::new(Level::Ok, "working directory", format!("belongs to project {}", project.name)),
-    Err(atlas_project::ProjectError::NotInProject { .. }) => Check::new(Level::Ok, "working directory", "not inside any project"),
-    Err(error) => Check::new(Level::Warn, "working directory", error.to_string()),
+fn user_config(ctx: &Context) -> Check {
+  match UserConfig::load(&ctx.home) {
+    Ok(config) if config.exists() => Check::new(Level::Ok, "config", format!("{} loaded", config.path().display())),
+    Ok(config) => Check::new(Level::Ok, "config", format!("{} absent; built-in defaults apply", config.path().display())),
+    Err(error) => Check::new(Level::Fail, "config", error.to_string()),
   }
+}
+
+fn cwd_project(ctx: &Context, registry: &Registry) -> Check {
+  let trace = registry.trace(&ctx.cwd, None);
+  let check = match &trace.outcome {
+    Ok(resolution) => Check::new(Level::Ok, "working directory", format!("belongs to project {}", resolution.project.name)),
+    Err(ProjectError::NotInProject { .. }) => Check::new(Level::Ok, "working directory", "not inside any project"),
+    Err(error) => Check::new(Level::Warn, "working directory", error.to_string()),
+  };
+  check.with_lines(trace.steps)
+}
+
+fn config_warnings(registry: &Registry, focus: Option<&Project>) -> Option<Check> {
+  let warnings = registry.warnings(focus.map(|project| project.name.as_str()));
+  let count = warnings.len();
+  (count > 0).then(|| Check::new(Level::Warn, "configuration", format!("{count} ignored values; see `catl config show --origin`")).with_lines(warnings))
+}
+
+fn claude_user_scope() -> Option<Check> {
+  let path = claude_config_path()?;
+  let text = fs::read_to_string(&path).ok()?;
+  let name = "claude user scope";
+  let entry = match serde_json::from_str::<Value>(&text) {
+    Ok(document) => document.get("mcpServers")?.get(SERVER_NAME)?.clone(),
+    Err(error) => return Some(Check::new(Level::Ok, name, format!("cannot read {}: {error}", path.display()))),
+  };
+  let arguments: Vec<&str> = entry.get("args").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+  let pinned = arguments.iter().position(|argument| *argument == "--project").and_then(|index| arguments.get(index + 1));
+  Some(match pinned {
+    Some(project) => Check::new(
+      Level::Warn,
+      name,
+      format!(
+        "the user-scope {SERVER_NAME} server in {} pins --project {project}, so every repo without its own .mcp.json talks to {project}; rerun `catl connect claude --scope user`",
+        path.display()
+      ),
+    ),
+    None => Check::new(Level::Ok, name, format!("{SERVER_NAME} resolves the project from the session's working directory")),
+  })
 }
 
 fn project_checks(ctx: &Context, project: &atlas_project::Project) -> Vec<Check> {

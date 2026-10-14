@@ -35,6 +35,10 @@ impl Session {
     if let Some(caveat) = resolution.binding.caveat() {
       tracing::warn!(caveat = %caveat, "started outside the indexed checkout; answers carry a caveat and edits are refused");
     }
+    log_config_warnings(&registry, project.name.as_str());
+    for warning in &resolution.warnings {
+      tracing::warn!(warning = %warning, "ignored a configuration value");
+    }
     let launcher = options.launcher.as_ref().map_or_else(|| Arc::new(DiscoveryLauncher) as _, |handle| Arc::clone(&handle.0));
     let ide = IdeService::new(engine, launcher, IdeOptions::for_project(&project, &options.home, IdeMode::Warm));
     Ok(Self {
@@ -85,6 +89,7 @@ impl Session {
       return Ok(());
     }
     tracing::info!(project = %self.project, repos = latest.repos.len(), "project definition changed; reloading the engine");
+    log_config_warnings(&registry, &self.project);
     self.engine().reload_project(latest)?;
     self.ide.reload(latest);
     if refresh.watching {
@@ -128,6 +133,12 @@ impl Session {
 fn shut_down_in_order(stop_language_servers: impl FnOnce(), persist_similarity: impl FnOnce()) {
   stop_language_servers();
   persist_similarity();
+}
+
+fn log_config_warnings(registry: &Registry, project: &str) {
+  for warning in registry.warnings(Some(project)) {
+    tracing::warn!(warning = %warning, "ignored a configuration value");
+  }
 }
 
 fn start_watcher(engine: &Arc<Engine>) -> Option<WatchHandle> {

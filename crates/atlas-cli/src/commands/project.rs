@@ -3,13 +3,13 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 use atlas_core::Language;
-use atlas_project::{LspUnit, Project, ProjectSettings, RepoConfig, RepoFilters, RepoSpec};
+use atlas_project::{LspUnit, Origin, Project, ProjectSettings, Registry, RepoConfig, RepoFilters, RepoSpec, SettingsUpdate};
 
 use crate::cli::{AddRepoArgs, ConfigArgs, CreateArgs, DeleteArgs, JsonFlag, LspUnitArg, ProjectCommand, RemoveRepoArgs, RenameRepoArgs, SetRepoArgs, ShowArgs, Toggle};
 use crate::confirm::confirm;
 use crate::context::Context;
 use crate::error::{CliError, CliResult};
-use crate::output::{Outcome, emit_json, emit_line};
+use crate::output::{Outcome, emit_json, emit_line, note};
 
 pub fn run(ctx: &Context, command: ProjectCommand) -> CliResult<Outcome> {
   match command {
@@ -234,7 +234,7 @@ const LLM_PROVIDERS: [&str; 6] = ["claude-cli", "claude", "anthropic", "openai-c
 
 fn config(ctx: &Context, args: ConfigArgs) -> CliResult<Outcome> {
   let mut registry = ctx.registry()?;
-  let current = registry.project(&args.project_name)?.settings.clone();
+  let before = registry.project(&args.project_name)?.settings.clone();
   let touched = args.reset
     || args.llm.is_some()
     || args.llm_provider.is_some()
@@ -244,19 +244,37 @@ fn config(ctx: &Context, args: ConfigArgs) -> CliResult<Outcome> {
     || args.max_file_bytes.is_some()
     || touches_lsp(&args);
   if !touched {
-    return show_settings(&current, args.json);
+    return show_settings(&before, args.json);
   }
-  let updated = apply_settings(&current, &args)?;
-  let changes = changed_fields(&current, &updated);
+  let stored = registry.stored_settings(&args.project_name)?.clone();
+  let mut explicit = Vec::new();
+  let values = apply_settings(&stored, &args, &mut explicit)?;
+  let update = SettingsUpdate {
+    values,
+    explicit: explicit.iter().map(|key| (*key).to_owned()).collect(),
+    reset: args.reset,
+  };
+  registry.update_settings(&args.project_name, update)?;
+  warn_about_overrides(&registry, &args.project_name, &explicit)?;
+  let changes = changed_fields(&before, &registry.project(&args.project_name)?.settings);
   if changes.is_empty() {
     emit_line("no changes")?;
     return Ok(Outcome::Complete);
   }
-  registry.set_settings(&args.project_name, updated)?;
   for change in changes {
     emit_line(change)?;
   }
   Ok(Outcome::Complete)
+}
+
+fn warn_about_overrides(registry: &Registry, project: &str, explicit: &[&str]) -> CliResult<()> {
+  let report = registry.explain(Some(project))?;
+  for entry in report.entries.iter().filter(|entry| explicit.contains(&entry.key.as_str())) {
+    if let Some(origin @ (Origin::Repo { .. } | Origin::Env { .. })) = entry.origins.first() {
+      note(format!("warning: {} is saved in projects.toml, but {origin} overrides it", entry.key));
+    }
+  }
+  Ok(())
 }
 
 fn touches_lsp(args: &ConfigArgs) -> bool {
@@ -280,51 +298,63 @@ fn positive(flag: &str, value: u64) -> CliResult<u64> {
   }
 }
 
-fn apply_lsp(settings: &mut ProjectSettings, args: &ConfigArgs) -> CliResult<()> {
+fn apply_lsp(settings: &mut ProjectSettings, args: &ConfigArgs, explicit: &mut Vec<&'static str>) -> CliResult<()> {
   let lsp = &mut settings.lsp;
   if let Some(toggle) = args.lsp {
     lsp.enabled = toggle == Toggle::On;
+    explicit.push("lsp.enabled");
   }
   if let Some(toggle) = args.lsp_download {
     lsp.download = toggle == Toggle::On;
+    explicit.push("lsp.download");
   }
   if !args.lsp_ts_command.is_empty() {
     lsp.typescript_command = Some(args.lsp_ts_command.clone());
+    explicit.push("lsp.typescript_command");
   }
   if args.lsp_ts_command_clear {
     lsp.typescript_command = None;
+    explicit.push("lsp.typescript_command");
   }
   if let Some(seconds) = args.lsp_idle_secs {
     lsp.idle_secs = positive("--lsp-idle-secs", seconds)?;
+    explicit.push("lsp.idle_secs");
   }
   if let Some(count) = args.lsp_max_servers {
     lsp.max_servers = count;
+    explicit.push("lsp.max_servers");
   }
   if let Some(unit) = args.lsp_unit {
     lsp.unit = match unit {
       LspUnitArg::Project => LspUnit::Project,
       LspUnitArg::Repo => LspUnit::Repo,
     };
+    explicit.push("lsp.unit");
   }
   if let Some(seconds) = args.lsp_ready_timeout_secs {
     lsp.ready_timeout_secs = positive("--lsp-ready-timeout-secs", seconds)?;
+    explicit.push("lsp.ready_timeout_secs");
   }
   if let Some(seconds) = args.lsp_check_timeout_secs {
     lsp.check_timeout_secs = positive("--lsp-check-timeout-secs", seconds)?;
+    explicit.push("lsp.check_timeout_secs");
   }
   if !args.lsp_exclude.is_empty() {
     lsp.exclude = args.lsp_exclude.clone();
+    explicit.push("lsp.exclude");
   }
   if args.lsp_exclude_clear {
     lsp.exclude.clear();
+    explicit.push("lsp.exclude");
   }
   settings.validate().map_err(CliError::InvalidSetting)
 }
 
-fn apply_settings(current: &ProjectSettings, args: &ConfigArgs) -> CliResult<ProjectSettings> {
+fn apply_settings(current: &ProjectSettings, args: &ConfigArgs, explicit: &mut Vec<&'static str>) -> CliResult<ProjectSettings> {
   let mut settings = if args.reset { ProjectSettings::default() } else { current.clone() };
   if let Some(toggle) = args.llm {
     settings.llm.enabled = toggle == Toggle::On;
+    explicit.push("llm.enabled");
   }
   if let Some(provider) = &args.llm_provider {
     if !LLM_PROVIDERS.contains(&provider.as_str()) {
@@ -334,26 +364,31 @@ fn apply_settings(current: &ProjectSettings, args: &ConfigArgs) -> CliResult<Pro
       )));
     }
     settings.llm.provider = Some(provider.clone());
+    explicit.push("llm.provider");
   }
   if let Some(model) = &args.llm_model {
     settings.llm.model = Some(model.clone()).filter(|model| !model.trim().is_empty());
+    explicit.push("llm.model");
   }
   if let Some(toggle) = args.scip {
     settings.scip.enabled = toggle == Toggle::On;
+    explicit.push("scip.enabled");
   }
   if let Some(seconds) = args.scip_debounce {
     if seconds == 0 {
       return Err(CliError::InvalidSetting("--scip-debounce must be greater than 0".to_owned()));
     }
     settings.scip.debounce_secs = seconds;
+    explicit.push("scip.debounce_secs");
   }
   if let Some(bytes) = args.max_file_bytes {
     if bytes == 0 {
       return Err(CliError::InvalidSetting("--max-file-bytes must be greater than 0".to_owned()));
     }
     settings.max_file_bytes = bytes;
+    explicit.push("max_file_bytes");
   }
-  apply_lsp(&mut settings, args)?;
+  apply_lsp(&mut settings, args, explicit)?;
   Ok(settings)
 }
 

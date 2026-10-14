@@ -81,7 +81,7 @@ Measured 2026-10-04 to 2026-10-06; full results, sources and caveats are in [doc
 | [docs/agent-integration.md](docs/agent-integration.md) | MCP tools (`atlas_symbol` modes, `atlas_edit`), recommended workflow, reading certainty tags, `connect claude`, other agents |
 | [docs/languages-and-frameworks.md](docs/languages-and-frameworks.md) | Rust and TS/JS depth, supported frameworks, experimental detectors |
 | [docs/extending.md](docs/extending.md) | adding an analyzer, detector, project pass or LLM provider |
-| [docs/operations.md](docs/operations.md) | CLI reference, exit codes, home directories, project settings, language servers, parse budget, watch, SCIP, enrichment, doctor |
+| [docs/operations.md](docs/operations.md) | CLI reference, exit codes, home directories, configuration layers (`config.toml` defaults, repo `.code-atlas.toml`, `CODE_ATLAS_*`, `catl config show --origin`), project settings, language servers, parse budget, watch, SCIP, enrichment, doctor |
 | [docs/evaluation/methodology.md](docs/evaluation/methodology.md) | quality eval, performance bench, agent A/B harness |
 | [docs/evaluation/dogfooding.md](docs/evaluation/dogfooding.md) | dated findings from using Code Atlas on itself |
 | [docs/evaluation/results.md](docs/evaluation/results.md) | measured knowledge quality, performance and agent A/B results |

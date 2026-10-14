@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use atlas_engine::EngineOptions;
 use atlas_ide::Launcher;
-use atlas_project::AtlasHome;
+use atlas_project::{AtlasHome, McpSettings};
 
 #[derive(Clone)]
 pub(crate) struct LauncherHandle(pub(crate) Arc<dyn Launcher>);
@@ -28,8 +28,8 @@ pub struct ServeOptions {
   pub(crate) launcher: Option<LauncherHandle>,
 }
 
-pub const DEFAULT_MAX_OUTPUT_BYTES: usize = 100_000;
-pub const DEFAULT_MAX_BODY_LINES: usize = 400;
+pub const DEFAULT_MAX_OUTPUT_BYTES: usize = McpSettings::DEFAULT_MAX_OUTPUT_BYTES;
+pub const DEFAULT_MAX_BODY_LINES: usize = McpSettings::DEFAULT_MAX_BODY_LINES;
 
 fn server_engine_options() -> EngineOptions {
   let mut options = EngineOptions::default();

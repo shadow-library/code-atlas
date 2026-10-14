@@ -80,7 +80,7 @@ impl AtlasCli {
   }
 
   pub fn version(&self) -> Option<String> {
-    let mut command = Command::new(&self.binary);
+    let mut command = isolated_command(&self.binary);
     command.arg("--version").env(ATLAS_HOME_VAR, &self.home);
     let output = run_captured(command, None, Duration::from_secs(10));
     output.exit.succeeded().then(|| output.stdout.trim().to_owned())
@@ -100,7 +100,7 @@ impl AtlasCli {
   }
 
   fn run(&self, args: &[String], cwd: &Path) -> AgentResult<CapturedOutput> {
-    let mut command = Command::new(&self.binary);
+    let mut command = isolated_command(&self.binary);
     command.args(args).current_dir(cwd).env(ATLAS_HOME_VAR, &self.home);
     let output = run_captured(command, None, self.timeout);
     let detail = match &output.exit {
@@ -118,6 +118,16 @@ impl AtlasCli {
   fn render(&self, args: &[String]) -> String {
     format!("{} {}", self.binary.display(), args.join(" "))
   }
+}
+
+pub fn isolated_command(binary: &Path) -> Command {
+  let mut command = Command::new(binary);
+  for (name, _) in std::env::vars_os() {
+    if name.to_string_lossy().starts_with("CODE_ATLAS_") {
+      command.env_remove(name);
+    }
+  }
+  command
 }
 
 pub fn similar_matches(document: &Value) -> Vec<SimilarMatch> {

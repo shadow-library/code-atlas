@@ -3,7 +3,7 @@ use std::sync::Arc;
 use atlas_core::LlmProvider;
 use atlas_project::LlmSettings;
 
-use super::anthropic::AnthropicHttpProvider;
+use super::anthropic::{ANTHROPIC_API_KEY_ENV, AnthropicHttpProvider};
 use super::claude_cli::ClaudeCliProvider;
 use super::openai::OpenAiCompatibleProvider;
 use super::unavailable::UnavailableProvider;
@@ -27,7 +27,7 @@ pub fn default_model(kind: TaskKind) -> &'static str {
 pub enum ProviderConfig {
   None { reason: String },
   ClaudeCli { model: Option<String> },
-  AnthropicHttp { model: Option<String> },
+  AnthropicHttp { model: Option<String>, api_key_env: String },
   OpenAiCompatible { base_url: String, model: String, api_key_env: String },
 }
 
@@ -39,20 +39,25 @@ impl ProviderConfig {
       });
     }
     let model = settings.model.clone().filter(|model| !model.trim().is_empty());
+    let api_key_env = |fallback: &str| settings.api_key_env.clone().filter(|name| !name.trim().is_empty()).unwrap_or_else(|| fallback.to_owned());
     match settings.provider.as_deref().map(str::trim) {
       None | Some("claude-cli" | "claude") => Ok(Self::ClaudeCli { model }),
       Some("none") => Ok(Self::None {
         reason: "LLM provider is set to none".to_owned(),
       }),
-      Some("anthropic") => Ok(Self::AnthropicHttp { model }),
+      Some("anthropic") => Ok(Self::AnthropicHttp {
+        model,
+        api_key_env: api_key_env(ANTHROPIC_API_KEY_ENV),
+      }),
       Some("openai-compatible" | "openai") => {
-        let base_url = std::env::var(OPENAI_BASE_URL_ENV).ok().filter(|url| !url.trim().is_empty());
-        let base_url = base_url.ok_or_else(|| SemanticError::Config(format!("provider \"openai-compatible\" requires {OPENAI_BASE_URL_ENV}")))?;
+        let configured = settings.openai_base_url.clone().filter(|url| !url.trim().is_empty());
+        let base_url = configured.or_else(|| std::env::var(OPENAI_BASE_URL_ENV).ok().filter(|url| !url.trim().is_empty()));
+        let base_url = base_url.ok_or_else(|| SemanticError::Config(format!("provider \"openai-compatible\" requires llm.openai_base_url or {OPENAI_BASE_URL_ENV}")))?;
         let model = model.ok_or_else(|| SemanticError::Config("provider \"openai-compatible\" requires llm.model".to_owned()))?;
         Ok(Self::OpenAiCompatible {
           base_url,
           model,
-          api_key_env: OPENAI_API_KEY_ENV.to_owned(),
+          api_key_env: api_key_env(OPENAI_API_KEY_ENV),
         })
       }
       Some(other) => Err(SemanticError::Config(format!("unknown LLM provider {other:?}"))),
@@ -64,7 +69,7 @@ impl ProviderConfig {
     match self {
       Self::None { reason } => Box::new(UnavailableProvider::new(reason.clone())),
       Self::ClaudeCli { model } => Box::new(ClaudeCliProvider::new(concrete(model))),
-      Self::AnthropicHttp { model } => Box::new(AnthropicHttpProvider::from_env(concrete(model))),
+      Self::AnthropicHttp { model, api_key_env } => Box::new(AnthropicHttpProvider::from_env_var(concrete(model), api_key_env.clone())),
       Self::OpenAiCompatible { base_url, model, api_key_env } => Box::new(OpenAiCompatibleProvider::from_env(base_url.clone(), model.clone(), api_key_env.clone())),
     }
   }
@@ -123,6 +128,7 @@ mod tests {
       provider: provider.map(str::to_owned),
       model: model.map(str::to_owned),
       enabled,
+      ..LlmSettings::default()
     }
   }
 
@@ -180,6 +186,34 @@ mod tests {
       api_key_env: "K".into(),
     };
     assert_eq!(config.build_for(TaskKind::SummarizeCapability).model(), "m");
+  }
+
+  #[test]
+  fn should_take_the_base_url_and_key_variable_from_the_settings() {
+    let configured = LlmSettings {
+      openai_base_url: Some("http://localhost:8080".to_owned()),
+      api_key_env: Some("LOCAL_LLM_KEY".to_owned()),
+      ..settings(Some("openai-compatible"), Some("m"), true)
+    };
+    assert_eq!(
+      ProviderConfig::from_settings(&configured).unwrap(),
+      ProviderConfig::OpenAiCompatible {
+        base_url: "http://localhost:8080".to_owned(),
+        model: "m".to_owned(),
+        api_key_env: "LOCAL_LLM_KEY".to_owned(),
+      }
+    );
+    let anthropic = LlmSettings {
+      api_key_env: Some("ATLAS_TEST_UNSET_ANTHROPIC_KEY".to_owned()),
+      ..settings(Some("anthropic"), None, true)
+    };
+    let providers = providers_from_settings(&anthropic);
+    assert_eq!(
+      providers.for_kind(TaskKind::SummarizeCapability).availability(),
+      Availability::Unavailable {
+        reason: "ATLAS_TEST_UNSET_ANTHROPIC_KEY is not set".to_owned()
+      }
+    );
   }
 
   #[test]

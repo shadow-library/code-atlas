@@ -15,7 +15,7 @@ use crate::error::{CliError, CliResult};
 use crate::json_edit::{JsonEditError, upsert_server};
 use crate::output::{Outcome, emit, emit_line, note};
 
-const SERVER_NAME: &str = "code-atlas";
+pub(crate) const SERVER_NAME: &str = "code-atlas";
 const BINARY_NAME: &str = "catl";
 const CLAUDE_CONFIG_DIR_VAR: &str = "CLAUDE_CONFIG_DIR";
 const CLAUDE_CONFIG_FILE: &str = ".claude.json";
@@ -259,7 +259,7 @@ fn same_server(left: &Value, right: &Value) -> bool {
   view(left) == view(right)
 }
 
-fn claude_config_path() -> Option<PathBuf> {
+pub(crate) fn claude_config_path() -> Option<PathBuf> {
   let non_empty = |name: &str| std::env::var_os(name).filter(|value| !value.is_empty()).map(PathBuf::from);
   non_empty(CLAUDE_CONFIG_DIR_VAR)
     .or_else(|| non_empty("HOME"))

@@ -8,6 +8,7 @@ use crate::error::ProjectError;
 const APP_DIR: &str = "code-atlas";
 const HOME_OVERRIDE_VAR: &str = "CODE_ATLAS_HOME";
 const REGISTRY_FILE: &str = "projects.toml";
+const CONFIG_FILE: &str = "config.toml";
 const DB_FILE: &str = "atlas.db";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +59,10 @@ impl AtlasHome {
 
   pub fn registry_path(&self) -> PathBuf {
     self.config_dir.join(REGISTRY_FILE)
+  }
+
+  pub fn config_path(&self) -> PathBuf {
+    self.config_dir.join(CONFIG_FILE)
   }
 
   pub fn project_data_dir(&self, project: &ProjectName) -> PathBuf {
@@ -118,5 +123,6 @@ mod tests {
     let project = ProjectName::new("acme").unwrap();
     assert_eq!(home.db_path(&project), Path::new("/iso/data/acme/atlas.db"));
     assert_eq!(home.registry_path(), Path::new("/iso/config/projects.toml"));
+    assert_eq!(home.config_path(), Path::new("/iso/config/config.toml"));
   }
 }

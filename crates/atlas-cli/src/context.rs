@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use atlas_engine::{Engine, EngineOptions};
 use atlas_project::{AtlasHome, Project, Registry, Resolution};
@@ -12,6 +13,7 @@ pub struct Context {
   pub home: AtlasHome,
   pub cwd: PathBuf,
   pub project: Option<String>,
+  warned: AtomicBool,
 }
 
 impl Context {
@@ -21,6 +23,7 @@ impl Context {
       home: AtlasHome::resolve()?,
       cwd,
       project,
+      warned: AtomicBool::new(false),
     })
   }
 
@@ -37,7 +40,21 @@ impl Context {
   }
 
   pub fn resolution(&self) -> CliResult<Resolution> {
-    Ok(self.registry()?.resolve(&self.cwd, self.project.as_deref())?)
+    let registry = self.registry()?;
+    let resolution = registry.resolve(&self.cwd, self.project.as_deref())?;
+    let mut warnings = registry.warnings(Some(resolution.project.name.as_str()));
+    warnings.extend(resolution.warnings.iter().cloned());
+    self.warn_once(&warnings);
+    Ok(resolution)
+  }
+
+  fn warn_once(&self, warnings: &[String]) {
+    if self.warned.swap(true, Ordering::Relaxed) {
+      return;
+    }
+    for warning in warnings {
+      note(format!("warning: {warning}"));
+    }
   }
 
   pub fn open_engine(&self, project: &Project) -> CliResult<Arc<Engine>> {
