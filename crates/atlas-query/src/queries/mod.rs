@@ -17,6 +17,7 @@ mod status;
 mod symbol;
 mod symbols;
 mod tests_for;
+mod tests_for_fallback;
 mod textual;
 mod traverse;
 mod unused;

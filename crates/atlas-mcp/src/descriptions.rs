@@ -37,7 +37,7 @@ pub(crate) const IMPACT: &str = concat!(
   certainty!()
 );
 pub(crate) const TESTS_FOR: &str = concat!(
-  "Tests relevant to a target: direct, via the call graph, or via file coverage heuristics. Use to choose which tests to run. ",
+  "Tests relevant to a target: direct, via the call graph, or via file coverage heuristics. When no test reaches a method, a separate hedged method-name fallback lists tests that call a method of that name on an untyped value; it is not proof of coverage. Use to choose which tests to run. ",
   certainty!()
 );
 pub(crate) const API: &str = concat!(

@@ -12,6 +12,7 @@ use crate::graph::{Graph, Step, WalkSpec};
 use crate::model::{Caveat, CertaintyTag, EntityRef, Hop, Listing, Response, Targeted, short_name};
 use crate::policy::{Direction, Policy};
 use crate::queries::common::{DEFAULT_LIMIT, MAX_NODES, file_entity, is_test, resolve_one, sibling_test_paths};
+use crate::queries::tests_for_fallback::{DIRECT_CONFIDENCE, FALLBACK_CAP, HELPER_CONFIDENCE, needs_fallback, possible_tests};
 use crate::queries::traverse::risk_name;
 use crate::target::TargetFilter;
 
@@ -49,6 +50,7 @@ pub enum TestReach {
   Spied,
   Mocked,
   ScopeMocked,
+  PossibleCall,
 }
 
 impl TestReach {
@@ -62,6 +64,7 @@ impl TestReach {
       Self::Spied => "spies on it (may call through)",
       Self::Mocked => "mocks it (does not exercise it)",
       Self::ScopeMocked => "its scope mocks it (may not exercise it)",
+      Self::PossibleCall => "possibly tests it",
     }
   }
 }
@@ -80,9 +83,22 @@ pub struct TestItem {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct FallbackTests {
+  pub explanation: String,
+  pub tests: Listing<TestItem>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub capped_at: Option<usize>,
+  pub suppressed_by_mocks: usize,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  pub replaced: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TestsForAnswer {
   pub target: EntityRef,
   pub tests: Listing<TestItem>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub fallback: Option<FallbackTests>,
   pub caveats: Vec<Caveat>,
 }
 
@@ -96,18 +112,56 @@ impl QueryEngine {
         Err(outcome) => return Ok(outcome),
       };
       let (tests, mut caveats) = tests_of(graph, &target, TEST_DEPTH, TestScope::All)?;
-      if tests.is_empty() {
+      let fallback = match needs_fallback(&tests) {
+        true => fallback_tests(graph, &target, &tests, request.limit, &mut caveats)?,
+        false => None,
+      };
+      if tests.is_empty() && fallback.as_ref().is_none_or(|fallback| fallback.tests.is_empty()) {
         caveats.extend(unresolved_risk(graph, target.id, risk_name(&target))?);
       }
       Ok(Targeted::Found(TestsForAnswer {
         target: EntityRef::of(&target),
         tests: Listing::truncated(tests, request.limit),
+        fallback,
         caveats,
       }))
     })?;
     let answer = self.with_problem_files(answer, freshness.run, |answer| &mut answer.caveats)?;
     Ok(Response { freshness, answer })
   }
+}
+
+fn fallback_tests(graph: &Graph<'_, '_>, target: &Entity, tests: &[TestItem], limit: usize, caveats: &mut Vec<Caveat>) -> QueryResult<Option<FallbackTests>> {
+  let found = possible_tests(graph, target, tests)?;
+  if found.hidden_below_floor > 0 {
+    let floor = graph.policy.min_confidence;
+    match caveats.iter_mut().find_map(|caveat| match caveat {
+      Caveat::BelowConfidenceFloor { hidden, .. } => Some(hidden),
+      _ => None,
+    }) {
+      Some(hidden) => *hidden += found.hidden_below_floor,
+      None => caveats.push(Caveat::BelowConfidenceFloor {
+        hidden: found.hidden_below_floor,
+        floor,
+      }),
+    }
+  }
+  if found.items.is_empty() && found.suppressed == 0 {
+    return Ok(None);
+  }
+  let shown = limit.min(FALLBACK_CAP);
+  let capped_at = (found.items.len() > shown && limit > FALLBACK_CAP).then_some(FALLBACK_CAP);
+  let explanation = format!(
+    "no test reaches the method through the call graph; these tests call a method of this name on a value of unknown type in a file that imports the class directly [heuristic {:.2}] or through a test helper [heuristic {:.2}]; the receiver may be another type, and jest.mock/vi.mock of the module is not visible to the index",
+    DIRECT_CONFIDENCE, HELPER_CONFIDENCE
+  );
+  Ok(Some(FallbackTests {
+    explanation,
+    tests: Listing::truncated(found.items, shown),
+    capped_at,
+    suppressed_by_mocks: found.suppressed,
+    replaced: found.replaced,
+  }))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -297,12 +351,22 @@ fn mocking_of(edge: &Edge) -> Option<Mocking> {
     .max()
 }
 
-struct MockEdge {
+pub(crate) struct MockEdge {
   edge: Edge,
   mocking: Mocking,
 }
 
-fn mock_edges(graph: &Graph<'_, '_>, seeds: &[EntityId]) -> QueryResult<BTreeMap<EntityId, MockEdge>> {
+impl MockEdge {
+  pub(crate) fn replaces(&self) -> bool {
+    self.mocking == Mocking::Replaced
+  }
+
+  pub(crate) fn mocked(&self) -> EntityId {
+    self.edge.to
+  }
+}
+
+pub(crate) fn mock_edges(graph: &Graph<'_, '_>, seeds: &[EntityId]) -> QueryResult<BTreeMap<EntityId, MockEdge>> {
   let mut mocks: BTreeMap<EntityId, MockEdge> = BTreeMap::new();
   for seed in seeds {
     for edge in graph.edges_in(*seed, &[EdgeKind::References])? {
@@ -315,14 +379,14 @@ fn mock_edges(graph: &Graph<'_, '_>, seeds: &[EntityId]) -> QueryResult<BTreeMap
   Ok(mocks)
 }
 
-struct MockScopes<'g, 'a, 'c, 'm> {
+pub(crate) struct MockScopes<'g, 'a, 'c, 'm> {
   graph: &'g Graph<'a, 'c>,
   mocks: &'m BTreeMap<EntityId, MockEdge>,
   callees: BTreeMap<EntityId, Vec<EntityId>>,
 }
 
 impl<'m> MockScopes<'_, '_, '_, 'm> {
-  fn new<'g, 'a, 'c>(graph: &'g Graph<'a, 'c>, mocks: &'m BTreeMap<EntityId, MockEdge>) -> MockScopes<'g, 'a, 'c, 'm> {
+  pub(crate) fn new<'g, 'a, 'c>(graph: &'g Graph<'a, 'c>, mocks: &'m BTreeMap<EntityId, MockEdge>) -> MockScopes<'g, 'a, 'c, 'm> {
     MockScopes {
       graph,
       mocks,
@@ -338,11 +402,15 @@ impl<'m> MockScopes<'_, '_, '_, 'm> {
       if matches!(item.reach, TestReach::Spied | TestReach::Mocked) {
         continue;
       }
-      let Some((scope, mock)) = self.scope_mock(*id)? else { continue };
-      let relation = self.scope_relation(&scope, mock)?;
-      item.note = Some(format!("{} {} {}", relation.phrase, relation.entity, relation.certainty.tag));
+      item.note = self.scope_note(*id)?;
     }
     Ok(())
+  }
+
+  pub(crate) fn scope_note(&mut self, test: EntityId) -> QueryResult<Option<String>> {
+    let Some((scope, mock)) = self.scope_mock(test)? else { return Ok(None) };
+    let relation = self.scope_relation(&scope, mock)?;
+    Ok(Some(format!("{} {} {}", relation.phrase, relation.entity, relation.certainty.tag)))
   }
 
   fn add_scope_only_tests(&mut self, found: &mut BTreeMap<EntityId, TestItem>) -> QueryResult<()> {
@@ -413,7 +481,7 @@ impl<'m> MockScopes<'_, '_, '_, 'm> {
     Ok(relation)
   }
 
-  fn scope_mock(&mut self, test: EntityId) -> QueryResult<Option<(Entity, &'m MockEdge)>> {
+  pub(crate) fn scope_mock(&mut self, test: EntityId) -> QueryResult<Option<(Entity, &'m MockEdge)>> {
     let Some(entity) = self.graph.entity(test)? else { return Ok(None) };
     let mut scopes: Vec<EntityId> = file_entity(&entity).map(|key| EntityId::of(&key)).into_iter().collect();
     let mut current = Some(entity);

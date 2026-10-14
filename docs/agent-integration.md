@@ -14,7 +14,7 @@ The server serves one project (`--project`, or inferred from the working directo
 | `atlas_edit` | exact renames, symbol edits, safe delete, text replacement, plan application (below) | `operation`, `target`, `path`, `new_name`, `text`, `pattern`, `regex`, `all`, `include`, `exclude`, `occurrences`, `expected_count`, `cross_repo`, `allow_unverified`, `plan`, `dry_run` |
 | `atlas_callers`, `atlas_callees` | who calls this, what it calls, grouped by repo | `target`, `depth` (1 to 6, default 1), `via_http` (follow HTTP calls across repos) |
 | `atlas_impact` | blast radius of changing one or more targets: dependents, endpoints, cross-repo consumers, tests, config, each with the explaining path | `targets`, `depth` (default 3) |
-| `atlas_tests_for` | tests relevant to a target (direct, via call graph, via file coverage heuristics) with run commands | `target` |
+| `atlas_tests_for` | tests relevant to a target (direct, via call graph, via file coverage heuristics) with run commands; when no test reaches a method, a separate hedged method-name fallback lists tests that call that name on an untyped value (not proof of coverage) | `target` |
 | `atlas_api` | HTTP endpoints with handlers, consumers across repos, auth supported vs used | `repo`, `endpoint` |
 | `atlas_similar` | near-duplicates of a symbol, of a line range or of unsaved draft code, with consumers, tests and a likely shared home | exactly one of `target`, `snippet` (`[repo:]path:START-END`), `code` (with `language`: `rust`, `ts`, `tsx`, `js`) |
 | `atlas_unused` | candidate unused functions, endpoints, auth modes, events, config, with evidence | `kind`, `repo` |
