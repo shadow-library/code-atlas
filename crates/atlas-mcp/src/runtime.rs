@@ -1,11 +1,15 @@
+use std::future::Future;
 use std::time::Duration;
 
-use rmcp::transport::stdio;
+use atlas_project::ProjectError;
+use rmcp::RoleServer;
+use rmcp::transport::{IntoTransport, stdio};
 use tracing_subscriber::EnvFilter;
 
 use crate::error::McpError;
 use crate::options::ServeOptions;
 use crate::server::AtlasServer;
+use crate::unbound::UnboundServer;
 
 const RUNTIME_SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 
@@ -16,11 +20,39 @@ pub fn serve(options: ServeOptions) -> Result<(), McpError> {
     let _entered = runtime.enter();
     TerminationSignals::register()
   };
-  let server = AtlasServer::open(&options)?;
+  let server = Server::open(&options)?;
   pause_for_signal_test();
   let outcome = runtime.block_on(server.run(stdio(), signals.wait()));
   runtime.shutdown_timeout(RUNTIME_SHUTDOWN_GRACE);
   outcome
+}
+
+pub enum Server {
+  Bound(AtlasServer),
+  Unbound(UnboundServer),
+}
+
+impl Server {
+  pub fn open(options: &ServeOptions) -> Result<Self, McpError> {
+    match AtlasServer::open(options) {
+      Err(McpError::Project(ProjectError::NotInProject { cwd })) if options.project.is_none() => {
+        tracing::info!(cwd = %cwd.display(), "no registered project contains the working directory; serving atlas_status only");
+        Ok(Self::Unbound(UnboundServer::new(cwd)))
+      }
+      opened => opened.map(Self::Bound),
+    }
+  }
+
+  pub async fn run<T, E, A>(self, transport: T, shutdown: impl Future<Output = ()>) -> Result<(), McpError>
+  where
+    T: IntoTransport<RoleServer, E, A>,
+    E: std::error::Error + Send + Sync + 'static,
+  {
+    match self {
+      Self::Bound(server) => server.run(transport, shutdown).await,
+      Self::Unbound(server) => server.run(transport, shutdown).await,
+    }
+  }
 }
 
 /// Test-only: `ATLAS_MCP_TEST_DELAY_BEFORE_RUN_MS` holds the process between signal registration and serving so tests can signal it deterministically.

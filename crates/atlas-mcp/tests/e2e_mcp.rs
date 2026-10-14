@@ -163,7 +163,7 @@ async fn should_serve_the_server_that_connect_claude_registers() {
   let entry = &config["mcpServers"]["code-atlas"];
   let command = PathBuf::from(entry["command"].as_str().unwrap());
   assert_eq!(command, binary());
-  assert_eq!(entry["args"], json!(["mcp", "--project", "acme"]));
+  assert_eq!(entry["args"], json!(["mcp", "--project", "acme", "--watch"]));
   let args: Vec<&str> = entry["args"].as_array().unwrap().iter().map(|arg| arg.as_str().unwrap()).collect();
   let server = Server::spawn(&command, &args, &api_repo, sandbox.home()).await;
 

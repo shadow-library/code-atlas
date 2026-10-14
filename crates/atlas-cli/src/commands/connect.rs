@@ -4,7 +4,7 @@ use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use atlas_project::Project;
+use atlas_project::{Binding, Resolution};
 use serde_json::{Value, json};
 
 use crate::cli::{ConnectClaudeArgs, ConnectCommand, ConnectScope};
@@ -16,6 +16,9 @@ use crate::json_edit::{JsonEditError, upsert_server};
 use crate::output::{Outcome, emit, emit_line, note};
 
 const SERVER_NAME: &str = "code-atlas";
+const BINARY_NAME: &str = "catl";
+const CLAUDE_CONFIG_DIR_VAR: &str = "CLAUDE_CONFIG_DIR";
+const CLAUDE_CONFIG_FILE: &str = ".claude.json";
 const HOME_VAR: &str = "CODE_ATLAS_HOME";
 const GUIDANCE_BEGIN: &str = "<!-- code-atlas:begin -->";
 const GUIDANCE_END: &str = "<!-- code-atlas:end -->";
@@ -32,6 +35,31 @@ impl Planned {
   fn changed(&self) -> bool {
     self.before.as_deref() != Some(self.after.as_str())
   }
+
+  fn change(&self) -> Change {
+    match (&self.before, self.changed()) {
+      (_, false) => Change::Unchanged,
+      (None, true) => Change::Created,
+      (Some(_), true) => Change::Updated,
+    }
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Change {
+  Unchanged,
+  Created,
+  Updated,
+}
+
+impl Change {
+  fn label(self) -> &'static str {
+    match self {
+      Self::Unchanged => "unchanged",
+      Self::Created => "created",
+      Self::Updated => "updated",
+    }
+  }
 }
 
 pub fn run(ctx: &Context, command: ConnectCommand) -> CliResult<Outcome> {
@@ -41,57 +69,78 @@ pub fn run(ctx: &Context, command: ConnectCommand) -> CliResult<Outcome> {
 }
 
 fn claude(ctx: &Context, args: ConnectClaudeArgs) -> CliResult<Outcome> {
-  let project = ctx.resolve()?;
+  let resolution = ctx.resolution()?;
+  let project = &resolution.project;
+  if let Some(caveat) = resolution.binding.caveat() {
+    note(caveat);
+  }
   let executable = std::env::current_exe()
     .and_then(fs::canonicalize)
     .map_err(|source| CliError::io("locate", "the catl executable", source))?;
-  let root = connection_root(ctx, &project)?;
+  let root = connection_root(ctx, &resolution)?;
   let atlas_home = std::env::var_os(HOME_VAR).filter(|value| !value.is_empty());
-  let user_scope = args.scope == ConnectScope::User;
-  let server = server_entry(&executable, project.name.as_str(), atlas_home.as_deref().filter(|_| user_scope));
-  if user_scope {
-    probe_claude(&server)?;
-  } else if atlas_home.is_some() {
-    note(format!(
-      "warning: {HOME_VAR} is set but was left out of the project .mcp.json because that file is usually committed; the server will use the default home"
-    ));
-  }
   let mut plans = vec![plan_guidance(&root, project.name.as_str())?];
-  if !user_scope {
-    plans.insert(0, plan_mcp_config(root.join(".mcp.json"), &server)?);
-  }
+  let registration = match args.scope {
+    ConnectScope::User => {
+      let server = user_entry(&executable, atlas_home.as_deref());
+      probe_claude(&server)?;
+      Some(plan_registration(server))
+    }
+    ConnectScope::Project => {
+      if atlas_home.is_some() {
+        note(format!(
+          "warning: {HOME_VAR} is set but was left out of the project .mcp.json because that file is usually committed; the server will use the default home"
+        ));
+      }
+      let server = project_entry(&project_command(&executable), project.name.as_str());
+      plans.insert(0, plan_mcp_config(root.join(".mcp.json"), &server)?);
+      None
+    }
+  };
   for plan in &plans {
-    let status = match (&plan.before, plan.changed()) {
-      (_, false) => "unchanged",
-      (None, true) => "created",
-      (Some(_), true) => "updated",
-    };
-    emit_line(format!("{}: {status}", plan.path.display()))?;
+    emit_line(format!("{}: {}", plan.path.display(), plan.change().label()))?;
     if plan.changed() {
       emit(&unified(&plan.path, plan.before.as_deref(), &plan.after))?;
     }
   }
-  let overwritten: Vec<String> = plans
+  if let Some(registration) = &registration {
+    registration.show()?;
+  }
+  let mut overwritten: Vec<String> = plans
     .iter()
     .filter(|plan| plan.changed() && plan.before.is_some())
     .map(|plan| plan.path.display().to_string())
     .collect();
+  overwritten.extend(registration.iter().filter(|registration| registration.replaces()).map(Registration::label));
   if !overwritten.is_empty() {
     confirm(&format!("apply these changes to {}", overwritten.join(", ")), args.yes)?;
   }
   for plan in plans.iter().filter(|plan| plan.changed()) {
     write(plan)?;
   }
-  if user_scope {
-    register_user_scope(&server)?;
+  if let Some(registration) = registration.filter(Registration::changed) {
+    register_user_scope(&registration.after)?;
     emit_line(format!("registered {SERVER_NAME} in the Claude Code user scope"))?;
   }
   Ok(Outcome::Complete)
 }
 
-fn connection_root(ctx: &Context, project: &Project) -> CliResult<PathBuf> {
+fn connection_root(ctx: &Context, resolution: &Resolution) -> CliResult<PathBuf> {
+  if let Binding::UnresolvedWorktree(unresolved) = &resolution.binding {
+    return Ok(unresolved.root.clone());
+  }
+  if let Binding::Worktree(worktree) = &resolution.binding {
+    let counterpart = resolution
+      .project
+      .repo(worktree.repo.as_str())
+      .and_then(|repo| repo.path.strip_prefix(&worktree.indexed_checkout).ok())
+      .map(|relative| worktree.worktree.join(relative))
+      .filter(|path| path.is_dir());
+    return Ok(counterpart.unwrap_or_else(|| worktree.worktree.clone()));
+  }
   let cwd = fs::canonicalize(&ctx.cwd).map_err(|source| CliError::io("canonicalize", &ctx.cwd, source))?;
-  let repo = project
+  let repo = resolution
+    .project
     .repos
     .iter()
     .filter(|repo| cwd.starts_with(&repo.path))
@@ -99,16 +148,145 @@ fn connection_root(ctx: &Context, project: &Project) -> CliResult<PathBuf> {
   Ok(repo.map_or(cwd, |repo| repo.path.clone()))
 }
 
-fn server_entry(executable: &Path, project: &str, home: Option<&OsStr>) -> Value {
+fn user_entry(executable: &Path, home: Option<&OsStr>) -> Value {
   let mut entry = json!({
     "type": "stdio",
     "command": executable.display().to_string(),
-    "args": ["mcp", "--project", project],
+    "args": ["mcp", "--watch"],
   });
   if let Some(home) = home {
     entry["env"] = json!({ HOME_VAR: home.to_string_lossy() });
   }
   entry
+}
+
+fn project_entry(command: &str, project: &str) -> Value {
+  json!({
+    "type": "stdio",
+    "command": command,
+    "args": ["mcp", "--project", project, "--watch"],
+  })
+}
+
+fn project_command(executable: &Path) -> String {
+  if find_on_path(BINARY_NAME).and_then(|found| fs::canonicalize(found).ok()).as_deref() == Some(executable) {
+    return BINARY_NAME.to_owned();
+  }
+  note(format!(
+    "warning: `{BINARY_NAME}` on PATH is missing or is not this binary, so .mcp.json names {} directly, which makes the file machine-specific; put this {BINARY_NAME} on PATH and rerun before committing it",
+    executable.display()
+  ));
+  executable.display().to_string()
+}
+
+fn find_on_path(name: &str) -> Option<PathBuf> {
+  let path = std::env::var_os("PATH")?;
+  std::env::split_paths(&path)
+    .filter(|directory| directory.is_absolute())
+    .map(|directory| directory.join(name))
+    .find(|candidate| is_executable(candidate))
+}
+
+#[cfg(unix)]
+fn is_executable(path: &Path) -> bool {
+  use std::os::unix::fs::PermissionsExt;
+  fs::metadata(path).is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(not(unix))]
+fn is_executable(path: &Path) -> bool {
+  path.is_file()
+}
+
+enum Existing {
+  Absent,
+  Present(Value),
+  Unknown(String),
+}
+
+struct Registration {
+  config: PathBuf,
+  before: Existing,
+  after: Value,
+}
+
+impl Registration {
+  fn label(&self) -> String {
+    format!("{} (user-scope {SERVER_NAME} server)", self.config.display())
+  }
+
+  fn changed(&self) -> bool {
+    match &self.before {
+      Existing::Present(before) => !same_server(before, &self.after),
+      Existing::Absent | Existing::Unknown(_) => true,
+    }
+  }
+
+  fn replaces(&self) -> bool {
+    !matches!(self.before, Existing::Absent) && self.changed()
+  }
+
+  fn show(&self) -> CliResult<()> {
+    let label = PathBuf::from(format!("{}#mcpServers.{SERVER_NAME}", self.config.display()));
+    let after = pretty(&self.after)?;
+    match &self.before {
+      Existing::Unknown(reason) => {
+        emit_line(format!("{}: replacing an entry that cannot be read ({reason})", label.display()))?;
+        emit(&unified(&label, None, &after))
+      }
+      Existing::Absent => {
+        emit_line(format!("{}: {}", label.display(), Change::Created.label()))?;
+        emit(&unified(&label, None, &after))
+      }
+      Existing::Present(_) if !self.changed() => emit_line(format!("{}: {}", label.display(), Change::Unchanged.label())),
+      Existing::Present(before) => {
+        emit_line(format!("{}: {}", label.display(), Change::Updated.label()))?;
+        emit(&unified(&label, Some(&pretty(before)?), &after))
+      }
+    }
+  }
+}
+
+fn pretty(value: &Value) -> CliResult<String> {
+  Ok(serde_json::to_string_pretty(value)? + "\n")
+}
+
+fn same_server(left: &Value, right: &Value) -> bool {
+  let view = |entry: &Value| {
+    let env = entry.get("env").filter(|env| env.as_object().is_some_and(|env| !env.is_empty())).cloned();
+    (entry.get("command").cloned(), entry.get("args").cloned(), env)
+  };
+  view(left) == view(right)
+}
+
+fn claude_config_path() -> Option<PathBuf> {
+  let non_empty = |name: &str| std::env::var_os(name).filter(|value| !value.is_empty()).map(PathBuf::from);
+  non_empty(CLAUDE_CONFIG_DIR_VAR)
+    .or_else(|| non_empty("HOME"))
+    .map(|directory| directory.join(CLAUDE_CONFIG_FILE))
+}
+
+fn plan_registration(after: Value) -> Registration {
+  let Some(config) = claude_config_path() else {
+    return Registration {
+      config: PathBuf::from(CLAUDE_CONFIG_FILE),
+      before: Existing::Unknown("no home directory".to_owned()),
+      after,
+    };
+  };
+  let before = match fs::read_to_string(&config) {
+    Ok(text) => match serde_json::from_str::<Value>(&text) {
+      Ok(document) => document
+        .get("mcpServers")
+        .and_then(|servers| servers.get(SERVER_NAME))
+        .cloned()
+        .map_or(Existing::Absent, Existing::Present),
+      Err(error) => Existing::Unknown(error.to_string()),
+    },
+    Err(error) if error.kind() == ErrorKind::NotFound => Existing::Absent,
+    Err(error) => Existing::Unknown(error.to_string()),
+  };
+  Registration { config, before, after }
 }
 
 fn add_json_command(server: &Value) -> Vec<String> {

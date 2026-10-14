@@ -55,7 +55,7 @@ Project resolution (for commands without `-p`): the `.code-atlas.toml` marker fo
 
 An applied or dry-run edit whose index freshness is degraded exits 3. `lsp check` exits 1 when a server failed to start or become ready, 3 when a server is ready but reports an unhealthy workspace. `doctor` exits 3 on warnings and 1 on failures. A language server that is unavailable or disabled exits 1 with an install hint.
 
-Verified: `index` and queries on a healthy index exit 0; `symbol Nope` exits 4; running outside any project exits 2; `enrich` with LLM disabled exits 3. Exit codes 5 to 7 are read from the code (`crates/atlas-cli/src/error.rs`) and the `--help` text; they were not re-run for this page.
+Verified: `index` and queries on a healthy index exit 0; `symbol Nope` exits 4; running outside any project exits 2 (except `mcp`, which then serves only `atlas_status`); `enrich` with LLM disabled exits 3. Exit codes 5 to 7 are read from the code (`crates/atlas-cli/src/error.rs`) and the `--help` text; they were not re-run for this page.
 
 ## CLI reference
 
@@ -68,7 +68,7 @@ Global flags: `-p, --project <NAME>`, `--log-level <FILTER>` (overrides `RUST_LO
 | `project list [--json]`, `project show <NAME> [--json]` | inspect the registry |
 | `project delete <NAME> [--purge-data] [-y]` | unregister; `--purge-data` also deletes the database and caches |
 | `project config <PROJECT> [flags]` | show or change settings (below) |
-| `init` | write `.code-atlas.toml` and add the current directory as a repo of `-p <project>` |
+| `init` | write `.code-atlas.toml` and add the current directory as a repo of `-p <project>` (created if missing) |
 | `index [--full]` | index now; `--full` re-analyzes every file |
 | `status [--json]` | freshness, parse and skip counts, unresolved reasons, edge certainty histogram per kind, SCIP coverage, inferred-fact counts, LLM spend, recent runs |
 | `watch` | keep the index fresh in the foreground until Ctrl-C; reloads on registry changes, persists similarity on exit |
@@ -86,8 +86,8 @@ Global flags: `-p, --project <NAME>`, `--log-level <FILTER>` (overrides `RUST_LO
 | `edit apply <PLAN.json> [--json]` | apply a plan file written by `--dry-run --plan-out` |
 | `lsp check [--json]` | start each language server once and report discovery, versions, readiness time and workspace health |
 | `search`, `impact`, `context`, `callers`, `callees`, `symbol`, `api`, `explain`, `read`, `tests-for` | shortcuts for the same `query` subcommands (none for `similar`, `unused`, `patterns`, `changes`, `overview`, `dependents`, `dependencies`) |
-| `connect claude [--scope project\|user] [-y]` | wire into Claude Code, see [agent integration](agent-integration.md) |
-| `mcp [--watch]` | serve MCP on stdio |
+| `connect claude [--scope project\|user] [-y]` | wire into Claude Code: user scope registers `catl mcp --watch` (project inferred per session), project scope writes `.mcp.json` with `catl mcp --project <p> --watch`; see [agent integration](agent-integration.md) |
+| `mcp [--watch]` | serve MCP on stdio for the project of `-p` or the working directory; where no project resolves it serves only `atlas_status`, which explains how to register the repo |
 | `debug run <ID>`, `debug explain-context <TASK>`, `debug dump-file <REPO:PATH>` | per-run phase timings and counts, context scoring, raw facts of a file |
 | `doctor [--lsp]` | check home, registry, repos, database integrity, index lock, `rust-analyzer`, `typescript-language-server` discovery (one line per candidate), TypeScript 7 repos, `npx`, `claude`, SQLite build; `--lsp` also starts each language server and reports its health (slow) |
 
@@ -113,6 +113,19 @@ Every query accepts `--json`. Other flags are per command (`catl query <command>
 Every edit subcommand takes `--dry-run` (diffs and a plan id, nothing written), `--plan-out FILE` (with `--dry-run`: write the plan as JSON) and `--json`. A plan file is versioned (`version: 1`); a plan with a missing or different version, another project's plan, or one whose files changed since planning is refused (exit 5). Rename and safe-delete plans are also refused when the index recorded any file change since the plan was made. Targets are names, name paths (`A/b`), keys, `[repo:]path:LINE[:COL]` (1-based line, UTF-8 byte column) or `[repo:]path`.
 
 Quickstart output (acme): `indexed acme: run 1, 58 files updated`; `status` shows `fresh run=1`, `parse ok 58`, `scip: never run`.
+
+### Worktrees
+
+Worktrees are not indexed yet. A directory inside a git worktree of a registered repo, inside the repo (`.worktrees/<name>`, `.claude/worktrees/<name>`) or outside it (`../repo-feature`), resolves to the project that indexes the main checkout. Code Atlas detects the worktree from its `.git` file (`gitdir:` and `commondir`, no `git` process), so it never treats it as the main checkout:
+
+- Queries still answer, but from the main checkout: the CLI prints `worktree caveat: answers describe the main checkout at <main>, not the git worktree at <worktree> ...` on stderr, and every MCP answer ends with that line (a `caveat` field in JSON).
+- Every edit (`catl edit ...`, including dry runs and `edit apply`, and MCP `atlas_edit`) is refused with a message naming both paths, because it would write into the main checkout. The CLI exits 5 and writes nothing. Edits from the main checkout itself are unaffected.
+- The same holds for a worktree of a git repo that sits inside a registered folder (a registered parent directory that is not itself a checkout, or an independent repo nested in a registered repo): any linked worktree strictly below a registered repo path binds as a worktree, unless a repo is registered at or inside the worktree itself.
+- A `.git` file below a registered repo root that does not resolve (dangling `gitdir`, deleted admin directory, unreadable file) is treated as a broken worktree: answers carry a caveat and edits are refused with a message saying the worktree could not be resolved (`git worktree repair` fixes it). A worktree admin directory that only lacks its `commondir` file is still recognised.
+- When the indexed checkout is itself a linked worktree (a bare repository with several worktrees), messages call it the indexed checkout rather than the main checkout.
+- A project that registers the worktree's own path wins over the main project there, and `connect claude` run in a worktree writes into the worktree.
+- Limitation: the MCP server decides its binding once, from the directory it starts in. An agent whose server started in the main checkout and that then moves into a worktree (or subagents that share the parent session's servers) is not protected: answers carry no caveat and `atlas_edit` writes into the main checkout. Start the agent session inside the worktree. The CLI resolves on every call, so it has no such gap.
+- The watcher ignores `.worktrees` and `.claude/worktrees` under a repo, so work in a worktree does not wake the main project's index. Submodules are separate checkouts, not worktrees.
 
 ## Project config
 

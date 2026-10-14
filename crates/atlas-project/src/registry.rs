@@ -6,6 +6,7 @@ use atlas_core::{Language, ProjectName, RepoName};
 use fd_lock::RwLock;
 use serde::{Deserialize, Serialize};
 
+use crate::binding::{Binding, Locator, Resolution};
 use crate::error::ProjectError;
 use crate::globs::PathGlobs;
 use crate::home::AtlasHome;
@@ -355,25 +356,39 @@ impl Registry {
   }
 
   pub fn resolve_project(&self, cwd: &Path, explicit: Option<&str>) -> Result<&Project, ProjectError> {
+    self.locate(cwd, explicit).map(|(project, _)| project)
+  }
+
+  pub fn resolve(&self, cwd: &Path, explicit: Option<&str>) -> Result<Resolution, ProjectError> {
+    let (project, binding) = self.locate(cwd, explicit)?;
+    Ok(Resolution {
+      project: project.clone(),
+      binding,
+    })
+  }
+
+  fn locate(&self, cwd: &Path, explicit: Option<&str>) -> Result<(&Project, Binding), ProjectError> {
     if let Some(name) = explicit {
-      return self.project(name);
+      let project = self.project(name)?;
+      let binding = fs::canonicalize(cwd).ok().map(Locator::new).and_then(|locator| locator.bind(project));
+      return Ok((project, binding.unwrap_or(Binding::Direct)));
     }
     let canonical = fs::canonicalize(cwd).map_err(|source| ProjectError::io("canonicalize", cwd, source))?;
-    if let Some((marker, name)) = find_marker(&canonical)? {
-      return self.project(&name).map_err(|_| ProjectError::MarkerProjectNotFound { path: marker, project: name });
+    let locator = Locator::new(canonical);
+    if let Some((marker, name)) = find_marker(&locator.cwd)? {
+      let project = self.project(&name).map_err(|_| ProjectError::MarkerProjectNotFound { path: marker, project: name })?;
+      return Ok((project, locator.bind(project).unwrap_or(Binding::Direct)));
     }
-    let mut candidates: Vec<&Project> = self
-      .projects
-      .iter()
-      .filter(|project| project.repos.iter().any(|repo| canonical.starts_with(&repo.path)))
-      .collect();
-    candidates.sort_by(|a, b| a.name.cmp(&b.name));
-    match candidates.as_slice() {
-      [only] => Ok(only),
-      [] => Err(ProjectError::NotInProject { cwd: canonical }),
-      several => Err(ProjectError::Ambiguous {
-        cwd: canonical,
-        candidates: several.iter().map(|project| project.name.to_string()).collect(),
+    let bound: Vec<(&Project, Binding)> = self.projects.iter().filter_map(|project| locator.bind(project).map(|binding| (project, binding))).collect();
+    let any_direct = bound.iter().any(|(_, binding)| *binding == Binding::Direct);
+    let mut candidates: Vec<(&Project, Binding)> = bound.into_iter().filter(|(_, binding)| !any_direct || *binding == Binding::Direct).collect();
+    candidates.sort_by(|a, b| a.0.name.cmp(&b.0.name));
+    match candidates.len() {
+      1 => Ok(candidates.remove(0)),
+      0 => Err(ProjectError::NotInProject { cwd: locator.cwd }),
+      _ => Err(ProjectError::Ambiguous {
+        cwd: locator.cwd,
+        candidates: candidates.iter().map(|(project, _)| project.name.to_string()).collect(),
       }),
     }
   }
@@ -562,6 +577,8 @@ mod tests {
   use tempfile::TempDir;
 
   use super::*;
+  use crate::binding::{CheckoutRole, UnresolvedWorktree, WorktreeOf};
+  use crate::worktree::git_fixture;
 
   struct Sandbox {
     _dir: TempDir,
@@ -1167,6 +1184,298 @@ mod tests {
     std::os::unix::fs::symlink(&dir, &link).unwrap();
     let registry = registry_with(&sandbox, &[("acme", &[&dir])]);
     assert_eq!(registry.resolve_project(&link.join("sub"), None).unwrap().name.as_str(), "acme");
+  }
+
+  fn worktree_of(project: &str, repo: &str, worktree: &Path, main: &Path) -> Binding {
+    worktree_in(project, repo, worktree, main, CheckoutRole::MainCheckout)
+  }
+
+  fn worktree_in(project: &str, repo: &str, worktree: &Path, indexed: &Path, indexed_role: CheckoutRole) -> Binding {
+    Binding::Worktree(WorktreeOf {
+      project: ProjectName::new(project).unwrap(),
+      repo: RepoName::new(repo).unwrap(),
+      worktree: worktree.to_path_buf(),
+      indexed_checkout: indexed.to_path_buf(),
+      indexed_role,
+    })
+  }
+
+  #[test]
+  fn should_bind_the_main_checkout_directly() {
+    let sandbox = Sandbox::new();
+    let main = git_fixture::repository(&sandbox.root, "main");
+    let registry = registry_with(&sandbox, &[("acme", &[&main])]);
+
+    let resolution = registry.resolve(&main.join("src"), None).unwrap();
+
+    assert_eq!((resolution.project.name.as_str(), resolution.binding), ("acme", Binding::Direct));
+  }
+
+  #[test]
+  fn should_bind_a_worktree_inside_a_registered_repo_as_a_worktree_of_it() {
+    let sandbox = Sandbox::new();
+    let main = git_fixture::repository(&sandbox.root, "main");
+    git_fixture::git(&main, &["worktree", "add", "--quiet", "-b", "feature", ".claude/worktrees/feature"]);
+    let worktree = main.join(".claude/worktrees/feature");
+    let registry = registry_with(&sandbox, &[("acme", &[&main])]);
+
+    let resolution = registry.resolve(&worktree.join("src"), None).unwrap();
+
+    assert_eq!(resolution.project.name.as_str(), "acme");
+    assert_eq!(resolution.binding, worktree_of("acme", "repo-0", &worktree, &main));
+    assert_eq!(registry.resolve_project(&worktree, None).unwrap().name.as_str(), "acme");
+  }
+
+  #[test]
+  fn should_bind_a_worktree_outside_every_registered_path_through_its_main_repository() {
+    let sandbox = Sandbox::new();
+    let main = git_fixture::repository(&sandbox.root, "main");
+    git_fixture::git(&main, &["worktree", "add", "--quiet", "-b", "outside", "../outside"]);
+    let worktree = sandbox.root.join("outside");
+    let registry = registry_with(&sandbox, &[("acme", &[&main])]);
+
+    assert_eq!(registry.resolve(&worktree, None).unwrap().binding, worktree_of("acme", "repo-0", &worktree, &main));
+  }
+
+  #[test]
+  fn should_bind_a_worktree_even_when_the_project_is_explicit_or_pinned_by_a_marker() {
+    let sandbox = Sandbox::new();
+    let main = git_fixture::repository(&sandbox.root, "main");
+    git_fixture::git(&main, &["worktree", "add", "--quiet", "-b", "feature", ".worktrees/feature"]);
+    let worktree = main.join(".worktrees/feature");
+    let registry = registry_with(&sandbox, &[("acme", &[&main]), ("globex", &[])]);
+    let expected = worktree_of("acme", "repo-0", &worktree, &main);
+
+    let explicit = registry.resolve(&worktree, Some("acme")).unwrap().binding;
+    let unrelated = registry.resolve(&worktree, Some("globex")).unwrap().binding;
+    fs::write(worktree.join(MARKER_FILE), "project = \"acme\"\n").unwrap();
+    let pinned = registry.resolve(&worktree.join("src"), None).unwrap().binding;
+
+    assert_eq!(explicit, expected);
+    assert_eq!(unrelated, Binding::Direct);
+    assert_eq!(pinned, expected);
+  }
+
+  #[test]
+  fn should_name_the_registered_repo_whose_counterpart_contains_the_cwd() {
+    let sandbox = Sandbox::new();
+    let main = git_fixture::repository(&sandbox.root, "main");
+    fs::create_dir_all(main.join("packages/api")).unwrap();
+    fs::create_dir_all(main.join("packages/web")).unwrap();
+    fs::write(main.join("packages/web/index.ts"), "export const web = 1;\n").unwrap();
+    fs::write(main.join("packages/api/index.ts"), "export const api = 1;\n").unwrap();
+    git_fixture::git(&main, &["add", "."]);
+    git_fixture::git(&main, &["commit", "--quiet", "--message", "packages"]);
+    git_fixture::git(&main, &["worktree", "add", "--quiet", "-b", "feature", ".worktrees/feature"]);
+    let worktree = main.join(".worktrees/feature");
+    let mut registry = sandbox.registry();
+    let specs = vec![RepoSpec::new(main.join("packages/api")).named("api"), RepoSpec::new(main.join("packages/web")).named("web")];
+    registry.create_project("acme", specs).unwrap();
+
+    let in_web = registry.resolve(&worktree.join("packages/web"), None).unwrap().binding;
+    let at_root = registry.resolve(&worktree, None).unwrap().binding;
+
+    assert_eq!(in_web, worktree_of("acme", "web", &worktree, &main));
+    assert_eq!(at_root, worktree_of("acme", "api", &worktree, &main));
+  }
+
+  #[test]
+  fn should_prefer_a_project_that_registers_the_worktree_itself() {
+    let sandbox = Sandbox::new();
+    let main = git_fixture::repository(&sandbox.root, "main");
+    git_fixture::git(&main, &["worktree", "add", "--quiet", "-b", "feature", ".worktrees/feature"]);
+    let worktree = main.join(".worktrees/feature");
+    let registry = registry_with(&sandbox, &[("acme", &[&main]), ("acme-feature", &[&worktree])]);
+
+    let in_worktree = registry.resolve(&worktree.join("src"), None).unwrap();
+    let in_main = registry.resolve(&main.join("src"), None).unwrap();
+
+    assert_eq!((in_worktree.project.name.as_str(), in_worktree.binding), ("acme-feature", Binding::Direct));
+    assert_eq!((in_main.project.name.as_str(), in_main.binding), ("acme", Binding::Direct));
+  }
+
+  #[test]
+  fn should_report_ambiguity_between_projects_that_both_index_the_main_checkout_of_a_worktree() {
+    let sandbox = Sandbox::new();
+    let main = git_fixture::repository(&sandbox.root, "main");
+    git_fixture::git(&main, &["worktree", "add", "--quiet", "-b", "feature", "../feature"]);
+    let registry = registry_with(&sandbox, &[("zeta", &[&main]), ("alpha", &[&main])]);
+
+    let error = registry.resolve(&sandbox.root.join("feature"), None).unwrap_err();
+
+    assert!(matches!(&error, ProjectError::Ambiguous { candidates, .. } if candidates == &["alpha", "zeta"]), "{error}");
+  }
+
+  #[test]
+  fn should_keep_binding_a_submodule_directly_to_the_project_containing_it() {
+    let sandbox = Sandbox::new();
+    let main = git_fixture::repository(&sandbox.root, "main");
+    let submodule = main.join("vendor");
+    fs::create_dir_all(&submodule).unwrap();
+    fs::create_dir_all(main.join(".git/modules/vendor")).unwrap();
+    fs::write(submodule.join(".git"), "gitdir: ../.git/modules/vendor\n").unwrap();
+    let registry = registry_with(&sandbox, &[("acme", &[&main])]);
+
+    assert_eq!(registry.resolve(&submodule, None).unwrap().binding, Binding::Direct);
+  }
+
+  #[test]
+  fn should_bind_a_worktree_of_a_repo_inside_a_registered_plain_parent_folder() {
+    let sandbox = Sandbox::new();
+    let workspace = sandbox.root.join("workspace");
+    let app = git_fixture::repository(&workspace, "app");
+    git_fixture::git(&app, &["worktree", "add", "--quiet", "-b", "feature", ".worktrees/feature"]);
+    let worktree = app.join(".worktrees/feature");
+    let registry = registry_with(&sandbox, &[("acme", &[&workspace])]);
+
+    let in_worktree = registry.resolve(&worktree.join("src"), None).unwrap().binding;
+    let in_main = registry.resolve(&app.join("src"), None).unwrap().binding;
+
+    assert_eq!(in_worktree, worktree_of("acme", "repo-0", &worktree, &app));
+    assert_eq!(in_main, Binding::Direct);
+  }
+
+  #[test]
+  fn should_bind_a_worktree_of_an_independent_repo_nested_in_a_registered_repo() {
+    let sandbox = Sandbox::new();
+    let outer = git_fixture::repository(&sandbox.root, "outer");
+    let nested = git_fixture::repository(&outer.join("vendor"), "lib");
+    git_fixture::git(&nested, &["worktree", "add", "--quiet", "-b", "feature", ".worktrees/feature"]);
+    let worktree = nested.join(".worktrees/feature");
+    let registry = registry_with(&sandbox, &[("acme", &[&outer])]);
+
+    assert_eq!(registry.resolve(&worktree, None).unwrap().binding, worktree_of("acme", "repo-0", &worktree, &nested));
+    assert_eq!(registry.resolve(&nested, None).unwrap().binding, Binding::Direct);
+  }
+
+  #[test]
+  fn should_report_ambiguity_between_a_parent_folder_project_and_a_project_registering_the_repo() {
+    let sandbox = Sandbox::new();
+    let workspace = sandbox.root.join("workspace");
+    let app = git_fixture::repository(&workspace, "app");
+    git_fixture::git(&app, &["worktree", "add", "--quiet", "-b", "feature", ".worktrees/feature"]);
+    let registry = registry_with(&sandbox, &[("zeta", &[&workspace]), ("alpha", &[&app])]);
+
+    let error = registry.resolve(&app.join(".worktrees/feature"), None).unwrap_err();
+
+    assert!(matches!(&error, ProjectError::Ambiguous { candidates, .. } if candidates == &["alpha", "zeta"]), "{error}");
+  }
+
+  #[test]
+  fn should_bind_directly_where_the_worktree_root_itself_is_registered_under_a_parent_folder_project() {
+    let sandbox = Sandbox::new();
+    let workspace = sandbox.root.join("workspace");
+    let app = git_fixture::repository(&workspace, "app");
+    git_fixture::git(&app, &["worktree", "add", "--quiet", "-b", "feature", ".worktrees/feature"]);
+    let worktree = app.join(".worktrees/feature");
+    let registry = registry_with(&sandbox, &[("acme", &[&workspace, &worktree])]);
+
+    assert_eq!(registry.resolve(&worktree.join("src"), None).unwrap().binding, Binding::Direct);
+  }
+
+  #[test]
+  fn should_fail_closed_on_an_unresolvable_git_file_below_a_registered_repo() {
+    let sandbox = Sandbox::new();
+    let main = git_fixture::repository(&sandbox.root, "main");
+    git_fixture::git(&main, &["worktree", "add", "--quiet", "-b", "feature", ".worktrees/feature"]);
+    let worktree = main.join(".worktrees/feature");
+    fs::remove_dir_all(main.join(".git/worktrees/feature")).unwrap();
+    let registry = registry_with(&sandbox, &[("acme", &[&main])]);
+
+    let binding = registry.resolve(&worktree.join("src"), None).unwrap().binding;
+
+    assert_eq!(
+      binding,
+      Binding::UnresolvedWorktree(UnresolvedWorktree {
+        project: ProjectName::new("acme").unwrap(),
+        repo: RepoName::new("repo-0").unwrap(),
+        root: worktree.clone(),
+        registered: main.clone(),
+      })
+    );
+    assert_eq!(registry.resolve(&main, None).unwrap().binding, Binding::Direct);
+  }
+
+  #[test]
+  fn should_bind_a_worktree_whose_commondir_file_is_missing() {
+    let sandbox = Sandbox::new();
+    let main = git_fixture::repository(&sandbox.root, "main");
+    git_fixture::git(&main, &["worktree", "add", "--quiet", "-b", "feature", ".worktrees/feature"]);
+    fs::remove_file(main.join(".git/worktrees/feature/commondir")).unwrap();
+    let worktree = main.join(".worktrees/feature");
+    let registry = registry_with(&sandbox, &[("acme", &[&main])]);
+
+    assert_eq!(registry.resolve(&worktree, None).unwrap().binding, worktree_of("acme", "repo-0", &worktree, &main));
+  }
+
+  #[test]
+  fn should_call_a_registered_linked_worktree_the_indexed_checkout() {
+    let sandbox = Sandbox::new();
+    let source = git_fixture::repository(&sandbox.root, "source");
+    let bare = sandbox.root.join("repo.git");
+    git_fixture::git(&sandbox.root, &["clone", "--quiet", "--bare", source.to_str().unwrap(), bare.to_str().unwrap()]);
+    git_fixture::git(&bare, &["worktree", "add", "--quiet", sandbox.root.join("main").to_str().unwrap(), "trunk"]);
+    git_fixture::git(&bare, &["worktree", "add", "--quiet", "-b", "feature", sandbox.root.join("feature").to_str().unwrap()]);
+    let (main, feature) = (sandbox.root.join("main"), sandbox.root.join("feature"));
+    let registry = registry_with(&sandbox, &[("acme", &[&main])]);
+
+    let binding = registry.resolve(&feature, None).unwrap().binding;
+
+    assert_eq!(binding, worktree_in("acme", "repo-0", &feature, &main, CheckoutRole::OtherCheckout));
+    assert!(
+      binding
+        .caveat()
+        .unwrap()
+        .starts_with(&format!("worktree caveat: answers describe the indexed checkout at {}, not", main.display())),
+      "{binding:?}"
+    );
+    assert!(
+      binding
+        .edit_refusal()
+        .unwrap()
+        .contains(&format!(": project acme indexes the checkout at {} (repo repo-0)", main.display())),
+      "{binding:?}"
+    );
+  }
+
+  #[test]
+  fn should_render_the_unresolved_worktree_caveat_and_refusal() {
+    let binding = Binding::UnresolvedWorktree(UnresolvedWorktree {
+      project: ProjectName::new("acme").unwrap(),
+      repo: RepoName::new("api").unwrap(),
+      root: PathBuf::from("/src/api/.worktrees/x"),
+      registered: PathBuf::from("/src/api"),
+    });
+
+    assert_eq!(
+      binding.caveat().unwrap(),
+      "worktree caveat: /src/api/.worktrees/x has a .git entry that does not resolve to a git checkout (a broken worktree?); answers describe the checkout registered at /src/api (repo api of project acme), not /src/api/.worktrees/x; edits are refused here"
+    );
+    assert_eq!(
+      binding.edit_refusal().unwrap(),
+      "refusing to edit from /src/api/.worktrees/x: its .git entry does not resolve to a git checkout, so the worktree could not be resolved and the edit could write into the checkout registered at /src/api (repo api of project acme) instead; nothing was written. Repair it with `git worktree repair`, or run the edit from /src/api"
+    );
+    assert_eq!((Binding::Direct.caveat(), Binding::Direct.edit_refusal()), (None, None));
+  }
+
+  #[test]
+  fn should_render_the_worktree_caveat_and_refusal_with_both_paths() {
+    let binding = WorktreeOf {
+      project: ProjectName::new("acme").unwrap(),
+      repo: RepoName::new("api").unwrap(),
+      worktree: PathBuf::from("/src/api/.worktrees/x"),
+      indexed_checkout: PathBuf::from("/src/api"),
+      indexed_role: CheckoutRole::MainCheckout,
+    };
+
+    assert_eq!(
+      binding.caveat(),
+      "worktree caveat: answers describe the main checkout at /src/api, not the git worktree at /src/api/.worktrees/x (repo api of project acme); edits are refused here"
+    );
+    assert_eq!(
+      binding.edit_refusal(),
+      "refusing to edit from the git worktree at /src/api/.worktrees/x: project acme indexes the main checkout at /src/api (repo api), so the edit would write there, not into this worktree; nothing was written. Edit the worktree's files directly, or run the edit from /src/api"
+    );
   }
 
   #[test]

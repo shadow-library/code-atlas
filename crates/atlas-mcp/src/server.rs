@@ -91,22 +91,12 @@ impl AtlasServer {
         tracing::warn!(error = %error, "warm-up index update failed; the first tool call retries");
       }
     });
-    let running = self.serve(transport).await.map_err(|error| McpError::Transport(error.to_string()))?;
-    let cancel = running.cancellation_token();
-    let waiting = running.waiting();
-    tokio::pin!(waiting);
-    let outcome = tokio::select! {
-      outcome = &mut waiting => outcome,
-      () = shutdown => {
-        cancel.cancel();
-        waiting.await
-      }
-    };
+    let outcome = serve_until(self, transport, shutdown).await;
     let finished = tokio::task::spawn_blocking(move || shared.session.shut_down()).await;
     if let Err(error) = finished {
       tracing::error!(error = %error, "shutdown cleanup failed");
     }
-    outcome.map(|_| ()).map_err(|error| McpError::Transport(error.to_string()))
+    outcome
   }
 
   async fn call<F>(&self, tool: &'static str, format: Option<Format>, query: F) -> CallToolResult
@@ -124,14 +114,17 @@ impl AtlasServer {
     })
     .await;
     let outcome = joined.unwrap_or_else(|error| Err(ToolError::from_join(tool, error)));
+    let caveat = self.shared.session.caveat();
     let (result, bytes, failed, truncated) = match outcome {
       Ok(text) => {
-        let (text, truncated) = render::cap(text, format.unwrap_or_default(), self.shared.max_output_bytes);
+        let format = format.unwrap_or_default();
+        let (text, truncated) = render::cap_with_caveat(text, format, self.shared.max_output_bytes, caveat.as_deref());
         let bytes = text.len();
         (CallToolResult::success(vec![ContentBlock::text(text)]), bytes, false, truncated)
       }
       Err(error) => {
-        let message = error.to_string();
+        let caveat = caveat.filter(|_| !matches!(error, ToolError::Refused(_)));
+        let message = render::with_caveat(error.to_string(), Format::Text, caveat.as_deref());
         tracing::warn!(tool, error = %message, "tool call failed");
         let bytes = message.len();
         (CallToolResult::error(vec![ContentBlock::text(message)]), bytes, true, 0)
@@ -142,7 +135,27 @@ impl AtlasServer {
   }
 }
 
-fn compact_router(mut router: ToolRouter<AtlasServer>) -> ToolRouter<AtlasServer> {
+pub(crate) async fn serve_until<S, T, E, A>(server: S, transport: T, shutdown: impl Future<Output = ()>) -> Result<(), McpError>
+where
+  S: ServerHandler,
+  T: IntoTransport<RoleServer, E, A>,
+  E: std::error::Error + Send + Sync + 'static,
+{
+  let running = server.serve(transport).await.map_err(|error| McpError::Transport(error.to_string()))?;
+  let cancel = running.cancellation_token();
+  let waiting = running.waiting();
+  tokio::pin!(waiting);
+  let outcome = tokio::select! {
+    outcome = &mut waiting => outcome,
+    () = shutdown => {
+      cancel.cancel();
+      waiting.await
+    }
+  };
+  outcome.map(|_| ()).map_err(|error| McpError::Transport(error.to_string()))
+}
+
+pub(crate) fn compact_router<S>(mut router: ToolRouter<S>) -> ToolRouter<S> {
   for route in router.map.values_mut() {
     route.attr.input_schema = Arc::new(compact_schema(&route.attr.input_schema));
   }
@@ -291,6 +304,9 @@ impl AtlasServer {
   async fn edit(&self, Parameters(args): Parameters<EditArgs>) -> CallToolResult {
     self
       .call("atlas_edit", args.format, move |shared| {
+        if let Some(refusal) = shared.session.edit_refusal() {
+          return Err(ToolError::Refused(refusal));
+        }
         let format = args.format.unwrap_or_default();
         let request = arguments::edit_request(args)?;
         let response = shared.session.ide().edit(&request)?;

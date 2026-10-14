@@ -80,6 +80,8 @@ pub enum CliError {
   Ide(#[from] IdeError),
   #[error(transparent)]
   EditRefused(Box<CliError>),
+  #[error("{0}")]
+  EditOutsideIndexedCheckout(String),
   #[error("invalid plan file {}: {message}", .path.display())]
   InvalidPlan { path: PathBuf, message: String },
   #[error("{0}")]
@@ -140,7 +142,7 @@ impl CliError {
       | Self::InvalidInput(_)
       | Self::ClaudeUnavailable { .. } => Exit::Usage,
       Self::Ide(error) => ide_exit(error),
-      Self::EditRefused(_) => Exit::Refused,
+      Self::EditRefused(_) | Self::EditOutsideIndexedCheckout(_) => Exit::Refused,
       Self::RunNotFound(_) | Self::FileNotIndexed { .. } => Exit::NoMatch,
       _ => Exit::Failure,
     }

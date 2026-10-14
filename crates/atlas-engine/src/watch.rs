@@ -13,6 +13,7 @@ use crate::engine::Engine;
 use crate::error::{EngineError, EngineResult};
 
 const DEFAULT_IGNORED_SEGMENTS: [&str; 3] = [".git", "target", "node_modules"];
+const WORKTREE_DIRS: [&[&str]; 2] = [&[".worktrees"], &[".claude", "worktrees"]];
 const STOP_POLL: Duration = Duration::from_millis(50);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -192,11 +193,29 @@ fn ignored_segments(project: &Project) -> Vec<&'static str> {
     .collect()
 }
 
-fn is_relevant(event: &Event, ignored: &[&str]) -> bool {
-  if matches!(event.kind, EventKind::Access(_)) {
-    return false;
+struct EventFilter {
+  ignored: Vec<&'static str>,
+  roots: Vec<PathBuf>,
+}
+
+impl EventFilter {
+  fn new(project: &Project) -> Self {
+    Self {
+      ignored: ignored_segments(project),
+      roots: project.repos.iter().map(|repo| repo.path.clone()).collect(),
+    }
   }
-  event.paths.is_empty() || event.paths.iter().any(|path| !is_ignored(path, ignored))
+
+  fn is_relevant(&self, event: &Event) -> bool {
+    if matches!(event.kind, EventKind::Access(_)) {
+      return false;
+    }
+    event.paths.is_empty() || event.paths.iter().any(|path| !self.is_ignored(path))
+  }
+
+  fn is_ignored(&self, path: &Path) -> bool {
+    is_ignored(path, &self.ignored) || is_in_worktree_dir(path, &self.roots)
+  }
 }
 
 fn is_ignored(path: &Path, ignored: &[&str]) -> bool {
@@ -205,10 +224,30 @@ fn is_ignored(path: &Path, ignored: &[&str]) -> bool {
     .any(|component| matches!(component, Component::Normal(name) if ignored.iter().any(|segment| name == *segment)))
 }
 
-fn on_event(signals: &WatchSignals, sender: &Sender<()>, ignored: &[&str], event: notify::Result<Event>) {
+fn is_in_worktree_dir(path: &Path, roots: &[PathBuf]) -> bool {
+  let Some(relative) = roots
+    .iter()
+    .filter_map(|root| path.strip_prefix(root).ok())
+    .min_by_key(|relative| relative.components().count())
+  else {
+    return false;
+  };
+  let names: Vec<&std::ffi::OsStr> = relative
+    .components()
+    .filter_map(|component| match component {
+      Component::Normal(name) => Some(name),
+      _ => None,
+    })
+    .collect();
+  WORKTREE_DIRS
+    .iter()
+    .any(|dir| names.windows(dir.len()).any(|window| window.iter().zip(dir.iter()).all(|(name, segment)| name == segment)))
+}
+
+fn on_event(signals: &WatchSignals, sender: &Sender<()>, filter: &EventFilter, event: notify::Result<Event>) {
   match event {
     Ok(event) if event.need_rescan() => signals.mark_unhealthy("the watcher requested a rescan".to_owned()),
-    Ok(event) if is_relevant(&event, ignored) => signals.mark_event(),
+    Ok(event) if filter.is_relevant(&event) => signals.mark_event(),
     Ok(_) => return,
     Err(error) => signals.mark_unhealthy(error.to_string()),
   }
@@ -266,11 +305,11 @@ impl Engine {
   pub fn watch(self: &Arc<Self>) -> EngineResult<WatchHandle> {
     let signals = Arc::clone(&self.watch);
     let project = self.project();
-    let ignored = ignored_segments(&project);
+    let filter = EventFilter::new(&project);
     let (sender, receiver) = mpsc::channel();
     let mut watcher = {
       let signals = Arc::clone(&signals);
-      notify::recommended_watcher(move |event| on_event(&signals, &sender, &ignored, event)).map_err(|error| EngineError::Watch(error.to_string()))?
+      notify::recommended_watcher(move |event| on_event(&signals, &sender, &filter, event)).map_err(|error| EngineError::Watch(error.to_string()))?
     };
     let roots: Vec<PathBuf> = project.repos.iter().map(|repo| repo.path.clone()).collect();
     for root in &roots {
@@ -334,6 +373,65 @@ mod tests {
     assert_eq!(ignored, vec![".git", "target"]);
     assert!(is_ignored(Path::new("/tmp/demo/target/debug/x"), &ignored));
     assert!(!is_ignored(Path::new("/tmp/demo/vendor-js/node_modules/a.ts"), &ignored));
+  }
+
+  fn demo_project(paths: &[&str]) -> Project {
+    let repos = paths
+      .iter()
+      .enumerate()
+      .map(|(index, path)| atlas_project::RepoConfig {
+        name: atlas_core::RepoName::new(format!("repo-{index}")).unwrap(),
+        path: PathBuf::from(path),
+        include: Vec::new(),
+        exclude: Vec::new(),
+        languages: None,
+      })
+      .collect();
+    Project {
+      name: atlas_core::ProjectName::new("demo").unwrap(),
+      settings: atlas_project::ProjectSettings::default(),
+      repos,
+    }
+  }
+
+  fn modified(path: &str) -> Event {
+    Event::new(EventKind::Modify(notify::event::ModifyKind::Any)).add_path(PathBuf::from(path))
+  }
+
+  #[test]
+  fn should_ignore_events_under_worktree_directories_of_a_repo() {
+    let filter = EventFilter::new(&demo_project(&["/src/demo"]));
+
+    let relevance: Vec<bool> = [
+      "/src/demo/.worktrees/feature/src/lib.rs",
+      "/src/demo/.worktrees",
+      "/src/demo/.claude/worktrees/agent-1/src/main.ts",
+      "/src/demo/packages/api/.worktrees/x/a.ts",
+      "/src/demo/.claude/settings.json",
+      "/src/demo/worktrees/notes.md",
+      "/src/demo/src/lib.rs",
+    ]
+    .iter()
+    .map(|path| filter.is_relevant(&modified(path)))
+    .collect();
+
+    assert_eq!(relevance, [false, false, false, false, true, true, true]);
+  }
+
+  #[test]
+  fn should_keep_watching_a_repo_registered_inside_a_worktree_directory() {
+    let filter = EventFilter::new(&demo_project(&["/src/demo/.worktrees/feature"]));
+
+    assert!(filter.is_relevant(&modified("/src/demo/.worktrees/feature/src/lib.rs")));
+    assert!(!filter.is_relevant(&modified("/src/demo/.worktrees/feature/.claude/worktrees/x/src/lib.rs")));
+  }
+
+  #[test]
+  fn should_judge_a_path_by_the_innermost_repo_containing_it() {
+    let filter = EventFilter::new(&demo_project(&["/src/demo", "/src/demo/.worktrees/feature"]));
+
+    assert!(filter.is_relevant(&modified("/src/demo/.worktrees/feature/src/lib.rs")));
+    assert!(!filter.is_relevant(&modified("/src/demo/.worktrees/other/src/lib.rs")));
   }
 
   #[test]

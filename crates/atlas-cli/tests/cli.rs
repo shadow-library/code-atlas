@@ -281,7 +281,8 @@ fn should_write_connect_claude_files_idempotently() {
   let config: Value = serde_json::from_str(&fs::read_to_string(api.join(".mcp.json")).unwrap()).unwrap();
   let server = &config["mcpServers"]["code-atlas"];
   assert_eq!(server["command"], fs::canonicalize(env!("CARGO_BIN_EXE_catl")).unwrap().display().to_string());
-  assert_eq!(server["args"], serde_json::json!(["mcp", "--project", "acme"]));
+  assert_eq!(server["args"], serde_json::json!(["mcp", "--project", "acme", "--watch"]));
+  assert!(stderr(&first).contains("machine-specific"), "{}", stderr(&first));
   let guidance = fs::read_to_string(api.join("AGENTS.md")).unwrap();
   for tool in ["`context`", "`impact`", "`search`", "`similar`", "`explain`", "[heuristic]", "[inferred]", "[compiler]"] {
     assert!(guidance.contains(tool), "missing {tool}");
@@ -532,25 +533,169 @@ fn should_omit_the_atlas_home_from_a_project_mcp_config_and_warn() {
   assert!(config["mcpServers"]["code-atlas"].get("env").is_none());
 }
 
+struct FakeClaude {
+  path: String,
+  log: PathBuf,
+  config_dir: PathBuf,
+}
+
+impl FakeClaude {
+  fn new(sandbox: &Sandbox) -> Self {
+    let bin = fake_claude(&sandbox.work());
+    let config_dir = sandbox.work().join("claude-config");
+    fs::create_dir_all(&config_dir).unwrap();
+    Self {
+      path: format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+      log: sandbox.work().join("claude.log"),
+      config_dir,
+    }
+  }
+
+  fn connect(&self, sandbox: &Sandbox, cwd: &Path, extra: &[&str]) -> Output {
+    let mut args = vec!["connect", "claude", "--scope", "user"];
+    args.extend_from_slice(extra);
+    let envs = [
+      ("PATH", self.path.as_str()),
+      ("FAKE_CLAUDE_LOG", self.log.to_str().unwrap()),
+      ("CLAUDE_CONFIG_DIR", self.config_dir.to_str().unwrap()),
+    ];
+    sandbox.run_env(cwd, &args, &envs)
+  }
+
+  fn calls(&self) -> Vec<String> {
+    fs::read_to_string(&self.log).map(|text| text.lines().map(str::to_owned).collect()).unwrap_or_default()
+  }
+
+  fn added_entries(&self) -> Vec<Value> {
+    self
+      .calls()
+      .iter()
+      .filter_map(|call| call.strip_prefix("mcp add-json --scope user code-atlas "))
+      .map(|entry| serde_json::from_str(entry).unwrap())
+      .collect()
+  }
+
+  fn write_user_entry(&self, entry: &Value) {
+    let config = serde_json::json!({ "numStartups": 3, "mcpServers": { "other": { "command": "x" }, "code-atlas": entry } });
+    fs::write(self.config_dir.join(".claude.json"), config.to_string()).unwrap();
+  }
+}
+
+fn catl_path() -> String {
+  fs::canonicalize(env!("CARGO_BIN_EXE_catl")).unwrap().display().to_string()
+}
+
 #[test]
-fn should_register_the_user_scope_through_the_claude_cli() {
+fn should_register_the_user_scope_without_a_project_and_with_watch() {
   let sandbox = Sandbox::new();
   let root = sandbox.create_acme();
   let web = root.join("acme-web");
-  let bin = fake_claude(&sandbox.work());
-  let log = sandbox.work().join("claude.log");
-  let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
-  let envs = [("PATH", path.as_str()), ("FAKE_CLAUDE_LOG", log.to_str().unwrap())];
-  assert_ok(&sandbox.run_env(&web, &["connect", "claude", "--scope", "user"], &envs));
-  assert_ok(&sandbox.run_env(&web, &["connect", "claude", "--scope", "user"], &envs));
+  let claude = FakeClaude::new(&sandbox);
+  assert_ok(&claude.connect(&sandbox, &web, &[]));
+  assert_ok(&claude.connect(&sandbox, &web, &[]));
   assert!(!web.join(".mcp.json").exists());
   assert!(web.join("AGENTS.md").exists());
-  let calls: Vec<String> = fs::read_to_string(&log).unwrap().lines().map(str::to_owned).collect();
+  let calls = claude.calls();
   assert_eq!(calls.iter().filter(|call| call.as_str() == "mcp remove --scope user code-atlas").count(), 2);
-  let add = calls.iter().find(|call| call.starts_with("mcp add-json --scope user code-atlas ")).unwrap();
-  let entry: Value = serde_json::from_str(add.trim_start_matches("mcp add-json --scope user code-atlas ")).unwrap();
-  assert_eq!(entry["args"], serde_json::json!(["mcp", "--project", "acme"]));
-  assert_eq!(entry["env"]["CODE_ATLAS_HOME"], sandbox.home.path().to_str().unwrap());
+  let added = claude.added_entries();
+  assert_eq!(added.len(), 2);
+  assert_eq!(added[0], added[1]);
+  assert_eq!(added[0]["command"], catl_path());
+  assert_eq!(added[0]["args"], serde_json::json!(["mcp", "--watch"]));
+  assert_eq!(added[0]["env"]["CODE_ATLAS_HOME"], sandbox.home.path().to_str().unwrap());
+}
+
+#[test]
+fn should_replace_a_user_scope_entry_that_pins_a_project_only_after_confirmation() {
+  let sandbox = Sandbox::new();
+  let root = sandbox.create_acme();
+  let web = root.join("acme-web");
+  let claude = FakeClaude::new(&sandbox);
+  claude.write_user_entry(&serde_json::json!({ "type": "stdio", "command": "/old/bin/catl", "args": ["mcp", "--project", "globex"] }));
+
+  let refused = claude.connect(&sandbox, &web, &[]);
+  let accepted = claude.connect(&sandbox, &web, &["--yes"]);
+
+  assert_eq!(code(&refused), 2, "{}", stderr(&refused));
+  assert!(
+    stderr(&refused).contains("user-scope code-atlas server") && stderr(&refused).contains("--yes"),
+    "{}",
+    stderr(&refused)
+  );
+  let shown = stdout(&refused);
+  assert!(shown.contains(".claude.json#mcpServers.code-atlas: updated"), "{shown}");
+  assert!(shown.contains("\n-   \"command\": \"/old/bin/catl\",\n"), "{shown}");
+  assert!(shown.contains("\n-     \"globex\"\n"), "{shown}");
+  assert!(shown.contains("\n+     \"--watch\"\n"), "{shown}");
+  assert_ok(&accepted);
+  let added = claude.added_entries();
+  assert_eq!(added.len(), 1);
+  assert_eq!(added[0]["args"], serde_json::json!(["mcp", "--watch"]));
+}
+
+#[test]
+fn should_ask_before_replacing_a_user_scope_entry_in_an_unreadable_claude_config() {
+  let sandbox = Sandbox::new();
+  let root = sandbox.create_acme();
+  let web = root.join("acme-web");
+  let claude = FakeClaude::new(&sandbox);
+  fs::write(claude.config_dir.join(".claude.json"), "{ not json").unwrap();
+
+  let refused = claude.connect(&sandbox, &web, &[]);
+  let accepted = claude.connect(&sandbox, &web, &["--yes"]);
+
+  assert_eq!(code(&refused), 2, "{}", stderr(&refused));
+  assert!(
+    stdout(&refused).contains(".claude.json#mcpServers.code-atlas: replacing an entry that cannot be read ("),
+    "{}",
+    stdout(&refused)
+  );
+  assert!(
+    stderr(&refused).contains("user-scope code-atlas server") && stderr(&refused).contains("--yes"),
+    "{}",
+    stderr(&refused)
+  );
+  assert_ok(&accepted);
+  assert_eq!(claude.added_entries().len(), 1);
+}
+
+#[test]
+fn should_leave_an_identical_user_scope_entry_unchanged() {
+  let sandbox = Sandbox::new();
+  let root = sandbox.create_acme();
+  let web = root.join("acme-web");
+  let claude = FakeClaude::new(&sandbox);
+  claude.write_user_entry(&serde_json::json!({
+    "type": "stdio",
+    "command": catl_path(),
+    "args": ["mcp", "--watch"],
+    "env": { "CODE_ATLAS_HOME": sandbox.home.path().to_str().unwrap() },
+  }));
+
+  let output = claude.connect(&sandbox, &web, &[]);
+
+  assert_ok(&output);
+  assert!(stdout(&output).contains(".claude.json#mcpServers.code-atlas: unchanged"), "{}", stdout(&output));
+  assert_eq!(claude.calls(), ["--version"]);
+}
+
+#[test]
+fn should_write_the_bare_catl_command_when_catl_on_path_is_this_binary() {
+  let sandbox = Sandbox::new();
+  let root = sandbox.create_acme();
+  let api = root.join("acme-api");
+  let bin = sandbox.work().join("on-path");
+  fs::create_dir_all(&bin).unwrap();
+  std::os::unix::fs::symlink(catl_path(), bin.join("catl")).unwrap();
+  let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+
+  let output = sandbox.run_env(&api, &["connect", "claude"], &[("PATH", path.as_str())]);
+
+  assert_ok(&output);
+  assert!(!stderr(&output).contains("machine-specific"), "{}", stderr(&output));
+  let config: Value = serde_json::from_str(&fs::read_to_string(api.join(".mcp.json")).unwrap()).unwrap();
+  assert_eq!(config["mcpServers"]["code-atlas"]["command"], "catl");
+  assert_eq!(config["mcpServers"]["code-atlas"]["args"], serde_json::json!(["mcp", "--project", "acme", "--watch"]));
 }
 
 #[test]
@@ -726,7 +871,11 @@ impl McpSession {
     let config: Value = serde_json::from_str(&fs::read_to_string(cwd.join(".mcp.json")).unwrap()).unwrap();
     let server = &config["mcpServers"]["code-atlas"];
     let arguments: Vec<&str> = server["args"].as_array().unwrap().iter().map(|argument| argument.as_str().unwrap()).collect();
-    let mut child = Command::new(server["command"].as_str().unwrap())
+    Self::spawn(sandbox, cwd, server["command"].as_str().unwrap(), &arguments)
+  }
+
+  fn spawn(sandbox: &Sandbox, cwd: &Path, command: &str, arguments: &[&str]) -> Self {
+    let mut child = Command::new(command)
       .args(arguments)
       .current_dir(cwd)
       .env("CODE_ATLAS_HOME", sandbox.home.path())
@@ -846,11 +995,234 @@ fn should_exit_cleanly_on_sigterm_while_serving_mcp() {
 }
 
 #[test]
-fn should_fail_mcp_with_a_usage_exit_outside_every_project() {
+fn should_serve_only_atlas_status_outside_every_project() {
   let sandbox = Sandbox::new();
-  let output = sandbox.run(&sandbox.work(), &["mcp"]);
-  assert_eq!(code(&output), 2, "{}", stderr(&output));
-  assert_eq!(stdout(&output), "");
+  let mut session = McpSession::spawn(&sandbox, &sandbox.work(), env!("CARGO_BIN_EXE_catl"), &["mcp", "--watch"]);
+  session.handshake();
+  let tools = session.request(2, "tools/list", serde_json::json!({}));
+  let status = session.request(3, "tools/call", serde_json::json!({"name": "atlas_status", "arguments": {}}));
+  let names: Vec<&str> = tools["result"]["tools"].as_array().unwrap().iter().map(|tool| tool["name"].as_str().unwrap()).collect();
+  assert_eq!(names, ["atlas_status"]);
+  let text = status["result"]["content"][0]["text"].as_str().unwrap();
+  assert!(
+    text.starts_with(&format!(
+      "no project is bound: {} is not inside any registered Code Atlas project",
+      sandbox.work().display()
+    )),
+    "{text}"
+  );
+  assert!(
+    text.contains("`catl init -p <project>`") && text.contains("`catl project create <name> --repo <path>`"),
+    "{text}"
+  );
+  drop(session.stdin.take());
+  let (code, lines) = session.wait_for_exit();
+  assert_eq!(code, Some(0));
+  assert_only_json_rpc(&lines);
+}
+
+#[test]
+fn should_fail_mcp_with_a_usage_exit_for_an_unknown_project_or_an_ambiguous_directory() {
+  let sandbox = Sandbox::new();
+  let shared = sandbox.work().join("shared");
+  fs::create_dir_all(&shared).unwrap();
+  let shared_arg = shared.display().to_string();
+  assert_ok(&sandbox.run(&shared, &["project", "create", "alpha", "--repo", &shared_arg]));
+  assert_ok(&sandbox.run(&shared, &["project", "create", "zeta", "--repo", &shared_arg]));
+
+  let unknown = sandbox.run(&sandbox.work(), &["mcp", "--project", "ghost"]);
+  let ambiguous = sandbox.run(&shared, &["mcp"]);
+
+  assert_eq!((code(&unknown), stdout(&unknown)), (2, String::new()), "{}", stderr(&unknown));
+  assert!(stderr(&unknown).contains("project \"ghost\" not found"), "{}", stderr(&unknown));
+  assert_eq!((code(&ambiguous), stdout(&ambiguous)), (2, String::new()), "{}", stderr(&ambiguous));
+  assert!(stderr(&ambiguous).contains("  alpha\n  zeta\n"), "{}", stderr(&ambiguous));
+}
+
+const SHOP_LIB: &str = "pub fn shipping_fee(weight: u32) -> u32 {\n  weight * 3\n}\n";
+
+fn git(cwd: &Path, args: &[&str]) {
+  let output = Command::new("git")
+    .args(args)
+    .current_dir(cwd)
+    .env("GIT_CONFIG_GLOBAL", "/dev/null")
+    .env("GIT_CONFIG_NOSYSTEM", "1")
+    .env("GIT_AUTHOR_NAME", "atlas")
+    .env("GIT_AUTHOR_EMAIL", "atlas@example.invalid")
+    .env("GIT_COMMITTER_NAME", "atlas")
+    .env("GIT_COMMITTER_EMAIL", "atlas@example.invalid")
+    .output()
+    .unwrap();
+  assert!(output.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&output.stderr));
+}
+
+fn shop_with_worktree(sandbox: &Sandbox) -> (PathBuf, PathBuf) {
+  let main = sandbox.work().join("shop");
+  fs::create_dir_all(main.join("src")).unwrap();
+  fs::write(main.join("Cargo.toml"), "[package]\nname = \"shop\"\nversion = \"0.1.0\"\nedition = \"2024\"\n").unwrap();
+  fs::write(main.join("src/lib.rs"), SHOP_LIB).unwrap();
+  git(&main, &["init", "--quiet", "--initial-branch=trunk"]);
+  git(&main, &["add", "."]);
+  git(&main, &["commit", "--quiet", "--message", "seed"]);
+  git(&main, &["worktree", "add", "--quiet", "-b", "feature", ".claude/worktrees/feature"]);
+  assert_ok(&sandbox.run(&main, &["project", "create", "shop", "--repo", main.to_str().unwrap()]));
+  (main.clone(), main.join(".claude/worktrees/feature"))
+}
+
+#[test]
+fn should_refuse_an_edit_from_a_worktree_with_exit_5_and_write_nothing() {
+  let sandbox = Sandbox::new();
+  let (main, worktree) = shop_with_worktree(&sandbox);
+  let edit = ["edit", "replace", "src/lib.rs", "--pattern", "weight * 3", "--text", "weight * 4"];
+
+  let refused = sandbox.run(&worktree.join("src"), &edit);
+  let dry_run = sandbox.run(&worktree, &[&edit[..], &["--dry-run", "--json"]].concat());
+
+  assert_eq!(code(&refused), 5, "{}", stderr(&refused));
+  assert_eq!(stdout(&refused), "");
+  assert_eq!(
+    stderr(&refused),
+    format!(
+      "error: refusing to edit from the git worktree at {}: project shop indexes the main checkout at {} (repo shop), so the edit would write there, not into this worktree; nothing was written. Edit the worktree's files directly, or run the edit from {}\n",
+      worktree.display(),
+      main.display(),
+      main.display()
+    )
+  );
+  assert_eq!((code(&dry_run), stdout(&dry_run)), (5, String::new()), "{}", stderr(&dry_run));
+  assert_eq!(fs::read_to_string(main.join("src/lib.rs")).unwrap(), SHOP_LIB);
+  assert_eq!(fs::read_to_string(worktree.join("src/lib.rs")).unwrap(), SHOP_LIB);
+
+  let applied = sandbox.run(&main, &edit);
+  assert_ok(&applied);
+  assert!(!stderr(&applied).contains("worktree"), "{}", stderr(&applied));
+  assert_eq!(fs::read_to_string(main.join("src/lib.rs")).unwrap(), SHOP_LIB.replace("weight * 3", "weight * 4"));
+  assert_eq!(fs::read_to_string(worktree.join("src/lib.rs")).unwrap(), SHOP_LIB);
+}
+
+#[test]
+fn should_refuse_edits_from_a_worktree_of_a_repo_inside_a_registered_parent_folder() {
+  let sandbox = Sandbox::new();
+  let workspace = sandbox.work().join("workspace");
+  let app = workspace.join("app");
+  fs::create_dir_all(app.join("src")).unwrap();
+  fs::write(app.join("Cargo.toml"), "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2024\"\n").unwrap();
+  fs::write(app.join("src/lib.rs"), SHOP_LIB).unwrap();
+  git(&app, &["init", "--quiet", "--initial-branch=trunk"]);
+  git(&app, &["add", "."]);
+  git(&app, &["commit", "--quiet", "--message", "seed"]);
+  git(&app, &["worktree", "add", "--quiet", "-b", "feature", ".worktrees/feature"]);
+  let worktree = app.join(".worktrees/feature");
+  assert_ok(&sandbox.run(&workspace, &["project", "create", "ws", "--repo", workspace.to_str().unwrap()]));
+  let refusal = format!(
+    "error: refusing to edit from the git worktree at {}: project ws indexes the main checkout at {} (repo workspace), so the edit would write there, not into this worktree; nothing was written. Edit the worktree's files directly, or run the edit from {}\n",
+    worktree.display(),
+    app.display(),
+    app.display()
+  );
+
+  let by_path = sandbox.run(&worktree, &["edit", "replace", "app/src/lib.rs", "--pattern", "weight * 3", "--text", "weight * 4"]);
+  let by_symbol = sandbox.run(
+    &worktree.join("src"),
+    &[
+      "edit",
+      "replace-body",
+      "shipping_fee",
+      "--text",
+      "pub fn shipping_fee(weight: u32) -> u32 {\n  weight * 4\n}",
+    ],
+  );
+  let query = sandbox.run(&worktree, &["query", "symbol", "shipping_fee"]);
+
+  assert_eq!((code(&by_path), stderr(&by_path)), (5, refusal.clone()));
+  assert_eq!((code(&by_symbol), stderr(&by_symbol)), (5, refusal));
+  assert_eq!(fs::read_to_string(app.join("src/lib.rs")).unwrap(), SHOP_LIB);
+  assert_eq!(fs::read_to_string(worktree.join("src/lib.rs")).unwrap(), SHOP_LIB);
+  assert_ok(&query);
+  assert!(
+    stderr(&query).starts_with(&format!("worktree caveat: answers describe the main checkout at {}", app.display())),
+    "{}",
+    stderr(&query)
+  );
+}
+
+#[test]
+fn should_refuse_edits_from_a_worktree_whose_git_file_no_longer_resolves() {
+  let sandbox = Sandbox::new();
+  let (main, worktree) = shop_with_worktree(&sandbox);
+  fs::remove_dir_all(main.join(".git/worktrees/feature")).unwrap();
+
+  let refused = sandbox.run(&worktree, &["edit", "replace", "src/lib.rs", "--pattern", "weight * 3", "--text", "weight * 4"]);
+
+  assert_eq!(code(&refused), 5, "{}", stderr(&refused));
+  assert_eq!(
+    stderr(&refused),
+    format!(
+      "error: refusing to edit from {}: its .git entry does not resolve to a git checkout, so the worktree could not be resolved and the edit could write into the checkout registered at {} (repo shop of project shop) instead; nothing was written. Repair it with `git worktree repair`, or run the edit from {}\n",
+      worktree.display(),
+      main.display(),
+      main.display()
+    )
+  );
+  assert_eq!(fs::read_to_string(main.join("src/lib.rs")).unwrap(), SHOP_LIB);
+}
+
+#[test]
+fn should_refuse_edits_from_a_worktree_whose_commondir_file_is_missing() {
+  let sandbox = Sandbox::new();
+  let (main, worktree) = shop_with_worktree(&sandbox);
+  fs::remove_file(main.join(".git/worktrees/feature/commondir")).unwrap();
+
+  let refused = sandbox.run(&worktree, &["edit", "replace", "src/lib.rs", "--pattern", "weight * 3", "--text", "weight * 4"]);
+
+  assert_eq!(code(&refused), 5, "{}", stderr(&refused));
+  assert!(
+    stderr(&refused).starts_with(&format!("error: refusing to edit from the git worktree at {}:", worktree.display())),
+    "{}",
+    stderr(&refused)
+  );
+  assert_eq!(fs::read_to_string(main.join("src/lib.rs")).unwrap(), SHOP_LIB);
+}
+
+#[test]
+fn should_connect_claude_from_a_worktree_into_the_worktree_and_leave_the_main_checkout_alone() {
+  let sandbox = Sandbox::new();
+  let (main, worktree) = shop_with_worktree(&sandbox);
+
+  let output = sandbox.run(&worktree.join("src"), &["connect", "claude"]);
+
+  assert_ok(&output);
+  assert!(stderr(&output).contains("worktree caveat:"), "{}", stderr(&output));
+  let config: Value = serde_json::from_str(&fs::read_to_string(worktree.join(".mcp.json")).unwrap()).unwrap();
+  assert_eq!(config["mcpServers"]["code-atlas"]["args"], serde_json::json!(["mcp", "--project", "shop", "--watch"]));
+  assert!(worktree.join("AGENTS.md").exists());
+  assert!(!main.join(".mcp.json").exists() && !main.join("AGENTS.md").exists());
+}
+
+#[test]
+fn should_print_the_worktree_caveat_with_answers_given_from_a_worktree() {
+  let sandbox = Sandbox::new();
+  let (main, worktree) = shop_with_worktree(&sandbox);
+  let caveat = format!(
+    "worktree caveat: answers describe the main checkout at {}, not the git worktree at {} (repo shop of project shop); edits are refused here\n",
+    main.display(),
+    worktree.display()
+  );
+
+  let in_worktree = sandbox.run(&worktree, &["query", "symbol", "shipping_fee"]);
+  let as_json = sandbox.run(&worktree, &["query", "symbol", "shipping_fee", "--json"]);
+  let in_main = sandbox.run(&main, &["query", "symbol", "shipping_fee"]);
+
+  assert_ok(&in_worktree);
+  assert!(stdout(&in_worktree).contains("shipping_fee function shop:src/lib.rs"), "{}", stdout(&in_worktree));
+  assert_eq!(stderr(&in_worktree), caveat);
+  assert_ok(&as_json);
+  assert!(json(&as_json)["answer"].to_string().contains("\"shipping_fee\""), "{}", stdout(&as_json));
+  assert_eq!(stderr(&as_json), caveat);
+  assert_ok(&in_main);
+  assert_eq!(stderr(&in_main), "");
+  let body = |output: &Output| stdout(output).lines().skip(1).map(str::to_owned).collect::<Vec<_>>();
+  assert_eq!(body(&in_main), body(&in_worktree));
 }
 
 fn run_with_path(sandbox: &Sandbox, cwd: &Path, args: &[&str], path: &Path) -> Output {

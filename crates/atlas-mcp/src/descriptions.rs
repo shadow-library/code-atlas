@@ -56,6 +56,9 @@ pub(crate) const EXPLAIN: &str =
 pub(crate) const OVERVIEW: &str = "Project map: repos, packages, applications, entrypoints, key modules and detected domains. Use to orient in an unfamiliar project.";
 pub(crate) const STATUS: &str = "Index health: freshness, parse failures, SCIP coverage, LLM status, language servers and this server's per-tool call telemetry. Use when answers look incomplete or stale. since_run also lists what the index changed in newer runs (files analysed, deleted, moved, renamed symbols); use it after editing.";
 
+pub(crate) const UNBOUND_INSTRUCTIONS: &str = "Code Atlas is not bound to a project here: the server started in a directory that no registered project contains, so it serves only atlas_status, which says how to register the repo. Use your own tools for this repo.";
+pub(crate) const UNBOUND_STATUS: &str = "Why Code Atlas answers nothing here (no registered project contains this directory) and how to register the repo.";
+
 pub(crate) fn edit() -> String {
   format!(
     "Edit code safely. operation: rename (exact, every file the language server sees; sites it cannot see are listed to verify; apply refuses when sites the server should have renamed are unverified, set allow_unverified only after checking them), replace_body / insert_before / insert_after (a symbol's definition), safe_delete (refuses and lists references), replace_content (one file), replace_in_files, apply (a plan id). dry_run=true returns diffs and a plan id. Refuses if a file changed since planning. Re-read changed files before editing them with your own tool. {}. {}. {}.",

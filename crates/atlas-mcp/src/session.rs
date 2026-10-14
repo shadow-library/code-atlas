@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use atlas_engine::{Engine, WatchHandle};
 use atlas_ide::{DiscoveryLauncher, IdeMode, IdeOptions, IdeService};
-use atlas_project::{AtlasHome, Registry};
+use atlas_project::{AtlasHome, Binding, Registry};
 use atlas_query::QueryEngine;
 
 use crate::error::{McpError, ToolError};
@@ -14,6 +14,7 @@ const REGISTRY_RETRY_DELAY: Duration = Duration::from_millis(50);
 pub(crate) struct Session {
   home: AtlasHome,
   project: String,
+  binding: Binding,
   ide: IdeService,
   refresh: Mutex<Refresh>,
 }
@@ -26,15 +27,20 @@ struct Refresh {
 impl Session {
   pub(crate) fn open(options: &ServeOptions) -> Result<Self, McpError> {
     let registry = Registry::load(&options.home)?;
-    let project = registry.resolve_project(&options.cwd, options.project.as_deref())?.clone();
+    let resolution = registry.resolve(&options.cwd, options.project.as_deref())?;
+    let project = resolution.project;
     let engine = Arc::new(Engine::open(&project, &options.home, options.engine.clone())?);
     let watcher = if options.watch { start_watcher(&engine) } else { None };
     tracing::info!(project = %project.name, repos = project.repos.len(), watch = options.watch, "bound the MCP server to its project");
+    if let Some(caveat) = resolution.binding.caveat() {
+      tracing::warn!(caveat = %caveat, "started outside the indexed checkout; answers carry a caveat and edits are refused");
+    }
     let launcher = options.launcher.as_ref().map_or_else(|| Arc::new(DiscoveryLauncher) as _, |handle| Arc::clone(&handle.0));
     let ide = IdeService::new(engine, launcher, IdeOptions::for_project(&project, &options.home, IdeMode::Warm));
     Ok(Self {
       home: options.home.clone(),
       project: project.name.to_string(),
+      binding: resolution.binding,
       ide,
       refresh: Mutex::new(Refresh { watching: options.watch, watcher }),
     })
@@ -54,6 +60,14 @@ impl Session {
 
   pub(crate) fn project_name(&self) -> &str {
     &self.project
+  }
+
+  pub(crate) fn caveat(&self) -> Option<String> {
+    self.binding.caveat()
+  }
+
+  pub(crate) fn edit_refusal(&self) -> Option<String> {
+    self.binding.edit_refusal()
   }
 
   pub(crate) fn repo_names(&self) -> Vec<String> {

@@ -2,10 +2,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use atlas_engine::{Engine, EngineOptions};
-use atlas_project::{AtlasHome, Project, Registry};
+use atlas_project::{AtlasHome, Project, Registry, Resolution};
 use atlas_query::QueryEngine;
 
 use crate::error::{CliError, CliResult};
+use crate::output::note;
 
 pub struct Context {
   pub home: AtlasHome,
@@ -28,8 +29,15 @@ impl Context {
   }
 
   pub fn resolve(&self) -> CliResult<Project> {
-    let registry = self.registry()?;
-    Ok(registry.resolve_project(&self.cwd, self.project.as_deref())?.clone())
+    let resolution = self.resolution()?;
+    if let Some(caveat) = resolution.binding.caveat() {
+      note(caveat);
+    }
+    Ok(resolution.project)
+  }
+
+  pub fn resolution(&self) -> CliResult<Resolution> {
+    Ok(self.registry()?.resolve(&self.cwd, self.project.as_deref())?)
   }
 
   pub fn open_engine(&self, project: &Project) -> CliResult<Arc<Engine>> {
