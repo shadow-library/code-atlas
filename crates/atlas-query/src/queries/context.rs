@@ -45,6 +45,8 @@ const SIMILAR_THRESHOLD: f64 = 0.6;
 const SIMILAR_PER_NODE: usize = 3;
 const SIMILAR_CANDIDATES: usize = 12;
 const AMBIGUOUS_SEED_LIMIT: usize = 4;
+const OMITTED_CANDIDATES_SHOWN: usize = 8;
+const CANDIDATE_RANK_HITS: usize = 500;
 const TEST_CANDIDATES: usize = 12;
 const TESTS_SHOWN: usize = 8;
 const IMPACT_SHOWN: usize = 15;
@@ -170,6 +172,10 @@ pub enum OmissionReason {
 }
 
 impl OmissionReason {
+  fn is_seed_diagnostic(self) -> bool {
+    matches!(self, Self::AmbiguousSeed | Self::UnknownSeed)
+  }
+
   pub fn as_str(self) -> &'static str {
     match self {
       Self::Budget => "budget",
@@ -275,6 +281,8 @@ struct Pack {
   seed_log: Vec<String>,
   expansion_log: Vec<String>,
   omitted: Vec<OmittedItem>,
+  caveats: Vec<Caveat>,
+  file_scores: Option<BTreeMap<(String, String), f64>>,
   hidden: usize,
   words: Vec<String>,
   scope: Scope,
@@ -344,6 +352,7 @@ struct Planned {
   ranked: Vec<Ranked>,
   omitted: Vec<OmittedItem>,
   explain: ContextExplain,
+  caveats: Vec<Caveat>,
   hidden: usize,
 }
 
@@ -490,6 +499,7 @@ impl QueryEngine {
       ranked,
       mut omitted,
       explain,
+      caveats,
       hidden,
     } = planned;
     let mut answer = ContextAnswer {
@@ -678,8 +688,9 @@ impl QueryEngine {
         ),
       });
     }
+    answer.caveats.extend(caveats);
     answer.caveats.extend(self.problem_files(freshness.run)?);
-    omitted.sort_by(|left, right| (left.reason, &left.label).cmp(&(right.reason, &right.label)));
+    omitted.sort_by(|left, right| (!left.reason.is_seed_diagnostic(), left.reason, &left.label).cmp(&(!right.reason.is_seed_diagnostic(), right.reason, &right.label)));
     answer.estimated_tokens = used;
     answer.omitted = Listing::truncated(omitted, MAX_CODE_ITEMS);
     answer.explain = request.explain.then_some(explain);
@@ -825,6 +836,7 @@ fn plan(query: &QueryEngine, graph: &Graph<'_, '_>, index: &SimilarityIndex, req
     ranked,
     omitted: std::mem::take(&mut pack.omitted),
     explain,
+    caveats: std::mem::take(&mut pack.caveats),
     hidden: pack.hidden,
   })
 }
@@ -859,11 +871,17 @@ fn seed(query: &QueryEngine, graph: &Graph<'_, '_>, index: &SimilarityIndex, req
   for spec in &request.seeds {
     match resolve(graph, &repos, spec, &TargetFilter::default())? {
       Resolution::Found(entity) => pack.seed(*entity, 1.0, "explicit seed".to_owned(), true),
-      Resolution::Ambiguous(candidates) => pack.omitted.push(OmittedItem {
-        entity: None,
-        label: format!("{spec} matches {} entities; pass a full key", candidates.len()),
-        reason: OmissionReason::AmbiguousSeed,
-      }),
+      Resolution::Ambiguous(candidates) => {
+        let total = candidates.len();
+        let used = limit_candidates(graph, index, &request.task, spec, candidates, pack)?;
+        let named: Vec<String> = used.iter().map(|entity| crate::text::entity_line(&EntityRef::of(entity))).collect();
+        pack.caveats.push(Caveat::Note {
+          message: format!("seed {spec} matches {total} entities; seeded {}: {}", used.len(), named.join("; ")),
+        });
+        for entity in used {
+          pack.seed(entity, 1.0, format!("explicit seed {spec} (one of {total} matches)"), true);
+        }
+      }
       Resolution::NotFound(hint) => pack.omitted.push(OmittedItem {
         entity: None,
         label: format!("{spec}: {hint}"),
@@ -888,10 +906,10 @@ fn seed(query: &QueryEngine, graph: &Graph<'_, '_>, index: &SimilarityIndex, req
       pack.seed((*entity).clone(), 1.0, why, true);
       continue;
     }
-    if platform || candidates.len() > AMBIGUOUS_SEED_LIMIT {
+    if platform {
       continue;
     }
-    for entity in candidates {
+    for entity in limit_candidates(graph, index, &request.task, &identifier, candidates, pack)? {
       pack.seed(entity, 0.4, format!("named in task as {identifier} (ambiguous)"), false);
     }
   }
@@ -899,6 +917,60 @@ fn seed(query: &QueryEngine, graph: &Graph<'_, '_>, index: &SimilarityIndex, req
   auth_seeds(graph, &request.task, pack)?;
   scope_seeds(graph, pack)?;
   search_seeds(graph, index, &request.task, pack)
+}
+
+fn limit_candidates(graph: &Graph<'_, '_>, index: &SimilarityIndex, task: &str, name: &str, candidates: Vec<Entity>, pack: &mut Pack) -> QueryResult<Vec<Entity>> {
+  if candidates.len() <= AMBIGUOUS_SEED_LIMIT {
+    return Ok(candidates);
+  }
+  let total = candidates.len();
+  let file_scores = pack.file_scores.get_or_insert_with(|| file_scores(index, task));
+  let mut ranked = rank_candidates(graph, file_scores, &pack.scope, candidates)?;
+  let rest = ranked.split_off(AMBIGUOUS_SEED_LIMIT);
+  pack.omitted.push(OmittedItem {
+    entity: None,
+    label: format!("{name}: {total} candidates, {AMBIGUOUS_SEED_LIMIT} used"),
+    reason: OmissionReason::AmbiguousSeed,
+  });
+  for entity in rest.iter().take(OMITTED_CANDIDATES_SHOWN) {
+    let entry = EntityRef::of(entity);
+    pack.omitted.push(OmittedItem {
+      label: format!("{name} candidate {}", crate::text::entity_line(&entry)),
+      entity: Some(entry),
+      reason: OmissionReason::AmbiguousSeed,
+    });
+  }
+  Ok(ranked)
+}
+
+fn file_scores(index: &SimilarityIndex, task: &str) -> BTreeMap<(String, String), f64> {
+  let mut scores: BTreeMap<(String, String), f64> = BTreeMap::new();
+  for hit in lexical_hits(index, &search_text(task), &[], None, CANDIDATE_RANK_HITS) {
+    let score = scores.entry((hit.repo.to_string(), hit.path.to_string())).or_insert(0.0);
+    *score = score.max(hit.score);
+  }
+  scores
+}
+
+fn rank_candidates(graph: &Graph<'_, '_>, file_scores: &BTreeMap<(String, String), f64>, scope: &Scope, candidates: Vec<Entity>) -> QueryResult<Vec<Entity>> {
+  let mut scored: Vec<(bool, f64, usize, Entity)> = Vec::with_capacity(candidates.len());
+  for entity in candidates {
+    let file = match (&entity.repo, &entity.path) {
+      (Some(repo), Some(path)) => file_scores.get(&(repo.to_string(), path.to_string())).copied().unwrap_or(0.0),
+      _ => 0.0,
+    };
+    let fan_in = graph.edges_in(entity.id, &[EdgeKind::Calls, EdgeKind::References, EdgeKind::Instantiates])?.len();
+    scored.push((!scope.is_empty() && scope.contains(&entity), file, fan_in, entity));
+  }
+  scored.sort_by(|left, right| {
+    right
+      .0
+      .cmp(&left.0)
+      .then_with(|| right.1.total_cmp(&left.1))
+      .then_with(|| right.2.cmp(&left.2))
+      .then_with(|| left.3.key.cmp(&right.3.key))
+  });
+  Ok(scored.into_iter().map(|(_, _, _, entity)| entity).collect())
 }
 
 const PACKAGE_ROOTS: [&str; 5] = ["src/lib.rs", "src/main.rs", "src/index.ts", "index.ts", "src/index.js"];
@@ -976,8 +1048,14 @@ fn search_seeds(graph: &Graph<'_, '_>, index: &SimilarityIndex, task: &str, pack
       code_terms.extend(hit.direct_terms.iter().cloned());
     }
   }
+  let weigh = |pack: &Pack, entity: &Entity, hit: &atlas_similarity::SearchHit, top: f64| {
+    let off_anchor = !anchored.is_empty() && entity.repo.as_ref().is_none_or(|repo| !anchored.contains(repo.as_str()));
+    let anchor_factor = if off_anchor { OFF_ANCHOR_FACTOR } else { 1.0 };
+    SEARCH_WEIGHT * hit.score / top * anchor_factor * pack.scope.factor(entity, SCOPE_BOOST, SCOPE_SEED_PENALTY)
+  };
   let mut taken = 0;
-  for (hit, top) in hits {
+  let mut test_subjects: BTreeSet<EntityId> = BTreeSet::new();
+  for (hit, top) in &hits {
     if taken >= SEARCH_SEEDS {
       break;
     }
@@ -988,13 +1066,14 @@ fn search_seeds(graph: &Graph<'_, '_>, index: &SimilarityIndex, task: &str, pack
     if matches!(entity.kind, EntityKind::Field | EntityKind::Variable) || (!about_tests && !is_test(&entity) && is_test_support(&entity)) {
       continue;
     }
-    taken += 1;
-    let terms = unstemmed(&hit.direct_terms, &pack.words).join(" ");
-    let off_anchor = !anchored.is_empty() && entity.repo.as_ref().is_none_or(|repo| !anchored.contains(repo.as_str()));
-    let anchor_factor = if off_anchor { OFF_ANCHOR_FACTOR } else { 1.0 };
-    let weight = SEARCH_WEIGHT * hit.score / top * anchor_factor * pack.scope.factor(&entity, SCOPE_BOOST, SCOPE_SEED_PENALTY);
+    let weight = weigh(pack, &entity, hit, *top);
     if !is_test(&entity) {
+      taken += 1;
+      let terms = unstemmed(&hit.direct_terms, &pack.words).join(" ");
       pack.seed_search_hit(entity, weight, format!("search hit on {terms}"));
+      continue;
+    }
+    if test_subjects.len() >= SEARCH_SEEDS {
       continue;
     }
     let novel: Vec<String> = hit.direct_terms.iter().filter(|term| !code_terms.contains(*term)).cloned().collect();
@@ -1015,9 +1094,24 @@ fn search_seeds(graph: &Graph<'_, '_>, index: &SimilarityIndex, task: &str, pack
         continue;
       }
       let why = format!("exercised by test {test_name} matching {terms}");
+      let subject_id = subject.id;
       pack.seed_search_hit(subject, weight * TEST_SUBJECT_FACTOR, why);
+      test_subjects.insert(subject_id);
     }
     pack.hidden += hidden;
+  }
+  if !pack.nodes.is_empty() {
+    return Ok(());
+  }
+  for (hit, top) in &hits {
+    let Some(entity) = graph.entity(hit.entity)? else { continue };
+    if is_test(&entity) || matches!(entity.kind, EntityKind::Field | EntityKind::Variable) || (!about_tests && is_test_support(&entity)) {
+      continue;
+    }
+    let weight = weigh(pack, &entity, hit, *top);
+    let terms = unstemmed(&hit.direct_terms, &pack.words).join(" ");
+    pack.seed_search_hit(entity, weight, format!("search hit on {terms}"));
+    break;
   }
   Ok(())
 }

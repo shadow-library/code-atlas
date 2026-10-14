@@ -3,7 +3,7 @@ source: crates/atlas-query/tests/snapshots.rs
 expression: output
 ---
 fresh run=1 (+0 files, <t>)
-context for "add a DELETE /orders/:id endpoint with api-key auth" (~2300 of 6000 tokens)
+context for "add a DELETE /orders/:id endpoint with api-key auth" (~2335 of 6000 tokens)
 MUST READ (12)
   UsersController.remove method acme-api:src/users/users.controller.ts:31  why: exposes endpoint DELETE /users/{id} [syntactic]
     31|   @Delete(':id')
@@ -115,7 +115,7 @@ MUST READ (12)
       private readonly ordersService: OrdersService
       findOne(id: string)
       create(input: CreateOrderInput)
-SKIM (16)
+SKIM (17)
   GET /orders/{id} api_endpoint acme-api:src/orders/orders.controller.ts:13  why: same route as /orders/{id} (another method)
   DELETE /users/{id} api_endpoint acme-api:src/users/users.controller.ts:31  why: pattern exemplar: DELETE on a route shaped like /orders/{id}
   api_key auth_scheme acme-api:src/auth/api-key.guard.ts:5 [heuristic 0.80]  why: auth scheme api_key named in the task
@@ -139,6 +139,8 @@ SKIM (16)
       private readonly billing: BillingService
       async findOne(id: string)
       async create(input: CreateOrderInput): Promise<Order>
+  setToken function acme-web:src/api/session.ts:7  why: search hit on api key
+    sig function setToken(token: string): void
   UsersService.constructor method acme-api:src/users/users.service.ts:16  why: contained in UsersService [syntactic]
     sig constructor(private readonly users: Repository<User>)
   UsersService.create method acme-api:src/users/users.service.ts:24  why: contained in UsersService [syntactic]
