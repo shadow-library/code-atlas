@@ -50,7 +50,10 @@ impl<'s, 't> Extractor<'s, 't> {
     }
     let args = summarize_arguments(arguments, self.source);
     self.mark_callee(callee);
-    self.call_reference(callee, args, span);
+    match arguments.filter(|arguments| arguments.kind() == "template_string") {
+      Some(_) => self.tag_reference(callee, args, span),
+      None => self.call_reference(callee, args, span),
+    }
     if let Some(arguments) = arguments {
       self.value_refs(arguments);
     }
@@ -68,6 +71,17 @@ impl<'s, 't> Extractor<'s, 't> {
     {
       self.callees.insert(inner.id());
       current = inner;
+    }
+  }
+
+  fn tag_reference(&mut self, tag: Node<'t>, args: Vec<ArgSummary>, span: Span) {
+    let chain = member_chain(tag, self.source);
+    match chain.head {
+      ChainHead::Expr(root) if chain.segments.is_empty() && root.kind() == "call_expression" => {
+        let path = vec![format!("({})", compact_text(root, self.source))];
+        self.reference(RefKind::Call, path, None, args, span);
+      }
+      _ => self.call_reference(tag, args, span),
     }
   }
 

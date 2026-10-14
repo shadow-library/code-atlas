@@ -4,11 +4,12 @@ use atlas_core::{
 use tree_sitter::Node;
 
 use crate::extract::Extractor;
-use crate::grammar::{Grammar, parse};
+use crate::grammar::Grammar;
 use crate::syntax::{snippet, span_of, text};
+use crate::tagged_templates::{Parsed, parse_tagged_templates, visit_errors};
 
 pub const ANALYZER_NAME: &str = "atlas-lang-ts";
-pub const ANALYZER_VERSION: u32 = 2;
+pub const ANALYZER_VERSION: u32 = 3;
 pub const MAX_SOURCE_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -51,14 +52,14 @@ impl LanguageAnalyzer for TsAnalyzer {
       });
     }
     let deadline = self.parse_budget.start(input.source.len());
-    let Some(tree) = parse(grammar, input.source, &deadline)? else {
+    let Some(Parsed { tree, source }) = parse_tagged_templates(grammar, input.source, &deadline)? else {
       return Ok(self.cancelled(input, &deadline, "parse"));
     };
     let root = tree.root_node();
-    let Some(mut facts) = Extractor::run(input.file.clone(), self.producer(), input.source, root, &deadline) else {
+    let Some(mut facts) = Extractor::run(input.file.clone(), self.producer(), &source, root, &deadline) else {
       return Ok(self.cancelled(input, &deadline, "extraction"));
     };
-    facts.parse_status = parse_status(root, input.source);
+    facts.parse_status = parse_status(root, &source);
     if let Err(violation) = facts.check_invariants(input.source.len()) {
       tracing::error!(path = %input.file.path, %violation, "ts analyzer produced facts that violate invariants");
       return Ok(FileFacts::failed(input.file.clone(), self.producer(), violation.to_string()));
@@ -80,33 +81,21 @@ fn parse_status(root: Node<'_>, source: &str) -> ParseStatus {
   }
   let mut error_count: u32 = 0;
   let mut first_errors = Vec::new();
-  let mut cursor = root.walk();
-  loop {
-    let node = cursor.node();
-    let message = match (node.is_error(), node.is_missing()) {
-      (true, _) => Some(format!("unexpected syntax `{}`", snippet(text(node, source)))),
-      (_, true) => Some(format!("missing `{}`", node.kind())),
-      _ => None,
-    };
-    if let Some(message) = &message {
-      error_count = error_count.saturating_add(1);
-      if first_errors.len() < MAX_REPORTED_PARSE_ERRORS {
-        first_errors.push(ParseErrorFact {
-          span: span_of(node),
-          message: message.clone(),
-        });
-      }
+  visit_errors(root, |node| {
+    error_count = error_count.saturating_add(1);
+    if first_errors.len() < MAX_REPORTED_PARSE_ERRORS {
+      first_errors.push(ParseErrorFact {
+        span: span_of(node),
+        message: error_message(node, source),
+      });
     }
-    if message.is_none() && node.has_error() && cursor.goto_first_child() {
-      continue;
-    }
-    loop {
-      if cursor.goto_next_sibling() {
-        break;
-      }
-      if !cursor.goto_parent() {
-        return ParseStatus::Partial { error_count, first_errors };
-      }
-    }
+  });
+  ParseStatus::Partial { error_count, first_errors }
+}
+
+fn error_message(node: Node<'_>, source: &str) -> String {
+  match node.is_error() {
+    true => format!("unexpected syntax `{}`", snippet(text(node, source))),
+    false => format!("missing `{}`", node.kind()),
   }
 }

@@ -5,9 +5,9 @@ use atlas_core::{AnalysisInput, ContentHash, FileRef, Language, LanguageAnalyzer
 use atlas_lang_ts::{ANALYZER_VERSION, TsAnalyzer};
 
 const PINNED: (u32, &str, &str) = (
-  2,
-  "7df77303bf50abd6147fb67825b1197ed5a5cf3996e4cfee22343cc55c1e1d39",
-  "2188d94e29163e81d6ffc5be5c257c1c32efe2ce6f046844c50857eaeb2f3de3",
+  3,
+  "d0034c8b6578b12da6ada460c44517c7f426b36db86ced6bbe6e26d5885e5238",
+  "231c83438c2a401ab96591aa260c2196614e827198764c1ed488c1e884a438c9",
 );
 
 fn fixtures_root() -> PathBuf {
@@ -47,7 +47,9 @@ fn walk_dirs(dir: &Path) -> Vec<PathBuf> {
 fn digests() -> (String, String) {
   let mut inputs = Vec::new();
   let mut output = Vec::new();
-  for repo_dir in walk_dirs(&fixtures_root()).iter().flat_map(|group| walk_dirs(group)) {
+  let fixtures = walk_dirs(&fixtures_root()).into_iter().flat_map(|group| walk_dirs(&group));
+  let corpus = walk_dirs(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/pin-corpus"));
+  for repo_dir in fixtures.chain(corpus) {
     let repo = RepoName::new(repo_dir.file_name().unwrap().to_string_lossy()).unwrap();
     for file in walk(&repo_dir) {
       let path = relative(&file, &repo_dir);

@@ -9,7 +9,9 @@ mod modules;
 mod scope;
 mod signature;
 mod syntax;
+mod tagged_templates;
 mod testing;
+mod type_arguments;
 
 pub use analyzer::{ANALYZER_NAME, ANALYZER_VERSION, MAX_SOURCE_BYTES, TsAnalyzer};
 pub use atlas_core::ParseBudget;

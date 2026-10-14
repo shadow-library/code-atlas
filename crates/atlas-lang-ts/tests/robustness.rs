@@ -122,6 +122,8 @@ fn should_survive_pathologically_deep_nesting_on_a_small_stack() {
     format!("let h = <div>{}</div>;", "<a>".repeat(depth / 4)),
     "\u{feff}#!/usr/bin/env node\n\0\0\u{fffd}export {".to_owned(),
     format!("{}const i = 1;", "declare ".repeat(depth)),
+    format!("const j = sql<{}string{}>`x`; const k = ;", "Array<".repeat(depth / 4), ">".repeat(depth / 4)),
+    format!("const l = {}T{};", "a<".repeat(depth), ">`x`".repeat(depth)),
   ];
   let worker = std::thread::Builder::new()
     .stack_size(1024 * 1024)

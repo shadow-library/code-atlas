@@ -6,6 +6,7 @@ use atlas_core::{AnalysisInput, ContentHash, FileFacts, FileRef, LanguageAnalyze
 use atlas_lang_ts::{ParseBudget, TsAnalyzer};
 
 const HANG_INPUTS: usize = 10;
+const ANGLE_INPUTS: usize = 2;
 const LIMIT: Duration = Duration::from_millis(200);
 const STALL: Duration = Duration::from_millis(50);
 const CANCELLATION_SLACK: Duration = Duration::from_secs(1);
@@ -14,14 +15,21 @@ fn file_ref(path: &str, source: &str) -> FileRef {
   FileRef::detect(RepoName::new("fixture").unwrap(), RelPath::new(path).unwrap(), ContentHash::of(source.as_bytes())).unwrap()
 }
 
-fn hang_inputs() -> Vec<(String, String)> {
+fn corpus_inputs(prefix: &str) -> Vec<(String, String)> {
   let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/hangs");
   let mut inputs: Vec<(String, String)> = fs::read_dir(dir)
     .unwrap()
     .map(|entry| entry.unwrap().path())
-    .map(|path| (path.file_name().unwrap().to_string_lossy().into_owned(), fs::read_to_string(&path).unwrap()))
+    .map(|path| (path.file_name().unwrap().to_string_lossy().into_owned(), path))
+    .filter(|(name, _)| name.starts_with(prefix))
+    .map(|(name, path)| (name, fs::read_to_string(&path).unwrap()))
     .collect();
   inputs.sort();
+  inputs
+}
+
+fn hang_inputs() -> Vec<(String, String)> {
+  let inputs = corpus_inputs("tsx-error-recovery-");
   assert_eq!(inputs.len(), HANG_INPUTS);
   inputs
 }
@@ -93,4 +101,44 @@ fn should_fail_the_analysis_with_the_same_reason_once_extraction_outlasts_the_li
     FileFacts::failed(file_ref("src/deep.ts", &source), analyzer.producer(), "parse budget exceeded (200 ms, 28001 bytes)")
   );
   assert!(elapsed < LIMIT + CANCELLATION_SLACK, "cancelled after {elapsed:?}");
+}
+
+#[test]
+fn should_analyse_unbalanced_and_runaway_type_argument_angles_within_the_budget() {
+  let inputs = corpus_inputs("ts-tagged-template-");
+  assert_eq!(inputs.len(), ANGLE_INPUTS);
+  let mut outcomes = Vec::new();
+  for (name, source) in &inputs {
+    let (facts, _) = analyze_timed(&TsAnalyzer::new(), "src/angles.ts", source);
+
+    let ParseStatus::Partial { error_count, .. } = facts.parse_status else {
+      panic!("{name}: {:?}", facts.parse_status)
+    };
+    let last = facts.symbols.last().map(|symbol| (symbol.name.clone(), symbol.span.start_line));
+    outcomes.push((name.clone(), error_count, last));
+  }
+
+  assert_eq!(
+    outcomes,
+    [
+      ("ts-tagged-template-angle-run.ts.txt".to_owned(), 1, Some(("after".to_owned(), 3))),
+      ("ts-tagged-template-unbalanced-angles.ts.txt".to_owned(), 80, Some(("after".to_owned(), 242))),
+    ]
+  );
+}
+
+#[test]
+fn should_fail_a_file_whose_tagged_template_needs_a_masked_reparse_with_the_deterministic_reason() {
+  let source = format!("{}export const rows = sql<Row[]>`select 1`;\n", "export const values = [1, 2, 3];\n".repeat(150));
+  let exhausted = TsAnalyzer::new().with_parse_budget(ParseBudget::fixed(Duration::ZERO));
+
+  let (cancelled, _) = analyze_timed(&exhausted, "src/rows.ts", &source);
+  let (next, _) = analyze_timed(&TsAnalyzer::new(), "src/rows.ts", &source);
+
+  assert_eq!(source.len(), 4_992);
+  assert_eq!(
+    cancelled,
+    FileFacts::failed(file_ref("src/rows.ts", &source), exhausted.producer(), "parse budget exceeded (0 ms, 4992 bytes)")
+  );
+  assert_eq!(next.parse_status, ParseStatus::Ok);
 }
