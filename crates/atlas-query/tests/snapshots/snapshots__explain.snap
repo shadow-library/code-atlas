@@ -11,7 +11,7 @@ UsersController.findOne method acme-api:src/users/users.controller.ts:13 [syntac
   attr params: [{"attributes":[{"args":[{"type":"str","value":"id"}],"path":["Param"],"span":{"end_byte":609,"end_col":22,"end_line":15,"start_byte":597,"start_col":10,"start_line":15}}],"name":"id","span":{"end_byte":620,"end_col":33,"end_line":15,"start_byte":597,"start_col":10,"start_line":15},"type_text":"string"}] [syntactic, file]
 assertions (1)
   file acme-api:src/users/users.controller.ts [syntactic] (file last indexed in run 1)
-    evidence acme-api:src/users/users.controller.ts:13 by atlas-lang-ts@3
+    evidence acme-api:src/users/users.controller.ts:13 by atlas-lang-ts@4
       13|   @Get(':id')
       14|   @RequirePermission('users:read')
       15|   findOne(@Param('id') id: string) {

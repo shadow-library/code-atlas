@@ -17,13 +17,28 @@ const REGEX_PRECEDING_KEYWORDS: [&str; 14] = [
   "await",
 ];
 
+const TYPE_OPERATOR_KEYWORDS: [&str; 5] = ["extends", "import", "is", "keyof", "readonly"];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Frame {
+  Paren(Contents),
+  Bracket(Contents),
+  Brace,
+  Substitution,
+  Angle { open: usize, after: Previous, contents: Contents },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Closer {
   Paren,
   Bracket,
   Brace,
-  Substitution,
-  Angle { open: usize, after: Previous },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Contents {
+  Type,
+  Expression,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +50,8 @@ enum Mode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Previous {
   Tag,
+  // Tags like `Tag`, but a parenthesis after it may still be a type, as in `keyof (A | B)`.
+  TypeOperator,
   Operand,
   Operator,
 }
@@ -132,9 +149,9 @@ impl<'a> Scanner<'a> {
         self.at += 1;
         Mode::Template
       }
-      (b')', _) => self.close(Frame::Paren),
-      (b']', _) => self.close(Frame::Bracket),
-      (b'}', _) => self.close(Frame::Brace),
+      (b')', _) => self.close(Closer::Paren),
+      (b']', _) => self.close(Closer::Bracket),
+      (b'}', _) => self.close(Closer::Brace),
       _ => {
         self.code_token(current, next);
         Mode::Code
@@ -146,8 +163,8 @@ impl<'a> Scanner<'a> {
     match (current, next) {
       (b'\'' | b'"', _) => self.skip_string(current),
       (b'/', _) => self.slash(),
-      (b'(', _) => self.open(Frame::Paren),
-      (b'[', _) => self.open(Frame::Bracket),
+      (b'(', _) => self.open_paren(),
+      (b'[', _) => self.open(Frame::Bracket(Contents::Type)),
       (b'{', _) => self.open(Frame::Brace),
       (b'<', Some(b'=')) => self.terminate(2),
       (b'<', _) => self.open_angle(),
@@ -155,6 +172,8 @@ impl<'a> Scanner<'a> {
       (b'=', Some(b'>')) => self.operator(2),
       (b'=' | b';', _) | (b'!', Some(b'=')) => self.terminate(1),
       (b'&', Some(b'&')) | (b'|', Some(b'|')) | (b'?', Some(b'?')) => self.terminate(2),
+      (b'+' | b'*' | b'%', _) => self.arithmetic(),
+      (b'-', _) if matches!(self.previous, Previous::Tag | Previous::Operand) => self.arithmetic(),
       (byte, _) if is_identifier_byte(byte) => self.word(),
       _ => self.operator(1),
     }
@@ -221,7 +240,7 @@ impl<'a> Scanner<'a> {
         Err(line_end) => self.regex_free_until = line_end,
       }
     }
-    self.operator(1);
+    self.arithmetic();
   }
 
   // A failed attempt rules out regexes for the rest of its line, so a line of `[/[/[/…` is scanned once instead of once per slash.
@@ -242,24 +261,52 @@ impl<'a> Scanner<'a> {
     }
   }
 
+  fn open_paren(&mut self) {
+    if self.previous == Previous::Tag {
+      self.mark_angles_as_expressions();
+    }
+    self.open(Frame::Paren(Contents::Type));
+  }
+
+  fn arithmetic(&mut self) {
+    self.mark_angles_as_expressions();
+    self.operator(1);
+  }
+
+  // Only an object type in braces may hold what looks like a call or arithmetic (method signatures, `+readonly`); a type has no binary minus.
+  // Frames below a marked frame were marked with it, so each frame is marked once.
+  fn mark_angles_as_expressions(&mut self) {
+    for frame in self.frames.iter_mut().rev() {
+      match frame {
+        Frame::Brace | Frame::Substitution => return,
+        Frame::Angle { contents, .. } | Frame::Paren(contents) | Frame::Bracket(contents) => {
+          if *contents == Contents::Expression {
+            return;
+          }
+          *contents = Contents::Expression;
+        }
+      }
+    }
+  }
+
   fn open(&mut self, frame: Frame) {
     self.frames.push(frame);
     self.operator(1);
   }
 
-  fn close(&mut self, closer: Frame) -> Mode {
+  fn close(&mut self, closer: Closer) -> Mode {
     self.drop_angles();
     self.at += 1;
     self.previous = match closer {
-      Frame::Brace => Previous::Operand,
-      _ => Previous::Tag,
+      Closer::Brace => Previous::Operand,
+      Closer::Paren | Closer::Bracket => Previous::Tag,
     };
     match (self.frames.last().copied(), closer) {
-      (Some(Frame::Substitution), Frame::Brace) => {
+      (Some(Frame::Substitution), Closer::Brace) => {
         self.frames.pop();
         Mode::Template
       }
-      (Some(open), _) if open == closer => {
+      (Some(Frame::Paren(_)), Closer::Paren) | (Some(Frame::Bracket(_)), Closer::Bracket) | (Some(Frame::Brace), Closer::Brace) => {
         self.frames.pop();
         Mode::Code
       }
@@ -271,14 +318,15 @@ impl<'a> Scanner<'a> {
     self.frames.push(Frame::Angle {
       open: self.at,
       after: self.previous,
+      contents: Contents::Type,
     });
     self.operator(1);
   }
 
   fn close_angle(&mut self) {
-    if let Some(Frame::Angle { open, after }) = self.frames.last().copied() {
+    if let Some(Frame::Angle { open, after, contents }) = self.frames.last().copied() {
       self.frames.pop();
-      if after == Previous::Tag {
+      if matches!(after, Previous::Tag | Previous::TypeOperator) && contents == Contents::Type {
         self.closed = Some(open..=self.at);
       }
     }
@@ -308,8 +356,14 @@ impl<'a> Scanner<'a> {
       self.at += 1;
     }
     let word = self.bytes.get(start..self.at).unwrap_or_default();
-    let keyword = REGEX_PRECEDING_KEYWORDS.iter().any(|keyword| keyword.as_bytes() == word);
-    self.previous = if keyword { Previous::Operator } else { Previous::Tag };
+    let is_in = |keywords: &[&str]| keywords.iter().any(|keyword| keyword.as_bytes() == word);
+    self.previous = if is_in(&REGEX_PRECEDING_KEYWORDS) {
+      Previous::Operator
+    } else if is_in(&TYPE_OPERATOR_KEYWORDS) {
+      Previous::TypeOperator
+    } else {
+      Previous::Tag
+    };
   }
 }
 
@@ -388,6 +442,56 @@ mod tests {
     assert_eq!(masked("const z = a<b; const w = c>`d`;"), None);
     assert_eq!(masked("type A<T = string> = T; `x`;"), None);
     assert_eq!(masked("const v = a<b && c>`d`;"), None);
+  }
+
+  #[test]
+  fn should_leave_angles_holding_a_call_or_arithmetic_untouched() {
+    assert_eq!(masked("const a = a < b() > `c`;"), None);
+    assert_eq!(masked("const a = a < b + 1 > `c`;"), None);
+    assert_eq!(masked("const a = a < b * 2 > `c`;"), None);
+    assert_eq!(masked("const a = a < b % 2 > `c`;"), None);
+    assert_eq!(masked("const a = a < b / 2 > `c`;"), None);
+    assert_eq!(masked("const a = a < b - 1 > `c`;"), None);
+    assert_eq!(masked("const a = a < (b)(c) > `d`;"), None);
+    assert_eq!(masked("const a = a < x[0](1) > `d`;"), None);
+    assert_eq!(masked("const a = a < b < c() > > `d`;"), None);
+    assert_eq!(masked("const a = a < [b + 1] > `d`;"), None);
+    assert_eq!(masked("const a = sql<{ m(): void } & f()>`d`;"), None);
+  }
+
+  #[test]
+  fn should_still_read_type_operator_words_as_tags() {
+    assert_eq!(masked("const a = db.readonly<Row>`x`;").as_deref(), Some("const a = db.readonly     `x`;"));
+  }
+
+  #[test]
+  fn should_mask_type_arguments_whose_syntax_resembles_calls_or_arithmetic() {
+    let types = [
+      "{ m(): void; new (): T; (x: A): B }",
+      "{ +readonly [K in T]-?: K }",
+      "typeof import('./x')",
+      "import('./x').Row",
+      "keyof (A | B)",
+      "T extends (infer U)[] ? U : never",
+      "readonly (A | B)[]",
+      "new () => T",
+      "abstract new (...args: any[]) => T",
+      "(x: unknown) => x is (A | B)",
+      "-1 | 2",
+      "[a: string, ...rest: number[]]",
+      "Record<string, () => void>",
+    ];
+    for type_text in types {
+      let source = format!("const a = sql<{type_text}>`x`;");
+      let expected = format!("const a = sql{}`x`;", " ".repeat(type_text.len() + 2));
+      assert_eq!(masked(&source), Some(expected), "{type_text}");
+    }
+  }
+
+  #[test]
+  fn should_mark_angles_once_in_linear_time() {
+    let depth = 200_000;
+    assert_eq!(masked(&format!("a<{}{}`x`", "(".repeat(depth), "x+".repeat(depth))), None);
   }
 
   #[test]

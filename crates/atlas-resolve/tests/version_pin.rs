@@ -11,7 +11,7 @@ use serde::Serialize;
 
 const PINNED: (u32, &str, &str) = (
   7,
-  "40a8334f1b11f140e0b49c1abd33955642ec035f44e33bc9df2ff86d3d75075c",
+  "a8b5ed46f5494c01cc0264ba1f68e08a2886b3e974186bf78c2e77af9b905cd2",
   "6c7d2284af361a2c31f7e61fe81894441f2cd7b77a2530ecb02b7dff214393c2",
 );
 

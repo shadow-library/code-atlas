@@ -13,6 +13,7 @@ atlas-core.workspace = true
 tree-sitter.workspace = true
 tree-sitter-typescript.workspace = true
 tree-sitter-javascript.workspace = true
+stacker.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

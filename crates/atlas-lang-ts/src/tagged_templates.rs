@@ -19,10 +19,11 @@ enum Reading {
   Plain,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ErrorFootprint {
   count: u32,
   bytes: usize,
+  ranges: Vec<Range<usize>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,8 +57,8 @@ pub(crate) fn parse_tagged_templates<'s>(grammar: Grammar, source: &'s str, dead
   let before = ErrorFootprint::of(tree.root_node());
   let after = ErrorFootprint::of(retried.root_node());
   let repairs = after.count < before.count || reading == Reading::Comparison;
-  if !repairs || after.count > before.count || after.bytes > before.bytes {
-    tracing::debug!(?reading, ?before, ?after, "kept the unmasked parse of tagged templates");
+  if !repairs || after.count > before.count || after.bytes > before.bytes || !before.covers(&after) {
+    tracing::debug!(?reading, before = before.count, after = after.count, "kept the unmasked parse of tagged templates");
     return original(tree);
   }
   match masks_fill_tag_gaps(retried.root_node(), &masked.ranges, deadline) {
@@ -139,13 +140,42 @@ fn walk<'t>(root: Node<'t>, deadline: &Deadline, mut visit: impl FnMut(Node<'t>)
 
 impl ErrorFootprint {
   fn of(root: Node<'_>) -> Self {
-    let mut footprint = Self { count: 0, bytes: 0 };
+    let mut footprint = Self {
+      count: 0,
+      bytes: 0,
+      ranges: Vec::new(),
+    };
     visit_errors(root, |node| {
       footprint.count = footprint.count.saturating_add(1);
       footprint.bytes = footprint.bytes.saturating_add(node.end_byte() - node.start_byte());
+      footprint.ranges.push(node.byte_range());
     });
+    footprint.ranges = merged(footprint.ranges);
     footprint
   }
+
+  // Masking moves no offset, so an error the masked parse places outside every original error is new damage, even when the counts dropped.
+  fn covers(&self, other: &Self) -> bool {
+    other.ranges.iter().all(|range| {
+      let after = self.ranges.partition_point(|covering| covering.start <= range.start);
+      after
+        .checked_sub(1)
+        .and_then(|index| self.ranges.get(index))
+        .is_some_and(|covering| range.end <= covering.end)
+    })
+  }
+}
+
+fn merged(mut ranges: Vec<Range<usize>>) -> Vec<Range<usize>> {
+  ranges.sort_unstable_by_key(|range| range.start);
+  let mut merged: Vec<Range<usize>> = Vec::new();
+  for range in ranges {
+    match merged.last_mut() {
+      Some(last) if range.start <= last.end => last.end = last.end.max(range.end),
+      _ => merged.push(range),
+    }
+  }
+  merged
 }
 
 pub(crate) fn visit_errors<'t>(root: Node<'t>, mut visit: impl FnMut(Node<'t>)) {

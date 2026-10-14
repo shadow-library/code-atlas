@@ -1,7 +1,7 @@
 use atlas_core::{AttributeFact, EntityKind, TestInfo, TestKind, Visibility};
 use tree_sitter::Node;
 
-use super::Extractor;
+use super::{Extractor, MAX_SYMBOL_NESTING};
 use crate::args::summarize_arguments;
 use crate::fingerprint::fingerprint;
 use crate::signature::normalize;
@@ -20,6 +20,10 @@ impl<'s, 't> Extractor<'s, 't> {
     let mut walk: Vec<Node<'t>> = test.each_arguments.into_iter().collect();
     walk.push(test.arguments);
     if test.name.is_empty() {
+      return self.push_all(walk);
+    }
+    if self.suites.len() >= MAX_SYMBOL_NESTING {
+      self.depth_exceeded = true;
       return self.push_all(walk);
     }
     let kind = match test.kind {

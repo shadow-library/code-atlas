@@ -199,6 +199,40 @@ fn should_keep_the_unmasked_tree_when_masking_grows_the_bytes_under_errors() {
 }
 
 #[test]
+fn should_keep_comparisons_whose_angles_hold_a_call_or_arithmetic() {
+  let source = "const t = sql<number>`count(*)`;\nconst a1 = a < b() > `c`;\nconst a2 = a < b + 1 > `c`;\n";
+
+  let facts = analyze("src/compare.ts", source);
+
+  assert_eq!(facts.parse_status, ParseStatus::Ok);
+  assert_eq!(refs(&facts), ["t -Call-> sql", "a1 -ValueRef-> a", "a1 -Call-> b", "a2 -ValueRef-> a", "a2 -ValueRef-> b"]);
+}
+
+#[test]
+fn should_keep_the_unmasked_tree_when_masking_moves_an_error_outside_the_original_errors() {
+  let source = "import { Global, Module } from '@nestjs/common';\n\n@Global()\n@Module({\nconst a = sql<Row[]>`select 0`;\n  imports: [TokenModule.register({ secret: process.env.SECRET })],\n  providers: [TokenGuard, KeyGuard],\nconst b = db()<{ id: string }[]>`select ${x} 1`;\n  exports: [TokenGuard, KeyGuard],\n})\nexport class GuardModule {}\n";
+
+  let facts = analyze("src/guard.module.ts", source);
+
+  assert_eq!(error_count(&facts), 6);
+  assert_eq!(common::symbol_names(&facts), ["GuardModule#class"]);
+  assert_eq!(refs(&facts)[..2], ["GuardModule -Decorator-> Global", "GuardModule -Decorator-> Module"]);
+}
+
+#[test]
+fn should_keep_the_unmasked_tree_when_a_satisfies_type_ends_a_line_before_a_template() {
+  let source = "const t = sql<number>`count(*)`;\nconst w = x satisfies Foo<Bar>\n`y`.length\n";
+
+  let facts = analyze("src/satisfies.ts", source);
+
+  assert_eq!(error_count(&facts), 1);
+  assert_eq!(
+    refs(&facts),
+    ["t -ValueRef-> sql", "t -ValueRef-> number", "w -ValueRef-> x", "w -TypeRef-> Foo", "w -TypeRef-> Bar"]
+  );
+}
+
+#[test]
 fn should_never_mask_javascript() {
   let source = "const v = sql<T>`c`;\nconst broken = ;\n";
 

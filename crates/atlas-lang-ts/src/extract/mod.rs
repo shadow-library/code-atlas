@@ -6,8 +6,8 @@ mod test_symbols;
 use std::collections::{HashMap, HashSet};
 
 use atlas_core::{
-  ArgSummary, AttributeFact, Deadline, EntityKind, ExportFact, FileFacts, FileRef, ImportBinding, ImportFact, LocalSymbolId, Producer, ReceiverHint, RefKind, RefOrigin,
-  ReferenceFact, Span, SymbolFact, Visibility, is_test_path,
+  ArgSummary, AttributeFact, Deadline, Diagnostic, EntityKind, ExportFact, FileFacts, FileRef, ImportBinding, ImportFact, LocalSymbolId, Producer, ReceiverHint, RefKind,
+  RefOrigin, ReferenceFact, Severity, Span, SymbolFact, Visibility, is_test_path,
 };
 use tree_sitter::Node;
 
@@ -17,6 +17,9 @@ use crate::modules::{import_statement, require_call};
 use crate::scope::{Namespace, ScopeKind, Scopes};
 use crate::syntax::{children, first_child, member_chain, span_of, text};
 use crate::testing::{UNKNOWN_FRAMEWORK, framework_of_global, framework_of_import};
+
+const MAX_SYMBOL_NESTING: usize = 64;
+const DEPTH_LIMIT_CODE: &str = "ts.depth_limit";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Container {
@@ -170,6 +173,7 @@ pub(crate) struct Extractor<'s, 't> {
   test_symbols: Vec<LocalSymbolId>,
   callees: HashSet<usize>,
   seen_values: HashMap<ValueKey, Vec<u32>>,
+  depth_exceeded: bool,
 }
 
 impl<'s, 't> Extractor<'s, 't> {
@@ -191,6 +195,7 @@ impl<'s, 't> Extractor<'s, 't> {
       test_symbols: Vec::new(),
       callees: HashSet::new(),
       seen_values: HashMap::new(),
+      depth_exceeded: false,
     };
     while let Some(step) = extractor.stack.pop() {
       if deadline.tick().is_break() {
@@ -444,6 +449,15 @@ impl<'s, 't> Extractor<'s, 't> {
   fn finish(mut self) -> FileFacts {
     self.upgrade_exported_visibility();
     self.assign_test_framework();
+    if self.depth_exceeded {
+      tracing::debug!(path = %self.facts.file.path, "ts analyzer skipped symbols nested beyond its depth limit");
+      self.facts.diagnostics.push(Diagnostic {
+        severity: Severity::Warning,
+        code: DEPTH_LIMIT_CODE.to_owned(),
+        message: "symbols nested beyond the analyzer depth limit were skipped".to_owned(),
+        span: None,
+      });
+    }
     self.facts
   }
 

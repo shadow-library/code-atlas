@@ -5,9 +5,9 @@ use atlas_core::{AnalysisInput, ContentHash, FileRef, Language, LanguageAnalyzer
 use atlas_lang_ts::{ANALYZER_VERSION, TsAnalyzer};
 
 const PINNED: (u32, &str, &str) = (
-  3,
-  "d0034c8b6578b12da6ada460c44517c7f426b36db86ced6bbe6e26d5885e5238",
-  "231c83438c2a401ab96591aa260c2196614e827198764c1ed488c1e884a438c9",
+  4,
+  "0ec51fa12b9612a96be0bdaf8f327a0fbfed6a3652a1ec4351cb90239ac53240",
+  "99fe6e552170dba4dec7ed6dbb93736a6a9b31d4f88444718af7eaf52e0e07f7",
 );
 
 fn fixtures_root() -> PathBuf {

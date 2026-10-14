@@ -91,14 +91,14 @@ fn should_stop_every_known_tsx_error_recovery_loop_once_the_parse_stops_advancin
 
 #[test]
 fn should_fail_the_analysis_with_the_same_reason_once_extraction_outlasts_the_limit() {
-  let source = format!("{}x{}", "namespace a {".repeat(2_000), "}".repeat(2_000));
+  let source = format!("const x = {}0{};", "class { m() { return ".repeat(3_000), "} }".repeat(3_000));
   let analyzer = TsAnalyzer::new().with_parse_budget(ParseBudget::fixed(LIMIT));
 
   let (facts, elapsed) = analyze_timed(&analyzer, "src/deep.ts", &source);
 
   assert_eq!(
     facts,
-    FileFacts::failed(file_ref("src/deep.ts", &source), analyzer.producer(), "parse budget exceeded (200 ms, 28001 bytes)")
+    FileFacts::failed(file_ref("src/deep.ts", &source), analyzer.producer(), "parse budget exceeded (200 ms, 72012 bytes)")
   );
   assert!(elapsed < LIMIT + CANCELLATION_SLACK, "cancelled after {elapsed:?}");
 }

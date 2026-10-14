@@ -224,4 +224,4 @@ module_decls: []
 diagnostics: []
 analyzer:
   name: atlas-lang-ts
-  version: 3
+  version: 4

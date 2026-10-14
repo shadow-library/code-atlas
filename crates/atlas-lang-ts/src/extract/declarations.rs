@@ -1,7 +1,7 @@
 use atlas_core::{DefaultExportTarget, EntityKind, ExportFact, Modifier, Modifiers, ParamFact, Visibility};
 use tree_sitter::Node;
 
-use super::{Container, Export, Extractor, FunctionScope, Site, Step, ThisBinding};
+use super::{Container, Export, Extractor, FunctionScope, MAX_SYMBOL_NESTING, Site, Step, ThisBinding};
 use crate::args::{parameter_name, summarize};
 use crate::fingerprint::fingerprint;
 use crate::modules::{export_list, require_bindings, require_call, require_fact};
@@ -349,10 +349,15 @@ impl<'s, 't> Extractor<'s, 't> {
 
   fn namespace_with(&mut self, segments: Vec<String>, name_node: Node<'t>, node: Node<'t>, body: Option<Node<'t>>, site: Site<'t>) {
     let parent = self.container_parent();
-    let mut item_path = parent
+    let parent_path = parent
       .and_then(|parent| self.facts.symbol(parent))
-      .map(|parent| parent.item_path.clone())
+      .map(|parent| parent.item_path.as_slice())
       .unwrap_or_default();
+    if parent_path.len() + segments.len() > MAX_SYMBOL_NESTING {
+      self.depth_exceeded = true;
+      return self.block(body.map(children).unwrap_or_default());
+    }
+    let mut item_path = parent_path.to_vec();
     item_path.extend(segments.iter().cloned());
     let name = segments.last().cloned().unwrap_or_default();
     let local = self.add_symbol(

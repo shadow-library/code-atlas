@@ -286,9 +286,10 @@ impl<'s, 't> Extractor<'s, 't> {
 
   pub(super) fn value_read(&mut self, node: Node<'t>) {
     let name = text(node, self.source);
-    if self.callees.remove(&node.id()) || self.is_ignored_value(name) || self.is_saturated(&[name.to_owned()], None) {
+    if self.callees.remove(&node.id()) || name.is_empty() || self.is_ignored_value(name) || self.is_saturated(&[name.to_owned()], None) {
       return;
     }
+    // tree-sitter finds the parent of a zero-width (MISSING) node by recursing from the root, one C frame per tree level.
     let Some(parent) = node.parent() else { return };
     if is_binding_position(node, parent) {
       return;

@@ -37,15 +37,27 @@ impl Grammar {
   }
 }
 
+const PARSE_STACK_BASE: usize = 256 * 1024;
+const PARSE_STACK_PER_SOURCE_BYTE: usize = 128;
+
 thread_local! {
   static PARSERS: RefCell<[Option<Parser>; 3]> = const { RefCell::new([None, None, None]) };
 }
 
 pub(crate) fn parse(grammar: Grammar, source: &str, deadline: &Deadline) -> Result<Option<Tree>, AnalysisError> {
-  PARSERS.with(|parsers| match parsers.try_borrow_mut() {
-    Ok(mut parsers) => parse_with(&mut parsers[grammar.slot()], grammar, source, deadline),
-    Err(_) => parse_with(&mut None, grammar, source, deadline),
+  stacker::maybe_grow(parse_stack_size(source.len()), parse_stack_size(source.len()), || {
+    PARSERS.with(|parsers| match parsers.try_borrow_mut() {
+      Ok(mut parsers) => parse_with(&mut parsers[grammar.slot()], grammar, source, deadline),
+      Err(_) => parse_with(&mut None, grammar, source, deadline),
+    })
   })
+}
+
+// tree-sitter merges GLR stack versions recursively, one C frame per parse-stack node, so an ambiguous run such as `` sql<a><a>…`x` `` recurses
+// once per token (about 38 bytes of stack per source byte in a debug build); a token takes at least one byte. The stack is reserved, not
+// committed, until the parse reaches that depth.
+fn parse_stack_size(source_bytes: usize) -> usize {
+  source_bytes.saturating_mul(PARSE_STACK_PER_SOURCE_BYTE).saturating_add(PARSE_STACK_BASE)
 }
 
 fn parse_with(slot: &mut Option<Parser>, grammar: Grammar, source: &str, deadline: &Deadline) -> Result<Option<Tree>, AnalysisError> {
