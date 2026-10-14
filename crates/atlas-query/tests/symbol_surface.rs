@@ -272,14 +272,14 @@ fn should_include_the_cross_repo_sdk_import_and_call_of_to_cents() {
       "acme-sdk:src/money.test.ts:8:12 toCents.should convert whole and fractional amounts calls [resolved]",
       "acme-sdk:src/money.test.ts:9:12 toCents.should convert whole and fractional amounts calls [resolved]",
       "acme-sdk:src/money.test.ts:13:12 toCents.should keep the sign of negative amounts calls [resolved]",
-      "acme-web:src/components/OrderForm.tsx:1:10 (file) possibly imports [heuristic 0.85]",
-      "acme-web:src/components/OrderForm.tsx:15:44 OrderForm possibly calls [heuristic 0.85]",
+      "acme-web:src/components/OrderForm.tsx:1:10 (file) imports [resolved]",
+      "acme-web:src/components/OrderForm.tsx:15:44 OrderForm calls [resolved]",
     ]
   );
   let web_call = &answer.references[7];
   assert_eq!(web_call.side, ReferenceSide::Inbound);
   assert_eq!(web_call.edge_kind, "calls");
-  assert!(!web_call.certainty.authoritative);
+  assert!(web_call.certainty.authoritative);
   assert_eq!(web_call.snippet.as_deref(), Some("submit({ userId: me.id, subtotalCents: toCents(amount) });"));
 }
 
@@ -476,7 +476,7 @@ fn should_serialize_graph_references_with_columns_and_tags() {
   );
   assert_eq!(row["side"], "inbound");
   assert_eq!(row["edge_kind"], "calls");
-  assert_eq!(row["certainty"]["tag"], "[heuristic 0.85]");
+  assert_eq!(row["certainty"]["tag"], "[resolved]");
   assert_eq!(row["enclosing"]["key"], "ts:acme-web:acme-web:src/components/OrderForm::OrderForm#function");
   assert_eq!(json["answer"]["source"], "graph");
 }

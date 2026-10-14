@@ -3,7 +3,7 @@ use std::collections::{HashSet, VecDeque};
 use atlas_core::{
   ArgSummary, DefaultExportTarget, EntityKind, ExportFact, ImportBinding, ImportFact, Modifier, ReceiverHint, RefKind, ReferenceFact, RelPath, RepoName, Visibility,
 };
-use atlas_project::{NpmExportTarget, NpmExports, TsConfigInfo};
+use atlas_project::{NpmExportTarget, NpmExports, RepoDir, TsConfigInfo, TsEmitKind};
 
 use crate::engine::{
   DISPATCH_CONFIDENCE, DIST_TO_SRC_CONFIDENCE, DispatchReach, DispatchScope, Found, Guard, Heuristic, Hit, Lookup, MAX_DISPATCH_CANDIDATES, Miss, Outcome, RULE_DIST_TO_SRC,
@@ -18,6 +18,17 @@ const PROBE_EXTENSIONS: [&str; 9] = [".ts", ".tsx", ".d.ts", ".js", ".jsx", ".mt
 const SOURCE_EXTENSIONS: [&str; 8] = [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"];
 const BUILD_EXTENSIONS: [&str; 7] = [".d.ts", ".d.mts", ".d.cts", ".js", ".mjs", ".cjs", ".jsx"];
 const BUILD_DIRS: [&str; 8] = ["dist", "build", "lib", "out", "esm", "cjs", "es", "types"];
+const DECLARATION_EXTENSIONS: [&str; 3] = [".d.ts", ".d.mts", ".d.cts"];
+const SCRIPT_SOURCES: [&str; 4] = [".ts", ".tsx", ".js", ".jsx"];
+const EMITTED_SOURCES: [(&str, &[&str]); 7] = [
+  (".d.ts", &SCRIPT_SOURCES),
+  (".d.mts", &[".mts", ".mjs"]),
+  (".d.cts", &[".cts", ".cjs"]),
+  (".js", &SCRIPT_SOURCES),
+  (".jsx", &[".tsx", ".jsx"]),
+  (".mjs", &[".mts", ".mjs"]),
+  (".cjs", &[".cts", ".cjs"]),
+];
 const EXPORT_CONDITIONS: [&str; 7] = ["types", "import", "module", "default", "require", "node", "browser"];
 const MAX_HERITAGE_DEPTH: usize = 32;
 const DYNAMIC_GLOBALS: [&str; 2] = ["eval", "Function"];
@@ -218,6 +229,14 @@ fn export_paths(target: &NpmExportTarget, out: &mut Vec<String>) {
         export_paths(target, out);
       }
     }
+  }
+}
+
+fn path_within<'a>(dir: &RepoDir, path: &'a RelPath) -> Option<&'a str> {
+  match dir.as_rel_path() {
+    None => Some(path.as_str()),
+    Some(dir) if dir == path => Some(""),
+    Some(dir) => path.strip_dir_prefix(dir),
   }
 }
 
@@ -565,12 +584,66 @@ impl Resolver<'_> {
         return Ok(Hit::exact(Found::File(found)));
       }
     }
+    if let Some(found) = candidates.iter().find_map(|candidate| self.ts_declared_source(&key.repo, candidate)) {
+      return Ok(Hit::exact(Found::File(found)));
+    }
     for candidate in &candidates {
       if let Some(found) = self.ts_dist_to_src(key, package.root.as_rel_path(), candidate) {
         return Ok(Hit::heuristic(Found::File(found), DIST_TO_SRC_CONFIDENCE, RULE_DIST_TO_SRC));
       }
     }
     Err(Miss::NotFound)
+  }
+
+  fn ts_declared_source(&self, repo: &RepoName, candidate: &RelPath) -> Option<FileIdx> {
+    let key = (repo.clone(), candidate.clone());
+    if let Some(cached) = self.declared_sources.borrow().get(&key) {
+      return *cached;
+    }
+    let found = self.ts_scan_declared_source(repo, candidate);
+    self.declared_sources.borrow_mut().insert(key, found);
+    found
+  }
+
+  fn ts_scan_declared_source(&self, repo: &RepoName, candidate: &RelPath) -> Option<FileIdx> {
+    let kind = match DECLARATION_EXTENSIONS.iter().any(|extension| candidate.as_str().ends_with(extension)) {
+      true => TsEmitKind::Declaration,
+      false => TsEmitKind::Script,
+    };
+    let mut sources: Vec<FileIdx> = Vec::new();
+    for config in &self.table.layout.graph(repo)?.tsconfigs {
+      let Some(emitted) = config.emit_dir(kind).and_then(|emit_dir| path_within(emit_dir, candidate)) else {
+        continue;
+      };
+      let root = config.source_root()?;
+      if let Some(found) = self.ts_emitted_source(repo, &root, emitted)
+        && !sources.contains(&found)
+      {
+        sources.push(found);
+      }
+    }
+    match sources.as_slice() {
+      [single] => Some(*single),
+      _ => None,
+    }
+  }
+
+  fn ts_emitted_source(&self, repo: &RepoName, root: &RepoDir, emitted: &str) -> Option<FileIdx> {
+    let probe = |stem: &str, extensions: &[&str]| {
+      let base = root.file(stem)?;
+      extensions.iter().find_map(|extension| self.ts_exists(repo, &format!("{}{extension}", base.as_str())))
+    };
+    if let Some((stem, sources)) = EMITTED_SOURCES.iter().find_map(|(extension, sources)| Some((emitted.strip_suffix(extension)?, *sources))) {
+      return probe(stem, sources);
+    }
+    if emitted.rsplit('/').next().is_some_and(|name| name.contains('.')) {
+      return None;
+    }
+    let index = match emitted {
+      "" => "index".to_owned(),
+      directory => format!("{directory}/index"),
+    };
+    probe(emitted, &SCRIPT_SOURCES).or_else(|| probe(&index, &SCRIPT_SOURCES))
   }
 
   fn ts_dist_to_src(&self, key: &PackageKey, root: Option<&RelPath>, candidate: &RelPath) -> Option<FileIdx> {

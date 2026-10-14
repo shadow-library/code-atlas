@@ -3,7 +3,7 @@ mod common;
 use std::io::{Read, Write};
 use std::path::Path;
 
-use atlas_core::{EdgeKind, Owner, RelPath, RepoName};
+use atlas_core::{Certainty, Confidence, EdgeKind, EntityId, EntityKey, Owner, RelPath, RepoName};
 use atlas_engine::{Engine, FreshnessReport};
 use atlas_project::Project;
 use atlas_store::StoreError;
@@ -194,4 +194,40 @@ fn should_rerun_only_the_project_passes_when_a_pass_version_changed() {
   assert_eq!(engine.store().read(|tx| tx.owned_facts(&link)).unwrap(), linked);
   assert_eq!(digest(&engine), full);
   assert_eq!(fresh(&engine).header().run, None);
+}
+
+fn sdk_import_certainty(engine: &Engine) -> Option<Certainty> {
+  let owner = Owner::File {
+    repo: RepoName::new("acme-web").unwrap(),
+    path: RelPath::new("src/api/client.ts").unwrap(),
+  };
+  let target = EntityId::of(&EntityKey::File {
+    repo: RepoName::new("acme-sdk").unwrap(),
+    path: RelPath::new("src/index.ts").unwrap(),
+  });
+  let facts = engine.store().read(|tx| tx.owned_facts(&owner)).unwrap();
+  facts
+    .edges
+    .into_iter()
+    .find(|edge| edge.kind == EdgeKind::Imports && edge.to == target)
+    .map(|edge| edge.certainty)
+}
+
+#[test]
+fn should_re_resolve_every_file_when_only_a_tsconfig_out_dir_changes() {
+  let scratch = tempfile::tempdir().unwrap();
+  let tree = scratch.path().join("tree");
+  let project = acme_copy(&tree);
+  let engine = open(&project, &scratch.path().join("home"));
+  fresh(&engine);
+  let file_count = code_files(&engine).len() as u64;
+  assert_eq!(sdk_import_certainty(&engine), Some(Certainty::Resolved));
+
+  let config = tree.join("acme-sdk/tsconfig.json");
+  let text = std::fs::read_to_string(&config).unwrap();
+  std::fs::write(&config, text.replacen("\"outDir\": \"dist\"", "\"outDir\": \"build\"", 1)).unwrap();
+  let redirected = fresh(&engine);
+
+  assert_eq!(run_counts(&engine, &redirected), (0, file_count));
+  assert_eq!(sdk_import_certainty(&engine), Some(Certainty::heuristic(Confidence::new(0.85).unwrap(), "dist-to-src")));
 }

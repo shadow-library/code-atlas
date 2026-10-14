@@ -1,0 +1,1 @@
+{ "name": "@emit/core", "version": "1.0.0", "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }, "./*": { "types": "./dist/*.d.ts", "import": "./dist/*.js" } } }

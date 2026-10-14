@@ -314,7 +314,7 @@ async fn should_answer_exact_references_with_the_compiler_tag_and_server_version
     "  not in the server's project [resolved]  acme-sdk:src/index.ts:3:10  src/index.ts  export { toCents } from './money';"
   );
   assert!(
-    lines.contains(&"  other repo [heuristic 0.85]  acme-web:src/components/OrderForm.tsx:1:10  src/components/OrderForm.tsx  import { toCents } from '@acme/sdk';"),
+    lines.contains(&"  other repo [resolved]  acme-web:src/components/OrderForm.tsx:1:10  src/components/OrderForm.tsx  import { toCents } from '@acme/sdk';"),
     "{text}"
   );
   ide.harness.stop().await.unwrap();

@@ -34,7 +34,7 @@ expression: output
     "depth": 3,
     "direct": {
       "total": 4,
-      "uncertain": 2,
+      "uncertain": 0,
       "items": [
         {
           "entity": {
@@ -49,20 +49,20 @@ expression: output
             }
           },
           "depth": 1,
-          "score": 0.885,
-          "uncertain": true,
+          "score": 1.035,
+          "uncertain": false,
           "why": [
             {
               "edge": "4d47686e0f9d18d7",
               "kind": "calls",
-              "phrase": "possibly calls",
+              "phrase": "calls",
               "entity": "toCents",
               "certainty": {
-                "class": "heuristic",
-                "confidence": 0.85,
+                "class": "resolved",
+                "confidence": null,
                 "freshness": null,
-                "authoritative": false,
-                "tag": "[heuristic 0.85]"
+                "authoritative": true,
+                "tag": "[resolved]"
               }
             }
           ]
@@ -142,20 +142,20 @@ expression: output
             }
           },
           "depth": 1,
-          "score": 0.375,
-          "uncertain": true,
+          "score": 0.435,
+          "uncertain": false,
           "why": [
             {
               "edge": "64d2f2c8578da662",
               "kind": "imports",
-              "phrase": "possibly imports",
+              "phrase": "imports",
               "entity": "toCents",
               "certainty": {
-                "class": "heuristic",
-                "confidence": 0.85,
+                "class": "resolved",
+                "confidence": null,
                 "freshness": null,
-                "authoritative": false,
-                "tag": "[heuristic 0.85]"
+                "authoritative": true,
+                "tag": "[resolved]"
               }
             }
           ]
@@ -165,7 +165,7 @@ expression: output
     },
     "transitive": {
       "total": 2,
-      "uncertain": 2,
+      "uncertain": 0,
       "items": [
         {
           "entity": {
@@ -180,8 +180,8 @@ expression: output
             }
           },
           "depth": 2,
-          "score": 0.46,
-          "uncertain": true,
+          "score": 0.535,
+          "uncertain": false,
           "why": [
             {
               "edge": "fd1c56e4c015d408",
@@ -199,14 +199,14 @@ expression: output
             {
               "edge": "4d47686e0f9d18d7",
               "kind": "calls",
-              "phrase": "possibly calls",
+              "phrase": "calls",
               "entity": "toCents",
               "certainty": {
-                "class": "heuristic",
-                "confidence": 0.85,
+                "class": "resolved",
+                "confidence": null,
                 "freshness": null,
-                "authoritative": false,
-                "tag": "[heuristic 0.85]"
+                "authoritative": true,
+                "tag": "[resolved]"
               }
             }
           ]
@@ -224,8 +224,8 @@ expression: output
             }
           },
           "depth": 2,
-          "score": 0.205,
-          "uncertain": true,
+          "score": 0.235,
+          "uncertain": false,
           "why": [
             {
               "edge": "43a779122358567b",
@@ -243,14 +243,14 @@ expression: output
             {
               "edge": "4d47686e0f9d18d7",
               "kind": "calls",
-              "phrase": "possibly calls",
+              "phrase": "calls",
               "entity": "toCents",
               "certainty": {
-                "class": "heuristic",
-                "confidence": 0.85,
+                "class": "resolved",
+                "confidence": null,
                 "freshness": null,
-                "authoritative": false,
-                "tag": "[heuristic 0.85]"
+                "authoritative": true,
+                "tag": "[resolved]"
               }
             }
           ]
@@ -280,7 +280,7 @@ expression: output
       {
         "repo": "acme-web",
         "items": 4,
-        "only_uncertain": true,
+        "only_uncertain": false,
         "applications": []
       }
     ],

@@ -14,7 +14,7 @@ endpoints (10)
     guard JwtAuthGuard ([resolved]), possibly implements auth bearer [heuristic 0.85] ([heuristic 0.85])
     possibly supports auth bearer [heuristic 0.85] ([heuristic 0.85]) (all_of [heuristic 0.85, link])
     consumer AcmeClient.createOrder method acme-sdk:src/client.ts:29  possibly calls endpoint POST /orders [heuristic 0.72]
-      callers OrderForm ([resolved]), useCreateOrder ([heuristic 0.85])
+      callers OrderForm ([resolved]), useCreateOrder ([resolved])
       repos acme-sdk, acme-web apps -
   GET /orders/{id} acme-api:src/orders/orders.controller.ts:13 [resolved]
     handler OrdersController.findOne ([resolved])
@@ -52,7 +52,7 @@ endpoints (10)
     auth authorization_guards=["PermissionsGuard"] [heuristic 0.50, link]
     permissions users:read ([syntactic])
     consumer AcmeClient.getUser method acme-sdk:src/client.ts:19  possibly calls endpoint GET /users/{id} [heuristic 0.77]
-      callers AcmeClient.should send the bearer token in the Authorization header ([resolved]), UserCard ([resolved]), useUser ([heuristic 0.85])
+      callers AcmeClient.should send the bearer token in the Authorization header ([resolved]), UserCard ([resolved]), useUser ([resolved])
       repos acme-sdk, acme-web apps -
     consumer useMe function acme-web:src/hooks/useMe.ts:7  possibly calls endpoint GET /users/{id} [heuristic 0.47]
       callers OrderForm ([resolved]), src/main.tsx ([resolved]), App ([resolved])

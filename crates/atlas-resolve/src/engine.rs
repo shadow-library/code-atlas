@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 
-use atlas_core::{EntityKind, LanguageFamily, RUST_TEST_MODULES, RepoName, RustTarget, is_test_path};
+use atlas_core::{EntityKind, LanguageFamily, RUST_TEST_MODULES, RelPath, RepoName, RustTarget, is_test_path};
 
 use crate::layout::{DependencyUse, PackageKey};
 use crate::rust_chain::{Cursor, SelfType};
@@ -398,6 +398,7 @@ pub(crate) struct Resolver<'t> {
   pub(crate) self_types: RefCell<HashMap<SymRef, Option<Found>>>,
   pub(crate) impl_targets: RefCell<HashMap<(FileIdx, u32), ImplTargets>>,
   pub(crate) module_lookups: RefCell<HashMap<String, Lookup>>,
+  pub(crate) declared_sources: RefCell<HashMap<(RepoName, RelPath), Option<FileIdx>>>,
   pub(crate) return_cursors: RefCell<HashMap<(SymRef, SelfType), Cursor>>,
   lookups: RefCell<BTreeSet<String>>,
 }
@@ -421,6 +422,7 @@ impl<'t> Resolver<'t> {
       self_types: RefCell::new(HashMap::new()),
       impl_targets: RefCell::new(HashMap::new()),
       module_lookups: RefCell::new(HashMap::new()),
+      declared_sources: RefCell::new(HashMap::new()),
       return_cursors: RefCell::new(HashMap::new()),
       lookups: RefCell::new(BTreeSet::new()),
     }

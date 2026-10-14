@@ -77,27 +77,43 @@ fn should_match_blast_radius_ground_truth_without_cross_repo_http_links() {
   }
 }
 
+const UNBUILT_WORKSPACE: [(&str, &str); 5] = [
+  ("package.json", r#"{ "name": "root", "private": true, "workspaces": ["packages/*"] }"#),
+  ("packages/billing/package.json", r#"{ "name": "@mixed/billing", "main": "dist/index.js" }"#),
+  (
+    "packages/billing/src/index.ts",
+    "export function charge(amount: number): number {\n  return amount;\n}\n\nexport function retry(amount: number): number {\n  return charge(amount);\n}\n",
+  ),
+  ("packages/shop/package.json", r#"{ "name": "@mixed/shop", "dependencies": { "@mixed/billing": "*" } }"#),
+  (
+    "packages/shop/src/checkout.ts",
+    "import { charge } from '@mixed/billing';\n\nexport function checkout(amount: number): number {\n  return charge(amount);\n}\n",
+  ),
+];
+
 #[test]
 fn should_flag_uncertain_impact_items_instead_of_dropping_them() {
-  let fixture = common::acme();
+  let fixture = common::single_repo("mixed", &UNBUILT_WORKSPACE);
 
-  let answer = found(fixture.query.impact(&ImpactRequest::new(["toCents"])).unwrap().answer);
+  let answer = found(fixture.query.impact(&ImpactRequest::new(["charge"])).unwrap().answer);
 
-  let order_form = answer
-    .direct
-    .items
-    .iter()
-    .find(|item| item.entity.short == "OrderForm")
-    .expect("OrderForm must be impacted");
-  assert!(order_form.uncertain);
-  assert_eq!(order_form.why[0].certainty.tag, "[heuristic 0.85]");
-  assert_eq!(order_form.why[0].phrase, "possibly calls");
+  assert!(
+    0 < answer.direct.uncertain && answer.direct.uncertain < answer.direct.total,
+    "the impact must mix certain and uncertain items: {:?}",
+    answer.direct
+  );
+  let retry = answer.direct.items.iter().find(|item| item.entity.short == "retry").expect("retry must be impacted");
+  assert!(!retry.uncertain);
+  let checkout = answer.direct.items.iter().find(|item| item.entity.short == "checkout").expect("checkout must be impacted");
+  assert!(checkout.uncertain);
+  assert_eq!(checkout.why[0].certainty.tag, "[heuristic 0.85]");
+  assert_eq!(checkout.why[0].phrase, "possibly calls");
   let collapsed = found(
     fixture
       .query
       .impact(&ImpactRequest {
         limit: 0,
-        ..ImpactRequest::new(["toCents"])
+        ..ImpactRequest::new(["charge"])
       })
       .unwrap()
       .answer,

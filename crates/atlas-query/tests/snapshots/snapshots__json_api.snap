@@ -393,14 +393,14 @@ expression: output
                   "relation": {
                     "edge": "07e0359edb2b4fe0",
                     "kind": "calls",
-                    "phrase": "possibly calls",
+                    "phrase": "calls",
                     "entity": "AcmeClient.getUser",
                     "certainty": {
-                      "class": "heuristic",
-                      "confidence": 0.85,
+                      "class": "resolved",
+                      "confidence": null,
                       "freshness": null,
-                      "authoritative": false,
-                      "tag": "[heuristic 0.85]"
+                      "authoritative": true,
+                      "tag": "[resolved]"
                     }
                   }
                 }

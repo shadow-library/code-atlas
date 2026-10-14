@@ -287,12 +287,71 @@ pub struct TsConfigInfo {
   pub paths: Vec<TsPathMapping>,
   pub root_dir: Option<RepoDir>,
   pub include: Vec<String>,
+  pub out_dir: Option<RepoDir>,
+  pub declaration_dir: Option<RepoDir>,
+  pub composite: bool,
+  pub declaration: bool,
+  pub emit_declaration_only: bool,
+  pub no_emit: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TsEmitKind {
+  Script,
+  Declaration,
 }
 
 impl TsConfigInfo {
   pub fn is_primary(&self) -> bool {
     matches!(self.path.file_name(), "tsconfig.json" | "jsconfig.json")
   }
+
+  pub fn emit_dir(&self, kind: TsEmitKind) -> Option<&RepoDir> {
+    if self.no_emit {
+      return None;
+    }
+    match kind {
+      TsEmitKind::Script if self.emit_declaration_only => None,
+      TsEmitKind::Script => self.out_dir.as_ref(),
+      TsEmitKind::Declaration if self.declaration || self.composite => self.declaration_dir.as_ref().or(self.out_dir.as_ref()),
+      TsEmitKind::Declaration => None,
+    }
+  }
+
+  pub fn source_root(&self) -> Option<RepoDir> {
+    if let Some(root) = &self.root_dir {
+      return Some(root.clone());
+    }
+    if self.composite {
+      return Some(self.dir.clone());
+    }
+    let mut bases = self.include.iter().map(|pattern| include_base(pattern));
+    let first = bases.next()??;
+    bases.try_fold(first, |common, base| Some(common_dir(&common, &base?)))
+  }
+}
+
+fn include_base(pattern: &str) -> Option<RepoDir> {
+  let segments: Vec<&str> = pattern.split('/').collect();
+  if let Some(wildcard) = segments.iter().position(|segment| segment.contains(['*', '?'])) {
+    return RepoDir::root().resolve(&segments[..wildcard].join("/"));
+  }
+  let base = RepoDir::root().resolve(pattern)?;
+  match base.as_rel_path() {
+    Some(path) if path.file_name().contains('.') => Some(RepoDir::of_file(path)),
+    _ => Some(base),
+  }
+}
+
+fn common_dir(left: &RepoDir, right: &RepoDir) -> RepoDir {
+  let shared: Vec<&str> = left
+    .as_str()
+    .split('/')
+    .zip(right.as_str().split('/'))
+    .take_while(|(a, b)| a == b && !a.is_empty())
+    .map(|(segment, _)| segment)
+    .collect();
+  RepoDir::root().resolve(&shared.join("/")).unwrap_or_else(RepoDir::root)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

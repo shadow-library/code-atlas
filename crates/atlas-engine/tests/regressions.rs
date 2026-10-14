@@ -502,6 +502,27 @@ fn should_match_a_full_index_after_targeted_edit_kinds() {
       }),
     ),
     (
+      "move the sdk outDir away from its entry",
+      edit("acme-sdk/tsconfig.json", "\"outDir\": \"dist\"", "\"outDir\": \"build\""),
+    ),
+    ("restore the sdk outDir", edit("acme-sdk/tsconfig.json", "\"outDir\": \"build\"", "\"outDir\": \"dist\"")),
+    (
+      "declare an sdk rootDir without sources",
+      edit("acme-sdk/tsconfig.json", "\"outDir\": \"dist\"", "\"outDir\": \"dist\",\n    \"rootDir\": \"lib\""),
+    ),
+    (
+      "point the sdk rootDir at its sources",
+      edit("acme-sdk/tsconfig.json", "\"rootDir\": \"lib\"", "\"rootDir\": \"src\""),
+    ),
+    (
+      "rename the sdk entry source to tsx",
+      Box::new(|root: &Path| fs::rename(root.join("acme-sdk/src/index.ts"), root.join("acme-sdk/src/index.tsx")).unwrap()),
+    ),
+    (
+      "restore the sdk entry source",
+      Box::new(|root: &Path| fs::rename(root.join("acme-sdk/src/index.tsx"), root.join("acme-sdk/src/index.ts")).unwrap()),
+    ),
+    (
       "delete a whole directory",
       Box::new(|root: &Path| {
         fs::remove_dir_all(root.join("acme-api/src/reports")).unwrap();

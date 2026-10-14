@@ -17,7 +17,7 @@ acme-sdk (3)
 acme-web (6)
   useMe function acme-web:src/hooks/useMe.ts:7  via HTTP GET /users/{id} to UsersController.findOne [heuristic 0.47] > calls UsersService.findOne [resolved]
   OrderForm function acme-web:src/components/OrderForm.tsx:7  calls useMe [resolved] > via HTTP GET /users/{id} to UsersController.findOne [heuristic 0.47] > calls UsersService.findOne [resolved]
-  useUser function acme-web:src/hooks/useUser.ts:6  possibly calls AcmeClient.getUser [heuristic 0.85] > via HTTP GET /users/{id} to UsersController.findOne [heuristic 0.77] > calls UsersService.findOne [resolved]
+  useUser function acme-web:src/hooks/useUser.ts:6  calls AcmeClient.getUser [resolved] > via HTTP GET /users/{id} to UsersController.findOne [heuristic 0.77] > calls UsersService.findOne [resolved]
   App function acme-web:src/main.tsx:7  calls useMe [resolved] > via HTTP GET /users/{id} to UsersController.findOne [heuristic 0.47] > calls UsersService.findOne [resolved]
-  UserCard function acme-web:src/components/UserCard.tsx:3  calls useUser [resolved] > possibly calls AcmeClient.getUser [heuristic 0.85] > via HTTP GET /users/{id} to UsersController.findOne [heuristic 0.77] > calls UsersService.findOne [resolved]
+  UserCard function acme-web:src/components/UserCard.tsx:3  calls useUser [resolved] > calls AcmeClient.getUser [resolved] > via HTTP GET /users/{id} to UsersController.findOne [heuristic 0.77] > calls UsersService.findOne [resolved]
   src/main.tsx file acme-web:src/main.tsx  calls App [resolved] > calls useMe [resolved] > via HTTP GET /users/{id} to UsersController.findOne [heuristic 0.47] > calls UsersService.findOne [resolved]

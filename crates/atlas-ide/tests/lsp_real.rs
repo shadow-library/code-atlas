@@ -52,8 +52,8 @@ fn should_find_users_service_find_one_references_with_typescript_language_server
     outside,
     vec![
       "outside the language server's view:",
-      "  other repo [heuristic 0.85]  acme-web:src/components/OrderForm.tsx:1:10  src/components/OrderForm.tsx  import { toCents } from '@acme/sdk';",
-      "  other repo [heuristic 0.85]  acme-web:src/components/OrderForm.tsx:15:44  OrderForm  submit({ userId: me.id, subtotalCents: toCents(amount) });",
+      "  other repo [resolved]  acme-web:src/components/OrderForm.tsx:1:10  src/components/OrderForm.tsx  import { toCents } from '@acme/sdk';",
+      "  other repo [resolved]  acme-web:src/components/OrderForm.tsx:15:44  OrderForm  submit({ userId: me.id, subtotalCents: toCents(amount) });",
     ],
     "{to_cents}"
   );

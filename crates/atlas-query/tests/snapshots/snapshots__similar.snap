@@ -4,7 +4,7 @@ expression: output
 ---
 fresh run=1 (+0 files, <t>)
 similar to toCents function acme-sdk:src/money.ts:1 [ts]
-  consumers 1 (1 uncertain) in acme-web; tests 3
+  consumers 1 in acme-web; tests 3
 candidates (3)
   parseMoney function acme-web:src/utils/currency.ts:1 [ts]
     evidence: lexical 4.32 (string numb), same signature (string) -> number

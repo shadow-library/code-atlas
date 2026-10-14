@@ -189,17 +189,13 @@ fn should_resolve_cross_repo_sdk_imports_to_acme_sdk_sources() {
     sdk(&["src", "client"], &["AcmeClient", "createOrder"], EntityKind::Method),
     0.7,
   );
-  let instantiation = project.assert_edge(
+  project.assert_edge(
     EdgeKind::Instantiates,
     web(&["src", "api", "client"], &["acme"], EntityKind::Constant),
     sdk(&["src", "client"], &["AcmeClient"], EntityKind::Class),
-    HEURISTIC,
+    RESOLVED,
   );
-  assert_eq!(
-    instantiation.certainty,
-    atlas_core::Certainty::heuristic(atlas_core::Confidence::new(0.85).unwrap(), "dist-to-src")
-  );
-  project.assert_edge(EdgeKind::Imports, file("acme-web", "src/api/client.ts"), file("acme-sdk", "src/index.ts"), HEURISTIC);
+  project.assert_edge(EdgeKind::Imports, file("acme-web", "src/api/client.ts"), file("acme-sdk", "src/index.ts"), RESOLVED);
   project.assert_no_edge(
     EdgeKind::Calls,
     sdk(&["src", "money"], &["toCents"], EntityKind::Function),

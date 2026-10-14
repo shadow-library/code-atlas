@@ -684,6 +684,98 @@ fn should_record_a_warning_for_a_missing_extends_target() {
 }
 
 #[test]
+fn should_inherit_emit_options_through_extends_relative_to_the_declaring_config() {
+  let repo = Repo::with(&[
+    (
+      "tsconfig.base.json",
+      r#"{"compilerOptions": {"outDir": "dist", "rootDir": "src", "composite": true, "noEmit": true}}"#,
+    ),
+    (
+      "tsconfig.shared.json",
+      r#"{"compilerOptions": {"outDir": "${configDir}/out", "rootDir": "${configDir}/lib"}, "include": ["${configDir}/lib", "shared"]}"#,
+    ),
+    ("pkg/tsconfig.json", r#"{"extends": "../tsconfig.base.json", "compilerOptions": {"noEmit": false}}"#),
+    ("pkg/tsconfig.build.json", r#"{"extends": "../tsconfig.shared.json"}"#),
+  ]);
+  let graph = repo.graph();
+  assert!(graph.warnings.is_empty(), "{:?}", graph.warnings);
+  let plain = tsconfig(&graph, "pkg/tsconfig.json");
+  assert_eq!(
+    (plain.out_dir.clone(), plain.root_dir.clone(), plain.composite, plain.no_emit),
+    (Some(dir("dist")), Some(dir("src")), true, false)
+  );
+  let templated = tsconfig(&graph, "pkg/tsconfig.build.json");
+  assert_eq!((templated.out_dir.clone(), templated.root_dir.clone()), (Some(dir("pkg/out")), Some(dir("pkg/lib"))));
+  assert_eq!(templated.include, ["pkg/lib", "shared"]);
+  let shared = tsconfig(&graph, "tsconfig.shared.json");
+  assert_eq!((shared.out_dir.clone(), shared.root_dir.clone()), (Some(dir("out")), Some(dir("lib"))));
+}
+
+#[test]
+fn should_warn_when_a_config_dir_path_leaves_the_repository() {
+  let repo = Repo::with(&[("pkg/tsconfig.json", r#"{"compilerOptions": {"outDir": "${configDir}/../../dist"}}"#)]);
+  let graph = repo.graph();
+  assert_eq!(tsconfig(&graph, "pkg/tsconfig.json").out_dir, None);
+  assert_eq!(graph.warnings.len(), 1);
+  assert!(graph.warnings[0].error.starts_with("outDir ${configDir}/../../dist"), "{:?}", graph.warnings);
+}
+
+#[test]
+fn should_pick_the_emit_dir_by_output_kind() {
+  let repo = Repo::with(&[
+    ("silent/tsconfig.json", r#"{"compilerOptions": {"outDir": "dist", "declaration": true, "noEmit": true}}"#),
+    ("scripts/tsconfig.json", r#"{"compilerOptions": {"outDir": "dist"}}"#),
+    ("declared/tsconfig.json", r#"{"compilerOptions": {"outDir": "dist", "declaration": true}}"#),
+    (
+      "split/tsconfig.base.json",
+      r#"{"compilerOptions": {"declarationDir": "${configDir}/types", "composite": true}}"#,
+    ),
+    ("split/tsconfig.json", r#"{"extends": "./tsconfig.base.json", "compilerOptions": {"outDir": "dist"}}"#),
+    (
+      "typings/tsconfig.json",
+      r#"{"compilerOptions": {"outDir": "dist", "declaration": true, "emitDeclarationOnly": true}}"#,
+    ),
+  ]);
+  let graph = repo.graph();
+  let dirs = |path: &str| {
+    let config = tsconfig(&graph, path);
+    (config.emit_dir(TsEmitKind::Script).cloned(), config.emit_dir(TsEmitKind::Declaration).cloned())
+  };
+  assert_eq!(dirs("silent/tsconfig.json"), (None, None));
+  assert_eq!(dirs("scripts/tsconfig.json"), (Some(dir("scripts/dist")), None));
+  assert_eq!(dirs("declared/tsconfig.json"), (Some(dir("declared/dist")), Some(dir("declared/dist"))));
+  assert_eq!(dirs("split/tsconfig.json"), (Some(dir("split/dist")), Some(dir("split/types"))));
+  assert_eq!(dirs("typings/tsconfig.json"), (None, Some(dir("typings/dist"))));
+}
+
+#[test]
+fn should_derive_the_source_root_from_root_dir_composite_or_include() {
+  let repo = Repo::with(&[
+    (
+      "declared/tsconfig.json",
+      r#"{"compilerOptions": {"rootDir": "lib", "composite": true}, "include": ["src"]}"#,
+    ),
+    ("composite/tsconfig.json", r#"{"compilerOptions": {"composite": true}, "include": ["src"]}"#),
+    ("globbed/tsconfig.json", r#"{"include": ["src/**/*.ts", "src/main/*.tsx"]}"#),
+    ("spanning/tsconfig.json", r#"{"include": ["src/app", "src/lib/index.ts", "test/**/*"]}"#),
+    ("nested/tsconfig.json", r#"{"include": ["src/app", "src/lib/index.ts"]}"#),
+    ("parent/tsconfig.json", r#"{"include": ["../shared/src", "./src"]}"#),
+    ("escaping/tsconfig.json", r#"{"include": ["../../elsewhere"]}"#),
+    ("none/tsconfig.json", "{}"),
+  ]);
+  let graph = repo.graph();
+  let root = |path: &str| tsconfig(&graph, path).source_root();
+  assert_eq!(root("declared/tsconfig.json"), Some(dir("declared/lib")));
+  assert_eq!(root("composite/tsconfig.json"), Some(dir("composite")));
+  assert_eq!(root("globbed/tsconfig.json"), Some(dir("globbed/src")));
+  assert_eq!(root("spanning/tsconfig.json"), Some(dir("spanning")));
+  assert_eq!(root("nested/tsconfig.json"), Some(dir("nested/src")));
+  assert_eq!(root("parent/tsconfig.json"), Some(RepoDir::root()));
+  assert_eq!(root("escaping/tsconfig.json"), None);
+  assert_eq!(root("none/tsconfig.json"), None);
+}
+
+#[test]
 fn should_resolve_package_extends_through_node_modules() {
   let repo = Repo::with(&[
     ("node_modules/@scope/preset/tsconfig.json", r#"{"compilerOptions": {"baseUrl": "preset-base"}}"#),

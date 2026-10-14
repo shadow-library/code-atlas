@@ -6,12 +6,35 @@ use atlas_core::RelPath;
 use super::json::{Json, parse_json, parse_jsonc};
 use super::types::{LoadContext, RepoDir, TsConfigInfo, TsPathMapping};
 
+const CONFIG_DIR: &str = "${configDir}";
+
+#[derive(Clone)]
+enum ConfigPath {
+  Fixed(PathBuf),
+  ConfigDir(String),
+}
+
+impl ConfigPath {
+  fn parse(dir: &Path, value: &str) -> Self {
+    match value.strip_prefix(CONFIG_DIR) {
+      Some(rest) => Self::ConfigDir(rest.trim_start_matches(['/', '\\']).to_owned()),
+      None => Self::Fixed(normalize(&dir.join(value))),
+    }
+  }
+}
+
 #[derive(Default, Clone)]
 struct Effective {
   extends: Vec<PathBuf>,
   base_url: Option<PathBuf>,
   paths: Option<(Vec<TsPathMapping>, PathBuf)>,
-  root_dir: Option<PathBuf>,
+  root_dir: Option<ConfigPath>,
+  out_dir: Option<ConfigPath>,
+  declaration_dir: Option<ConfigPath>,
+  composite: Option<bool>,
+  declaration: Option<bool>,
+  emit_declaration_only: Option<bool>,
+  no_emit: Option<bool>,
   include: Option<(Vec<String>, PathBuf)>,
 }
 
@@ -21,6 +44,12 @@ impl Effective {
     self.base_url = upper.base_url.or(self.base_url.take());
     self.paths = upper.paths.or(self.paths.take());
     self.root_dir = upper.root_dir.or(self.root_dir.take());
+    self.out_dir = upper.out_dir.or(self.out_dir.take());
+    self.declaration_dir = upper.declaration_dir.or(self.declaration_dir.take());
+    self.composite = upper.composite.or(self.composite.take());
+    self.declaration = upper.declaration.or(self.declaration.take());
+    self.emit_declaration_only = upper.emit_declaration_only.or(self.emit_declaration_only.take());
+    self.no_emit = upper.no_emit.or(self.no_emit.take());
     self.include = upper.include.or(self.include.take());
   }
 }
@@ -55,21 +84,43 @@ fn finish(ctx: &mut LoadContext<'_>, config: &RelPath, effective: Effective) -> 
     }
     dir
   };
+  let config_dir = RepoDir::of_file(config);
+  let to_repo_path = |ctx: &mut LoadContext<'_>, label: &str, path: &ConfigPath| -> Option<RepoDir> {
+    match path {
+      ConfigPath::Fixed(absolute) => to_repo(ctx, label, absolute),
+      ConfigPath::ConfigDir(rest) => {
+        let dir = config_dir.resolve(rest);
+        if dir.is_none() {
+          ctx.warn(config, format_args!("{label} {CONFIG_DIR}/{rest} resolves outside the repository"));
+        }
+        dir
+      }
+    }
+  };
   let base_url = effective.base_url.as_deref().and_then(|dir| to_repo(ctx, "baseUrl", dir));
-  let root_dir = effective.root_dir.as_deref().and_then(|dir| to_repo(ctx, "rootDir", dir));
+  let root_dir = effective.root_dir.as_ref().and_then(|dir| to_repo_path(ctx, "rootDir", dir));
+  let out_dir = effective.out_dir.as_ref().and_then(|dir| to_repo_path(ctx, "outDir", dir));
+  let declaration_dir = effective.declaration_dir.as_ref().and_then(|dir| to_repo_path(ctx, "declarationDir", dir));
   let (paths, paths_base) = match effective.paths {
     Some((mappings, origin)) if effective.base_url.is_some() => (mappings, base_url.clone().filter(|_| origin.is_absolute())),
     Some((mappings, origin)) => (mappings, repo_dir_of(ctx.root, &origin)),
     None => (Vec::new(), None),
   };
   let include = match effective.include {
-    Some((patterns, origin)) => match repo_dir_of(ctx.root, &origin) {
-      Some(dir) => patterns.iter().map(|pattern| dir.join_pattern(pattern.strip_prefix("./").unwrap_or(pattern))).collect(),
-      None => {
+    Some((patterns, origin)) => {
+      let origin_dir = repo_dir_of(ctx.root, &origin);
+      let resolved: Option<Vec<String>> = patterns
+        .iter()
+        .map(|pattern| match pattern.strip_prefix(CONFIG_DIR) {
+          Some(rest) => Some(config_dir.join_pattern(rest.trim_start_matches(['/', '\\']))),
+          None => origin_dir.as_ref().map(|dir| dir.join_pattern(pattern.strip_prefix("./").unwrap_or(pattern))),
+        })
+        .collect();
+      resolved.unwrap_or_else(|| {
         ctx.warn(config, format_args!("include declared in {} lies outside the repository", origin.display()));
         Vec::new()
-      }
-    },
+      })
+    }
     None => Vec::new(),
   };
   TsConfigInfo {
@@ -81,6 +132,12 @@ fn finish(ctx: &mut LoadContext<'_>, config: &RelPath, effective: Effective) -> 
     paths,
     root_dir,
     include,
+    out_dir,
+    declaration_dir,
+    composite: effective.composite.unwrap_or(false),
+    declaration: effective.declaration.unwrap_or(false),
+    emit_declaration_only: effective.emit_declaration_only.unwrap_or(false),
+    no_emit: effective.no_emit.unwrap_or(false),
   }
 }
 
@@ -165,7 +222,13 @@ fn own_options(ctx: &mut LoadContext<'_>, report: &RelPath, json: &Json, dir: &P
   let mut own = Effective::default();
   if let Some(options) = json.get("compilerOptions") {
     own.base_url = options.get("baseUrl").and_then(Json::as_str).map(|value| normalize(&dir.join(value)));
-    own.root_dir = options.get("rootDir").and_then(Json::as_str).map(|value| normalize(&dir.join(value)));
+    own.root_dir = options.get("rootDir").and_then(Json::as_str).map(|value| ConfigPath::parse(dir, value));
+    own.out_dir = options.get("outDir").and_then(Json::as_str).map(|value| ConfigPath::parse(dir, value));
+    own.declaration_dir = options.get("declarationDir").and_then(Json::as_str).map(|value| ConfigPath::parse(dir, value));
+    own.composite = options.get("composite").and_then(Json::as_bool);
+    own.declaration = options.get("declaration").and_then(Json::as_bool);
+    own.emit_declaration_only = options.get("emitDeclarationOnly").and_then(Json::as_bool);
+    own.no_emit = options.get("noEmit").and_then(Json::as_bool);
     match options.get("paths") {
       None => {}
       Some(Json::Object(entries)) => {

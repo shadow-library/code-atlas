@@ -5,12 +5,12 @@ expression: output
 fresh run=1 (+0 files, <t>)
 callees of UserCard function acme-web:src/components/UserCard.tsx:3 depth=6 via_http
 acme-api (3)
-  UsersController.findOne method acme-api:src/users/users.controller.ts:13  via HTTP GET /users/{id} from AcmeClient.getUser [heuristic 0.77] > possibly called by useUser [heuristic 0.85] > called by UserCard [resolved]
-  RequirePermission function acme-api:src/auth/require-permission.decorator.ts:5  called by UsersController.findOne [resolved] > via HTTP GET /users/{id} from AcmeClient.getUser [heuristic 0.77] > possibly called by useUser [heuristic 0.85] > called by UserCard [resolved]
-  UsersService.findOne method acme-api:src/users/users.service.ts:18  called by UsersController.findOne [resolved] > via HTTP GET /users/{id} from AcmeClient.getUser [heuristic 0.77] > possibly called by useUser [heuristic 0.85] > called by UserCard [resolved]
+  UsersController.findOne method acme-api:src/users/users.controller.ts:13  via HTTP GET /users/{id} from AcmeClient.getUser [heuristic 0.77] > called by useUser [resolved] > called by UserCard [resolved]
+  RequirePermission function acme-api:src/auth/require-permission.decorator.ts:5  called by UsersController.findOne [resolved] > via HTTP GET /users/{id} from AcmeClient.getUser [heuristic 0.77] > called by useUser [resolved] > called by UserCard [resolved]
+  UsersService.findOne method acme-api:src/users/users.service.ts:18  called by UsersController.findOne [resolved] > via HTTP GET /users/{id} from AcmeClient.getUser [heuristic 0.77] > called by useUser [resolved] > called by UserCard [resolved]
 acme-sdk (3)
-  AcmeClient.getUser method acme-sdk:src/client.ts:19  possibly called by useUser [heuristic 0.85] > called by UserCard [resolved]
-  AcmeClient.headers method acme-sdk:src/client.ts:12  called by AcmeClient.getUser [resolved] > possibly called by useUser [heuristic 0.85] > called by UserCard [resolved]
-  AcmeClient.parse method acme-sdk:src/client.ts:39  called by AcmeClient.getUser [resolved] > possibly called by useUser [heuristic 0.85] > called by UserCard [resolved]
+  AcmeClient.getUser method acme-sdk:src/client.ts:19  called by useUser [resolved] > called by UserCard [resolved]
+  AcmeClient.headers method acme-sdk:src/client.ts:12  called by AcmeClient.getUser [resolved] > called by useUser [resolved] > called by UserCard [resolved]
+  AcmeClient.parse method acme-sdk:src/client.ts:39  called by AcmeClient.getUser [resolved] > called by useUser [resolved] > called by UserCard [resolved]
 acme-web (1)
   useUser function acme-web:src/hooks/useUser.ts:6  called by UserCard [resolved]

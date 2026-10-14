@@ -22,10 +22,10 @@ endpoint consumers (8, 8 uncertain)
     why: possibly calls endpoint GET /users/{id} [heuristic 0.77] > exposed by UsersController.findOne [syntactic] > calls UsersService.findOne [resolved]
   AcmeClient.updateUser method acme-sdk:src/client.ts:24 score=0.266 UNCERTAIN
     why: possibly calls endpoint PATCH /users/{id} [heuristic 0.77] > exposed by UsersController.update [syntactic] > calls UsersService.update [resolved] > calls UsersService.findOne [resolved]
+  useUser function acme-web:src/hooks/useUser.ts:6 score=0.266 UNCERTAIN
+    why: calls AcmeClient.getUser [resolved] > possibly calls endpoint GET /users/{id} [heuristic 0.77] > exposed by UsersController.findOne [syntactic] > calls UsersService.findOne [resolved]
   useMe function acme-web:src/hooks/useMe.ts:7 score=0.245 UNCERTAIN
     why: possibly calls endpoint GET /users/{id} [heuristic 0.47] > exposed by UsersController.findOne [syntactic] > calls UsersService.findOne [resolved]
-  useUser function acme-web:src/hooks/useUser.ts:6 score=0.231 UNCERTAIN
-    why: possibly calls AcmeClient.getUser [heuristic 0.85] > possibly calls endpoint GET /users/{id} [heuristic 0.77] > exposed by UsersController.findOne [syntactic] > calls UsersService.findOne [resolved]
   OrderForm function acme-web:src/components/OrderForm.tsx:7 score=0.175 UNCERTAIN
     why: calls useMe [resolved] > possibly calls endpoint GET /users/{id} [heuristic 0.47] > exposed by UsersController.findOne [syntactic] > calls UsersService.findOne [resolved]
   App function acme-web:src/main.tsx:7 score=0.175 UNCERTAIN

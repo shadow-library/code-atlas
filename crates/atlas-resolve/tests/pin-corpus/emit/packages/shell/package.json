@@ -1,0 +1,1 @@
+{ "name": "@emit/shell", "version": "1.0.0", "main": "src/main.ts", "dependencies": { "@emit/core": "*", "@emit/legacy": "*", "@emit/typed": "*" } }
