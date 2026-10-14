@@ -21,7 +21,7 @@ This document states what Code Atlas can and cannot conclude. Command output bel
 | Method calls on receivers of unknown type | heuristic (0.25 to 0.5) or unresolved | name-only matching; ubiquitous names (`push`, `map`, `then`) stay `ambiguous` |
 | Calls inside macros | heuristic (0.6) or unresolved | token scan; macro-generated names are never resolved |
 | SCIP-confirmed edges | deterministic (`compiler_verified`) | rust-analyzer / scip-typescript on identical file contents |
-| Exact references, declaration, implementations, outline, diagnostics (`atlas_symbol`, `refs`, ...) | `[compiler]`, live, never stored | a language server's answer for the configuration it loaded; `PARTIAL` when its view is incomplete |
+| Exact references, declaration, implementations, diagnostics, and outline with `source=lsp` (`atlas_symbol`, `refs`, ...) | `[compiler]`, live, never stored | a language server's answer for the configuration it loaded; `PARTIAL` when its view is incomplete |
 | Rename, safe delete | exact for what the server sees; the rest is listed, not edited | language-server edit plus graph sites the server did not return |
 | Symbol edits (`replace_body`, `insert_*`) | syntactic spans bound to the indexed hash | tree-sitter spans plus a leading-doc and attribute scanner; no server |
 | Endpoints with literal routes | deterministic (`syntactic`/`resolved`) | decorators and registration calls |
@@ -102,7 +102,7 @@ Draft code you have not saved can be compared too (`similar --code`, `atlas_simi
 
 ### Exact operations and edits (language servers)
 
-Reads from rust-analyzer and typescript-language-server (`references`, `declaration`, `implementations`, `outline`, `diagnostics`) are stated as `[compiler]` because the compiler front end computed them, but that claim is scoped:
+Reads from rust-analyzer and typescript-language-server (`references`, `declaration`, `implementations`, `outline` with `source=lsp`, `diagnostics`) are stated as `[compiler]` because the compiler front end computed them, but that claim is scoped:
 
 - **Valid for the configuration the server loaded.** A server sees one set of features, targets, `cfg` flags and loaded projects. Code gated out of that configuration, or in a TypeScript project the server did not load, is invisible. They are live answers and are never stored: the graph keeps its own certainties.
 - **A partial view says so.** A busy server, a lost document sync, unsettled diagnostics, an incomplete flycheck or a rust-analyzer workspace in `health = error` makes the answer `PARTIAL: ...`. Edits refuse in the last case.
@@ -268,7 +268,7 @@ Measured 2026-10-05 and 2026-10-06. Numbers marked *review* come from the advers
 | LLM provider unavailable or over budget | `enrich` prints skipped task counts, run recorded `partial`, exit code 3; `status` shows the run | no new inferred facts |
 | Stale inferred facts | tag suffix `stale` or `needs-revalidation`; `status` counts; hidden unless `--include-stale` | excluded from default results |
 | Inferred client-call link whose candidate endpoints changed | queries (`api`, `impact`, `unused`, `explain`) recompute the candidate set live and tag the link `needs-revalidation`; `status` counts it as current until the next `enrich` marks it | hidden from default results; the next `enrich` re-asks the model |
-| Language server unavailable, disabled or TypeScript 7 only | exact operations fail with an install hint (`rustup component add rust-analyzer`, `npm i -g typescript-language-server typescript@5`, `--lsp on`); exit 1 | no exact answer and no silent fallback; `source=graph` for outline and references |
+| Language server unavailable, disabled or TypeScript 7 only | exact operations fail with an install hint (`rustup component add rust-analyzer`, `npm i -g typescript-language-server typescript@5`, `--lsp on`); exit 1 | no exact answer and no silent fallback; `source=graph` for references and for an `outline` asked with `source=lsp` (outline reads the graph by default) |
 | Language server view incomplete (busy, lost sync, workspace `health = error`, diagnostics not settled) | `PARTIAL: ...` in the answer; rename and safe delete refuse | treat as a lower bound; edits are not applied |
 | Edit refused (stale plan, blockers, unverified sites, scope violation) | `atlas_edit` tool error / CLI exit 5, nothing written | re-plan after reading the listed sites |
 | Edit write failed | `FAILED:` first line, exit 6, nothing changed (rolled back); or `DEGRADED:` first line, exit 7, with the files still changed | check the listed files; the index is refreshed in both cases |

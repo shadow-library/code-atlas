@@ -35,7 +35,7 @@ Every argument not listed for a mode is rejected with an error that names what t
 |---|---|---|---|
 | `info` (default) | definition, signature, docs, relation counts | `target`; `body` | no |
 | `find` | name-path search (`UsersService/findOne`) | `target`; `path`, `depth`, `body`, `substring`, `kinds`, `exclude_kinds`, `max_matches` | no |
-| `outline` | a file's symbols | `path` or `target`; `depth`, `source` | yes, unless `source=graph` |
+| `outline` | a file's symbols; from the index by default (header says `source=graph`, syntactic), `source=lsp` for the exact language-server outline | `path` or `target`; `depth`, `source` | only with `source=lsp` |
 | `source` | code from disk (replaces `atlas_read`) | `target`; `context_lines` (0 to 100) | no |
 | `references` | exact references | `target`; `source` | yes, unless `source=graph` |
 | `declaration` | exact definition and declaration | `target` (a position), or `path` with `regex` (one capture group around the name) | yes |
@@ -43,7 +43,7 @@ Every argument not listed for a mode is rejected with an error that names what t
 | `hierarchy` | supertypes and subtypes | `target`; `depth` | no (graph) |
 | `diagnostics` | compiler errors of a file | `path` or `target`; `lines` (`START-END`), `min_severity` | yes |
 
-Exact modes come from rust-analyzer or typescript-language-server. With none available they fail with an install hint and never fall back silently; for `outline` and `references` the error offers `source="graph"`, which returns graph answers with their usual tags and a caveat that graph references are not exhaustive. Exact answers carry `[compiler]` and the server and version; they are valid for the configuration the server loaded and are never stored in the graph ([knowledge model](knowledge-model.md#certainty-classes)). An answer built from a partial view (server busy, a project that failed to load, diagnostics that did not settle) is marked `PARTIAL: ...` and is never presented as complete.
+Exact modes come from rust-analyzer or typescript-language-server. With none available they fail with an install hint and never fall back silently; for `outline` (asked with `source="lsp"`) and `references` the error offers `source="graph"`, which returns graph answers with their usual tags and a caveat that graph references are not exhaustive. `outline` answers from the graph unless asked otherwise: when the graph has no facts for the file (not indexed, excluded, failed to parse) it says so and suggests `source="lsp"`, and a partially parsed file is marked `PARTIAL` in the header; it never falls back silently. Exact answers carry `[compiler]` and the server and version; they are valid for the configuration the server loaded and are never stored in the graph ([knowledge model](knowledge-model.md#certainty-classes)). An answer built from a partial view (server busy, a project that failed to load, diagnostics that did not settle) is marked `PARTIAL: ...` and is never presented as complete.
 
 ### `atlas_edit`
 

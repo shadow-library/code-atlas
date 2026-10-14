@@ -185,10 +185,19 @@ impl OutlineRequest {
   }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum OutlineParse {
+  Complete,
+  Partial { error_count: u32 },
+  Failed { reason: String },
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct OutlineAnswer {
   pub file: Location,
   pub source: SymbolSource,
+  pub parse: OutlineParse,
   pub symbols: Vec<SymbolNode>,
   pub caveats: Vec<Caveat>,
 }
@@ -668,18 +677,11 @@ fn outline_of(graph: &Graph<'_, '_>, repos: &[RepoName], request: &OutlineReques
       top.push(symbol.clone());
     }
   }
-  let mut caveats = Vec::new();
-  if let Some(record) = graph.tx().file(repo, path)? {
-    match &record.parse_status {
-      ParseStatus::Ok => {}
-      ParseStatus::Partial { error_count, .. } => caveats.push(Caveat::Note {
-        message: format!("the file parsed partially ({error_count} errors); symbols near the errors may be missing"),
-      }),
-      ParseStatus::Failed { reason } => caveats.push(Caveat::Note {
-        message: format!("the file failed to parse ({reason}); it has no symbols in the graph"),
-      }),
-    }
-  }
+  let parse = match graph.tx().file(repo, path)?.map(|record| record.parse_status) {
+    Some(ParseStatus::Partial { error_count, .. }) => OutlineParse::Partial { error_count },
+    Some(ParseStatus::Failed { reason }) => OutlineParse::Failed { reason },
+    Some(ParseStatus::Ok) | None => OutlineParse::Complete,
+  };
   Ok(Targeted::Found(OutlineAnswer {
     file: Location {
       repo: repo.to_string(),
@@ -688,8 +690,9 @@ fn outline_of(graph: &Graph<'_, '_>, repos: &[RepoName], request: &OutlineReques
       column: None,
     },
     source: SymbolSource::Graph,
+    parse,
     symbols: nodes_of(graph, &top, request.depth, &ChildScope::Within(&ids))?,
-    caveats,
+    caveats: Vec::new(),
   }))
 }
 

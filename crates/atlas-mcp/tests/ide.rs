@@ -261,10 +261,7 @@ async fn should_serve_the_graph_modes_without_a_language_server() {
 
   let info = ide.harness.text("atlas_symbol", json!({"target": "toCents"})).await;
   let find = ide.harness.text("atlas_symbol", json!({"target": "toCents", "mode": "find"})).await;
-  let outline = ide
-    .harness
-    .text("atlas_symbol", json!({"path": "acme-sdk:src/money.ts", "mode": "outline", "source": "graph"}))
-    .await;
+  let outline = ide.harness.text("atlas_symbol", json!({"path": "acme-sdk:src/money.ts", "mode": "outline"})).await;
   let source = ide.harness.text("atlas_symbol", json!({"target": "toCents", "mode": "source", "context_lines": 1})).await;
   let hierarchy = ide.harness.text("atlas_symbol", json!({"target": "UsersService", "mode": "hierarchy"})).await;
 
@@ -279,7 +276,7 @@ async fn should_serve_the_graph_modes_without_a_language_server() {
   );
   assert_eq!(
     answer(&outline),
-    "outline acme-sdk:src/money.ts source=graph\n  toCents function :1  function toCents(amount: string): number\n"
+    "outline acme-sdk:src/money.ts source=graph (from the index, syntactic; for the exact language-server outline use source=lsp)\n  toCents function :1  function toCents(amount: string): number\n"
   );
   assert!(source.contains("export function toCents(amount: string): number {"), "{source}");
   assert_eq!(
@@ -353,7 +350,10 @@ async fn should_answer_declaration_implementations_outline_and_diagnostics_from_
     .text("atlas_symbol", json!({"path": "acme-sdk:src/money.ts", "mode": "declaration", "regex": "(toCents)\\("}))
     .await;
   let implementations = ide.harness.text("atlas_symbol", json!({"target": "toCents", "mode": "implementations"})).await;
-  let outline = ide.harness.text("atlas_symbol", json!({"path": "acme-sdk:src/money.ts", "mode": "outline"})).await;
+  let outline = ide
+    .harness
+    .text("atlas_symbol", json!({"path": "acme-sdk:src/money.ts", "mode": "outline", "source": "lsp"}))
+    .await;
   let diagnostics = ide
     .harness
     .text("atlas_symbol", json!({"target": "acme-sdk:src/money.ts", "mode": "diagnostics", "min_severity": "error"}))
@@ -399,7 +399,10 @@ async fn should_return_the_install_hint_and_the_graph_retry_hint_when_no_server_
     format!("{hint}{retry}")
   );
   assert_eq!(
-    ide.harness.failure("atlas_symbol", json!({"path": "acme-sdk:src/money.ts", "mode": "outline"})).await,
+    ide
+      .harness
+      .failure("atlas_symbol", json!({"path": "acme-sdk:src/money.ts", "mode": "outline", "source": "lsp"}))
+      .await,
     format!("{hint}{retry}")
   );
   assert_eq!(

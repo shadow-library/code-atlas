@@ -2,7 +2,6 @@ mod common;
 
 use std::fs;
 
-use atlas_ide::OutlineRequest;
 use atlas_lsp::ServerKind;
 use atlas_store::{RunOutcome, RunReport, StoreError};
 use common::*;
@@ -32,7 +31,7 @@ fn serve(fixture: &Fixture) {
 }
 
 fn outline(fixture: &Fixture) -> String {
-  text(&fixture.ide.outline(&OutlineRequest::new("src/money.ts")).unwrap())
+  text(&fixture.ide.outline(&lsp_outline("src/money.ts")).unwrap())
 }
 
 fn watched(recorded: &[Value]) -> Vec<Value> {

@@ -1005,7 +1005,7 @@ fn should_answer_reads_but_refuse_edits_when_rust_analyzer_reports_an_unhealthy_
   ]);
   fixture.serve(ServerKind::RustAnalyzer, fixture.script("ra", &steps));
 
-  let outline = fixture.ide.outline(&atlas_ide::OutlineRequest::new("core:src/lib.rs")).unwrap();
+  let outline = fixture.ide.outline(&lsp_outline("core:src/lib.rs")).unwrap();
   let references = fixture.ide.references(&ReferencesRequest::new("answer")).unwrap();
   let rename = fixture.ide.edit(&EditRequest::new(rename("answer", "reply"))).unwrap();
 

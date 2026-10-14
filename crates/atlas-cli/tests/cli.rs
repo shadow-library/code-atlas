@@ -1044,7 +1044,7 @@ fn should_exit_1_with_the_install_hint_when_the_typescript_server_is_unavailable
   let empty = sandbox.work().join("empty-bin");
   fs::create_dir_all(&empty).unwrap();
 
-  let unavailable = run_with_path(&sandbox, &sdk, &["outline", "src/money.ts"], &empty);
+  let unavailable = run_with_path(&sandbox, &sdk, &["outline", "src/money.ts", "--source", "lsp"], &empty);
 
   assert_eq!(code(&unavailable), 1, "{}", stderr(&unavailable));
   let message = stderr(&unavailable);
@@ -1059,8 +1059,9 @@ fn should_exit_1_with_the_install_hint_when_the_typescript_server_is_unavailable
   );
   assert_eq!(stdout(&unavailable), "");
 
-  let graph = run_with_path(&sandbox, &sdk, &["outline", "src/money.ts", "--source", "graph"], &empty);
+  let graph = run_with_path(&sandbox, &sdk, &["outline", "src/money.ts"], &empty);
   assert_ok(&graph);
+  assert!(stdout(&graph).contains("source=graph (from the index, syntactic;"), "{}", stdout(&graph));
   assert!(stdout(&graph).contains("toCents"), "{}", stdout(&graph));
 
   let edit = run_with_path(&sandbox, &sdk, &["edit", "rename", "toCents", "cents"], &empty);

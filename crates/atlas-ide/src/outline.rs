@@ -61,7 +61,7 @@ impl OutlineRequest {
     Self {
       file: file.into(),
       depth: 1,
-      source: ReadSource::Lsp,
+      source: ReadSource::Graph,
     }
   }
 }

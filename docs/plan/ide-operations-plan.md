@@ -315,7 +315,7 @@ Endpoints are not valid targets for IDE modes or edits; the error says "endpoint
 |---|---|---|---|
 | `info` (default) | none | graph | today's `atlas_symbol` |
 | `find` | `find_symbol` | graph (`syntactic`) | name-path pattern, `path`, `depth` (children via `contains`), `body`, `substring`, `kinds`/`exclude_kinds`, `max_matches` (default 20); signature always shown |
-| `outline` | `get_symbols_overview` | LSP `documentSymbol` (`source=graph` for the tagged graph outline) | `depth` default 1 |
+| `outline` | `get_symbols_overview` | graph outline by default (`source=lsp` for LSP `documentSymbol`) | `depth` default 1 |
 | `source` | none (replaces `atlas_read`) | disk | `context_lines` |
 | `references` | `find_referencing_symbols` | LSP `references` (`includeDeclaration:false`), **plus** graph-only extras | grouped by enclosing symbol (innermost graph symbol at the position; LSP outline when the file is not indexed), one-line snippet ≤ 160 chars |
 | `declaration` | `find_declaration` | LSP `definition` (and `declaration` if supported) | target `path:line:col`, or `path` + `regex` with exactly one capture group matching exactly once |

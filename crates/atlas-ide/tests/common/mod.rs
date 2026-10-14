@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use atlas_core::{ProjectName, RepoName};
 use atlas_engine::{Engine, EngineOptions};
-use atlas_ide::{IdeError, IdeMode, IdeOptions, IdeResult, IdeService, IdeSettings, LaunchRequest, LaunchSpec, Launcher, TsServer, TsServerOrigin};
+use atlas_ide::{IdeError, IdeMode, IdeOptions, IdeResult, IdeService, IdeSettings, LaunchRequest, LaunchSpec, Launcher, OutlineRequest, ReadSource, TsServer, TsServerOrigin};
 use atlas_lsp::{Launch, ServerCommand, ServerKind, SyncLimits, canonical_path, uri_from_path};
 use atlas_project::{AtlasHome, Project, ProjectSettings, RepoConfig};
 use atlas_query::{RenderText, Response, render_text};
@@ -301,6 +301,13 @@ pub fn utf16_position(text: &str, needle: &str, nth: usize) -> (u32, u32) {
     }
   }
   (line, before[line_start..].encode_utf16().count() as u32)
+}
+
+pub fn lsp_outline(file: &str) -> OutlineRequest {
+  OutlineRequest {
+    source: ReadSource::Lsp,
+    ..OutlineRequest::new(file)
+  }
 }
 
 pub fn text<T: RenderText>(response: &Response<T>) -> String {

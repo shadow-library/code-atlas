@@ -391,9 +391,9 @@ fn should_print_outline_and_references_with_the_documented_json_shape() {
   ]);
   demo.serve(&steps);
 
-  let outline = demo.run(&["outline", "web:src/money.ts", "--json"]).ok();
+  let outline = demo.run(&["outline", "web:src/money.ts", "--source", "lsp", "--json"]).ok();
   let refs = demo.run(&["refs", "toCents", "--json"]).ok();
-  let text = demo.run(&["outline", "web:src/money.ts"]).ok();
+  let text = demo.run(&["outline", "web:src/money.ts", "--source", "lsp"]).ok();
 
   let answer = outline.answer();
   assert_eq!(answer["server"]["server"], "typescript-language-server");
@@ -416,7 +416,7 @@ fn should_stop_the_language_server_and_exit_130_when_interrupted() {
   let mut steps = ts_ready()[..3].to_vec();
   steps.push(json!("hang"));
   demo.serve(&steps);
-  let mut command = demo.sandbox.command(&demo.root, &["outline", "web:src/money.ts"]);
+  let mut command = demo.sandbox.command(&demo.root, &["outline", "web:src/money.ts", "--source", "lsp"]);
   let mut child = command.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
   let pid_file = demo.scratch.join("ts.pid");
   let deadline = Instant::now() + Duration::from_secs(30);

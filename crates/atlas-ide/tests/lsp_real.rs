@@ -1,6 +1,6 @@
 mod common;
 
-use atlas_ide::{DeclarationRequest, LaunchSpec, OutlineRequest, ReferencesRequest};
+use atlas_ide::{DeclarationRequest, LaunchSpec, ReferencesRequest};
 use atlas_lsp::{Launch, ServerCommand, ServerKind};
 use common::*;
 
@@ -23,7 +23,7 @@ fn should_find_users_service_find_one_references_with_typescript_language_server
   };
 
   let references = fixture.ide.references(&ReferencesRequest::new("UsersService.findOne")).unwrap();
-  let outline = fixture.ide.outline(&OutlineRequest::new("src/users/users.service.ts")).unwrap();
+  let outline = fixture.ide.outline(&lsp_outline("src/users/users.service.ts")).unwrap();
   let declaration = fixture
     .ide
     .declaration(&DeclarationRequest::Regex {

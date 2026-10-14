@@ -1,8 +1,8 @@
 mod common;
 
-use atlas_ide::{DeclarationRequest, IdeError, IdeSettings, OutlineRequest, ReadSource, References, ReferencesRequest};
+use atlas_ide::{DeclarationRequest, IdeError, IdeSettings, Outline, OutlineRequest, ReadSource, References, ReferencesRequest};
 use atlas_lsp::ServerKind;
-use atlas_query::Targeted;
+use atlas_query::{Location, OutlineAnswer, OutlineParse, RenderText, SymbolSource, Targeted, TextOut};
 use common::*;
 use serde_json::json;
 
@@ -209,7 +209,7 @@ fn should_refuse_exact_modes_when_language_servers_are_disabled() {
   let fixture = web();
   fixture.ide.reload_settings(IdeSettings { enabled: false, ..settings() });
 
-  let outline = fixture.ide.outline(&OutlineRequest::new("src/money.ts")).unwrap_err().to_string();
+  let outline = fixture.ide.outline(&lsp_outline("src/money.ts")).unwrap_err().to_string();
   let graph = fixture
     .ide
     .outline(&OutlineRequest {
@@ -285,12 +285,12 @@ fn should_list_implementations_and_outline_a_file_from_the_server() {
   fixture.serve(ServerKind::TypeScript, command);
 
   let implementations = fixture.ide.implementations("toCents").unwrap();
-  let outline = fixture.ide.outline(&OutlineRequest::new("web:src/use.ts")).unwrap();
+  let outline = fixture.ide.outline(&lsp_outline("web:src/use.ts")).unwrap();
   let shallow = fixture
     .ide
     .outline(&OutlineRequest {
       depth: 0,
-      ..OutlineRequest::new("src/use.ts")
+      ..lsp_outline("src/use.ts")
     })
     .unwrap();
 
@@ -476,4 +476,95 @@ fn should_list_jest_mocks_of_orders_service_find_one_outside_the_server_view() {
     ],
     "{rendered}"
   );
+}
+
+const OUTLINE_HEADER: &str = "outline web:src/money.ts source=graph (from the index, syntactic; for the exact language-server outline use source=lsp)\n";
+
+#[test]
+fn should_outline_from_the_graph_by_default_without_starting_a_server() {
+  let fixture = web();
+
+  let request = OutlineRequest::new("src/money.ts");
+  let outline = fixture.ide.outline(&request).unwrap();
+
+  assert_eq!(request.source, ReadSource::Graph);
+  assert_eq!(text(&outline), format!("{OUTLINE_HEADER}  toCents function :1  function toCents(amount: string): number\n"));
+}
+
+#[test]
+fn should_outline_from_the_server_only_when_source_lsp_is_explicit() {
+  let fixture = web();
+  fixture.ide.reload_settings(IdeSettings { enabled: false, ..settings() });
+
+  let graph = fixture.ide.outline(&OutlineRequest::new("src/money.ts")).unwrap();
+  let lsp = fixture.ide.outline(&lsp_outline("src/money.ts")).unwrap_err().to_string();
+
+  assert!(text(&graph).contains(OUTLINE_HEADER), "{}", text(&graph));
+  assert!(lsp.starts_with("language servers are disabled for project demo"), "{lsp}");
+}
+
+#[test]
+fn should_say_the_graph_has_no_facts_and_suggest_the_language_server_instead_of_falling_back() {
+  let fixture = web();
+
+  let outline = fixture.ide.outline(&OutlineRequest::new("src/missing.ts")).unwrap();
+
+  assert_eq!(
+    text(&outline).lines().collect::<Vec<_>>(),
+    vec![
+      "no graph facts for \"src/missing.ts\" (no indexed file at src/missing.ts); the file may be excluded or not indexed; the language server can still outline it: use source=lsp"
+    ]
+  );
+}
+
+#[test]
+fn should_state_partial_and_failed_parses_in_the_outline_header() {
+  let answer = |parse| {
+    Outline::Graph(Targeted::Found(OutlineAnswer {
+      file: Location {
+        repo: "web".to_owned(),
+        path: "src/money.ts".to_owned(),
+        line: None,
+        column: None,
+      },
+      source: SymbolSource::Graph,
+      parse,
+      symbols: Vec::new(),
+      caveats: Vec::new(),
+    }))
+  };
+  let lines = |outline: Outline| {
+    let mut out = TextOut::default();
+    outline.render_text(&mut out);
+    out.finish()
+  };
+
+  assert_eq!(
+    lines(answer(OutlineParse::Partial { error_count: 2 })),
+    format!("{OUTLINE_HEADER}PARTIAL: the file parsed with 2 errors; symbols near the errors may be missing\n  (no symbols)\n")
+  );
+  assert_eq!(
+    lines(answer(OutlineParse::Failed {
+      reason: "parse budget exceeded".to_owned()
+    })),
+    format!("{OUTLINE_HEADER}NO FACTS: the file failed to parse (parse budget exceeded), so the graph has no symbols for it; use source=lsp\n")
+  );
+}
+
+#[test]
+fn should_mark_the_outline_of_a_partially_parsed_file_in_its_header() {
+  let fixture = Fixture::new(&[(
+    "web",
+    &[
+      ("package.json", "{\"name\": \"web\"}\n"),
+      ("tsconfig.json", "{}\n"),
+      ("src/broken.ts", "export function ok(): number {\n  return 1;\n}\nfunction broken( { return ;\n"),
+    ],
+  )]);
+
+  let outline = fixture.ide.outline(&OutlineRequest::new("src/broken.ts")).unwrap();
+
+  let rendered = text(&outline);
+  assert!(rendered.starts_with("outline web:src/broken.ts source=graph (from the index, syntactic;"), "{rendered}");
+  assert!(rendered.lines().nth(1).is_some_and(|line| line.starts_with("PARTIAL: the file parsed with ")), "{rendered}");
 }

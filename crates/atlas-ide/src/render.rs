@@ -249,6 +249,10 @@ impl RenderText for Outline {
   fn render_text(&self, out: &mut TextOut) {
     match self {
       Self::Exact(answer) => answer.render_text(out),
+      Self::Graph(atlas_query::Targeted::NotFound { spec, hint }) => out.line(
+        0,
+        format!("no graph facts for {spec:?} ({hint}); the file may be excluded or not indexed; the language server can still outline it: use source=lsp"),
+      ),
       Self::Graph(answer) => answer.render_text(out),
     }
   }

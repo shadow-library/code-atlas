@@ -188,7 +188,7 @@ fn should_outline_the_sdk_client_from_the_graph() {
   assert_eq!(
     fixture.text(&response),
     "fresh run=1 (+58 files, <t>)\n\
-     outline acme-sdk:src/client.ts source=graph\n  \
+     outline acme-sdk:src/client.ts source=graph (from the index, syntactic; for the exact language-server outline use source=lsp)\n  \
        AcmeClient class :3  class AcmeClient\n    \
          baseUrl field :4  private readonly baseUrl: string\n    \
          auth field :5  private readonly auth: AcmeAuth\n    \
@@ -667,7 +667,7 @@ mod overloads {
     assert_eq!(
       fixture.text(&response).lines().skip(1).collect::<Vec<_>>(),
       vec![
-        "outline demo:src/lib.rs source=graph",
+        "outline demo:src/lib.rs source=graph (from the index, syntactic; for the exact language-server outline use source=lsp)",
         "  os function :1  pub fn os() -> &'static str",
         "  os function :3  pub fn os() -> &'static str",
         "  type function :6  pub fn r#type() -> u8",

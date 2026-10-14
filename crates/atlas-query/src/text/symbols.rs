@@ -1,6 +1,6 @@
 use crate::graph::group_by_repo;
 use crate::model::{Location, UnresolvedSite};
-use crate::queries::{FindAnswer, GraphReference, GraphReferences, HierarchyAnswer, HierarchyNode, OutlineAnswer, ReferenceSide, SymbolNode};
+use crate::queries::{FindAnswer, GraphReference, GraphReferences, HierarchyAnswer, HierarchyNode, OutlineAnswer, OutlineParse, ReferenceSide, SymbolNode};
 use crate::text::{RenderText, TextOut, caveats, entity_head, entity_line, omitted, snippet};
 
 fn signed(head: String, signature: Option<&str>) -> String {
@@ -61,7 +61,24 @@ impl RenderText for FindAnswer {
 
 impl RenderText for OutlineAnswer {
   fn render_text(&self, out: &mut TextOut) {
-    out.line(0, format!("outline {} source=graph", self.file));
+    out.line(
+      0,
+      format!(
+        "outline {} source=graph (from the index, syntactic; for the exact language-server outline use source=lsp)",
+        self.file
+      ),
+    );
+    match &self.parse {
+      OutlineParse::Complete => {}
+      OutlineParse::Partial { error_count } => out.line(0, format!("PARTIAL: the file parsed with {error_count} errors; symbols near the errors may be missing")),
+      OutlineParse::Failed { reason } => {
+        out.line(
+          0,
+          format!("NO FACTS: the file failed to parse ({reason}), so the graph has no symbols for it; use source=lsp"),
+        );
+        return caveats(out, &self.caveats);
+      }
+    }
     if self.symbols.is_empty() {
       out.line(1, "(no symbols)");
     }

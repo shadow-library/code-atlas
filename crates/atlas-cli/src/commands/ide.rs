@@ -5,7 +5,7 @@ use atlas_ide::{
   ReferencesRequest, ServerView, Severity, UnitCheck, UnitCheckState,
 };
 use atlas_project::Project;
-use atlas_query::{FindRequest, Freshness, HierarchyRequest, NameMatch, RenderText, Response, Targeted};
+use atlas_query::{FindRequest, Freshness, HierarchyRequest, NameMatch, OutlineParse, RenderText, Response, Targeted};
 use serde::Serialize;
 
 use crate::cli::{DeclArgs, DiagnosticsArgs, FindArgs, HierarchyArgs, ImplsArgs, LspCheckArgs, LspCommand, OutlineArgs, RefsArgs, SeverityArg, SourceArg};
@@ -117,7 +117,7 @@ pub fn outline(ctx: &Context, args: OutlineArgs) -> CliResult<Outcome> {
   emit(&render(&response, args.common.json)?)?;
   match &response.answer {
     Outline::Exact(exact) => Ok(conclude(&response.freshness, Some(&exact.server))),
-    Outline::Graph(Targeted::Found(_)) => Ok(conclude(&response.freshness, None)),
+    Outline::Graph(Targeted::Found(found)) => Ok(Outcome::degraded_if(found.parse != OutlineParse::Complete || response.freshness.is_degraded())),
     Outline::Graph(_) => Ok(Outcome::Unresolved),
   }
 }

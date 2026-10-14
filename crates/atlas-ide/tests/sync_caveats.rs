@@ -2,7 +2,7 @@ mod common;
 
 use std::fs;
 
-use atlas_ide::{IdeError, LaunchSpec, OutlineRequest, ReferencesRequest, TsServer, TsServerOrigin};
+use atlas_ide::{IdeError, LaunchSpec, ReferencesRequest, TsServer, TsServerOrigin};
 use atlas_lsp::ServerKind;
 use common::*;
 use serde_json::json;
@@ -27,8 +27,8 @@ fn should_refuse_and_retire_a_typescript_server_that_loaded_typescript_7() {
   let command = fixture.counted("ts", &ts_ready_with("7.0.2", capabilities(json!({}))));
   fixture.serve(ServerKind::TypeScript, command);
 
-  let first = fixture.ide.outline(&OutlineRequest::new("src/money.ts")).unwrap_err();
-  let second = fixture.ide.outline(&OutlineRequest::new("src/money.ts")).unwrap_err();
+  let first = fixture.ide.outline(&lsp_outline("src/money.ts")).unwrap_err();
+  let second = fixture.ide.outline(&lsp_outline("src/money.ts")).unwrap_err();
 
   let expected = "typescript-language-server is unavailable: TypeScript 7 has no tsserver; install typescript@5 alongside or use the bundled one; retry with source='graph' for tagged graph results";
   assert_eq!(first.to_string(), expected);
@@ -59,7 +59,7 @@ fn should_show_the_reported_typescript_version_and_warn_when_it_contradicts_the_
     },
   );
 
-  let response = fixture.ide.outline(&OutlineRequest::new("src/money.ts")).unwrap();
+  let response = fixture.ide.outline(&lsp_outline("src/money.ts")).unwrap();
 
   assert_eq!(
     text(&response),
@@ -86,11 +86,11 @@ fn should_caveat_a_project_configuration_change_the_typescript_server_cannot_con
     ),
   );
   fixture.serve(ServerKind::TypeScript, command);
-  fixture.ide.outline(&OutlineRequest::new("src/money.ts")).unwrap();
+  fixture.ide.outline(&lsp_outline("src/money.ts")).unwrap();
   fs::write(fixture.file("web", "tsconfig.json"), "{\"compilerOptions\": {\"strict\": true}}\n").unwrap();
 
-  let changed = fixture.ide.outline(&OutlineRequest::new("src/money.ts")).unwrap();
-  let still = fixture.ide.outline(&OutlineRequest::new("src/money.ts")).unwrap();
+  let changed = fixture.ide.outline(&lsp_outline("src/money.ts")).unwrap();
+  let still = fixture.ide.outline(&lsp_outline("src/money.ts")).unwrap();
 
   let caveat = "  the language server may not have picked up changes to web:tsconfig.json (tsserver relies on its own file watchers); results involving them may be stale\n";
   assert!(text(&changed).ends_with(&format!("caveats:\n{caveat}")), "{}", text(&changed));
@@ -114,7 +114,7 @@ fn should_tag_an_answer_partial_while_rust_analyzer_is_busy() {
     ),
   );
   fixture.serve(ServerKind::RustAnalyzer, command);
-  fixture.ide.outline(&OutlineRequest::new("src/lib.rs")).unwrap();
+  fixture.ide.outline(&lsp_outline("src/lib.rs")).unwrap();
   assert!(wait_until(|| fixture
     .ide
     .status()
@@ -177,8 +177,8 @@ fn should_refuse_a_rust_file_outside_every_cargo_package_and_a_path_outside_the_
   ]);
   fixture.serve(ServerKind::RustAnalyzer, fixture.script("ra", &rust_ready(capabilities(json!({})))));
 
-  let loose = fixture.ide.outline(&OutlineRequest::new("loose:src/x.rs")).unwrap_err();
-  let outside = fixture.ide.outline(&OutlineRequest::new("/nowhere/x.rs")).unwrap_err();
+  let loose = fixture.ide.outline(&lsp_outline("loose:src/x.rs")).unwrap_err();
+  let outside = fixture.ide.outline(&lsp_outline("/nowhere/x.rs")).unwrap_err();
 
   assert_eq!(
     loose.to_string(),

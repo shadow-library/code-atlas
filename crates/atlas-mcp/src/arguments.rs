@@ -123,7 +123,7 @@ arguments!(SymbolArgs {
   max_matches: Option<usize>,
   #[schemars(description = "declaration: capture group around the name in path")]
   regex: Option<String>,
-  #[schemars(description = "outline/references: lsp (default) or graph")]
+  #[schemars(description = "outline: graph (default, from the index) or lsp (exact, from the language server); references: lsp (default) or graph")]
   source: Option<ReadSource>,
   #[schemars(description = "source: extra lines, 0-100")]
   context_lines: Option<u32>,
@@ -413,7 +413,7 @@ pub(crate) fn symbol_plan(args: SymbolArgs) -> Result<SymbolPlan, ToolError> {
       takes_either(&subject, ["path", "target"], &["depth", "source"], &given)?;
       let mut request = OutlineRequest::new(one_of(&subject, ("path", args.path), ("target", args.target))?);
       request.depth = args.depth.unwrap_or(request.depth);
-      request.source = read_source(args.source);
+      request.source = read_source(args.source, atlas_ide::ReadSource::Graph);
       Ok(SymbolPlan::Outline(request))
     }
     SymbolMode::Source => {
@@ -425,7 +425,7 @@ pub(crate) fn symbol_plan(args: SymbolArgs) -> Result<SymbolPlan, ToolError> {
     SymbolMode::References => {
       takes(&subject, &["target"], &["source"], &given)?;
       let mut request = ReferencesRequest::new(required("target", args.target)?);
-      request.source = read_source(args.source);
+      request.source = read_source(args.source, atlas_ide::ReadSource::Lsp);
       Ok(SymbolPlan::References(request))
     }
     SymbolMode::Declaration => match args.regex {
@@ -472,10 +472,11 @@ pub(crate) fn symbol_plan(args: SymbolArgs) -> Result<SymbolPlan, ToolError> {
   }
 }
 
-fn read_source(source: Option<ReadSource>) -> atlas_ide::ReadSource {
+fn read_source(source: Option<ReadSource>, default: atlas_ide::ReadSource) -> atlas_ide::ReadSource {
   match source {
     Some(ReadSource::Graph) => atlas_ide::ReadSource::Graph,
-    Some(ReadSource::Lsp) | None => atlas_ide::ReadSource::Lsp,
+    Some(ReadSource::Lsp) => atlas_ide::ReadSource::Lsp,
+    None => default,
   }
 }
 

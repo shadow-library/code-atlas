@@ -10,7 +10,7 @@ const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (commit ", env!("CODE
   name = "catl",
   version = VERSION,
   about = "Cross-repo code knowledge graph for coding agents",
-  after_help = "Exit codes:\n  0  answered with results\n  1  runtime error\n  2  usage or config error (bad flags, ambiguous or no project, invalid values)\n  3  degraded: results were printed but the index is stale, partial or incomplete\n  4  answered, but nothing matched (read commands only: target not found or ambiguous, run or file not found)\n  5  edit refused, nothing written (stale or foreign or unversioned plan, safe-delete blockers, ambiguous target, no or several matches, scope violation, unverified sites, server refusal); every refused edit exits 5, never 4\n  6  edit failed and was rolled back, nothing changed\n  7  edit partially applied: some files changed and the rollback failed; the output lists them (never exits 0)\n  130  interrupted (a write in progress finishes first; if that edit is refused, rolled back or partially applied, its 5, 6 or 7 wins)\n\nAn applied or dry-run edit whose index freshness is degraded exits 3.\n\nIDE commands (outline, refs, decl, impls, diagnostics, edit rename|safe-delete, lsp check) start a language server per invocation and stop it on exit; edit replace-body|insert-before|insert-after start one only when one is already warm, which a one-shot process never has, so they start none. Measured: 2-5 s on TypeScript fixtures, 20-65 s cold on Rust (22 s for a 2-crate workspace, 64 s for acme-billing), longer on large workspaces. They suit scripts and CI; the MCP server keeps servers warm."
+  after_help = "Exit codes:\n  0  answered with results\n  1  runtime error\n  2  usage or config error (bad flags, ambiguous or no project, invalid values)\n  3  degraded: results were printed but the index is stale, partial or incomplete\n  4  answered, but nothing matched (read commands only: target not found or ambiguous, run or file not found)\n  5  edit refused, nothing written (stale or foreign or unversioned plan, safe-delete blockers, ambiguous target, no or several matches, scope violation, unverified sites, server refusal); every refused edit exits 5, never 4\n  6  edit failed and was rolled back, nothing changed\n  7  edit partially applied: some files changed and the rollback failed; the output lists them (never exits 0)\n  130  interrupted (a write in progress finishes first; if that edit is refused, rolled back or partially applied, its 5, 6 or 7 wins)\n\nAn applied or dry-run edit whose index freshness is degraded exits 3.\n\nIDE commands (outline --source lsp, refs, decl, impls, diagnostics, edit rename|safe-delete, lsp check) start a language server per invocation and stop it on exit; edit replace-body|insert-before|insert-after start one only when one is already warm, which a one-shot process never has, so they start none. Measured: 2-5 s on TypeScript fixtures, 20-65 s cold on Rust (22 s for a 2-crate workspace, 64 s for acme-billing), longer on large workspaces. They suit scripts and CI; the MCP server keeps servers warm."
 )]
 pub struct Cli {
   #[arg(long, global = true, value_name = "FILTER", help = "Log filter such as `info` or `atlas_engine=debug`; overrides RUST_LOG")]
@@ -69,7 +69,7 @@ pub enum Command {
   TestsFor(TestsForArgs),
   #[command(about = "Find symbols by name path in the graph")]
   Find(FindArgs),
-  #[command(about = "List the symbols of a file from the language server (--source graph for the graph)")]
+  #[command(about = "List the symbols of a file from the index (--source lsp for the exact language-server outline)")]
   Outline(OutlineArgs),
   #[command(about = "Exact references to a symbol or position from the language server (--source graph for the graph)")]
   Refs(RefsArgs),
@@ -586,7 +586,7 @@ pub struct OutlineArgs {
   pub file: String,
   #[arg(long)]
   pub depth: Option<u32>,
-  #[arg(long, value_enum, default_value_t = SourceArg::Lsp)]
+  #[arg(long, value_enum, default_value_t = SourceArg::Graph)]
   pub source: SourceArg,
   #[command(flatten)]
   pub common: QueryCommon,
