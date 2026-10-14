@@ -1,7 +1,10 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 
-use atlas_core::{ATTR_MOCK, ATTR_MOCK_TYPE, ArgSummary, EdgeKind, EntityKind, FileFacts, LanguageFamily, LocalSymbolId, NodeRef, RefKind, ReferenceFact, Span, SymbolFact};
+use atlas_core::{
+  ATTR_MOCK, ATTR_MOCK_TYPE, ArgSummary, EdgeKind, EntityKey, EntityKind, FileFacts, ImportBinding, ImportFact, LanguageFamily, LocalSymbolId, NodeRef, RefKind, ReferenceFact,
+  RelPath, Severity, Span, SymbolFact,
+};
 use serde_json::json;
 
 use super::detector;
@@ -12,7 +15,7 @@ use crate::view::{FileView, Imported};
 
 pub struct MockDetector;
 
-detector!(MockDetector, "test-mocks", 1);
+detector!(MockDetector, "test-mocks", 2);
 
 const MOCK_LIBRARIES: [&str; 2] = ["jest", "vi"];
 const MOCK_WRAPPERS: [&[&str]; 9] = [
@@ -43,6 +46,22 @@ const DECLARATION_KEYWORDS: [&str; 3] = ["const", "let", "var"];
 const ATTR_MOCK_SITE: &str = "mock_site";
 const ERASING_CASTS: [&str; 2] = ["unknown", "any"];
 const PROTOTYPE: &str = "prototype";
+const BUN_TEST: &str = "bun:test";
+const MOCK_MODULE_RULE: &str = "bun-mock-module";
+const DYNAMIC_MOCK_MODULE: &str = "mock.dynamic_module";
+const SOURCE_EXTENSIONS: [&str; 4] = [".ts", ".tsx", ".js", ".jsx"];
+const INDEX_EXTENSIONS: [&str; 3] = ["/index.ts", "/index.tsx", "/index.js"];
+const RUNTIME_EXTENSIONS: [(&str, &[&str]); 8] = [
+  (".ts", &[".ts"]),
+  (".tsx", &[".tsx"]),
+  (".mts", &[".mts"]),
+  (".cts", &[".cts"]),
+  (".js", &[".js", ".ts", ".tsx"]),
+  (".jsx", &[".jsx", ".tsx"]),
+  (".mjs", &[".mjs", ".mts"]),
+  (".cjs", &[".cjs", ".cts"]),
+];
+const NON_EXPORT_KEYS: [&str; 2] = ["default", "__esModule"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MockSite {
@@ -50,6 +69,7 @@ enum MockSite {
   MockSetup,
   CallAssertion,
   SpyOn,
+  Module,
 }
 
 impl MockSite {
@@ -59,6 +79,7 @@ impl MockSite {
       Self::MockSetup => "mock_setup",
       Self::CallAssertion => "call_assertion",
       Self::SpyOn => "spy_on",
+      Self::Module => "module",
     }
   }
 }
@@ -147,6 +168,95 @@ impl TypeExpr {
       wrapped = true;
     }
     (current.path, wrapped)
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModuleTarget {
+  Export,
+  File,
+}
+
+impl ModuleTarget {
+  fn as_str(self) -> &'static str {
+    match self {
+      Self::Export => "module_export",
+      Self::File => "module_file",
+    }
+  }
+}
+
+#[derive(Debug, Default)]
+struct BunTest {
+  mocks: Vec<String>,
+  spies: Vec<String>,
+  namespaces: Vec<String>,
+}
+
+impl BunTest {
+  fn of(facts: &FileFacts) -> Self {
+    let mut bun = Self::default();
+    for bindings in facts.imports.iter().filter_map(bun_bindings) {
+      for binding in bindings {
+        match binding {
+          ImportBinding::Named { imported, local, .. } if imported == "mock" => bun.mocks.push(local.clone()),
+          ImportBinding::Named { imported, local, .. } if imported == "spyOn" => bun.spies.push(local.clone()),
+          ImportBinding::Namespace { local } => bun.namespaces.push(local.clone()),
+          _ => {}
+        }
+      }
+    }
+    bun
+  }
+
+  fn is_imported(facts: &FileFacts) -> bool {
+    facts.imports.iter().any(|import| bun_bindings(import).is_some())
+  }
+
+  fn binds(&self, name: &String) -> bool {
+    self.mocks.contains(name) || self.spies.contains(name) || self.namespaces.contains(name)
+  }
+
+  fn is_mock(&self, path: &[String]) -> bool {
+    match path {
+      [name] => self.mocks.contains(name),
+      [namespace, function] => self.namespaces.contains(namespace) && function == "mock",
+      _ => false,
+    }
+  }
+
+  fn is_mock_module(&self, path: &[String]) -> bool {
+    match path {
+      [mock @ .., module] if module == "module" => self.is_mock(mock),
+      _ => false,
+    }
+  }
+
+  fn is_spy(&self, path: &[String]) -> bool {
+    match path {
+      [name] => self.spies.contains(name),
+      [namespace, function] => self.namespaces.contains(namespace) && function == "spyOn",
+      _ => false,
+    }
+  }
+
+  fn spy_head_prefixes(&self) -> Vec<String> {
+    let jest = MOCK_LIBRARIES.iter().map(|library| format!("({library}.spyOn("));
+    let bare = self.spies.iter().map(|spy| format!("({spy}("));
+    let namespaced = self.namespaces.iter().map(|namespace| format!("({namespace}.spyOn("));
+    jest.chain(bare).chain(namespaced).collect()
+  }
+}
+
+fn bun_bindings(import: &ImportFact) -> Option<&[ImportBinding]> {
+  match import {
+    ImportFact::TsImport { specifier, bindings, .. } if specifier == BUN_TEST => Some(bindings),
+    ImportFact::TsRequire {
+      specifier: ArgSummary::Str(specifier),
+      bindings,
+      ..
+    } if specifier == BUN_TEST => Some(bindings),
+    _ => None,
   }
 }
 
@@ -266,6 +376,7 @@ struct Scan<'v, 'a> {
   brackets: Brackets,
   declarations: BTreeMap<&'v str, Vec<Declaration>>,
   cache: BindingCache,
+  bun: BunTest,
 }
 
 impl MockDetector {
@@ -276,6 +387,7 @@ impl MockDetector {
         [.., last] => is_mock_setup(last) || is_call_matcher(last),
         [] => false,
       })
+      || BunTest::is_imported(facts)
   }
 
   fn run(&self, view: &FileView<'_>, sink: &mut Sink) {
@@ -289,11 +401,19 @@ impl MockDetector {
       brackets: Brackets::new(tokens),
       declarations,
       cache: BindingCache::new(),
+      bun: BunTest::of(view.facts),
     };
     scan.fn_properties(sink);
-    let chains = Chains::of(&view.facts.references);
+    let chains = Chains::of(&view.facts.references, &scan.bun);
     for reference in &view.facts.references {
-      let Some(usage) = mock_use(reference, &chains) else { continue };
+      if scan.shadows_bun_binding(reference) {
+        continue;
+      }
+      if scan.bun.is_mock_module(&reference.path) && view.is_test_context(reference.from) {
+        scan.mock_module(sink, reference);
+        continue;
+      }
+      let Some(usage) = mock_use(reference, &chains, &scan.bun) else { continue };
       if !view.is_test_context(reference.from) {
         continue;
       }
@@ -333,7 +453,8 @@ struct Chains {
 }
 
 impl Chains {
-  fn of(references: &[ReferenceFact]) -> Self {
+  fn of(references: &[ReferenceFact], bun: &BunTest) -> Self {
+    let spy_heads = bun.spy_head_prefixes();
     let mut chains = Self {
       matchers: BTreeSet::new(),
       replaced_spies: BTreeSet::new(),
@@ -345,7 +466,7 @@ impl Chains {
       if head.starts_with("(expect(") && is_call_matcher(name) {
         chains.matchers.insert(reference.span.start_byte);
       }
-      if MOCK_LIBRARIES.iter().any(|library| head.starts_with(&format!("({library}.spyOn("))) && is_replacing_setup(name) {
+      if spy_heads.iter().any(|spy_head| head.starts_with(spy_head)) && is_replacing_setup(name) {
         chains.replaced_spies.insert(reference.span.start_byte);
       }
     }
@@ -353,7 +474,7 @@ impl Chains {
   }
 }
 
-fn mock_use<'r>(reference: &'r ReferenceFact, chains: &Chains) -> Option<MockUse<'r>> {
+fn mock_use<'r>(reference: &'r ReferenceFact, chains: &Chains, bun: &BunTest) -> Option<MockUse<'r>> {
   match (reference.kind, reference.path.as_slice(), reference.args.as_slice()) {
     (RefKind::MethodCall, [head, member, setup], _) if is_mock_setup(setup) && is_plain_name(head) && is_plain_name(member) => Some(MockUse::Member {
       head,
@@ -370,17 +491,22 @@ fn mock_use<'r>(reference: &'r ReferenceFact, chains: &Chains) -> Option<MockUse
       }),
       _ => None,
     },
-    (RefKind::MethodCall, [library, spy], [ArgSummary::Path(target), ArgSummary::Str(member), ..]) if MOCK_LIBRARIES.contains(&library.as_str()) && spy == "spyOn" => {
-      Some(MockUse::Spy {
-        target,
-        member,
-        replacement: match chains.replaced_spies.contains(&reference.span.start_byte) {
-          true => Replacement::Replaced,
-          false => Replacement::Spied,
-        },
-      })
-    }
+    (RefKind::MethodCall | RefKind::Call, path, [ArgSummary::Path(target), ArgSummary::Str(member), ..]) if is_spy_callee(reference.kind, path, bun) => Some(MockUse::Spy {
+      target,
+      member,
+      replacement: match chains.replaced_spies.contains(&reference.span.start_byte) {
+        true => Replacement::Replaced,
+        false => Replacement::Spied,
+      },
+    }),
     _ => None,
+  }
+}
+
+fn is_spy_callee(kind: RefKind, path: &[String], bun: &BunTest) -> bool {
+  match (kind, path) {
+    (RefKind::MethodCall, [library, spy]) if MOCK_LIBRARIES.contains(&library.as_str()) && spy == "spyOn" => true,
+    _ => bun.is_spy(path),
   }
 }
 
@@ -421,22 +547,79 @@ impl Scan<'_, '_> {
     }
   }
 
+  fn shadows_bun_binding(&self, reference: &ReferenceFact) -> bool {
+    let Some(head) = reference.path.first() else { return false };
+    self.bun.binds(head) && self.is_shadowed(head, reference.span.start_byte)
+  }
+
+  fn mock_module(&self, sink: &mut Sink, reference: &ReferenceFact) {
+    let tokens = self.view.span_tokens(reference.span);
+    let Some(open) = tokens.iter().position(|token| token.is_punct("(")) else { return };
+    let Some(specifier) = tokens.get(open + 1).filter(|token| token.kind == TokenKind::Str) else {
+      sink.diagnostic(
+        Severity::Info,
+        DYNAMIC_MOCK_MODULE,
+        "mock.module call with a non-literal specifier was not analysed".to_owned(),
+        Some(reference.span),
+      );
+      return;
+    };
+    let specifier_span = inner_string_span(self.view, specifier).unwrap_or(reference.span);
+    let scope = reference.from;
+    for path in relative_module_files(&self.view.facts.file.path, &specifier.text) {
+      let key = EntityKey::File {
+        repo: self.view.repo().clone(),
+        path,
+      };
+      self.module_edge(sink, scope, NodeRef::Key(key), specifier_span, ModuleTarget::File);
+    }
+    for export in factory_exports(&tokens[open + 2..]) {
+      let Some(span) = inner_string_span(self.view, export) else { continue };
+      let target = NodeRef::Unresolved {
+        path: vec![export.text.clone()],
+        from: scope,
+      };
+      self.module_edge(sink, scope, target, span, ModuleTarget::Export);
+    }
+  }
+
+  fn module_edge(&self, sink: &mut Sink, scope: Option<LocalSymbolId>, to: NodeRef, span: Span, target: ModuleTarget) {
+    sink.edge(
+      EdgeKind::References,
+      self.view.node(scope),
+      to,
+      span,
+      Cert::heuristic(0.6, MOCK_MODULE_RULE),
+      attrs([
+        (ATTR_MOCK, json!(Replacement::Replaced.as_str())),
+        (ATTR_MOCK_TYPE, json!(target.as_str())),
+        (ATTR_MOCK_SITE, json!(MockSite::Module.as_str())),
+      ]),
+    );
+  }
+
   fn mock_fn_property(&self, index: usize) -> Option<String> {
     let tokens = self.tokens;
     let key = &tokens[index];
     if !matches!(key.kind, TokenKind::Ident | TokenKind::Str) || !tokens.get(index - 1).is_some_and(|before| before.is_punct("{") || before.is_punct(",")) {
       return None;
     }
-    let [colon, library, dot, function, open, ..] = tokens.get(index + 1..)? else {
-      return None;
-    };
-    let is_mock_fn = colon.is_punct(":")
-      && library.kind == TokenKind::Ident
-      && MOCK_LIBRARIES.contains(&library.text.as_str())
-      && dot.is_punct(".")
-      && function.is_ident("fn")
-      && open.is_punct("(");
-    is_mock_fn.then(|| key.text.clone()).filter(|name| is_plain_name(name))
+    let (colon, callee) = tokens.get(index + 1..)?.split_first()?;
+    let shadowed = callee.first().is_some_and(|name| self.bun.binds(&name.text) && self.is_shadowed(&name.text, name.start));
+    (colon.is_punct(":") && !shadowed && self.is_mock_fn_call(callee))
+      .then(|| key.text.clone())
+      .filter(|name| is_plain_name(name))
+  }
+
+  fn is_mock_fn_call(&self, callee: &[Token]) -> bool {
+    match callee {
+      [library, dot, function, open, ..] if library.kind == TokenKind::Ident && dot.is_punct(".") && function.kind == TokenKind::Ident && open.is_punct("(") => {
+        let path = [library.text.clone(), function.text.clone()];
+        (MOCK_LIBRARIES.contains(&library.text.as_str()) && function.text == "fn") || self.bun.is_mock(&path)
+      }
+      [name, open, ..] if name.kind == TokenKind::Ident && open.is_punct("(") => self.bun.is_mock(std::slice::from_ref(&name.text)),
+      _ => false,
+    }
   }
 
   fn object_type(&mut self, open: usize, scope: Option<LocalSymbolId>) -> Option<MockedType> {
@@ -613,6 +796,24 @@ impl Scan<'_, '_> {
         .is_some_and(|symbol| matches!(symbol.kind, EntityKind::Class | EntityKind::Interface | EntityKind::TypeAlias | EntityKind::Namespace))
   }
 
+  fn is_shadowed(&self, name: &str, position: u32) -> bool {
+    let Some(candidates) = self.declarations.get(name) else { return false };
+    candidates.iter().any(|declaration| {
+      let keyword = &self.tokens[declaration.keyword];
+      keyword.start < position && self.scope_end(declaration.keyword).is_none_or(|end| position < end)
+    })
+  }
+
+  fn scope_end(&self, keyword: usize) -> Option<u32> {
+    let enclosing = self.brackets.enclosing.get(keyword).copied().flatten()?;
+    let close = self.brackets.close_of(enclosing)?;
+    let body_close = match self.tokens[enclosing].is_punct("(") && self.tokens.get(close + 1).is_some_and(|next| next.is_punct("{")) {
+      true => self.brackets.close_of(close + 1)?,
+      false => close,
+    };
+    Some(self.tokens[body_close].end)
+  }
+
   fn visible_declaration(&self, name: &str, position: u32, scope: Option<LocalSymbolId>) -> Option<Declaration> {
     let mut ancestors = BTreeSet::new();
     let mut current = scope;
@@ -683,6 +884,57 @@ fn emit(view: &FileView<'_>, sink: &mut Sink, mocked: &MockedType, edge: MockEdg
       (ATTR_MOCK_SITE, json!(edge.site.as_str())),
     ]),
   );
+}
+
+fn relative_module_files(importer: &RelPath, specifier: &str) -> Vec<RelPath> {
+  if !specifier.starts_with("./") && !specifier.starts_with("../") {
+    return Vec::new();
+  }
+  let Ok(module) = importer.resolve_relative(specifier) else { return Vec::new() };
+  let module = module.as_str();
+  let candidates: Vec<String> = match RUNTIME_EXTENSIONS.iter().find(|(extension, _)| module.ends_with(extension)) {
+    Some((extension, sources)) => {
+      let stem = &module[..module.len() - extension.len()];
+      sources.iter().map(|source| format!("{stem}{source}")).collect()
+    }
+    None => SOURCE_EXTENSIONS.iter().chain(&INDEX_EXTENSIONS).map(|suffix| format!("{module}{suffix}")).collect(),
+  };
+  candidates.iter().filter_map(|candidate| RelPath::new(candidate).ok()).collect()
+}
+
+fn factory_exports(tokens: &[Token]) -> Vec<&Token> {
+  let Some(arrow) = tokens.iter().position(|token| token.is_punct("=>")) else {
+    return Vec::new();
+  };
+  let open = match &tokens[arrow + 1..] {
+    [paren, brace, ..] if paren.is_punct("(") && brace.is_punct("{") => arrow + 2,
+    [brace, ret, object, ..] if brace.is_punct("{") && ret.is_ident("return") && object.is_punct("{") => arrow + 3,
+    _ => return Vec::new(),
+  };
+  let mut exports = Vec::new();
+  let mut depth = 1i32;
+  for (index, token) in tokens.iter().enumerate().skip(open + 1) {
+    if token.kind == TokenKind::Punct {
+      match token.text.as_str() {
+        "{" | "(" | "[" => depth += 1,
+        "}" | ")" | "]" => depth -= 1,
+        _ => {}
+      }
+      if depth == 0 {
+        break;
+      }
+      continue;
+    }
+    let after_separator = tokens.get(index - 1).is_some_and(|before| before.is_punct("{") || before.is_punct(","));
+    let is_key = matches!(token.kind, TokenKind::Ident | TokenKind::Str)
+      && depth == 1
+      && after_separator
+      && tokens.get(index + 1).is_some_and(|next| [":", ",", "}", "("].iter().any(|punct| next.is_punct(punct)));
+    if is_key && is_plain_name(&token.text) && !NON_EXPORT_KEYS.contains(&token.text.as_str()) {
+      exports.push(token);
+    }
+  }
+  exports
 }
 
 fn inner_string_span(view: &FileView<'_>, token: &Token) -> Option<Span> {

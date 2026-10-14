@@ -1,14 +1,15 @@
-use atlas_core::{ArgSummary, EdgeKind, EntityKey, EntityKind, FileFacts, LocalSymbolId, NodeRef, RefKind, ReferenceFact, Span, TemplatePart};
+use atlas_core::{ArgSummary, EdgeKind, EntityKey, EntityKind, FileFacts, ImportFact, LocalSymbolId, NodeRef, RefKind, ReferenceFact, Severity, Span, TemplatePart};
 use serde_json::json;
 
 use super::detector;
 use crate::cert::Cert;
+use crate::lex::{Token, TokenKind};
 use crate::sink::{Sink, attrs};
-use crate::view::FileView;
+use crate::view::{Binding, FileView, Imported, initializer_start};
 
 pub struct DbDetector;
 
-detector!(DbDetector, "db", 1);
+detector!(DbDetector, "db", 2);
 
 const SQL_CALLS: [&str; 10] = [
   "query",
@@ -22,6 +23,20 @@ const SQL_CALLS: [&str; 10] = [
   "query_as",
   "query_scalar",
 ];
+const DRIZZLE_PACKAGE: &str = "drizzle-orm";
+const DRIZZLE_TABLES: [(&str, &str); 3] = [
+  ("pgTable", "drizzle-orm/pg-core"),
+  ("mysqlTable", "drizzle-orm/mysql-core"),
+  ("sqliteTable", "drizzle-orm/sqlite-core"),
+];
+const DRIZZLE_SCHEMAS: [(&str, &str); 2] = [("pgSchema", "drizzle-orm/pg-core"), ("mysqlSchema", "drizzle-orm/mysql-core")];
+const DRIZZLE_WRITES: [&str; 3] = ["insert", "update", "delete"];
+const DRIZZLE_QUERY_READS: [&str; 2] = ["findMany", "findFirst"];
+const DRIZZLE_SELECTS: [&str; 3] = [".select(", ".selectDistinct(", ".selectDistinctOn("];
+const DRIZZLE_JOINS: [&str; 5] = ["innerJoin", "leftJoin", "rightJoin", "fullJoin", "crossJoin"];
+const DRIZZLE_RECEIVERS: [&str; 6] = ["db", "tx", "trx", "txn", "transaction", "database"];
+const DYNAMIC_TABLE_NAME: &str = "db.drizzle_dynamic_table_name";
+const UNBOUND_TABLE: &str = "db.drizzle_unbound_table";
 const SQL_STATEMENTS: [&str; 7] = ["select", "insert", "update", "delete", "with", "merge", "replace"];
 const PRISMA_READS: [&str; 8] = [
   "findMany",
@@ -112,11 +127,14 @@ impl DbDetector {
       reference.path.last().is_some_and(|name| {
         SQL_CALLS.contains(&name.as_str()) || PRISMA_READS.contains(&name.as_str()) || PRISMA_WRITES.contains(&name.as_str()) || matches!(name.as_str(), "Entity" | "Table")
       })
-    })
+    }) || imports_drizzle(facts)
   }
 
   fn run(&self, view: &FileView<'_>, sink: &mut Sink) {
     self.models(view, sink);
+    if imports_drizzle(view.facts) {
+      self.drizzle(view, sink);
+    }
     for reference in &view.facts.references {
       match reference.kind {
         RefKind::Call | RefKind::MethodCall | RefKind::MacroCall => {
@@ -165,6 +183,36 @@ impl DbDetector {
     }
   }
 
+  fn drizzle(&self, view: &FileView<'_>, sink: &mut Sink) {
+    let mut tables: Vec<LocalSymbolId> = Vec::new();
+    for reference in view
+      .facts
+      .references
+      .iter()
+      .filter(|reference| matches!(reference.kind, RefKind::Call | RefKind::MethodCall))
+    {
+      let Some(schema) = table_declaration(view, reference) else { continue };
+      let Some(local) = declare_table(view, sink, reference, schema) else { continue };
+      tables.push(local);
+    }
+    for reference in view.facts.references.iter().filter(|reference| reference.kind == RefKind::MethodCall) {
+      let Some((kind, table)) = drizzle_access(view, reference, &tables) else { continue };
+      let target = NodeRef::Unresolved {
+        path: table,
+        from: reference.from,
+      };
+      let attrs = attrs([("experimental", json!(true)), ("orm", json!("drizzle"))]);
+      sink.edge(
+        kind,
+        view.node(reference.from),
+        target,
+        reference.span,
+        Cert::heuristic(0.6, "drizzle-query-builder"),
+        attrs,
+      );
+    }
+  }
+
   fn sql(&self, view: &FileView<'_>, sink: &mut Sink, reference: &ReferenceFact) {
     let Some(name) = reference.path.last() else { return };
     if !SQL_CALLS.contains(&name.as_str()) {
@@ -194,6 +242,175 @@ impl DbDetector {
     let access = TableAccess { table: model.clone(), write };
     emit_access(view, sink, reference.from, reference.span, access, Cert::heuristic(0.6, "prisma-model-call"));
   }
+}
+
+fn imports_drizzle(facts: &FileFacts) -> bool {
+  facts.imports.iter().any(|import| match import {
+    ImportFact::TsImport { specifier, .. } => specifier == DRIZZLE_PACKAGE || specifier.starts_with("drizzle-orm/"),
+    _ => false,
+  })
+}
+
+enum SchemaName {
+  Default,
+  Named(String),
+}
+
+fn table_declaration(view: &FileView<'_>, reference: &ReferenceFact) -> Option<SchemaName> {
+  match reference.path.as_slice() {
+    [function] if DRIZZLE_TABLES.iter().any(|(name, package)| view.imports_named(function, &[package], name)) => Some(SchemaName::Default),
+    [head, function] if function == "table" && head.starts_with('(') => schema_from_tokens(view, view.span_tokens(reference.span)),
+    [variable, function] if function == "table" => match view.resolve_binding(None, variable)? {
+      Binding::Init(tokens) => schema_from_tokens(view, tokens),
+      Binding::Param(_) => None,
+    },
+    [namespace, function] if DRIZZLE_TABLES.iter().any(|(name, package)| name == function && namespace_imports(view, namespace, package)) => Some(SchemaName::Default),
+    _ => None,
+  }
+}
+
+fn schema_from_tokens(view: &FileView<'_>, tokens: &[Token]) -> Option<SchemaName> {
+  let (callee, rest): (Vec<String>, &[Token]) = match tokens {
+    [function, open, ..] if open.is_punct("(") => (vec![function.text.clone()], &tokens[1..]),
+    [namespace, dot, function, open, ..] if dot.is_punct(".") && open.is_punct("(") => (vec![namespace.text.clone(), function.text.clone()], &tokens[3..]),
+    _ => return None,
+  };
+  let is_schema = match callee.as_slice() {
+    [function] => DRIZZLE_SCHEMAS.iter().any(|(name, package)| view.imports_named(function, &[package], name)),
+    [namespace, function] => DRIZZLE_SCHEMAS
+      .iter()
+      .any(|(name, package)| name == function && namespace_imports(view, namespace, package)),
+    _ => false,
+  };
+  let [_, name, close, ..] = rest else { return None };
+  (is_schema && close.is_punct(")") && name.kind == TokenKind::Str).then(|| SchemaName::Named(name.text.clone()))
+}
+
+fn namespace_imports(view: &FileView<'_>, local: &str, package: &str) -> bool {
+  view
+    .ts_import(local)
+    .is_some_and(|import| import.specifier == package && import.imported == Imported::Namespace)
+}
+
+fn declare_table(view: &FileView<'_>, sink: &mut Sink, reference: &ReferenceFact, schema: SchemaName) -> Option<LocalSymbolId> {
+  let Some(name) = reference.args.first().and_then(literal_text) else {
+    sink.diagnostic(
+      Severity::Info,
+      DYNAMIC_TABLE_NAME,
+      "drizzle table declared with a non-literal name and was not analysed".to_owned(),
+      Some(reference.span),
+    );
+    return None;
+  };
+  let Some(symbol) = reference
+    .from
+    .and_then(|local| view.symbol(local))
+    .filter(|symbol| is_bound_to(view, symbol, reference.span))
+  else {
+    sink.diagnostic(
+      Severity::Info,
+      UNBOUND_TABLE,
+      format!("drizzle table '{name}' is not the initializer of a constant and was not analysed"),
+      Some(reference.span),
+    );
+    return None;
+  };
+  let table = match schema {
+    SchemaName::Default => name,
+    SchemaName::Named(schema) => format!("{schema}.{name}"),
+  };
+  let key = EntityKey::DbTable { name: table };
+  sink.entity(key.clone(), reference.span, Cert::Syntactic, attrs([("experimental", json!(true))]));
+  sink.edge(
+    EdgeKind::MapsToTable,
+    NodeRef::Local(symbol.local),
+    NodeRef::Key(key),
+    reference.span,
+    Cert::Syntactic,
+    attrs([("orm", json!("drizzle"))]),
+  );
+  Some(symbol.local)
+}
+
+fn is_bound_to(view: &FileView<'_>, symbol: &atlas_core::SymbolFact, call: Span) -> bool {
+  if !matches!(symbol.kind, EntityKind::Constant | EntityKind::Variable) {
+    return false;
+  }
+  let tokens = view.span_tokens(symbol.span);
+  let Some(name) = tokens.iter().position(|token| token.is_ident(&symbol.name)) else {
+    return false;
+  };
+  initializer_start(tokens, name + 1)
+    .and_then(|start| tokens.get(start))
+    .is_some_and(|first| first.start == call.start_byte)
+}
+
+fn literal_text(arg: &ArgSummary) -> Option<String> {
+  match arg {
+    ArgSummary::Str(value) => Some(value.clone()),
+    ArgSummary::Template(parts) => parts
+      .iter()
+      .map(|part| match part {
+        TemplatePart::Lit(value) => Some(value.as_str()),
+        TemplatePart::Expr(_) => None,
+      })
+      .collect(),
+    _ => None,
+  }
+}
+
+fn drizzle_access(view: &FileView<'_>, reference: &ReferenceFact, tables: &[LocalSymbolId]) -> Option<(EdgeKind, Vec<String>)> {
+  let (kind, receiver_ok, table) = match reference.path.as_slice() {
+    [receiver @ .., operation] if DRIZZLE_WRITES.contains(&operation.as_str()) && !receiver.is_empty() => {
+      (EdgeKind::WritesTable, is_drizzle_receiver(receiver), table_argument(reference)?)
+    }
+    [receiver @ .., query, table, operation] if query == "query" && DRIZZLE_QUERY_READS.contains(&operation.as_str()) && !receiver.is_empty() => {
+      (EdgeKind::ReadsTable, is_drizzle_receiver(receiver), vec![table.clone()])
+    }
+    [head, operation] if head.starts_with('(') && (operation == "from" || DRIZZLE_JOINS.contains(&operation.as_str())) => {
+      (EdgeKind::ReadsTable, select_chain_is_drizzle(head, operation == "from"), table_argument(reference)?)
+    }
+    _ => return None,
+  };
+  (receiver_ok && is_known_table(view, &table, tables)).then_some((kind, table))
+}
+
+fn table_argument(reference: &ReferenceFact) -> Option<Vec<String>> {
+  match reference.args.first()? {
+    ArgSummary::Path(path) if matches!(path.len(), 1 | 2) => Some(path.clone()),
+    _ => None,
+  }
+}
+
+fn is_known_table(view: &FileView<'_>, table: &[String], tables: &[LocalSymbolId]) -> bool {
+  match table {
+    [name] => view.ts_import(name).is_some_and(|import| import.imported != Imported::Namespace) || view.top_level_named(name).is_some_and(|symbol| tables.contains(&symbol.local)),
+    [namespace, _] => view.ts_import(namespace).is_some_and(|import| import.imported == Imported::Namespace),
+    _ => false,
+  }
+}
+
+fn is_drizzle_receiver(receiver: &[String]) -> bool {
+  let Some(last) = receiver.last() else { return false };
+  let lower = last.to_ascii_lowercase();
+  DRIZZLE_RECEIVERS.contains(&lower.as_str()) || lower.starts_with("db") || lower.ends_with("db") || lower.contains("drizzle")
+}
+
+fn select_chain_is_drizzle(head: &str, direct: bool) -> bool {
+  let text = head.strip_prefix('(').and_then(|text| text.strip_suffix(')')).unwrap_or(head);
+  let Some((start, rest)) = DRIZZLE_SELECTS.iter().filter_map(|select| text.find(select).map(|index| (index, *select))).min() else {
+    return false;
+  };
+  let receiver = &text[..start];
+  let is_path = !receiver.is_empty() && receiver.split('.').all(is_identifier);
+  let receiver_ok = is_path && is_drizzle_receiver(&receiver.split('.').map(str::to_owned).collect::<Vec<_>>());
+  let has_from = text[start + rest.len()..].contains(".from(");
+  receiver_ok && (direct || has_from)
+}
+
+fn is_identifier(text: &str) -> bool {
+  let mut chars = text.chars();
+  chars.next().is_some_and(|first| first.is_alphabetic() || first == '_' || first == '$') && chars.all(|c| c.is_alphanumeric() || c == '_' || c == '$')
 }
 
 fn is_prisma_client(view: &FileView<'_>, reference: &ReferenceFact, client: &str) -> bool {

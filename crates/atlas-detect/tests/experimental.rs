@@ -136,3 +136,120 @@ fn should_extract_tables_from_sql_literals_prisma_calls_and_sqlx_macros() {
     lines(&["table:invoices [heuristic 0.60]", "writes_table save -> table:invoices [heuristic 0.60]"])
   );
 }
+
+const DRIZZLE_SCHEMA: &str = "import { pgTable, pgSchema, text } from 'drizzle-orm/pg-core';\n\
+import * as sqlite from 'drizzle-orm/sqlite-core';\n\
+import { mysqlTable as mysql } from 'drizzle-orm/mysql-core';\n\
+export const users = pgTable('users', { id: text('id') });\n\
+const billing = pgSchema('billing');\n\
+export const invoices = billing.table('invoices', { id: text('id') });\n\
+export const credits = pgSchema('promo').table('credits', {});\n\
+export const notes = sqlite.sqliteTable('notes', {});\n\
+export const sessions = mysql(`sessions`, {});\n";
+
+#[test]
+fn should_map_drizzle_table_constants_to_tables_whatever_the_dialect_import_style() {
+  assert_eq!(
+    render_source(&DbDetector, "svc", "src/schema.ts", DRIZZLE_SCHEMA),
+    lines(&[
+      "maps_to_table credits -> table:promo.credits [syntactic]",
+      "maps_to_table invoices -> table:billing.invoices [syntactic]",
+      "maps_to_table notes -> table:notes [syntactic]",
+      "maps_to_table sessions -> table:sessions [syntactic]",
+      "maps_to_table users -> table:users [syntactic]",
+      "table:billing.invoices [syntactic]",
+      "table:notes [syntactic]",
+      "table:promo.credits [syntactic]",
+      "table:sessions [syntactic]",
+      "table:users [syntactic]",
+    ])
+  );
+}
+
+#[test]
+fn should_report_drizzle_tables_without_a_literal_name_or_a_constant_and_skip_lookalikes() {
+  let dynamic = "import { pgTable } from 'drizzle-orm/pg-core';\nconst name = 'users';\nexport const users = pgTable(name, {});\nexport const tagged = pgTable(`t_${name}`, {});\n";
+  let analyzed = common::analyze("svc", "src/schema.ts", dynamic);
+  let (detection, diagnostics) = common::run(&DbDetector, &analyzed);
+  assert_eq!(detection.edges, []);
+  assert_eq!(
+    diagnostics.iter().map(|diagnostic| diagnostic.code.as_str()).collect::<Vec<_>>(),
+    ["db.drizzle_dynamic_table_name", "db.drizzle_dynamic_table_name"]
+  );
+  let wrapped = "import { pgTable } from 'drizzle-orm/pg-core';\nexport const schema = { users: pgTable('users', {}) };\n";
+  let analyzed = common::analyze("svc", "src/schema.ts", wrapped);
+  let (detection, diagnostics) = common::run(&DbDetector, &analyzed);
+  assert_eq!(detection.edges, []);
+  assert_eq!(
+    diagnostics.iter().map(|diagnostic| diagnostic.code.as_str()).collect::<Vec<_>>(),
+    ["db.drizzle_unbound_table"]
+  );
+  let foreign = "import { pgTable } from './my-orm';\nimport { pgSchema } from 'other-orm';\nexport const users = pgTable('users', {});\nconst s = pgSchema('x');\nexport const t = s.table('t', {});\n";
+  assert_eq!(render_source(&DbDetector, "svc", "src/schema.ts", foreign), Vec::<String>::new());
+}
+
+#[test]
+fn should_read_and_write_drizzle_tables_through_the_query_builder() {
+  let source = "import { eq } from 'drizzle-orm';\nimport { db } from '../db';\nimport { orders, users } from './schema';\n\
+export async function run(tx: Tx) {\n\
+  await db.select().from(users).where(eq(users.id, 1));\n\
+  await db.select({ id: users.id }).from(users).leftJoin(orders, eq(orders.userId, users.id));\n\
+  await db.insert(users).values({});\n\
+  await tx.update(orders).set({});\n\
+  await db.delete(orders);\n\
+  await db.query.users.findMany();\n\
+  await db.query.orders.findFirst({});\n\
+}\n";
+  assert_eq!(
+    render_source(&DbDetector, "svc", "src/repo.ts", source),
+    lines(&[
+      "reads_table run -> ?orders [heuristic 0.60]",
+      "reads_table run -> ?users [heuristic 0.60]",
+      "writes_table run -> ?orders [heuristic 0.60]",
+      "writes_table run -> ?users [heuristic 0.60]",
+    ])
+  );
+}
+
+#[test]
+fn should_resolve_drizzle_namespace_tables_and_same_file_tables() {
+  let source = "import { pgTable } from 'drizzle-orm/pg-core';\nimport * as schema from './schema';\n\
+const local = pgTable('local', {});\n\
+export async function run(db: Db) {\n\
+  await db.insert(schema.users).values({});\n\
+  await db.select().from(local);\n\
+}\n";
+  assert_eq!(
+    render_source(&DbDetector, "svc", "src/repo.ts", source),
+    lines(&[
+      "maps_to_table local -> table:local [syntactic]",
+      "reads_table run -> ?local [heuristic 0.60]",
+      "table:local [syntactic]",
+      "writes_table run -> ?schema::users [heuristic 0.60]",
+    ])
+  );
+}
+
+#[test]
+fn should_not_read_drizzle_access_into_other_receivers_unknown_tables_or_files_without_drizzle() {
+  let lookalikes = "import { eq } from 'drizzle-orm';\nimport { orders, users } from './schema';\n\
+export function run(cache: Map<string, number>, items: Set<string>, rows: Rows) {\n\
+  cache.delete(users);\n\
+  items.delete(users);\n\
+  rows.insert(users);\n\
+  db.insert(unknown);\n\
+  db.insert(users.id);\n\
+  db.insert(makeTable());\n\
+  db.query.orders.findMany();\n\
+  db.query.users.count();\n\
+  report.select().from(users);\n\
+  db.select().from(users);\n\
+}\n";
+  assert_eq!(
+    render_source(&DbDetector, "svc", "src/repo.ts", lookalikes),
+    lines(&["reads_table run -> ?orders [heuristic 0.60]", "reads_table run -> ?users [heuristic 0.60]"])
+  );
+  let other =
+    "import { db } from '../db';\nimport { users } from './schema';\nexport async function run() {\n  await db.insert(users).values({});\n  await db.select().from(users);\n}\n";
+  assert_eq!(render_source(&DbDetector, "svc", "src/repo.ts", other), Vec::<String>::new());
+}
