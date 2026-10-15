@@ -1,7 +1,8 @@
 mod common;
 
 use atlas_core::{Certainty, Confidence, EdgeKind, EntityKind};
-use common::{Synthetic, file, single, ts};
+use atlas_project::DistMapping;
+use common::{Synthetic, file, single, synthetic_with, ts};
 
 const ROOT_PACKAGE: &str = r#"{ "name": "root", "private": true, "workspaces": ["packages/*"] }"#;
 const APP_PACKAGE: &str = r#"{ "name": "@scope/app", "version": "1.0.0", "dependencies": { "@scope/core": "*" } }"#;
@@ -287,4 +288,78 @@ fn should_not_map_scripts_from_a_declaration_only_config() {
     ],
   );
   assert_eq!(typed_imports(&split_builds), (Some(Certainty::Resolved), None));
+}
+
+fn declared(dist: &str, source: &str) -> Vec<DistMapping> {
+  vec![DistMapping {
+    dist: dist.to_owned(),
+    source: source.to_owned(),
+  }]
+}
+
+fn with_workspace_dist(files: &[(String, String)], specifier: &str, mappings: &[DistMapping]) -> Synthetic {
+  let main = format!("import {{ hello }} from '{specifier}';\nexport function main() {{ hello(); }}\n");
+  let mut all: Vec<(&str, &str)> = vec![("package.json", ROOT_PACKAGE), ("packages/app/package.json", APP_PACKAGE), (MAIN, &main)];
+  all.extend(files.iter().map(|(path, content)| (path.as_str(), content.as_str())));
+  synthetic_with(&[("mono", &all)], mappings)
+}
+
+#[test]
+fn should_resolve_a_workspace_package_exactly_through_a_declared_workspace_dist_mapping() {
+  let files = core_with(&[], &["src/index.ts", "src/util/strings.ts"]);
+  let mappings = declared("dist", "src");
+
+  let entry = with_workspace_dist(&files, "@scope/core", &mappings);
+  let deep = with_workspace_dist(&files, "@scope/core/util/strings", &mappings);
+  let main = ts("mono", "@scope/app", &["src", "main"], &["main"], EntityKind::Function);
+  let hello = ts("mono", "@scope/core", &["src", "index"], &["hello"], EntityKind::Function);
+
+  assert_eq!(import_of(&entry, "packages/core/src/index.ts"), Some(Certainty::Resolved));
+  entry.project.assert_certainty(EdgeKind::Calls, main, hello, &Certainty::Resolved);
+  assert_eq!(import_of(&deep, "packages/core/src/util/strings.ts"), Some(Certainty::Resolved));
+}
+
+#[test]
+fn should_map_a_workspace_dist_to_a_differently_named_source_directory() {
+  let files = core_with(&[], &["lib/index.ts"]);
+
+  assert_eq!(
+    import_of(&with_workspace_dist(&files, "@scope/core", &declared("dist", "lib")), "packages/core/lib/index.ts"),
+    Some(Certainty::Resolved)
+  );
+  assert_eq!(
+    import_of(&with_workspace_dist(&files, "@scope/core", &declared("build", "lib")), "packages/core/lib/index.ts"),
+    None
+  );
+}
+
+#[test]
+fn should_keep_the_dist_to_src_guess_when_the_declared_workspace_dist_names_no_existing_source() {
+  let files = core_with(&[], &["src/index.ts"]);
+
+  let synthetic = with_workspace_dist(&files, "@scope/core", &declared("dist", "lib"));
+
+  assert_eq!(import_of(&synthetic, "packages/core/src/index.ts"), dist_to_src());
+}
+
+#[test]
+fn should_prefer_the_tsconfig_mapping_over_a_declared_workspace_dist_mapping() {
+  let files = core_with(&[("tsconfig.json", OUT_DIR_SRC)], &["src/index.ts", "lib/index.ts"]);
+
+  let synthetic = with_workspace_dist(&files, "@scope/core", &declared("dist", "lib"));
+
+  assert_eq!(import_of(&synthetic, "packages/core/src/index.ts"), Some(Certainty::Resolved));
+  assert_eq!(import_of(&synthetic, "packages/core/lib/index.ts"), None);
+}
+
+#[test]
+fn should_not_mark_a_workspace_dist_hit_exact_when_several_mappings_name_existing_sources() {
+  let files = core_with(&[], &["src/index.ts", "lib/index.ts"]);
+  let mut mappings = declared("dist", "lib");
+  mappings.extend(declared("dist", "src"));
+
+  let synthetic = with_workspace_dist(&files, "@scope/core", &mappings);
+
+  assert_eq!(import_of(&synthetic, "packages/core/src/index.ts"), dist_to_src());
+  assert_eq!(import_of(&synthetic, "packages/core/lib/index.ts"), None);
 }

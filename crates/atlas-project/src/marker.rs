@@ -44,7 +44,7 @@ impl RepoFile {
     for (name, value) in table {
       match (name.as_str(), value) {
         ("project", Value::String(project)) => file.project = Some(project),
-        ("project", other) => return Err(invalid(format!("`project` must be a string, got {other}"))),
+        ("project", other) => return Err(invalid(format!("`project` must be a string, got {}", atlas_detect::describe_value(&other)))),
         ("index", Value::Table(index)) => file.read_index(index),
         ("index", _) => file.warnings.push("index ignored: it must be a table".to_owned()),
         ("detect", Value::Table(detect)) => file.read_detect(detect),
@@ -67,7 +67,7 @@ impl RepoFile {
             self.languages = Some(languages);
             Ok(())
           }
-          Err(_) => Err(format!("expected language names such as [\"rust\", \"typescript\"], got {value}")),
+          Err(_) => Err("expected language names such as [\"rust\", \"typescript\"]".to_owned()),
         },
         _ => Err("unknown key".to_owned()),
       };
@@ -157,12 +157,9 @@ mod tests {
 
     assert_eq!((file.include.len(), file.exclude.len(), file.languages), (0, 0, None));
     assert_eq!(file.warnings.len(), 3);
-    assert_eq!(file.warnings[0], "index.exclude ignored: expected an array of strings, got \"dist\"");
-    assert!(file.warnings[1].starts_with("index.include ignored: invalid glob \"{a\""), "{:?}", file.warnings);
-    assert_eq!(
-      file.warnings[2],
-      "index.languages ignored: expected language names such as [\"rust\", \"typescript\"], got [\"cobol\"]"
-    );
+    assert_eq!(file.warnings[0], "index.exclude ignored: expected an array of strings, got a string");
+    assert!(file.warnings[1].starts_with("index.include ignored: invalid glob: "), "{:?}", file.warnings);
+    assert_eq!(file.warnings[2], "index.languages ignored: expected language names such as [\"rust\", \"typescript\"]");
   }
 
   #[test]
@@ -171,7 +168,7 @@ mod tests {
     assert!(file.route_families.is_empty());
     assert_eq!(
       file.warnings,
-      ["detect.route_families ignored: a route family name is a lowercase letter followed by lowercase letters, digits, - or _ (at most 64 characters), got \"Acme Http\""]
+      ["detect.route_families ignored: a route family name is a lowercase letter followed by lowercase letters, digits, - or _ (at most 64 characters)"]
     );
     assert_eq!(parse("detect = 1\n").warnings, ["detect ignored: it must be a table"]);
   }

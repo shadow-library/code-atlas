@@ -3,6 +3,7 @@ use std::path::Path;
 use serde::Serialize;
 use toml::Value;
 
+use crate::manifest::DistMapping;
 use crate::registry::{LspUnit, ProjectSettings};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -34,7 +35,7 @@ const fn key(name: &'static str, class: KeyClass, kind: ValueKind) -> KeySpec {
   KeySpec { name, class, kind }
 }
 
-pub(crate) const PROJECT_KEYS: [KeySpec; 18] = [
+pub(crate) const PROJECT_KEYS: [KeySpec; 19] = [
   key("max_file_bytes", KeyClass::Fact, ValueKind::Number),
   key("llm.enabled", KeyClass::Runtime, ValueKind::Flag),
   key("llm.provider", KeyClass::Runtime, ValueKind::Text),
@@ -53,6 +54,7 @@ pub(crate) const PROJECT_KEYS: [KeySpec; 18] = [
   key("lsp.check_timeout_secs", KeyClass::Runtime, ValueKind::Number),
   key("lsp.exclude", KeyClass::Runtime, ValueKind::List),
   key("detect.route_families", KeyClass::Fact, ValueKind::List),
+  key("resolve.workspace_dist", KeyClass::Fact, ValueKind::List),
 ];
 
 pub(crate) const MCP_KEYS: [KeySpec; 4] = [
@@ -210,6 +212,7 @@ impl Keyed for ProjectSettings {
     match key {
       "max_file_bytes" => Some(number(self.max_file_bytes)),
       "detect.route_families" => Some(words(&self.detect.route_families)),
+      "resolve.workspace_dist" => Some(mappings(&self.resolve.workspace_dist)),
       "llm.enabled" => Some(Value::Boolean(self.llm.enabled)),
       "llm.provider" => text(&self.llm.provider),
       "llm.model" => text(&self.llm.model),
@@ -240,6 +243,7 @@ impl Keyed for ProjectSettings {
     match key {
       "max_file_bytes" => self.max_file_bytes = as_number(value)?,
       "detect.route_families" => self.detect.route_families = as_words(value)?,
+      "resolve.workspace_dist" => self.resolve.workspace_dist = as_mappings(value)?,
       "llm.enabled" => self.llm.enabled = as_flag(value)?,
       "llm.provider" => self.llm.provider = Some(as_text(value)?),
       "llm.model" => self.llm.model = Some(as_text(value)?),
@@ -254,7 +258,7 @@ impl Keyed for ProjectSettings {
         self.lsp.unit = match as_text(value)?.as_str() {
           "project" => LspUnit::Project,
           "repo" => LspUnit::Repo,
-          other => return Err(format!("expected \"project\" or \"repo\", got {other:?}")),
+          _ => return Err("expected \"project\" or \"repo\"".to_owned()),
         }
       }
       "lsp.max_servers" => self.lsp.max_servers = as_size(as_number(value)?)?,
@@ -292,9 +296,13 @@ pub(crate) fn parse_env_value(kind: ValueKind, raw: &str) -> Result<Value, Strin
     ValueKind::Flag => match raw.trim().to_ascii_lowercase().as_str() {
       "true" | "1" | "on" | "yes" => Ok(Value::Boolean(true)),
       "false" | "0" | "off" | "no" => Ok(Value::Boolean(false)),
-      _ => Err(format!("expected true or false, got {raw:?}")),
+      _ => Err("expected true or false, got a string".to_owned()),
     },
-    ValueKind::Number => raw.trim().parse::<i64>().map(Value::Integer).map_err(|_| format!("expected a whole number, got {raw:?}")),
+    ValueKind::Number => raw
+      .trim()
+      .parse::<i64>()
+      .map(Value::Integer)
+      .map_err(|_| "expected a whole number, got a string".to_owned()),
     ValueKind::Text => Ok(Value::String(raw.to_owned())),
     ValueKind::List => parse_array(raw),
     ValueKind::TextOrList if raw.trim_start().starts_with('[') => parse_array(raw),
@@ -307,7 +315,7 @@ fn parse_array(raw: &str) -> Result<Value, String> {
     .ok()
     .and_then(|mut table| table.remove("value"))
     .filter(Value::is_array)
-    .ok_or_else(|| format!("expected a TOML array such as [\"a\", \"b\"], got {raw:?}"))
+    .ok_or_else(|| "expected a TOML array such as [\"a\", \"b\"], got a string".to_owned())
 }
 
 fn number(value: u64) -> Value {
@@ -319,14 +327,16 @@ fn words(values: &[String]) -> Value {
 }
 
 pub(crate) fn as_flag(value: &Value) -> Result<bool, String> {
-  value.as_bool().ok_or_else(|| format!("expected true or false, got {value}"))
+  value
+    .as_bool()
+    .ok_or_else(|| format!("expected true or false, got {}", atlas_detect::describe_value(value)))
 }
 
 fn as_number(value: &Value) -> Result<u64, String> {
   value
     .as_integer()
     .and_then(|number| u64::try_from(number).ok())
-    .ok_or_else(|| format!("expected a non-negative whole number, got {value}"))
+    .ok_or_else(|| format!("expected a non-negative whole number, got {}", atlas_detect::describe_value(value)))
 }
 
 fn as_positive(value: &Value) -> Result<u64, String> {
@@ -345,12 +355,42 @@ fn as_unechoed_text(value: &Value) -> Result<String, String> {
 }
 
 fn as_text(value: &Value) -> Result<String, String> {
-  value.as_str().map(str::to_owned).ok_or_else(|| format!("expected a string, got {value}"))
+  value
+    .as_str()
+    .map(str::to_owned)
+    .ok_or_else(|| format!("expected a string, got {}", atlas_detect::describe_value(value)))
 }
 
 pub(crate) fn as_words(value: &Value) -> Result<Vec<String>, String> {
-  let array = value.as_array().ok_or_else(|| format!("expected an array of strings, got {value}"))?;
+  let array = value
+    .as_array()
+    .ok_or_else(|| format!("expected an array of strings, got {}", atlas_detect::describe_value(value)))?;
   array.iter().map(as_text).collect()
+}
+
+fn mappings(values: &[DistMapping]) -> Value {
+  Value::Array(
+    values
+      .iter()
+      .map(|mapping| {
+        let mut table = toml::Table::new();
+        table.insert("dist".to_owned(), Value::String(mapping.dist.clone()));
+        table.insert("source".to_owned(), Value::String(mapping.source.clone()));
+        Value::Table(table)
+      })
+      .collect(),
+  )
+}
+
+fn as_mappings(value: &Value) -> Result<Vec<DistMapping>, String> {
+  const SHAPE: &str = "expected an array of tables such as [{ dist = \"dist\", source = \"src\" }]";
+  let array = value.as_array().ok_or_else(|| format!("{SHAPE}, got {}", atlas_detect::describe_value(value)))?;
+  let mappings = array
+    .iter()
+    .map(|entry| entry.clone().try_into::<DistMapping>().map_err(|_| SHAPE.to_owned()))
+    .collect::<Result<Vec<_>, _>>()?;
+  DistMapping::validate_all(&mappings)?;
+  Ok(mappings)
 }
 
 fn as_tools(value: &Value) -> Result<ToolsSetting, String> {
@@ -359,7 +399,7 @@ fn as_tools(value: &Value) -> Result<ToolsSetting, String> {
       "core" => Ok(ToolsSetting::Core),
       "read-only" => Ok(ToolsSetting::ReadOnly),
       "full" => Ok(ToolsSetting::Full),
-      other => Err(format!("expected \"core\", \"read-only\", \"full\" or an array of tool names, got {other:?}")),
+      _ => Err("expected \"core\", \"read-only\", \"full\" or an array of tool names".to_owned()),
     };
   }
   let tools = as_words(value)?;
@@ -373,7 +413,7 @@ fn choice(value: &Value, options: &[&str]) -> Result<(), String> {
   let text = as_text(value)?;
   match options.contains(&text.as_str()) {
     true => Ok(()),
-    false => Err(format!("expected one of {}, got {text:?}", options.join(", "))),
+    false => Err(format!("expected one of {}", options.join(", "))),
   }
 }
 
@@ -381,8 +421,8 @@ const CLAUDE_HOOKS: [&str; 2] = ["auto-approve", "remind"];
 
 fn check_hooks(value: &Value) -> Result<(), String> {
   let hooks = as_words(value)?;
-  if let Some(unknown) = hooks.iter().find(|hook| !CLAUDE_HOOKS.contains(&hook.as_str())) {
-    return Err(format!("expected hooks from {}, got {unknown:?}", CLAUDE_HOOKS.join(", ")));
+  if hooks.iter().any(|hook| !CLAUDE_HOOKS.contains(&hook.as_str())) {
+    return Err(format!("expected hooks from {}", CLAUDE_HOOKS.join(", ")));
   }
   match hooks.iter().enumerate().any(|(index, hook)| hooks[..index].contains(hook)) {
     true => Err("each hook may be listed once".to_owned()),
@@ -393,7 +433,7 @@ fn check_hooks(value: &Value) -> Result<(), String> {
 fn check_binary(value: &Value) -> Result<(), String> {
   let binary = as_text(value)?;
   match binary.is_empty() || (binary.contains('/') && !Path::new(&binary).is_absolute()) {
-    true => Err(format!("expected a command name such as \"catl\" or an absolute path, got {binary:?}")),
+    true => Err("expected a command name such as \"catl\" or an absolute path".to_owned()),
     false => Ok(()),
   }
 }
@@ -410,12 +450,79 @@ mod tests {
     changed.llm.model = Some("m".to_owned());
     changed.llm.openai_base_url = Some("http://localhost".to_owned());
     changed.llm.api_key_env = Some("KEY".to_owned());
+    changed.resolve.workspace_dist = vec![DistMapping {
+      dist: "dist".to_owned(),
+      source: "src".to_owned(),
+    }];
     for spec in PROJECT_KEYS {
       let value = changed.get(spec.name).unwrap_or_else(|| panic!("{} has no value", spec.name));
       let mut target = ProjectSettings::default();
       target.set(spec.name, &value).unwrap();
       assert_eq!(target.get(spec.name), Some(value), "{}", spec.name);
     }
+  }
+
+  #[test]
+  fn should_reject_workspace_dist_values_that_are_not_relative_dist_source_pairs_without_echoing_them() {
+    let cases = [
+      ("[{ dist = \"dist\" }]", "expected an array of tables such as [{ dist = \"dist\", source = \"src\" }]"),
+      (
+        "[{ dist = \"dist\", source = \"src\", extra = 1 }]",
+        "expected an array of tables such as [{ dist = \"dist\", source = \"src\" }]",
+      ),
+      ("[\"sk-FAKEKEY123\"]", "expected an array of tables such as [{ dist = \"dist\", source = \"src\" }]"),
+      (
+        "\"sk-FAKEKEY123\"",
+        "expected an array of tables such as [{ dist = \"dist\", source = \"src\" }], got a string",
+      ),
+      (
+        "[{ dist = \"../dist\", source = \"src\" }]",
+        "resolve.workspace_dist: dist must be a relative directory without \".\", \"..\" or empty segments",
+      ),
+      (
+        "[{ dist = \"dist\", source = \"/src\" }]",
+        "resolve.workspace_dist: source must be a relative directory without \".\", \"..\" or empty segments",
+      ),
+      (
+        "[{ dist = \"dist\", source = \"src\" }, { dist = \"dist\", source = \"lib\" }]",
+        "resolve.workspace_dist: each dist must be listed once and no dist may lie inside another",
+      ),
+      (
+        "[{ dist = \"dist\", source = \"src\" }, { dist = \"dist/esm\", source = \"lib\" }]",
+        "resolve.workspace_dist: each dist must be listed once and no dist may lie inside another",
+      ),
+      (
+        "[{ dist = \"dist/\", source = \"src\" }]",
+        "resolve.workspace_dist: dist must be a relative directory without \".\", \"..\" or empty segments",
+      ),
+    ];
+    for (text, message) in cases {
+      let value = toml::from_str::<toml::Table>(&format!("value = {text}")).unwrap().remove("value").unwrap();
+      assert_eq!(ProjectSettings::default().set("resolve.workspace_dist", &value), Err(message.to_owned()), "{text}");
+    }
+  }
+
+  #[test]
+  fn should_not_echo_raw_environment_text_in_parse_errors() {
+    for (kind, raw) in [(ValueKind::Flag, "sk-FAKEKEY123"), (ValueKind::Number, "sk-FAKEKEY123"), (ValueKind::List, "sk-FAKEKEY123")] {
+      let message = parse_env_value(kind, raw).unwrap_err();
+      assert!(message.ends_with(", got a string") && !message.contains("FAKEKEY"), "{message}");
+    }
+  }
+
+  #[test]
+  fn should_describe_a_wrongly_typed_value_by_its_type_and_never_echo_a_string_or_table() {
+    let secret = Value::String("sk-FAKEKEY123".to_owned());
+    let table: Value = toml::from_str::<toml::Table>("k = { token = \"sk-FAKEKEY123\" }").unwrap().remove("k").unwrap();
+    let list = Value::Array(vec![secret.clone()]);
+
+    assert_eq!(as_flag(&secret), Err("expected true or false, got a string".to_owned()));
+    assert_eq!(as_number(&table), Err("expected a non-negative whole number, got a table".to_owned()));
+    assert_eq!(as_text(&list), Err("expected a string, got an array".to_owned()));
+    assert_eq!(as_words(&secret), Err("expected an array of strings, got a string".to_owned()));
+    assert_eq!(as_words(&Value::Array(vec![table.clone()])), Err("expected a string, got a table".to_owned()));
+    assert_eq!(as_number(&Value::Integer(-3)), Err("expected a non-negative whole number, got -3".to_owned()));
+    assert_eq!(as_tools(&secret), Err("expected \"core\", \"read-only\", \"full\" or an array of tool names".to_owned()));
   }
 
   #[test]
@@ -458,10 +565,10 @@ mod tests {
       Ok(Value::Array(vec![Value::String("a".to_owned()), Value::String("b".to_owned())]))
     );
     assert_eq!(parse_env_value(ValueKind::TextOrList, "core"), Ok(Value::String("core".to_owned())));
-    assert_eq!(parse_env_value(ValueKind::Flag, "maybe"), Err("expected true or false, got \"maybe\"".to_owned()));
+    assert_eq!(parse_env_value(ValueKind::Flag, "maybe"), Err("expected true or false, got a string".to_owned()));
     assert_eq!(
       parse_env_value(ValueKind::List, "a,b"),
-      Err("expected a TOML array such as [\"a\", \"b\"], got \"a,b\"".to_owned())
+      Err("expected a TOML array such as [\"a\", \"b\"], got a string".to_owned())
     );
   }
 
@@ -473,7 +580,7 @@ mod tests {
     assert!(check("agents.binary", Value::String("bin/catl".to_owned())).is_err());
     assert_eq!(
       check("worktrees.mode", Value::String("copy".to_owned())),
-      Err("expected one of overlay, main, off, got \"copy\"".to_owned())
+      Err("expected one of overlay, main, off".to_owned())
     );
     assert_eq!(check("worktrees.gc_after_days", Value::Integer(0)), Err("must be greater than 0".to_owned()));
     let hooks = |names: &[&str]| Value::Array(names.iter().map(|name| Value::String((*name).to_owned())).collect());
@@ -481,7 +588,7 @@ mod tests {
     assert_eq!(check("agents.claude.hooks", hooks(&[])), Ok(()));
     assert_eq!(
       check("agents.claude.hooks", hooks(&["activate"])),
-      Err("expected hooks from auto-approve, remind, got \"activate\"".to_owned())
+      Err("expected hooks from auto-approve, remind".to_owned())
     );
     assert_eq!(check("agents.claude.hooks", hooks(&["remind", "remind"])), Err("each hook may be listed once".to_owned()));
   }

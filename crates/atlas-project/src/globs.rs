@@ -21,12 +21,12 @@ impl PathGlobs {
     for line in lines {
       builder.add_line(None, &line).map_err(|error| ProjectError::InvalidGlob {
         pattern: line.clone(),
-        message: error.to_string(),
+        message: glob_reason(&error),
       })?;
     }
     let matcher = builder.build().map_err(|error| ProjectError::InvalidGlob {
       pattern: String::new(),
-      message: error.to_string(),
+      message: glob_reason(&error),
     })?;
     Ok(Self { matcher })
   }
@@ -41,6 +41,14 @@ impl PathGlobs {
 
   pub fn matches_within(&self, relative: &str, is_dir: bool) -> bool {
     self.matcher.matched_path_or_any_parents(relative, is_dir).is_ignore()
+  }
+}
+
+fn glob_reason(error: &ignore::Error) -> String {
+  match error {
+    ignore::Error::Glob { err, .. } => err.clone(),
+    ignore::Error::WithLineNumber { err, .. } | ignore::Error::WithPath { err, .. } | ignore::Error::WithDepth { err, .. } => glob_reason(err),
+    _ => "the pattern is not valid".to_owned(),
   }
 }
 
@@ -83,6 +91,8 @@ mod tests {
   #[test]
   fn should_reject_malformed_patterns() {
     assert!(matches!(PathGlobs::new(&["{a"]), Err(ProjectError::InvalidGlob { pattern, .. }) if pattern == "{a"));
+    let message = PathGlobs::new(&["{sk-FAKEKEY123"]).unwrap_err().to_string();
+    assert!(message.starts_with("invalid glob: ") && !message.contains("FAKEKEY"), "{message}");
   }
 
   #[test]

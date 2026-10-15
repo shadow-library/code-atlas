@@ -19,6 +19,9 @@ fn show(ctx: &Context, args: ConfigShowArgs) -> CliResult<Outcome> {
   for warning in &report.warnings {
     note(format!("warning: {warning}"));
   }
+  for error in &report.errors {
+    note(format!("error: {error}"));
+  }
   let entries: Vec<&ConfigEntry> = report.entries.iter().filter(|entry| args.effective || !entry.is_built_in()).collect();
   if args.json {
     emit_json(&json!({ "project": project, "entries": entries }))?;

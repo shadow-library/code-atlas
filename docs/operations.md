@@ -160,8 +160,8 @@ Every setting resolves through these layers, later ones winning:
 
 Two rules cut across the order:
 
-- **Fact keys** change what is indexed: `max_file_bytes`, `detect.route_families` (with the definitions of the families it names) and each repo's `include`, `exclude` and `languages`. They stop at the repo layer and enter the project fingerprint, so changing them makes every engine re-adopt the project and re-index what changed. Environment variables and flags never change them (`CODE_ATLAS_MAX_FILE_BYTES` is ignored with a warning), so two processes with different environments cannot write different facts into one database.
-- **A repository file is data only.** `.code-atlas.toml` may set `project`, `[index] include`, `exclude`, `languages` (for its own repo), `[detect] route_families` (added to the project's list) and `max_file_bytes` (for the whole project, applied only when every repo that sets it agrees). It can only name a route family; the definition always comes from the user's config directory. Executables (`lsp.typescript_command`, `agents.binary`), credential settings (`llm.api_key_env`, `llm.openai_base_url`) and machine settings (`lsp.*`, `scip.*`, `llm.*`, `mcp.*`) are ignored there with a warning, because cloning a repository must never run its command or redirect a key.
+- **Fact keys** change what is indexed: `max_file_bytes`, `detect.route_families` (with the definitions of the families it names), `resolve.workspace_dist` and each repo's `include`, `exclude` and `languages`. They stop at the repo layer and enter the project fingerprint, so changing them makes every engine re-adopt the project and re-index what changed. Environment variables and flags never change them (`CODE_ATLAS_MAX_FILE_BYTES` is ignored with a warning), so two processes with different environments cannot write different facts into one database.
+- **A repository file is data only.** `.code-atlas.toml` may set `project`, `[index] include`, `exclude`, `languages` (for its own repo), `[detect] route_families` (added to the project's list), `[resolve] workspace_dist` and `max_file_bytes` (both for the whole project, applied only when every repo that sets them agrees). It can only name a route family; the definition always comes from the user's config directory. Executables (`lsp.typescript_command`, `agents.binary`), credential settings (`llm.api_key_env`, `llm.openai_base_url`) and machine settings (`lsp.*`, `scip.*`, `llm.*`, `mcp.*`) are ignored there with a warning, because cloning a repository must never run its command or redirect a key.
 
 List values combine instead of replacing: a repo's effective `exclude` is its `projects.toml` globs, then `[defaults] exclude`, then the repo file's `[index] exclude`; `include` likewise without the defaults. A repo file's `languages` replaces the registry's.
 
@@ -300,7 +300,7 @@ Enable a family with the fact key `detect.route_families`:
 
 - for every project: `config.toml` `[defaults.detect] route_families = ["acme-http"]`;
 - for one project: `projects.toml` `[project.settings.detect] route_families = ["acme-http"]` (edit the file; `project config` has no flag for it);
-- from a repository: `.code-atlas.toml` `[detect] route_families = ["acme-http"]`, which adds to the project's list.
+- from a repository: `.code-atlas.toml` `[detect] route_families = ["acme-http"]`, which adds to the project's list for the whole project, not only for that repository.
 
 The effective list is the project value plus every repo file's list; it applies to all repos of the project, which is harmless because matching is anchored on imports of the family's packages. Environment variables cannot set it (`CODE_ATLAS_DETECT_ROUTE_FAMILIES` is ignored with a warning). An enabled name without a file is ignored with a warning and reported by `status`. `catl config show --origin` lists `detect.route_families` with every layer that contributed; `doctor` lists the declared families.
 
@@ -417,6 +417,24 @@ languages = ["typescript"]
 ```
 
 The registry denies unknown fields. Default excluded directories: `node_modules target dist build .git .next coverage vendor` (an `include` pattern naming one re-enables it); hidden files and `.gitignore`d files are skipped; symlinks and files above `max_file_bytes` are skipped and listed in `status`.
+
+`resolve.workspace_dist` declares where a workspace package's build output maps back to its sources when no tsconfig does (typically a build that passes `outDir` on the command line):
+
+```toml
+# config.toml (every project)
+[defaults.resolve]
+workspace_dist = [{ dist = "dist", source = "src" }]
+
+# projects.toml (one project)
+[project.settings.resolve]
+workspace_dist = [{ dist = "dist", source = "src" }]
+
+# .code-atlas.toml (a repository)
+[resolve]
+workspace_dist = [{ dist = "dist", source = "src" }]
+```
+
+Both directories are relative to the package root, with no `.`, `..` or empty segments; each `dist` is listed once and none lies inside another. A package entry that lies under `<package>/<dist>` and does not exist is mapped to `<package>/<source>` with the emitted-extension rules (`.js`/`.d.ts` to `.ts`, `.tsx`, `.js`, `.jsx`, an extensionless entry or directory to `index`), and the import is `resolved` instead of the heuristic `dist-to-src` when exactly one source file exists across the mappings (several candidates stay `dist-to-src`). A tsconfig that declares the mapping takes precedence; a mapping whose source file does not exist stays `dist-to-src`. It is a fact key: it enters the project fingerprint, changes the package graph (so every file of the project is re-resolved), and environment variables and flags never set it. The mapping applies to the whole project, whichever repository's file declares it (as for route families); two repository files that declare different lists conflict and both are ignored with a warning that names the files, not the values.
 
 ## Language servers
 

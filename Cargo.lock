@@ -132,6 +132,7 @@ name = "atlas-cli"
 version = "0.1.0"
 dependencies = [
  "atlas-core",
+ "atlas-detect",
  "atlas-edit",
  "atlas-engine",
  "atlas-ide",

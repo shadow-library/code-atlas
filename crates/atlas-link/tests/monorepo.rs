@@ -312,6 +312,51 @@ fn should_join_calls_on_an_imported_client_to_the_base_and_types_of_its_definiti
 }
 
 #[test]
+fn should_prefer_the_file_over_the_directory_index_when_both_define_the_imported_client() {
+  let scratch = tempfile::tempdir().unwrap();
+  let source = scratch.path().join("source");
+  write_tree(&source, &[("mono/package.json", r#"{ "name": "mono", "private": true, "workspaces": ["apps/*"] }"#)]);
+  let orders = nest_app("mono/apps/orders-api", "@acme/orders-api", "api", "itemId");
+  let borrowed: Vec<(&str, &str)> = orders.iter().map(|(path, content)| (path.as_str(), content.as_str())).collect();
+  write_tree(&source, &borrowed);
+  write_tree(
+    &source,
+    &[
+      (
+        "mono/apps/web/package.json",
+        r#"{ "name": "@acme/web", "version": "1.0.0", "dependencies": { "openapi-fetch": "^0.13.0" } }"#,
+      ),
+      (
+        "mono/apps/web/src/api.ts",
+        "import createClient from 'openapi-fetch';\nimport type { paths } from '../../orders-api/src/openapi';\n\nexport const booksApi = createClient<paths>({ baseUrl: '/api/' });\n",
+      ),
+      (
+        "mono/apps/web/src/api/index.ts",
+        "import createClient from 'openapi-fetch';\nimport type { paths } from '../../../orders-api/src/openapi';\n\nexport const booksApi = createClient<paths>({ baseUrl: '/api/' });\n",
+      ),
+      (
+        "mono/apps/web/src/page.ts",
+        "import { booksApi } from './api';\n\nexport const loadPageItem = (itemId: string) => booksApi.GET('/items/{itemId}', { params: { path: { itemId } } });\n",
+      ),
+    ],
+  );
+  let client = "[client]\nfiles = [\"apps/web/src/api.ts\", \"apps/web/src/api/*.ts\"]\nexports = [\"booksApi\"]\nmethods = [\"GET\"]\n";
+  let mut settings = ProjectSettings::default();
+  settings.detect.route_families = vec!["acme-web-client".to_owned()];
+  settings.detect.families = vec![DecoratorFamily::parse("acme-web-client", client).unwrap().family];
+  let indexed = index_tree_with(scratch.path(), "mono", &source, &["mono"], settings);
+
+  let facts = pass_facts(&indexed.engine);
+  let defined_in: Vec<&Value> = facts
+    .edges
+    .iter()
+    .filter(|edge| edge.kind == EdgeKind::CallsEndpoint)
+    .filter_map(|edge| edge.attrs.get("client_defined_in"))
+    .collect();
+  assert_eq!(defined_in, [&json!("other:typed_client:mono:apps/web/src/api.ts#booksApi")]);
+}
+
+#[test]
 fn should_not_annotate_packages_in_a_repository_with_one_manifest() {
   let scratch = tempfile::tempdir().unwrap();
   let indexed = monorepo(scratch.path());

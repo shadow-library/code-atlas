@@ -26,7 +26,8 @@ pub(crate) fn framework_of_import(specifier: &str) -> Option<&'static str> {
     "vitest" => Some("vitest"),
     "@jest/globals" => Some("jest"),
     "mocha" => Some("mocha"),
-    "node:test" | "bun:test" => Some(UNKNOWN_FRAMEWORK),
+    "bun:test" => Some("bun"),
+    "node:test" => Some("node"),
     _ => None,
   }
 }
@@ -103,7 +104,8 @@ mod tests {
     assert_eq!(framework_of_import("vitest"), Some("vitest"));
     assert_eq!(framework_of_import("@jest/globals"), Some("jest"));
     assert_eq!(framework_of_import("mocha"), Some("mocha"));
-    assert_eq!(framework_of_import("node:test"), Some(UNKNOWN_FRAMEWORK));
+    assert_eq!(framework_of_import("node:test"), Some("node"));
+    assert_eq!(framework_of_import("bun:test"), Some("bun"));
     assert_eq!(framework_of_import("chai"), None);
   }
 }

@@ -6,12 +6,17 @@ pub(crate) fn clone_graph(graph: &PackageGraph) -> PackageGraph {
     packages: graph.packages.clone(),
     workspaces: graph.workspaces.clone(),
     tsconfigs: graph.tsconfigs.clone(),
+    workspace_dist: graph.workspace_dist.clone(),
     warnings: graph.warnings.clone(),
   }
 }
 
 pub(crate) fn same_graph(left: &PackageGraph, right: &PackageGraph) -> bool {
-  left.packages == right.packages && left.workspaces == right.workspaces && left.tsconfigs == right.tsconfigs && left.warnings == right.warnings
+  left.packages == right.packages
+    && left.workspaces == right.workspaces
+    && left.tsconfigs == right.tsconfigs
+    && left.workspace_dist == right.workspace_dist
+    && left.warnings == right.warnings
 }
 
 pub(crate) fn graph_fingerprint(graph: &PackageGraph) -> String {

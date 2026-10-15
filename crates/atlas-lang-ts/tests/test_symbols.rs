@@ -90,6 +90,10 @@ fn should_take_the_framework_from_imports() {
     "const { describe, it } = require('mocha');\nimport 'mocha';\ndescribe('m', () => { it('x', () => {}); });\n",
   );
   assert!(tests_of(&mocha).iter().all(|(_, framework, ..)| framework == "mocha"));
+  let bun = analyze("a.test.ts", "import { test } from 'bun:test';\ntest('x', () => {});\n");
+  assert_eq!(tests_of(&bun)[0].1, "bun");
+  let node = analyze("a.test.ts", "import test from 'node:test';\ntest('x', () => {});\n");
+  assert_eq!(tests_of(&node)[0].1, "node");
   let unknown = analyze("tests/a.ts", "describe('m', () => {});\n");
   assert_eq!(tests_of(&unknown)[0].1, "unknown");
   let vitest_globals = analyze("src/a.spec.ts", "it('x', () => { vi.fn(); });\n");

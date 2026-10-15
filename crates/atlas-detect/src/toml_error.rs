@@ -13,7 +13,18 @@ pub fn describe_toml_error(text: &str, message: &str, span: Option<Range<usize>>
   format!("line {line}, column {column}: {message}")
 }
 
+pub fn describe_value(value: &toml::Value) -> String {
+  match value {
+    toml::Value::Boolean(_) | toml::Value::Integer(_) | toml::Value::Float(_) => value.to_string(),
+    toml::Value::String(_) => "a string".to_owned(),
+    toml::Value::Datetime(_) => "a datetime".to_owned(),
+    toml::Value::Array(_) => "an array".to_owned(),
+    toml::Value::Table(_) => "a table".to_owned(),
+  }
+}
+
 fn redact_echoed_string(message: &str) -> String {
+  let message = redact_quoted(message, &["unknown variant `", "unknown field `"]);
   const MARKER: &str = "string \"";
   let Some(start) = message.find(MARKER) else { return message.to_owned() };
   let value_start = start + MARKER.len();
@@ -22,6 +33,17 @@ fn redact_echoed_string(message: &str) -> String {
     true => format!("{}...{}", &message[..value_start], &message[value_end..]),
     false => message.to_owned(),
   }
+}
+
+fn redact_quoted(message: &str, markers: &[&str]) -> String {
+  let mut redacted = message.to_owned();
+  for marker in markers {
+    let Some(start) = redacted.find(marker) else { continue };
+    let value_start = start + marker.len();
+    let Some(length) = redacted[value_start..].find('`') else { continue };
+    redacted.replace_range(value_start..value_start + length, "...");
+  }
+  redacted
 }
 
 #[cfg(test)]
@@ -46,6 +68,25 @@ mod tests {
       "invalid type: string \"...\", expected a sequence"
     );
     assert_eq!(redact_echoed_string("missing field `name`"), "missing field `name`");
+  }
+
+  #[test]
+  fn should_describe_strings_arrays_and_tables_by_type_and_scalars_by_value() {
+    let table: toml::Table = toml::from_str("s = \"sk-FAKEKEY123\"\na = [\"sk-FAKEKEY123\"]\nt = { k = \"sk-FAKEKEY123\" }\nn = 7\nb = true\nf = 1.5\n").unwrap();
+    let described: Vec<String> = ["s", "a", "t", "n", "b", "f"].iter().map(|key| describe_value(&table[*key])).collect();
+    assert_eq!(described, ["a string", "an array", "a table", "7", "true", "1.5"]);
+  }
+
+  #[test]
+  fn should_redact_the_name_serde_echoes_for_an_unknown_field_or_variant() {
+    assert_eq!(
+      redact_echoed_string("unknown variant `sk-FAKEKEY123`, expected `project` or `repo`"),
+      "unknown variant `...`, expected `project` or `repo`"
+    );
+    assert_eq!(
+      redact_echoed_string("unknown field `sk-FAKEKEY123`, expected one of `a`, `b`"),
+      "unknown field `...`, expected one of `a`, `b`"
+    );
   }
 
   #[test]

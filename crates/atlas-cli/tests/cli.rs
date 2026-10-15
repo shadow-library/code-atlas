@@ -1098,7 +1098,7 @@ fn should_refuse_to_serve_mcp_when_an_environment_tool_profile_is_invalid_instea
   let api = root.join("acme-api");
   sandbox.write_config("[mcp]\ntools = \"read-only\"\n");
   let typo = [("CODE_ATLAS_MCP_TOOLS", "readonly")];
-  let expected = "env:CODE_ATLAS_MCP_TOOLS: mcp.tools: expected \"core\", \"read-only\", \"full\" or an array of tool names, got \"readonly\"";
+  let expected = "env:CODE_ATLAS_MCP_TOOLS: mcp.tools: expected \"core\", \"read-only\", \"full\" or an array of tool names";
 
   let refused = sandbox.run_env(&api, &["mcp"], &typo);
   let doctor = sandbox.run_env(&api, &["doctor"], &typo);
@@ -1111,6 +1111,22 @@ fn should_refuse_to_serve_mcp_when_an_environment_tool_profile_is_invalid_instea
     "{}",
     stdout(&doctor)
   );
+}
+
+#[test]
+fn should_print_an_invalid_fail_closed_setting_as_an_error_line_in_config_show() {
+  let sandbox = Sandbox::new();
+  let root = sandbox.create_acme();
+  let api = root.join("acme-api");
+
+  let shown = sandbox.run_env(&api, &["config", "show"], &[("CODE_ATLAS_MCP_TOOLS", "readonly")]);
+
+  assert!(
+    stderr(&shown).contains("error: env:CODE_ATLAS_MCP_TOOLS: mcp.tools: expected \"core\", \"read-only\", \"full\" or an array of tool names\n"),
+    "{}",
+    stderr(&shown)
+  );
+  assert!(!stderr(&shown).contains("warning: env:CODE_ATLAS_MCP_TOOLS"), "{}", stderr(&shown));
 }
 
 #[test]

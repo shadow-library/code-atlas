@@ -18,10 +18,16 @@ pub struct PackageGraph {
   pub packages: Vec<PackageInfo>,
   pub workspaces: Vec<WorkspaceInfo>,
   pub tsconfigs: Vec<TsConfigInfo>,
+  pub workspace_dist: Vec<DistMapping>,
   pub warnings: Vec<ManifestWarning>,
 }
 
 impl PackageGraph {
+  pub fn with_workspace_dist(mut self, mappings: &[DistMapping]) -> Self {
+    self.workspace_dist = mappings.to_vec();
+    self
+  }
+
   pub fn load(repo_root: &Path, files: &[DiscoveredFile]) -> Self {
     let root = std::fs::canonicalize(repo_root).unwrap_or_else(|_| repo_root.to_path_buf());
     let mut ctx = LoadContext {
@@ -41,6 +47,7 @@ impl PackageGraph {
       packages,
       workspaces,
       tsconfigs,
+      workspace_dist: Vec::new(),
       warnings,
     }
   }

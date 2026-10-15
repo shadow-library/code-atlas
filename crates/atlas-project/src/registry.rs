@@ -14,6 +14,7 @@ use crate::document::merge_or_fresh;
 use crate::error::ProjectError;
 use crate::globs::PathGlobs;
 use crate::home::AtlasHome;
+use crate::manifest::DistMapping;
 use crate::marker::{MARKER_FILE, RepoFile};
 
 const LOCK_FILE: &str = "projects.toml.lock";
@@ -101,7 +102,7 @@ fn check_exclude_glob(glob: &str) -> Result<(), String> {
     return Err("lsp.exclude must not contain an empty glob".to_owned());
   }
   if glob.starts_with('/') {
-    return Err(format!("lsp.exclude globs are relative to the repo root; {glob:?} is absolute"));
+    return Err("lsp.exclude globs are relative to the repo root; a glob is absolute".to_owned());
   }
   let (mut class, mut braces, mut escaped) = (false, 0_i32, false);
   for character in glob.chars() {
@@ -117,7 +118,7 @@ fn check_exclude_glob(glob: &str) -> Result<(), String> {
   }
   match (class, braces) {
     (false, 0) => Ok(()),
-    _ => Err(format!("lsp.exclude: {glob:?} has an unclosed or unbalanced [ ] or {{ }}")),
+    _ => Err("lsp.exclude: a glob has an unclosed or unbalanced [ ] or { }".to_owned()),
   }
 }
 
@@ -139,7 +140,7 @@ impl LspSettings {
       return Err("lsp.typescript_command must not be empty".to_owned());
     };
     if !Path::new(program).is_absolute() {
-      return Err(format!("lsp.typescript_command must start with an absolute path, got {program:?}"));
+      return Err("lsp.typescript_command must start with an absolute path".to_owned());
     }
     Ok(())
   }
@@ -179,6 +180,23 @@ impl DetectSettings {
   }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct ResolveSettings {
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  pub workspace_dist: Vec<DistMapping>,
+}
+
+impl ResolveSettings {
+  pub fn validate(&self) -> Result<(), String> {
+    DistMapping::validate_all(&self.workspace_dist)
+  }
+
+  fn is_default(&self) -> bool {
+    *self == Self::default()
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct ProjectSettings {
@@ -189,6 +207,8 @@ pub struct ProjectSettings {
   pub max_file_bytes: u64,
   #[serde(skip_serializing_if = "DetectSettings::is_default")]
   pub detect: DetectSettings,
+  #[serde(skip_serializing_if = "ResolveSettings::is_default")]
+  pub resolve: ResolveSettings,
 }
 
 impl LlmSettings {
@@ -223,7 +243,8 @@ impl ProjectSettings {
   pub fn validate(&self) -> Result<(), String> {
     self.llm.validate()?;
     self.lsp.validate()?;
-    self.detect.validate()
+    self.detect.validate()?;
+    self.resolve.validate()
   }
 }
 
@@ -235,6 +256,7 @@ impl Default for ProjectSettings {
       lsp: LspSettings::default(),
       max_file_bytes: 1024 * 1024,
       detect: DetectSettings::default(),
+      resolve: ResolveSettings::default(),
     }
   }
 }
@@ -328,6 +350,8 @@ struct SettingsRecord {
   max_file_bytes: u64,
   #[serde(skip_serializing_if = "DetectSettings::is_default")]
   detect: DetectSettings,
+  #[serde(skip_serializing_if = "ResolveSettings::is_default")]
+  resolve: ResolveSettings,
   #[serde(skip_serializing_if = "BTreeSet::is_empty")]
   pinned: BTreeSet<String>,
 }
@@ -346,6 +370,7 @@ impl SettingsRecord {
       lsp: settings.lsp,
       max_file_bytes: settings.max_file_bytes,
       detect: settings.detect,
+      resolve: settings.resolve,
       pinned,
     }
   }
@@ -359,6 +384,7 @@ impl From<ProjectRecord> for StoredProject {
       lsp,
       max_file_bytes,
       detect,
+      resolve,
       pinned,
     } = record.settings;
     Self {
@@ -370,6 +396,7 @@ impl From<ProjectRecord> for StoredProject {
           lsp,
           max_file_bytes,
           detect,
+          resolve,
         },
         repos: record.repos,
       },
@@ -392,6 +419,7 @@ impl From<&StoredProject> for ProjectRecord {
 pub struct ConfigReport {
   pub entries: Vec<ConfigEntry>,
   pub warnings: Vec<String>,
+  pub errors: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -486,8 +514,11 @@ impl Registry {
     entries.extend(mcp.entries);
     entries.extend(self.config.reserved_entries());
     warnings.extend(mcp.warnings);
-    warnings.extend(mcp.errors);
-    Ok(ConfigReport { entries, warnings })
+    Ok(ConfigReport {
+      entries,
+      warnings,
+      errors: mcp.errors,
+    })
   }
 
   pub fn create_project(&mut self, name: &str, repos: Vec<RepoSpec>) -> Result<&Project, ProjectError> {
@@ -1235,6 +1266,12 @@ mod tests {
       },
       max_file_bytes: 42,
       detect: DetectSettings::default(),
+      resolve: ResolveSettings {
+        workspace_dist: vec![DistMapping {
+          dist: "dist".to_owned(),
+          source: "src".to_owned(),
+        }],
+      },
     };
     registry.set_settings("acme", settings.clone()).unwrap();
     let reloaded = sandbox.registry();
@@ -1331,14 +1368,14 @@ mod tests {
           typescript_command: Some(vec!["tls".to_owned()]),
           ..LspSettings::default()
         },
-        "lsp.typescript_command must start with an absolute path, got \"tls\"",
+        "lsp.typescript_command must start with an absolute path",
       ),
       (
         LspSettings {
           typescript_command: Some(vec!["./bin/tls".to_owned()]),
           ..LspSettings::default()
         },
-        "lsp.typescript_command must start with an absolute path, got \"./bin/tls\"",
+        "lsp.typescript_command must start with an absolute path",
       ),
     ];
     for (lsp, message) in invalid {
@@ -1574,6 +1611,38 @@ mod tests {
     assert_eq!(registry.resolve_project(&link.join("sub"), None).unwrap().name.as_str(), "acme");
   }
 
+  #[test]
+  fn should_not_echo_pasted_values_in_lsp_validation_errors() {
+    let secret = "sk-FAKEKEY123";
+    let settings = |lsp: LspSettings| ProjectSettings {
+      lsp,
+      ..ProjectSettings::default()
+    };
+    let messages = [
+      settings(LspSettings {
+        typescript_command: Some(vec![secret.to_owned()]),
+        ..LspSettings::default()
+      }),
+      settings(LspSettings {
+        exclude: vec![format!("/{secret}")],
+        ..LspSettings::default()
+      }),
+      settings(LspSettings {
+        exclude: vec![format!("[{secret}")],
+        ..LspSettings::default()
+      }),
+      settings(LspSettings {
+        exclude: vec![format!("{{{secret}")],
+        ..LspSettings::default()
+      }),
+    ]
+    .map(|settings| settings.validate().unwrap_err());
+    for message in messages {
+      assert!(message.starts_with("lsp."), "{message}");
+      assert!(!message.contains("FAKEKEY"), "{message}");
+    }
+  }
+
   fn write_config(sandbox: &Sandbox, text: &str) {
     fs::create_dir_all(sandbox.home.config_dir()).unwrap();
     fs::write(sandbox.home.config_path(), text).unwrap();
@@ -1782,7 +1851,7 @@ mod tests {
     assert_eq!(
       registry.warnings(Some("acme")),
       [
-        "max_file_bytes differs between repo-0/.code-atlas.toml (10) and repo-1/.code-atlas.toml (20); both ignored",
+        "max_file_bytes differs between repo-0/.code-atlas.toml and repo-1/.code-atlas.toml; both ignored",
         "repo-1/.code-atlas.toml: lsp.typescript_command ignored: a repository file may not name an executable",
       ]
     );
@@ -1826,6 +1895,32 @@ mod tests {
   }
 
   #[test]
+  fn should_apply_a_workspace_dist_mapping_from_a_repo_file_but_never_from_the_environment() {
+    let sandbox = Sandbox::new();
+    let one = sandbox.repo_dir("one");
+    drop(registry_with(&sandbox, &[("acme", &[&one])]));
+    fs::write(one.join(MARKER_FILE), "[resolve]\nworkspace_dist = [{ dist = \"dist\", source = \"src\" }]\n").unwrap();
+    let env = ConfigEnv::from_pairs([("CODE_ATLAS_RESOLVE_WORKSPACE_DIST", "[{ dist = \"build\", source = \"lib\" }]")]);
+
+    let registry = Registry::load_with(&sandbox.home, env).unwrap();
+
+    assert_eq!(
+      registry.project("acme").unwrap().settings.resolve.workspace_dist,
+      [DistMapping {
+        dist: "dist".to_owned(),
+        source: "src".to_owned()
+      }]
+    );
+    assert_eq!(origin_of(&registry, "acme", "resolve.workspace_dist"), ["repo-0/.code-atlas.toml"]);
+    assert_eq!(
+      registry.warnings(Some("acme")),
+      [
+        "env:CODE_ATLAS_RESOLVE_WORKSPACE_DIST: resolve.workspace_dist ignored: it changes indexed facts, so only config.toml, projects.toml or a repository's .code-atlas.toml may set it"
+      ]
+    );
+  }
+
+  #[test]
   fn should_store_project_route_families_in_the_registry_and_reread_them() {
     let sandbox = Sandbox::new();
     write_family(&sandbox, "acme-http", ACME_FAMILY);
@@ -1857,7 +1952,7 @@ mod tests {
     assert_eq!(
       unused.warnings(Some("acme")),
       [
-        "detectors/Acme.toml ignored: file name: a route family name is a lowercase letter followed by lowercase letters, digits, - or _ (at most 64 characters), got \"Acme\"",
+        "detectors/Acme.toml ignored: file name: a route family name is a lowercase letter followed by lowercase letters, digits, - or _ (at most 64 characters)",
         "detectors/acme-http.toml ignored: controller: missing; name the controller decorators",
       ]
     );

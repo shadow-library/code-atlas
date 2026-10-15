@@ -643,15 +643,13 @@ pub(crate) fn run_hint(entity: &Entity) -> Option<String> {
         .map(|info| info.framework)
         .unwrap_or_default();
       let command = match framework.as_str() {
-        "vitest" => format!("npx vitest run {file}"),
-        "mocha" => format!("npx mocha {file}"),
-        _ => format!("npx jest {file}"),
+        "vitest" => format!("npx vitest run {file} -t {name:?}"),
+        "mocha" => format!("npx mocha {file} -g {name:?}"),
+        "bun" => format!("bun test {file} -t {name:?}"),
+        "node" => format!("node --test --test-name-pattern {name:?} {file}"),
+        _ => format!("npx jest {file} -t {name:?}"),
       };
-      let filter = match framework.as_str() {
-        "mocha" => "-g",
-        _ => "-t",
-      };
-      Some(format!("[{repo}] {command} {filter} {name:?}"))
+      Some(format!("[{repo}] {command}"))
     }
   }
 }
@@ -673,6 +671,42 @@ mod tests {
     let mut edge = Edge::new(kind, from, to, "", certainty);
     edge.attrs = serde_json::from_value(attrs).unwrap();
     edge
+  }
+
+  fn test_entity(framework: &str) -> Entity {
+    let key = atlas_core::SymbolKey::new(
+      atlas_core::LanguageFamily::Ts,
+      RepoName::new("web").unwrap(),
+      "web",
+      vec!["src".to_owned(), "a.test".to_owned()],
+      vec!["adds".to_owned()],
+      atlas_core::EntityKind::Test,
+      0,
+    )
+    .unwrap();
+    let mut entity = Entity::new(EntityKey::Symbol(key), Certainty::Syntactic);
+    entity.path = Some(atlas_core::RelPath::new("src/a.test.ts").unwrap());
+    entity.attrs.insert(ATTR_TEST.to_owned(), json!({ "framework": framework, "kind": "case" }));
+    entity
+  }
+
+  #[test]
+  fn should_hint_the_runner_of_the_framework_the_test_file_imports() {
+    let hints: Vec<Option<String>> = ["bun", "vitest", "jest", "mocha", "node", "unknown"]
+      .iter()
+      .map(|framework| run_hint(&test_entity(framework)))
+      .collect();
+    assert_eq!(
+      hints,
+      [
+        Some("[web] bun test src/a.test.ts -t \"adds\"".to_owned()),
+        Some("[web] npx vitest run src/a.test.ts -t \"adds\"".to_owned()),
+        Some("[web] npx jest src/a.test.ts -t \"adds\"".to_owned()),
+        Some("[web] npx mocha src/a.test.ts -g \"adds\"".to_owned()),
+        Some("[web] node --test --test-name-pattern \"adds\" src/a.test.ts".to_owned()),
+        Some("[web] npx jest src/a.test.ts -t \"adds\"".to_owned()),
+      ]
+    );
   }
 
   #[test]

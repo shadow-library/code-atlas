@@ -42,7 +42,7 @@ pub enum ProjectError {
   DuplicatePath { project: String, repo: String, path: PathBuf },
   #[error("cannot derive a repo name from {}; pass an explicit name", .0.display())]
   NameUnderivable(PathBuf),
-  #[error("invalid glob {pattern:?}: {message}")]
+  #[error("invalid glob: {message}")]
   InvalidGlob { pattern: String, message: String },
   #[error(transparent)]
   Name(#[from] CoreError),

@@ -136,9 +136,7 @@ mod tests {
     assert_eq!(catalog.check_enabled(["Acme Http"].into_iter()).map_err(|error| error.to_string()), Ok(()));
     assert_eq!(
       warnings,
-      [
-        "detectors/Acme Http.toml ignored: file name: a route family name is a lowercase letter followed by lowercase letters, digits, - or _ (at most 64 characters), got \"Acme Http\""
-      ]
+      ["detectors/Acme Http.toml ignored: file name: a route family name is a lowercase letter followed by lowercase letters, digits, - or _ (at most 64 characters)"]
     );
   }
 

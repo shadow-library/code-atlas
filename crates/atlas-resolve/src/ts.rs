@@ -587,12 +587,35 @@ impl Resolver<'_> {
     if let Some(found) = candidates.iter().find_map(|candidate| self.ts_declared_source(&key.repo, candidate)) {
       return Ok(Hit::exact(Found::File(found)));
     }
+    if let Some(found) = candidates.iter().find_map(|candidate| self.ts_workspace_source(key, &package.root, candidate)) {
+      return Ok(Hit::exact(Found::File(found)));
+    }
     for candidate in &candidates {
       if let Some(found) = self.ts_dist_to_src(key, package.root.as_rel_path(), candidate) {
         return Ok(Hit::heuristic(Found::File(found), DIST_TO_SRC_CONFIDENCE, RULE_DIST_TO_SRC));
       }
     }
     Err(Miss::NotFound)
+  }
+
+  fn ts_workspace_source(&self, key: &PackageKey, root: &RepoDir, candidate: &RelPath) -> Option<FileIdx> {
+    let graph = self.table.layout.graph(&key.repo)?;
+    let mut sources: Vec<FileIdx> = Vec::new();
+    for mapping in &graph.workspace_dist {
+      let Some(emitted) = root.resolve(&mapping.dist).and_then(|dist| path_within(&dist, candidate)) else {
+        continue;
+      };
+      let Some(found) = root.resolve(&mapping.source).and_then(|source| self.ts_emitted_source(&key.repo, &source, emitted)) else {
+        continue;
+      };
+      if !sources.contains(&found) {
+        sources.push(found);
+      }
+    }
+    match sources.as_slice() {
+      [single] => Some(*single),
+      _ => None,
+    }
   }
 
   fn ts_declared_source(&self, repo: &RepoName, candidate: &RelPath) -> Option<FileIdx> {

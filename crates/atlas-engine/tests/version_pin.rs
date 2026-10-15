@@ -10,13 +10,13 @@ use common::{copy_dir, digest, fixtures_root, fresh, open, project, repo_config}
 
 const PINNED_STRUCTURE: (u32, &str, &str) = (
   1,
-  "d89718c807cad9028e46e394bf04f8826ac28913475b8e281d9e945e6b55917d",
+  "73a45ce2ca4a329ab9b6e938dff4b98b9878c0a3bf577875004a1d6fe9f69914",
   "ec3f51b2a78d7e98e15aa5e2c7e63822eeeec8282aac7b8cc0ed688a426f1776",
 );
 const PINNED_LINK: (u32, &str, &str) = (
-  5,
-  "8a445d617caa1e9ee155259e2efc16689031bfd802e72ceb32fdaf0dc9c9efed",
-  "5f879ce9422628ce9d8a12738fb59a610c12396828d994f9d44a468e52f573cb",
+  6,
+  "6becce671cadb5283ec4d222f2cf8efb2eddb8ffb5a38e81d3e37e488936ba64",
+  "e014f398d9ee04d49fab8317aadec31efc12806b53b9465f33aa1edefc680190",
 );
 
 #[derive(Default)]

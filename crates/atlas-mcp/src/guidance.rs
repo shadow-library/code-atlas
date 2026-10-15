@@ -87,12 +87,20 @@ impl ToolProfile {
   }
 }
 
+fn shown_tool_name(name: &str) -> String {
+  let tool_like = name.starts_with("atlas_") && name.len() <= 64 && name.chars().all(|character| character.is_ascii_lowercase() || character == '_');
+  match tool_like {
+    true => format!(" {name:?}"),
+    false => String::new(),
+  }
+}
+
 fn known_tools(names: &[String]) -> Result<Vec<&'static str>, McpError> {
   let mut tools = Vec::with_capacity(names.len());
   for name in names {
     let Some(tool) = TOOLS.into_iter().find(|tool| *tool == name.as_str()) else {
       return Err(McpError::UnknownTool {
-        name: name.clone(),
+        shown: shown_tool_name(name),
         known: TOOLS.join(", "),
       });
     };
@@ -316,6 +324,15 @@ mod tests {
         "unknown tool \"atlas_read\"; expected the profile core, read-only or full, or a list of tools from: {}",
         TOOLS.join(", ")
       )
+    );
+  }
+
+  #[test]
+  fn should_not_echo_an_unknown_tool_name_that_does_not_look_like_a_tool() {
+    let error = ToolProfile::from_setting(&ToolsSetting::Only(vec!["sk-FAKEKEY123".to_owned()])).unwrap_err();
+    assert_eq!(
+      error.to_string(),
+      format!("unknown tool; expected the profile core, read-only or full, or a list of tools from: {}", TOOLS.join(", "))
     );
   }
 

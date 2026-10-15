@@ -29,7 +29,7 @@ pub(super) fn server_entry(command: &str, home: Option<&OsStr>) -> Value {
 }
 
 pub(super) fn entry(text: &str) -> Result<Option<Value>, String> {
-  let table: toml::Table = toml::from_str(text).map_err(|error| error.to_string())?;
+  let table: toml::Table = toml::from_str(text).map_err(|error| atlas_detect::toml_error_summary(text, &error))?;
   let Some(servers) = table.get(SERVERS) else { return Ok(None) };
   let servers = servers.as_table().ok_or_else(|| format!("{SERVERS} is not a table"))?;
   servers
@@ -39,7 +39,9 @@ pub(super) fn entry(text: &str) -> Result<Option<Value>, String> {
 }
 
 pub(super) fn upsert(text: &str, entry: &Value) -> Result<String, String> {
-  let mut document: DocumentMut = text.parse().map_err(|error: toml_edit::TomlError| error.to_string())?;
+  let mut document: DocumentMut = text
+    .parse()
+    .map_err(|error: toml_edit::TomlError| atlas_detect::describe_toml_error(text, error.message(), error.span()))?;
   if !document.contains_key(SERVERS) {
     let mut servers = Table::new();
     servers.set_implicit(true);
@@ -74,7 +76,9 @@ pub(super) fn upsert(text: &str, entry: &Value) -> Result<String, String> {
 }
 
 pub(super) fn remove(text: &str) -> Result<String, String> {
-  let mut document: DocumentMut = text.parse().map_err(|error: toml_edit::TomlError| error.to_string())?;
+  let mut document: DocumentMut = text
+    .parse()
+    .map_err(|error: toml_edit::TomlError| atlas_detect::describe_toml_error(text, error.message(), error.span()))?;
   let Some(servers) = document.get_mut(SERVERS).and_then(Item::as_table_like_mut) else {
     return Ok(text.to_owned());
   };
@@ -129,5 +133,15 @@ mod tests {
   fn should_report_a_broken_file_instead_of_rewriting_it() {
     assert!(entry("[mcp_servers\n").is_err());
     assert!(upsert("[mcp_servers\n", &server_entry("catl", None)).is_err());
+  }
+
+  #[test]
+  fn should_not_echo_the_source_line_of_a_broken_file() {
+    let text = "[mcp_servers.x]\napi_key = sk-FAKEKEY123\n";
+    let messages = [entry(text).unwrap_err(), upsert(text, &server_entry("catl", None)).unwrap_err(), remove(text).unwrap_err()];
+    for message in messages {
+      assert!(message.starts_with("line 2, column "), "{message}");
+      assert!(!message.contains("FAKEKEY") && !message.contains('|'), "{message}");
+    }
   }
 }

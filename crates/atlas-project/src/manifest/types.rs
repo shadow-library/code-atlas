@@ -2,8 +2,43 @@ use std::fmt;
 use std::path::Path;
 
 use atlas_core::{RelPath, RustTarget};
+use serde::{Deserialize, Serialize};
 
 use crate::discovery::DiscoveredFile;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DistMapping {
+  pub dist: String,
+  pub source: String,
+}
+
+impl DistMapping {
+  pub fn validate(&self) -> Result<(), String> {
+    for (name, directory) in [("dist", &self.dist), ("source", &self.source)] {
+      let relative = !directory.is_empty() && !directory.starts_with('/') && !directory.contains('\\');
+      if !relative || directory.split('/').any(|segment| segment.is_empty() || segment == "." || segment == "..") {
+        return Err(format!(
+          "resolve.workspace_dist: {name} must be a relative directory without \".\", \"..\" or empty segments"
+        ));
+      }
+    }
+    Ok(())
+  }
+
+  pub fn validate_all(mappings: &[DistMapping]) -> Result<(), String> {
+    mappings.iter().try_for_each(Self::validate)?;
+    let overlapping = mappings.iter().enumerate().any(|(index, mapping)| {
+      mappings[index + 1..]
+        .iter()
+        .any(|other| mapping.dist == other.dist || other.dist.starts_with(&format!("{}/", mapping.dist)) || mapping.dist.starts_with(&format!("{}/", other.dist)))
+    });
+    match overlapping {
+      true => Err("resolve.workspace_dist: each dist must be listed once and no dist may lie inside another".to_owned()),
+      false => Ok(()),
+    }
+  }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RepoDir(Option<RelPath>);

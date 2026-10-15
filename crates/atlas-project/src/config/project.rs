@@ -158,7 +158,7 @@ fn repo_settings(repos: &[RepoConfig], files: &[Option<RepoFile>], warnings: &mu
       let admitted = find_spec(key).is_some_and(|spec| spec.class.admits(&origin).is_ok());
       match chosen.iter().find(|(_, chosen_key, _)| chosen_key == key) {
         Some((first, _, kept)) if admitted && kept != value => {
-          warnings.push(format!("{key} differs between {first} ({kept}) and {origin} ({value}); both ignored"));
+          warnings.push(format!("{key} differs between {first} and {origin}; both ignored"));
           conflicting.insert(key.clone());
         }
         Some(_) if admitted => {}

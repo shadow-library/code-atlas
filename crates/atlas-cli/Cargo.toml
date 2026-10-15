@@ -14,6 +14,7 @@ workspace = true
 
 [dependencies]
 atlas-core.workspace = true
+atlas-detect.workspace = true
 atlas-edit.workspace = true
 atlas-project.workspace = true
 atlas-engine.workspace = true

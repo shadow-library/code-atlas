@@ -10,7 +10,7 @@ use common::{Analyzed, analyze, render, run, sorted};
 
 const PINNED: (u32, &str, &str) = (
   4,
-  "df00fdde65320254f25200afdd36d8bc0a1641ad0ac889fbf31ee0aff401477f",
+  "824ac2c3451da5a4bb9a385faa105817ae38c149a712c46825d3994840467312",
   "ac16ea46e20e503df757db3e3fe8eb7c269598710c76661937c7db4de7b03ed7",
 );
 

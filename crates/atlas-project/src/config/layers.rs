@@ -229,12 +229,12 @@ mod tests {
 
     assert_eq!(
       from_typo.errors,
-      ["env:CODE_ATLAS_MCP_TOOLS: mcp.tools: expected \"core\", \"read-only\", \"full\" or an array of tool names, got \"readonly\""]
+      ["env:CODE_ATLAS_MCP_TOOLS: mcp.tools: expected \"core\", \"read-only\", \"full\" or an array of tool names"]
     );
     assert!(from_typo.warnings.is_empty(), "{:?}", from_typo.warnings);
     assert_eq!(
       from_broken_list.errors,
-      ["env:CODE_ATLAS_MCP_TOOLS: mcp.tools: expected a TOML array such as [\"a\", \"b\"], got \"[\\\"atlas_search\\\"\""]
+      ["env:CODE_ATLAS_MCP_TOOLS: mcp.tools: expected a TOML array such as [\"a\", \"b\"], got a string"]
     );
     assert!(resolve_mcp(&config, &ConfigEnv::default(), McpFlags::default()).errors.is_empty());
   }

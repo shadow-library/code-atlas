@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 
-use atlas_core::{Attrs, Certainty, Edge, EdgeKind, Entity, EntityId, EntityKey, EntityKind, Evidence, HttpMethod, RepoName};
+use atlas_core::{Attrs, Certainty, Edge, EdgeKind, Entity, EntityId, EntityKey, EntityKind, Evidence, HttpMethod, RelPath, RepoName};
 use serde_json::{Value, json};
 
 use crate::ATTR_CLIENT_CALL;
@@ -112,7 +113,15 @@ impl ClientDefinitions {
       };
       let modules = definition.attrs.get("modules").and_then(Value::as_array).cloned().unwrap_or_default();
       for module in modules.iter().filter_map(Value::as_str) {
-        by_module.entry((repo.clone(), module.to_owned(), export.clone())).or_insert_with(|| definition.clone());
+        match by_module.entry((repo.clone(), module.to_owned(), export.clone())) {
+          Entry::Vacant(slot) => {
+            slot.insert(definition.clone());
+          }
+          Entry::Occupied(mut slot) if resolution_order(&definition) < resolution_order(slot.get()) => {
+            slot.insert(definition.clone());
+          }
+          Entry::Occupied(_) => {}
+        }
       }
     }
     Ok(Self { by_module })
@@ -124,6 +133,18 @@ impl ClientDefinitions {
     self.by_module.get(&(repo.clone(), module.to_owned(), export.to_owned()))
   }
 }
+
+fn resolution_order(definition: &Entity) -> (bool, bool, usize, Option<&str>) {
+  let path = definition.path.as_ref().map(RelPath::as_str);
+  let file = path.and_then(|path| path.rsplit('/').next()).unwrap_or_default();
+  let is_directory_index = file.split('.').next() == Some("index");
+  let position = SCRIPT_EXTENSIONS.iter().position(|extension| file.ends_with(extension)).unwrap_or(SCRIPT_EXTENSIONS.len());
+  let is_javascript = position >= TYPESCRIPT_EXTENSIONS;
+  (is_javascript, is_directory_index, position, path)
+}
+
+const SCRIPT_EXTENSIONS: [&str; 8] = [".ts", ".tsx", ".d.ts", ".mts", ".cts", ".js", ".jsx", ".mjs"];
+const TYPESCRIPT_EXTENSIONS: usize = 5;
 
 const RULE_NO_ROUTE: &str = "no-matching-route";
 
@@ -452,4 +473,25 @@ fn calls_endpoint(
     edge.evidence.extend(entity_evidence(facts, definition, Some("client definition".to_owned()))?);
   }
   Ok(edge)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn at(path: &str) -> Entity {
+    let key = EntityKey::Repository {
+      repo: RepoName::new("web").unwrap(),
+    };
+    let mut entity = Entity::new(key, Certainty::Syntactic);
+    entity.path = Some(RelPath::new(path).unwrap());
+    entity
+  }
+
+  #[test]
+  fn should_order_definitions_as_typescript_resolves_a_module() {
+    let mut paths = ["src/api.js", "src/api/index.ts", "src/api.tsx", "src/api.ts", "src/api/index.js"];
+    paths.sort_by(|left, right| resolution_order(&at(left)).cmp(&resolution_order(&at(right))));
+    assert_eq!(paths, ["src/api.ts", "src/api.tsx", "src/api/index.ts", "src/api.js", "src/api/index.js"]);
+  }
 }

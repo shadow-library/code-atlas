@@ -447,7 +447,7 @@ impl<'a, 'e> Pipeline<'a, 'e> {
           let manifest_touched = changes.added.iter().chain(&changes.modified).chain(&changes.deleted).any(is_manifest);
           let file_set_changed = !changes.added.is_empty() || !changes.deleted.is_empty();
           if repo_state.graph.is_none() || manifest_touched || file_set_changed || full {
-            let graph = PackageGraph::load(&repo_state.config.path, &files);
+            let graph = PackageGraph::load(&repo_state.config.path, &files).with_workspace_dist(&self.env.project.settings.resolve.workspace_dist);
             if repo_state.graph.as_ref().is_none_or(|current| !same_graph(current, &graph)) {
               self.state.table.set_repo_packages(repo.clone(), clone_graph(&graph));
               self.graph_changed.insert(repo.clone());

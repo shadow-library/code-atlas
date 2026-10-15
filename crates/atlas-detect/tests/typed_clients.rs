@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 const PINNED_DECLARED: (u32, &str, &str) = (
   2,
-  "94c4b9275e30842aeda4c217f5bb81bdd37677d98887a0e5994ff23d4e0e89cb",
+  "741ee398f99ef02121077b5a4f83ddaba783a406b21e86113fe5249f48970033",
   "27d975c37c8c5d588de0f624d78ebf459370e3b8d5d18e9e2e688b91bf57bfb1",
 );
 

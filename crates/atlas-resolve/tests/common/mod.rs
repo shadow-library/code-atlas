@@ -9,7 +9,7 @@ use atlas_core::{
 };
 use atlas_lang_rust::RustAnalyzer;
 use atlas_lang_ts::TsAnalyzer;
-use atlas_project::{PackageGraph, RepoConfig, discover};
+use atlas_project::{DistMapping, PackageGraph, RepoConfig, discover};
 use atlas_resolve::{ProjectSymbolTable, ResolvedFile, resolve_file};
 
 pub fn fixtures_root() -> PathBuf {
@@ -109,10 +109,17 @@ pub struct Project {
 
 impl Project {
   pub fn load(repos: &[(&str, PathBuf)]) -> Self {
+    Self::load_with(repos, &[])
+  }
+
+  pub fn load_with(repos: &[(&str, PathBuf)], workspace_dist: &[DistMapping]) -> Self {
     let repos: Vec<RepoSource> = repos.iter().map(|(name, root)| load_repo(name, root)).collect();
     let mut table = ProjectSymbolTable::new();
     for source in &repos {
-      table.set_repo_packages(source.name.clone(), PackageGraph::load(&source.root, &discover_files(source)));
+      table.set_repo_packages(
+        source.name.clone(),
+        PackageGraph::load(&source.root, &discover_files(source)).with_workspace_dist(workspace_dist),
+      );
       for (facts, context) in &source.files {
         table.upsert_file(facts, context).unwrap();
       }
@@ -303,9 +310,13 @@ pub fn write_repo(files: &[(&str, &str)]) -> tempfile::TempDir {
 }
 
 pub fn synthetic(repos: &[(&str, &[(&str, &str)])]) -> Synthetic {
+  synthetic_with(repos, &[])
+}
+
+pub fn synthetic_with(repos: &[(&str, &[(&str, &str)])], workspace_dist: &[DistMapping]) -> Synthetic {
   let dirs: Vec<tempfile::TempDir> = repos.iter().map(|(_, files)| write_repo(files)).collect();
   let roots: Vec<(&str, PathBuf)> = repos.iter().zip(&dirs).map(|((name, _), dir)| (*name, dir.path().to_path_buf())).collect();
-  let project = Project::load(&roots);
+  let project = Project::load_with(&roots, workspace_dist);
   Synthetic { dirs, project }
 }
 

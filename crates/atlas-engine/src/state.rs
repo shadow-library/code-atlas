@@ -104,6 +104,11 @@ pub(crate) fn project_fingerprint(project: &Project) -> String {
     "max_file_bytes": project.settings.max_file_bytes,
     "store_schema": atlas_store::SCHEMA_VERSION,
   });
+  if !project.settings.resolve.workspace_dist.is_empty()
+    && let Some(fields) = identity.as_object_mut()
+  {
+    fields.insert("workspace_dist".to_owned(), serde_json::json!(project.settings.resolve.workspace_dist));
+  }
   let detect = &project.settings.detect;
   if !detect.route_families.is_empty()
     && let Some(fields) = identity.as_object_mut()
@@ -397,7 +402,7 @@ pub(crate) fn load_state(store: &Store, project: &Project, toolchain: &Toolchain
     let repo_meta = meta.as_ref().and_then(|meta| meta.repos.get(config.name.as_str()));
     let (graph, health, discovered_skips) = match discover(config, project.settings.max_file_bytes) {
       Ok(discovered) => (
-        Some(PackageGraph::load(&config.path, &discovered.files)),
+        Some(PackageGraph::load(&config.path, &discovered.files).with_workspace_dist(&project.settings.resolve.workspace_dist)),
         RepoHealth::Present,
         skipped_files(&config.name, &discovered.skipped),
       ),
@@ -538,4 +543,40 @@ pub(crate) fn load_state(store: &Store, project: &Project, toolchain: &Toolchain
     similarity,
     interrupted: dirty,
   })
+}
+
+#[cfg(test)]
+mod fingerprint_tests {
+  use atlas_core::ProjectName;
+  use atlas_project::{DistMapping, ProjectSettings};
+
+  use super::*;
+
+  fn project(mappings: Vec<DistMapping>) -> Project {
+    let mut settings = ProjectSettings::default();
+    settings.resolve.workspace_dist = mappings;
+    Project {
+      name: ProjectName::new("acme").unwrap(),
+      settings,
+      repos: Vec::new(),
+    }
+  }
+
+  fn mapping(dist: &str, source: &str) -> DistMapping {
+    DistMapping {
+      dist: dist.to_owned(),
+      source: source.to_owned(),
+    }
+  }
+
+  #[test]
+  fn should_change_the_project_fingerprint_with_the_workspace_dist_mapping() {
+    let none = project_fingerprint(&project(Vec::new()));
+    let dist = project_fingerprint(&project(vec![mapping("dist", "src")]));
+    let build = project_fingerprint(&project(vec![mapping("build", "src")]));
+
+    assert_ne!(none, dist);
+    assert_ne!(dist, build);
+    assert_eq!(dist, project_fingerprint(&project(vec![mapping("dist", "src")])));
+  }
 }

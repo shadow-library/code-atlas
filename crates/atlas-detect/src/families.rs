@@ -341,7 +341,7 @@ pub fn check_family_name(name: &str) -> Result<(), String> {
     && name.len() <= MAX_NAME_LEN;
   if !well_formed {
     return Err(format!(
-      "a route family name is a lowercase letter followed by lowercase letters, digits, - or _ (at most {MAX_NAME_LEN} characters), got {name:?}"
+      "a route family name is a lowercase letter followed by lowercase letters, digits, - or _ (at most {MAX_NAME_LEN} characters)"
     ));
   }
   match BUILT_IN_FRAMEWORKS.contains(&name) {
@@ -373,7 +373,7 @@ impl Reader {
       Some(other) => {
         return Err(FamilyError::new(
           "version",
-          format!("unsupported version {other}; this catl reads version {SCHEMA_VERSION}"),
+          format!("unsupported version {}; this catl reads version {SCHEMA_VERSION}", crate::describe_value(other)),
         ));
       }
     }
@@ -472,7 +472,12 @@ impl Reader {
       None => PathStyle::Openapi,
       Some(Value::String(style)) if style == "openapi" => PathStyle::Openapi,
       Some(Value::String(style)) if style == "express" => PathStyle::Express,
-      Some(other) => return Err(FamilyError::new("client.style", format!("expected \"openapi\" or \"express\", got {other}"))),
+      Some(other) => {
+        return Err(FamilyError::new(
+          "client.style",
+          format!("expected \"openapi\" or \"express\", got {}", crate::describe_value(other)),
+        ));
+      }
     };
     let target_package = client.get("target_package").map(|value| package_name(value, "client.target_package")).transpose()?;
     let base = client.get("base").map(client_base).transpose()?;
@@ -498,7 +503,10 @@ impl Reader {
       None => return Ok((decorators, Vec::new())),
       Some(Value::Table(schemes)) => schemes,
       Some(other) => {
-        return Err(FamilyError::new("guards.auth_schemes", format!("expected a table of decorator = \"scheme\", got {other}")));
+        return Err(FamilyError::new(
+          "guards.auth_schemes",
+          format!("expected a table of decorator = \"scheme\", got {}", crate::describe_value(other)),
+        ));
       }
     };
     let mut guard_schemes = Vec::with_capacity(schemes.len());
@@ -510,7 +518,11 @@ impl Reader {
       let scheme = value.as_str().filter(|scheme| AUTH_SCHEMES.contains(scheme)).ok_or_else(|| {
         FamilyError::new(
           &key,
-          format!("expected one of {}, got {value}", AUTH_SCHEMES.map(|scheme| format!("\"{scheme}\"")).join(", ")),
+          format!(
+            "expected one of {}, got {}",
+            AUTH_SCHEMES.map(|scheme| format!("\"{scheme}\"")).join(", "),
+            crate::describe_value(value)
+          ),
         )
       })?;
       guard_schemes.push(GuardScheme {
@@ -573,7 +585,12 @@ impl Reader {
     let methods = match required(routes, "methods", "routes.")? {
       Value::Table(methods) if !methods.is_empty() => methods,
       Value::Table(_) => return Err(FamilyError::new("routes.methods", "must map at least one decorator to an HTTP method")),
-      other => return Err(FamilyError::new("routes.methods", format!("expected a table of decorator = \"METHOD\", got {other}"))),
+      other => {
+        return Err(FamilyError::new(
+          "routes.methods",
+          format!("expected a table of decorator = \"METHOD\", got {}", crate::describe_value(other)),
+        ));
+      }
     };
     let mut decorators = Vec::with_capacity(methods.len());
     for (decorator, value) in methods {
@@ -584,7 +601,12 @@ impl Reader {
         .map(str::to_ascii_uppercase)
         .and_then(|method| method.parse::<HttpMethod>().ok())
         .filter(|method| *method != HttpMethod::Unknown)
-        .ok_or_else(|| FamilyError::new(&key, format!("expected an HTTP method such as \"GET\", \"POST\" or \"ANY\", got {value}")))?;
+        .ok_or_else(|| {
+          FamilyError::new(
+            &key,
+            format!("expected an HTTP method such as \"GET\", \"POST\" or \"ANY\", got {}", crate::describe_value(value)),
+          )
+        })?;
       decorators.push(RouteDecorator {
         decorator: decorator.clone(),
         method,
@@ -602,15 +624,22 @@ impl Reader {
     let path = match slot.get("path") {
       None => return Ok(default),
       Some(Value::Table(path)) => path,
-      Some(other) => return Err(FamilyError::new(key, format!("expected a table such as {{ argument = 0, key = \"path\" }}, got {other}"))),
+      Some(other) => {
+        return Err(FamilyError::new(
+          key,
+          format!("expected a table such as {{ argument = 0, key = \"path\" }}, got {}", crate::describe_value(other)),
+        ));
+      }
     };
     self.warn_unknown(&format!("{key}."), path, &["argument", "key"]);
     let index = match path.get("argument") {
       None => 0,
-      Some(value) => value
-        .as_integer()
-        .and_then(|index| usize::try_from(index).ok())
-        .ok_or_else(|| FamilyError::new(format!("{key}.argument"), format!("expected a non-negative argument position, got {value}")))?,
+      Some(value) => value.as_integer().and_then(|index| usize::try_from(index).ok()).ok_or_else(|| {
+        FamilyError::new(
+          format!("{key}.argument"),
+          format!("expected a non-negative argument position, got {}", crate::describe_value(value)),
+        )
+      })?,
     };
     let path_key = match path.get("key") {
       None => default.key,
@@ -626,7 +655,12 @@ impl Reader {
       .as_str()
       .map(|text| text.split('.').map(str::to_owned).collect())
       .filter(|segments: &Vec<String>| segments.iter().all(|segment| is_identifier(segment)))
-      .ok_or_else(|| FamilyError::new("global_prefix.factory", format!("expected a call path such as \"AppFactory.create\", got {factory}")))?;
+      .ok_or_else(|| {
+        FamilyError::new(
+          "global_prefix.factory",
+          format!("expected a call path such as \"AppFactory.create\", got {}", crate::describe_value(factory)),
+        )
+      })?;
     let method = identifier(required(prefix, "method", "global_prefix.")?, "global_prefix.method")?;
     Ok(GlobalPrefix { factory: segments, method })
   }
@@ -645,7 +679,7 @@ impl Reader {
     }
     for name in &names {
       if !is_identifier(name) {
-        return Err(FamilyError::new(key, format!("expected decorator names such as \"Controller\", got {name:?}")));
+        return Err(FamilyError::new(key, "expected decorator names such as \"Controller\""));
       }
       self.claim(name, key)?;
     }
@@ -654,7 +688,7 @@ impl Reader {
 
   fn claim(&mut self, decorator: &str, key: &str) -> Result<(), FamilyError> {
     if !is_identifier(decorator) {
-      return Err(FamilyError::new(key, format!("{decorator:?} is not a decorator name")));
+      return Err(FamilyError::new(key, "expected a decorator name".to_owned()));
     }
     match self.decorators.insert(decorator.to_owned()) {
       true => Ok(()),
@@ -693,7 +727,10 @@ fn client_base(value: &Value) -> Result<String, FamilyError> {
   let invalid = || {
     FamilyError::new(
       "client.base",
-      format!("expected a base path such as \"/api/v1\" or an origin such as \"https://api.acme.test/v1\", got {value}"),
+      format!(
+        "expected a base path such as \"/api/v1\" or an origin such as \"https://api.acme.test/v1\", got {}",
+        crate::describe_value(value)
+      ),
     )
   };
   let base = value.as_str().ok_or_else(invalid)?;
@@ -711,7 +748,7 @@ fn package_name(value: &Value, key: &str) -> Result<String, FamilyError> {
     .as_str()
     .filter(|name| !name.is_empty() && !name.chars().any(char::is_whitespace))
     .map(str::to_owned)
-    .ok_or_else(|| FamilyError::new(key, format!("expected a package name such as \"@acme/books-api\", got {value}")))
+    .ok_or_else(|| FamilyError::new(key, format!("expected a package name such as \"@acme/books-api\", got {}", crate::describe_value(value))))
 }
 
 fn client_methods(value: &Value) -> Result<Vec<ClientMethod>, FamilyError> {
@@ -724,7 +761,7 @@ fn client_methods(value: &Value) -> Result<Vec<ClientMethod>, FamilyError> {
     .map(|name| {
       let method = HttpMethod::parse_lenient(&name)
         .filter(|method| !matches!(method, HttpMethod::Unknown | HttpMethod::Any))
-        .ok_or_else(|| FamilyError::new("client.methods", format!("expected HTTP method names such as \"get\" or \"GET\", got {name:?}")))?;
+        .ok_or_else(|| FamilyError::new("client.methods", "expected HTTP method names such as \"get\" or \"GET\""))?;
       Ok(ClientMethod { name, method })
     })
     .collect()
@@ -732,9 +769,9 @@ fn client_methods(value: &Value) -> Result<Vec<ClientMethod>, FamilyError> {
 
 fn identifiers(value: &Value, key: &str) -> Result<Vec<String>, FamilyError> {
   let names = strings(value, key)?;
-  match names.iter().find(|name| !is_identifier(name)) {
-    Some(name) => Err(FamilyError::new(key, format!("expected export names such as \"booksApi\" or \"default\", got {name:?}"))),
-    None => Ok(names),
+  match names.iter().all(|name| is_identifier(name)) {
+    true => Ok(names),
+    false => Err(FamilyError::new(key, "expected export names such as \"booksApi\" or \"default\"")),
   }
 }
 
@@ -742,13 +779,10 @@ fn file_globs(value: &Value, key: &str) -> Result<Vec<String>, FamilyError> {
   let globs = strings(value, key)?;
   let invalid = globs
     .iter()
-    .find(|glob| glob.is_empty() || glob.starts_with('/') || glob.starts_with("./") || glob.split('/').any(|segment| segment.is_empty() || segment == ".."));
+    .any(|glob| glob.is_empty() || glob.starts_with('/') || glob.starts_with("./") || glob.split('/').any(|segment| segment.is_empty() || segment == ".."));
   match invalid {
-    Some(glob) => Err(FamilyError::new(
-      key,
-      format!("expected repository-relative paths such as \"apps/web/src/api/*.ts\", got {glob:?}"),
-    )),
-    None => Ok(globs),
+    true => Err(FamilyError::new(key, "expected repository-relative paths such as \"apps/web/src/api/*.ts\"")),
+    false => Ok(globs),
   }
 }
 
@@ -765,7 +799,7 @@ fn section<'t>(table: &'t toml::Table, name: &str) -> Result<Option<&'t toml::Ta
 }
 
 fn strings(value: &Value, key: &str) -> Result<Vec<String>, FamilyError> {
-  let invalid = || FamilyError::new(key, format!("expected an array of strings, got {value}"));
+  let invalid = || FamilyError::new(key, format!("expected an array of strings, got {}", crate::describe_value(value)));
   value
     .as_array()
     .ok_or_else(invalid)?
@@ -779,11 +813,11 @@ fn package_list(value: &Value, key: &str) -> Result<Vec<String>, FamilyError> {
   if packages.is_empty() {
     return Err(FamilyError::new(key, "must name at least one package, such as \"@acme/http\""));
   }
-  if let Some(package) = packages
+  if packages
     .iter()
-    .find(|package| package.is_empty() || package.chars().any(char::is_whitespace) || package.ends_with('/'))
+    .any(|package| package.is_empty() || package.chars().any(char::is_whitespace) || package.ends_with('/'))
   {
-    return Err(FamilyError::new(key, format!("expected import specifiers such as \"@acme/http\", got {package:?}")));
+    return Err(FamilyError::new(key, "expected import specifiers such as \"@acme/http\""));
   }
   Ok(packages)
 }
@@ -793,7 +827,7 @@ fn identifier(value: &Value, key: &str) -> Result<String, FamilyError> {
     .as_str()
     .filter(|text| is_identifier(text))
     .map(str::to_owned)
-    .ok_or_else(|| FamilyError::new(key, format!("expected an identifier, got {value}")))
+    .ok_or_else(|| FamilyError::new(key, format!("expected an identifier, got {}", crate::describe_value(value))))
 }
 
 fn is_identifier(text: &str) -> bool {
@@ -897,12 +931,10 @@ mod tests {
     let base = "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"Api\"]\n[routes.methods]\nRead = \"GET\"\n";
     for (text, message) in [
       ("version = 2\n", "version: unsupported version 2; this catl reads version 1"),
+      ("version = \"sk-FAKEKEY123\"\n", "version: unsupported version a string; this catl reads version 1"),
       ("[controller]\ndecorators = [\"Api\"]\n", "packages: missing"),
       ("packages = []\n", "packages: must name at least one package, such as \"@acme/http\""),
-      (
-        "packages = [\"@acme/ http\"]\n",
-        "packages: expected import specifiers such as \"@acme/http\", got \"@acme/ http\"",
-      ),
+      ("packages = [\"@acme/ http\"]\n", "packages: expected import specifiers such as \"@acme/http\""),
       ("packages = [\"@acme/http\"]\n", "controller: missing; name the controller decorators"),
       ("packages = [\"@acme/http\"]\ncontroller = 1\n", "controller: must be a table"),
       (
@@ -911,7 +943,7 @@ mod tests {
       ),
       (
         "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"Api\"]\n[routes.methods]\nRead = \"FETCH\"\n",
-        "routes.methods.Read: expected an HTTP method such as \"GET\", \"POST\" or \"ANY\", got \"FETCH\"",
+        "routes.methods.Read: expected an HTTP method such as \"GET\", \"POST\" or \"ANY\", got a string",
       ),
       (
         "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"Api\"]\n[routes.methods]\n",
@@ -923,7 +955,7 @@ mod tests {
       ),
       (
         "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"api.v1\"]\n",
-        "controller.decorators: expected decorator names such as \"Controller\", got \"api.v1\"",
+        "controller.decorators: expected decorator names such as \"Controller\"",
       ),
       (
         "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"Api\"]\npath = { argument = -1 }\n",
@@ -933,10 +965,10 @@ mod tests {
       assert_eq!(parse(text), Err(message.to_owned()), "{text}");
     }
     for (extra, message) in [
-      ("[guards]\ndecorators = \"Guarded\"\n", "guards.decorators: expected an array of strings, got \"Guarded\""),
+      ("[guards]\ndecorators = \"Guarded\"\n", "guards.decorators: expected an array of strings, got a string"),
       (
         "[global_prefix]\nfactory = \"Acme Factory\"\nmethod = \"setGlobalPrefix\"\n",
-        "global_prefix.factory: expected a call path such as \"AppFactory.create\", got \"Acme Factory\"",
+        "global_prefix.factory: expected a call path such as \"AppFactory.create\", got a string",
       ),
       ("[global_prefix]\nfactory = \"AcmeFactory.create\"\n", "global_prefix.method: missing"),
     ] {
@@ -1017,15 +1049,15 @@ mod tests {
       ("[client]\nmodules = []\n", "client.modules: must name at least one package, such as \"@acme/http\""),
       (
         "[client]\nfiles = [\"../web/api.ts\"]\n",
-        "client.files: expected repository-relative paths such as \"apps/web/src/api/*.ts\", got \"../web/api.ts\"",
+        "client.files: expected repository-relative paths such as \"apps/web/src/api/*.ts\"",
       ),
       (
         "[client]\nfiles = [\"/abs/api.ts\"]\n",
-        "client.files: expected repository-relative paths such as \"apps/web/src/api/*.ts\", got \"/abs/api.ts\"",
+        "client.files: expected repository-relative paths such as \"apps/web/src/api/*.ts\"",
       ),
       (
         "[client]\nmodules = [\"x\"]\nmethods = [\"fetch\"]\n",
-        "client.methods: expected HTTP method names such as \"get\" or \"GET\", got \"fetch\"",
+        "client.methods: expected HTTP method names such as \"get\" or \"GET\"",
       ),
       (
         "[client]\nmodules = [\"x\"]\nmethods = []\n",
@@ -1033,28 +1065,28 @@ mod tests {
       ),
       (
         "[client]\nmodules = [\"x\"]\nstyle = \"rails\"\n",
-        "client.style: expected \"openapi\" or \"express\", got \"rails\"",
+        "client.style: expected \"openapi\" or \"express\", got a string",
       ),
       (
         "[client]\nmodules = [\"x\"]\nexports = [\"books.api\"]\n",
-        "client.exports: expected export names such as \"booksApi\" or \"default\", got \"books.api\"",
+        "client.exports: expected export names such as \"booksApi\" or \"default\"",
       ),
       (
         "[client]\nmodules = [\"x\"]\ntarget_package = \"\"\n",
-        "client.target_package: expected a package name such as \"@acme/books-api\", got \"\"",
+        "client.target_package: expected a package name such as \"@acme/books-api\", got a string",
       ),
       ("client = 1\n", "client: must be a table"),
       (
         "[client]\nmodules = [\"x\"]\nbase = \"api/v1\"\n",
-        "client.base: expected a base path such as \"/api/v1\" or an origin such as \"https://api.acme.test/v1\", got \"api/v1\"",
+        "client.base: expected a base path such as \"/api/v1\" or an origin such as \"https://api.acme.test/v1\", got a string",
       ),
       (
         "[client]\nmodules = [\"x\"]\nbase = \"/api/{version}\"\n",
-        "client.base: expected a base path such as \"/api/v1\" or an origin such as \"https://api.acme.test/v1\", got \"/api/{version}\"",
+        "client.base: expected a base path such as \"/api/v1\" or an origin such as \"https://api.acme.test/v1\", got a string",
       ),
       (
         "[client]\nmodules = [\"x\"]\nbase = \"/\"\n",
-        "client.base: expected a base path such as \"/api/v1\" or an origin such as \"https://api.acme.test/v1\", got \"/\"",
+        "client.base: expected a base path such as \"/api/v1\" or an origin such as \"https://api.acme.test/v1\", got a string",
       ),
       ("[client]\nmodules = [\"x\"]\nsurfaces = 1\n", "client.surfaces: must be a table"),
       (
@@ -1063,11 +1095,11 @@ mod tests {
       ),
       (
         "[client]\nmodules = [\"x\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces.map\"\n",
-        "client.surfaces.option: expected an identifier, got \"surfaces.map\"",
+        "client.surfaces.option: expected an identifier, got a string",
       ),
       (
         "[client]\nmodules = [\"x\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces\"\ncontainers = [\"api.client\"]\n",
-        "client.surfaces.containers: expected export names such as \"booksApi\" or \"default\", got \"api.client\"",
+        "client.surfaces.containers: expected export names such as \"booksApi\" or \"default\"",
       ),
     ] {
       assert_eq!(parse(text), Err(message.to_owned()), "{text}");
@@ -1106,7 +1138,7 @@ mod tests {
       ),
       (
         "[routes.options]\ndecorators = [\"Route\"]\npath = \"options.path\"\n",
-        "routes.options.path: expected an identifier, got \"options.path\"",
+        "routes.options.path: expected an identifier, got a string",
       ),
       ("[routes]\npath = { argument = 0 }\n", "routes.methods: missing"),
     ] {
@@ -1151,11 +1183,11 @@ mod tests {
       ),
       (
         "[guards]\ndecorators = [\"Guarded\"]\nauth_schemes = { Guarded = \"oauth\" }\n",
-        "guards.auth_schemes.Guarded: expected one of \"bearer\", \"api_key\", \"session_cookie\", \"basic\", got \"oauth\"",
+        "guards.auth_schemes.Guarded: expected one of \"bearer\", \"api_key\", \"session_cookie\", \"basic\", got a string",
       ),
       (
         "[guards]\ndecorators = [\"Guarded\"]\nauth_schemes = [\"bearer\"]\n",
-        "guards.auth_schemes: expected a table of decorator = \"scheme\", got [\"bearer\"]",
+        "guards.auth_schemes: expected a table of decorator = \"scheme\", got an array",
       ),
       (
         "[guards]\ndecorators = [\"Guarded\"]\n[permissions]\ndecorators = [\"Guarded\"]\n",

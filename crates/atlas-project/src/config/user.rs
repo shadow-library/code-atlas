@@ -109,7 +109,12 @@ impl UserConfig {
     for (name, value) in &table {
       match (name.as_str(), value) {
         ("version", Value::Integer(SUPPORTED_VERSION)) => {}
-        ("version", other) => return Err(invalid(format!("unsupported version {other}; this catl reads version {SUPPORTED_VERSION}"))),
+        ("version", other) => {
+          return Err(invalid(format!(
+            "unsupported version {}; this catl reads version {SUPPORTED_VERSION}",
+            atlas_detect::describe_value(other)
+          )));
+        }
         ("defaults", Value::Table(defaults)) => config.read_defaults(defaults).map_err(invalid)?,
         ("mcp", Value::Table(mcp)) => {
           let known = config.known("", flatten("mcp", mcp), |key| McpSettings::KEYS.iter().any(|spec| spec.name == key));
@@ -227,12 +232,12 @@ mod tests {
   fn should_reject_bad_values_of_known_keys_and_future_versions_with_the_path() {
     for (text, message) in [
       ("[defaults.lsp]\nmax_servers = 0\n", "lsp.max_servers must be at least 1"),
-      ("[defaults.lsp]\nunit = \"galaxy\"\n", "defaults.lsp.unit: expected \"project\" or \"repo\", got \"galaxy\""),
-      ("[defaults]\nexclude = \"dist\"\n", "defaults.exclude: expected an array of strings, got \"dist\""),
+      ("[defaults.lsp]\nunit = \"galaxy\"\n", "defaults.lsp.unit: expected \"project\" or \"repo\""),
+      ("[defaults]\nexclude = \"dist\"\n", "defaults.exclude: expected an array of strings, got a string"),
       ("[mcp]\nmax_body_lines = 0\n", "mcp.max_body_lines: must be greater than 0"),
       (
         "[agents]\nbinary = \"./catl\"\n",
-        "agents.binary: expected a command name such as \"catl\" or an absolute path, got \"./catl\"",
+        "agents.binary: expected a command name such as \"catl\" or an absolute path",
       ),
       (
         "[defaults.llm]\napi_key_env = \"sk-ant-secret value\"\n",
@@ -243,6 +248,7 @@ mod tests {
         "llm.openai_base_url must not carry credentials (user:password@); name the key variable with llm.api_key_env instead",
       ),
       ("version = 2\n", "unsupported version 2; this catl reads version 1"),
+      ("version = \"sk-FAKEKEY123\"\n", "unsupported version a string; this catl reads version 1"),
       ("mcp = 1\n", "mcp must be a table"),
     ] {
       assert_eq!(parse(text), Err(format!("invalid config file /c/config.toml: {message}")), "{text}");

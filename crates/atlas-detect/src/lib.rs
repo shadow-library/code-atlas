@@ -12,4 +12,4 @@ mod view;
 pub use detectors::*;
 pub use families::{DecoratorFamily, FamilyError, ParsedFamily, check_family_name, families_digest};
 pub use registry::*;
-pub use toml_error::{describe_toml_error, toml_error_summary};
+pub use toml_error::{describe_toml_error, describe_value, toml_error_summary};

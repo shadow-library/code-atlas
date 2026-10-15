@@ -9,7 +9,7 @@ use crate::syntax::{snippet, span_of, text};
 use crate::tagged_templates::{Parsed, parse_tagged_templates, visit_errors};
 
 pub const ANALYZER_NAME: &str = "atlas-lang-ts";
-pub const ANALYZER_VERSION: u32 = 5;
+pub const ANALYZER_VERSION: u32 = 6;
 pub const MAX_SOURCE_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
