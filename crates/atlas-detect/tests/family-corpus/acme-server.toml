@@ -1,0 +1,17 @@
+version = 1
+packages = ["@acme/server"]
+
+[controller]
+decorators = ["Api"]
+
+[routes.methods]
+Read = "GET"
+Write = "POST"
+Remove = "DELETE"
+
+[guards]
+decorators = ["Guarded", "Authenticated", "Auth"]
+auth_schemes = { Authenticated = "bearer", Auth = "bearer" }
+
+[permissions]
+decorators = ["Permit", "BotPermission"]

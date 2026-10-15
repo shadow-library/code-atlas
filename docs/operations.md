@@ -253,7 +253,11 @@ Write = "POST"
 Remove = "DELETE"
 
 [guards]
-decorators = ["Guarded"]             # each argument becomes a requires_guard edge
+decorators = ["Guarded", "Authenticated"]    # guard classes in the arguments, or the decorator itself (below)
+auth_schemes = { Authenticated = "bearer" }  # optional; the scheme a decorator guard implements: bearer, api_key, session_cookie or basic
+
+[permissions]                        # optional
+decorators = ["Permit"]              # each argument (or array item) becomes a requires_permission edge
 
 [params]                             # optional; recorded as endpoint attrs
 path = ["PathParam"]                 # -> params
@@ -270,6 +274,14 @@ method = "setGlobalPrefix"           # app.setGlobalPrefix('v2')
 - a file whose name is not a family name (`Acme Http.toml`) is skipped with a warning;
 - an invalid value, a missing required key or broken syntax in a family that no project enables is skipped with a warning naming the file and the key;
 - the same in a family that some project enables is an error naming the file and the key (`invalid config file .../detectors/acme-http.toml: routes.methods.Read: expected an HTTP method ...`, exit 2). It stops every command, including a running MCP server's next call, until the file is fixed or the family is no longer enabled.
+
+Guards and permissions:
+
+- A `[guards]` decorator whose arguments name guard classes (`@Guarded(SessionGuard)`, `@Guarded(new AdminGuard())`, `@Guarded(guards.SessionGuard)` through a namespace import) gives one `requires_guard` edge per class, resolved like a NestJS `@UseGuards` argument. Only a PascalCase name counts as a class. A binding declared in the same file counts only when it is a class, or a constant initialised by a class expression or by `new` or a call of a PascalCase name other than a built-in value type (`AuthGuard('jwt')` counts, `Object.freeze(...)`, `String(...)` and `new Map()` do not), so `@Guarded(ADMIN_ROLE)`, `@Guarded(Role.Admin)`, `@Guarded(sessionGuard)` and such same-file values never yield a guard edge. The detector cannot see other files: an imported PascalCase name (`@Guarded(AdminRole)`) or a PascalCase member of a namespace import (`@Guarded(roles.Admin)`) is taken as a guard class even when it is a value, and its edge then resolves to that value.
+- A `[guards]` decorator without such an argument (`@Authenticated()`, `@Auth({ roles: ['admin'], optional: true })`, `@Auth(ADMIN_ROLE)`) is the guard itself: the edge targets `other:guard_decorator:<repo>:<family>:<decorator>` (the exported name, so aliases share it). Its object arguments are recorded on the edge as `options` and its other arguments as `arguments`, with string constants of the same file read and any other name written `{"binding": "Role.Admin"}`; values that cannot be read statically (calls, spreads) are left out. Options next to a guard class are not recorded.
+- `auth_schemes` maps such a decorator to an auth scheme: the detector then records `implements_auth` from the decorator guard to `auth:<repo>:<scheme>` (`syntactic`, `guard_kind = "declared_decorator"`), and the link pass derives `supports_auth` for its endpoints and `uses_auth` for clients sending a matching credential, as for guard classes. A decorator guard without a scheme stays an unclassified guard.
+- A `[permissions]` decorator's string literal is the permission (`syntactic`); a string constant or a template of constants declared in the same file is read (`resolved`, attr `constant`). The values of imported constants are not read, because the analyzer stores no constant values: any other constant (imported, an enum member) keeps its name as the permission (`permission:<repo>:PROJECTS_READ`, `heuristic 0.60`, rule `permission-constant-unread`, `value_source = "unread_constant"`) and gets a `references` edge (`permission_constant = true`) to the constant, which the engine resolves through imports. The name is the exported one whatever the import style: an alias (`PROJECTS_READ as PR`) is mapped back, a namespace qualifier (`P.PROJECTS_READ`) is dropped, and the qualifier of a named enum or object import stays (`Scope.Admin`). One permission can therefore appear twice: under its value where the constant is declared in the same file or the literal is written, and under the constant's name elsewhere. Other arguments give the `permission-not-literal` diagnostic. Decorators not listed keep the name rule NestJS uses (`Require(s)Permission`, `Role`, `Scope`, string literals only).
+- A decorator has one role, so listing one in both `[guards]` and `[permissions]` is an error. Guard and permission decorators match only when imported from `packages`, like every other decorator; list the package that exports them.
 
 `packages` holds import specifiers compared as written:
 

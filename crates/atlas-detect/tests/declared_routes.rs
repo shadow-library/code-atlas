@@ -9,9 +9,9 @@ use atlas_detect::{DECLARED_ROUTES_VERSION, DeclaredRoutesDetector, DecoratorFam
 use common::{Analyzed, analyze, render, run, sorted};
 
 const PINNED: (u32, &str, &str) = (
-  2,
-  "63aee77496566ded75f8238b1b5ac2f03f80f103c7d06c400eb54c8b13de7a70",
-  "064d892b5b88dd7c66673167cef7cc80d571fcafffb3bc5ead07096f89d3d59b",
+  3,
+  "a359a79b9781d693d316e77f762eb02b34a6f98038e5cb31116b2d4df2de0359",
+  "35740ef2f97f3840ebe4c46220b74f58bdc4bcac74a0498a849a22c4be93a66a",
 );
 
 fn corpus() -> PathBuf {
@@ -23,6 +23,11 @@ fn acme() -> DecoratorFamily {
   let parsed = DecoratorFamily::parse("acme-http", &text).unwrap();
   assert_eq!(parsed.warnings, Vec::<String>::new());
   parsed.family
+}
+
+fn acme_server() -> DecoratorFamily {
+  let text = fs::read_to_string(corpus().join("acme-server.toml")).unwrap();
+  DecoratorFamily::parse("acme-server", &text).unwrap().family
 }
 
 fn detector() -> DeclaredRoutesDetector {
@@ -150,12 +155,15 @@ fn should_version_the_detector_by_its_families() {
 
 #[test]
 fn should_change_declared_route_output_over_the_corpus_only_with_a_version_bump() {
-  let family = acme();
-  let detector = DeclaredRoutesDetector::new(vec![family.clone()]);
-  let mut inputs = families_digest(std::slice::from_ref(&family)).to_string().into_bytes();
+  let mut inputs = Vec::new();
   let mut outputs = Vec::new();
-  for repo in ["lookalike", "orders"] {
-    for (path, analyzed) in corpus_files(repo) {
+  for (family, repos) in [(acme(), ["lookalike", "orders"].as_slice()), (acme_server(), ["projects"].as_slice())] {
+    let detector = DeclaredRoutesDetector::new(vec![family.clone()]);
+    inputs.extend(families_digest(std::slice::from_ref(&family)).to_string().into_bytes());
+    for (repo, path, analyzed) in repos
+      .iter()
+      .flat_map(|repo| corpus_files(repo).into_iter().map(move |(path, analyzed)| (*repo, path, analyzed)))
+    {
       inputs.extend(serde_json::to_vec(&analyzed.facts).unwrap());
       inputs.push(b'\n');
       let (detection, diagnostics) = run(&detector, &analyzed);

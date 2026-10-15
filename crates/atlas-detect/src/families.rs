@@ -32,7 +32,8 @@ const CLIENT_METHODS: [HttpMethod; 7] = [
   HttpMethod::Head,
   HttpMethod::Options,
 ];
-const SERVER_SECTIONS: [&str; 6] = ["packages", "controller", "routes", "guards", "params", "global_prefix"];
+const SERVER_SECTIONS: [&str; 7] = ["packages", "controller", "routes", "guards", "permissions", "params", "global_prefix"];
+const AUTH_SCHEMES: [&str; 4] = ["bearer", "api_key", "session_cookie", "basic"];
 const NEST_ROUTES: [(&str, HttpMethod); 8] = [
   ("Get", HttpMethod::Get),
   ("Post", HttpMethod::Post),
@@ -84,6 +85,12 @@ pub(crate) struct PathArgument {
 pub(crate) struct RouteDecorator {
   pub decorator: String,
   pub method: HttpMethod,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct GuardScheme {
+  pub decorator: String,
+  pub scheme: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -164,6 +171,10 @@ pub struct DecoratorFamily {
   pub(crate) routes: Vec<RouteDecorator>,
   pub(crate) route_path: PathArgument,
   pub(crate) guards: Vec<String>,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  pub(crate) guard_schemes: Vec<GuardScheme>,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  pub(crate) permissions: Vec<String>,
   pub(crate) params: ParamDecorators,
   pub(crate) global_prefix: Option<GlobalPrefix>,
   pub(crate) origin: FamilyOrigin,
@@ -195,6 +206,8 @@ pub(crate) static NEST: LazyLock<DecoratorFamily> = LazyLock::new(|| DecoratorFa
     .collect(),
   route_path: PathArgument { index: 0, key: None },
   guards: vec!["UseGuards".to_owned()],
+  guard_schemes: Vec::new(),
+  permissions: Vec::new(),
   params: ParamDecorators {
     path: vec!["Param".to_owned()],
     headers: vec!["Headers".to_owned()],
@@ -273,6 +286,10 @@ impl DecoratorFamily {
   pub(crate) fn exports(&self, specifier: &str) -> bool {
     self.packages.iter().any(|package| package == specifier)
   }
+
+  pub(crate) fn guard_scheme(&self, decorator: &str) -> Option<&str> {
+    self.guard_schemes.iter().find(|guard| guard.decorator == decorator).map(|guard| guard.scheme.as_str())
+  }
 }
 
 pub fn check_family_name(name: &str) -> Result<(), String> {
@@ -307,7 +324,7 @@ struct Reader {
 
 impl Reader {
   fn family(&mut self, name: &str, table: &toml::Table) -> Result<DecoratorFamily, FamilyError> {
-    let known = ["version", "packages", "controller", "routes", "guards", "params", "global_prefix", "client"];
+    let known = ["version", "packages", "controller", "routes", "guards", "permissions", "params", "global_prefix", "client"];
     self.warn_unknown("", table, &known);
     match table.get("version") {
       None | Some(Value::Integer(SCHEMA_VERSION)) => {}
@@ -334,12 +351,13 @@ impl Reader {
     self.warn_unknown("routes.", routes_section, &["methods", "path"]);
     let routes = self.route_decorators(routes_section)?;
     let route_path = self.path_argument(routes_section, "routes.")?;
-    let guards = match section(table, "guards")? {
+    let (guards, guard_schemes) = match section(table, "guards")? {
+      None => (Vec::new(), Vec::new()),
+      Some(guards) => self.guards(guards)?,
+    };
+    let permissions = match section(table, "permissions")? {
       None => Vec::new(),
-      Some(guards) => {
-        self.warn_unknown("guards.", guards, &["decorators"]);
-        self.optional_decorators(guards, "decorators", "guards.")?
-      }
+      Some(permissions) => self.permissions(permissions)?,
     };
     let params = match section(table, "params")? {
       None => ParamDecorators::default(),
@@ -363,6 +381,8 @@ impl Reader {
       routes,
       route_path,
       guards,
+      guard_schemes,
+      permissions,
       params,
       global_prefix,
       origin: FamilyOrigin::Declared,
@@ -420,6 +440,41 @@ impl Reader {
       style,
       target_package,
     })
+  }
+
+  fn guards(&mut self, guards: &toml::Table) -> Result<(Vec<String>, Vec<GuardScheme>), FamilyError> {
+    self.warn_unknown("guards.", guards, &["decorators", "auth_schemes"]);
+    let decorators = self.optional_decorators(guards, "decorators", "guards.")?;
+    let schemes = match guards.get("auth_schemes") {
+      None => return Ok((decorators, Vec::new())),
+      Some(Value::Table(schemes)) => schemes,
+      Some(other) => {
+        return Err(FamilyError::new("guards.auth_schemes", format!("expected a table of decorator = \"scheme\", got {other}")));
+      }
+    };
+    let mut guard_schemes = Vec::with_capacity(schemes.len());
+    for (decorator, value) in schemes {
+      let key = format!("guards.auth_schemes.{decorator}");
+      if !decorators.contains(decorator) {
+        return Err(FamilyError::new(key, "names a decorator that is not listed in guards.decorators"));
+      }
+      let scheme = value.as_str().filter(|scheme| AUTH_SCHEMES.contains(scheme)).ok_or_else(|| {
+        FamilyError::new(
+          &key,
+          format!("expected one of {}, got {value}", AUTH_SCHEMES.map(|scheme| format!("\"{scheme}\"")).join(", ")),
+        )
+      })?;
+      guard_schemes.push(GuardScheme {
+        decorator: decorator.clone(),
+        scheme: scheme.to_owned(),
+      });
+    }
+    Ok((decorators, guard_schemes))
+  }
+
+  fn permissions(&mut self, permissions: &toml::Table) -> Result<Vec<String>, FamilyError> {
+    self.warn_unknown("permissions.", permissions, &["decorators"]);
+    self.decorator_list(required(permissions, "decorators", "permissions.")?, "permissions.decorators")
   }
 
   fn warn_unknown(&mut self, prefix: &str, table: &toml::Table, known: &[&str]) {
@@ -538,6 +593,8 @@ fn client_only(name: &str, client: ClientShape) -> DecoratorFamily {
       key: Some(DEFAULT_PATH_KEY.to_owned()),
     },
     guards: Vec::new(),
+    guard_schemes: Vec::new(),
+    permissions: Vec::new(),
     params: ParamDecorators::default(),
     global_prefix: None,
     origin: FamilyOrigin::Declared,
@@ -887,6 +944,71 @@ mod tests {
     assert!(!serde_json::to_string(&family).unwrap().contains("client"));
     let with_client = parse(&format!("{ACME}[client]\nmodules = [\"@acme/http/client\"]\n")).unwrap().family;
     assert_ne!(families_digest(std::slice::from_ref(&family)), families_digest(&[with_client]));
+  }
+
+  #[test]
+  fn should_parse_guard_auth_schemes_and_permission_decorators() {
+    let text = "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"Api\"]\n[routes.methods]\nRead = \"GET\"\n[guards]\ndecorators = [\"Guarded\", \"Signed\"]\nauth_schemes = { Signed = \"bearer\" }\n[permissions]\ndecorators = [\"Permit\", \"BotPermission\"]\n";
+    let parsed = parse(text).unwrap();
+
+    assert_eq!(parsed.warnings, Vec::<String>::new());
+    assert_eq!(parsed.family.guards, ["Guarded", "Signed"]);
+    assert_eq!(
+      parsed.family.guard_schemes,
+      [GuardScheme {
+        decorator: "Signed".to_owned(),
+        scheme: "bearer".to_owned()
+      }]
+    );
+    assert_eq!((parsed.family.guard_scheme("Signed"), parsed.family.guard_scheme("Guarded")), (Some("bearer"), None));
+    assert_eq!(parsed.family.permissions, ["Permit", "BotPermission"]);
+  }
+
+  #[test]
+  fn should_reject_invalid_guard_and_permission_sections_naming_the_key() {
+    let base = "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"Api\"]\n[routes.methods]\nRead = \"GET\"\n";
+    for (extra, message) in [
+      (
+        "[guards]\ndecorators = [\"Guarded\"]\nauth_schemes = { Signed = \"bearer\" }\n",
+        "guards.auth_schemes.Signed: names a decorator that is not listed in guards.decorators",
+      ),
+      (
+        "[guards]\ndecorators = [\"Guarded\"]\nauth_schemes = { Guarded = \"oauth\" }\n",
+        "guards.auth_schemes.Guarded: expected one of \"bearer\", \"api_key\", \"session_cookie\", \"basic\", got \"oauth\"",
+      ),
+      (
+        "[guards]\ndecorators = [\"Guarded\"]\nauth_schemes = [\"bearer\"]\n",
+        "guards.auth_schemes: expected a table of decorator = \"scheme\", got [\"bearer\"]",
+      ),
+      (
+        "[guards]\ndecorators = [\"Guarded\"]\n[permissions]\ndecorators = [\"Guarded\"]\n",
+        "permissions.decorators: Guarded is listed more than once; each decorator has one role",
+      ),
+      ("[permissions]\n", "permissions.decorators: missing"),
+      ("[permissions]\ndecorators = []\n", "permissions.decorators: must name at least one decorator"),
+    ] {
+      assert_eq!(parse(&format!("{base}{extra}")), Err(message.to_owned()), "{extra}");
+    }
+    assert_eq!(parse(&format!("permissions = 1\n{base}")), Err("permissions: must be a table".to_owned()));
+    assert_eq!(
+      parse("[permissions]\ndecorators = [\"Permit\"]\n[client]\nmodules = [\"x\"]\n"),
+      Err("packages: missing".to_owned())
+    );
+    let warnings = parse(&format!(
+      "{base}[guards]\ndecorators = [\"Guarded\"]\nschemes = 1\n[permissions]\ndecorators = [\"Permit\"]\nconstants = 1\n"
+    ))
+    .unwrap()
+    .warnings;
+    assert_eq!(warnings, ["unknown key guards.schemes ignored", "unknown key permissions.constants ignored"]);
+  }
+
+  #[test]
+  fn should_keep_the_digest_of_a_family_without_auth_schemes_or_permissions() {
+    let family = parse(ACME).unwrap().family;
+    let serialized = serde_json::to_string(&family).unwrap();
+    assert!(!serialized.contains("guard_schemes") && !serialized.contains("permissions"), "{serialized}");
+    let with_permissions = parse(&format!("{ACME}[permissions]\ndecorators = [\"Permit\"]\n")).unwrap().family;
+    assert_ne!(families_digest(std::slice::from_ref(&family)), families_digest(&[with_permissions]));
   }
 
   #[test]

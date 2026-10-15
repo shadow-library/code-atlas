@@ -9,7 +9,11 @@ Read = "GET"
 Write = "POST"
 
 [guards]
-decorators = ["Guarded"]
+decorators = ["Guarded", "Authenticated"]
+auth_schemes = { Authenticated = "bearer" }
+
+[permissions]
+decorators = ["Permit"]
 
 [global_prefix]
 factory = "AcmeServer.create"

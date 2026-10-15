@@ -15,8 +15,8 @@ const PINNED_STRUCTURE: (u32, &str, &str) = (
 );
 const PINNED_LINK: (u32, &str, &str) = (
   4,
-  "8a6affec2450f1c451c047ce8990018e85f061e4d076d134aef4a62e434b0d36",
-  "cbed2b010d6917c9746c102baca55d4b8181f3061f2fbebc45f9969b4d3779d7",
+  "c9a626d52a96ca12da8c34a4275a7c2792da28e6a845f87a2a6c3c1325dc7b87",
+  "af6c05d327c8e8542721af43bf47be016747a1e65bd7a076a0e220ed89953694",
 );
 
 #[derive(Default)]
@@ -255,6 +255,63 @@ fn should_compose_nest_and_declared_family_prefixes_of_one_repo_in_the_link_pin_
       "checkHealth -> endpoint:family-api:GET /api/health",
       "createOrder -> endpoint:family-api:POST /api/orders",
       "loadOrder -> endpoint:family-api:GET /api/orders/{id}",
+      "loadProject -> endpoint:family-api:GET /api/projects/{id}",
+    ]
+  );
+}
+
+#[test]
+fn should_derive_auth_and_permissions_of_declared_guard_decorators_in_the_link_pin_corpus() {
+  let scratch = tempfile::tempdir().unwrap();
+  let engine = open(&link_family_project(scratch.path()), &scratch.path().join("home"));
+  assert!(fresh(&engine).is_fresh());
+  let owner = Owner::Project {
+    pass: atlas_link::PASS_NAME.to_owned(),
+  };
+  let render = |tx: &atlas_store::ReadTx<'_>, edge: &atlas_core::Edge| -> Result<String, atlas_store::StoreError> {
+    let (Some(from), Some(to)) = (tx.entity(edge.from)?, tx.entity(edge.to)?) else {
+      return Ok(format!("{} dangling", edge.kind));
+    };
+    Ok(format!("{} {} -> {} {}", edge.kind, from.key, to.key, edge.certainty.tag()))
+  };
+  let lines = engine
+    .store()
+    .read(|tx| -> Result<Vec<String>, atlas_store::StoreError> {
+      let mut lines = Vec::new();
+      for edge in tx
+        .owned_facts(&owner)?
+        .edges
+        .iter()
+        .filter(|edge| matches!(edge.kind, EdgeKind::SupportsAuth | EdgeKind::UsesAuth))
+      {
+        lines.push(render(tx, edge)?);
+      }
+      let guard = "other:guard_decorator:family-api:acme-http:Authenticated".parse().unwrap();
+      let guard = tx.entity_by_key(&guard)?.unwrap();
+      for edge in tx.edges_from(guard.id, &atlas_store::EdgeFilter::default())? {
+        lines.push(render(tx, &edge)?);
+      }
+      let permission = tx.entity_by_key(&"permission:family-api:PROJECTS_READ".parse().unwrap())?.unwrap();
+      for edge in tx
+        .edges_to(permission.id, &atlas_store::EdgeFilter::default())?
+        .iter()
+        .chain(&tx.edges_from(permission.id, &atlas_store::EdgeFilter::default())?)
+      {
+        lines.push(render(tx, edge)?);
+      }
+      lines.sort();
+      Ok(lines)
+    })
+    .unwrap();
+  assert_eq!(
+    lines,
+    [
+      "implements_auth other:guard_decorator:family-api:acme-http:Authenticated -> auth:family-api:bearer [syntactic]",
+      "references permission:family-api:PROJECTS_READ -> ts:family-api:family-api:src/permissions::PROJECTS_READ#constant [resolved]",
+      "requires_permission ts:family-api:family-api:src/projects.controller::ProjectsController::find#method -> permission:family-api:PROJECTS_READ [heuristic 0.60]",
+      "supports_auth endpoint:family-api:GET /api/projects/{id} -> auth:family-api:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-api:GET /projects/{id} -> auth:family-api:bearer [heuristic 0.99]",
+      "uses_auth ts:family-web:family-web:src/projects::loadProject#function -> auth:family-api:bearer [heuristic 0.75]",
     ]
   );
 }

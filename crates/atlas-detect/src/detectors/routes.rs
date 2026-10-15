@@ -1,17 +1,23 @@
 use atlas_core::{
   ArgSummary, AttributeFact, Attrs, EdgeKind, EntityKey, EntityKind, FileFacts, HttpMethod, LanguageFamily, NodeRef, RefKind, Severity, SymbolFact, normalize_route,
 };
-use serde_json::json;
+use serde_json::{Map, Value, json};
 
 use crate::cert::Cert;
 use crate::families::{DecoratorFamily, FamilyOrigin, PathArgument};
-use crate::lex::{TokenKind, lex};
+use crate::lex::{Token, TokenKind, lex};
 use crate::sink::{Sink, attrs};
 use crate::strings::{StringEval, evaluate};
 use crate::view::{Binding, FileView, Imported, starts_with_call};
 
 const GLOBAL_PREFIX_KIND: &str = "http_global_prefix";
 const FAMILY_PREFIX_KIND: &str = "http_family_prefix";
+const GUARD_DECORATOR_KIND: &str = "guard_decorator";
+const UNREAD_PERMISSION_CONFIDENCE: f32 = 0.6;
+const RULE_UNREAD_PERMISSION: &str = "permission-constant-unread";
+const BUILT_IN_VALUE_TYPES: [&str; 16] = [
+  "Array", "BigInt", "Boolean", "Date", "Error", "Map", "Number", "Object", "Promise", "Proxy", "RegExp", "Set", "String", "Symbol", "WeakMap", "WeakSet",
+];
 
 struct Route {
   route: String,
@@ -28,7 +34,36 @@ struct Handler<'f> {
 
 struct GuardUse<'f> {
   level: &'static str,
-  arg: &'f ArgSummary,
+  target: GuardTarget<'f>,
+}
+
+enum GuardTarget<'f> {
+  Class(Vec<String>),
+  Decorator { name: &'f str, attribute: &'f AttributeFact },
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PermissionSource {
+  Literal,
+  Constant,
+  UnreadConstant,
+}
+
+impl PermissionSource {
+  fn label(self) -> &'static str {
+    match self {
+      Self::Literal => "literal",
+      Self::Constant => "constant",
+      Self::UnreadConstant => "unread_constant",
+    }
+  }
+}
+
+struct PermissionValue {
+  name: String,
+  cert: Cert,
+  source: PermissionSource,
+  constant: Option<Vec<String>>,
 }
 
 struct Routes<'a, 'v> {
@@ -122,43 +157,239 @@ impl Routes<'_, '_> {
     );
     let guards = self.guard_uses(class, "class").into_iter().chain(self.guard_uses(method, "method"));
     for (order, guard) in guards.enumerate() {
-      let Some(path) = guard_path(guard.arg) else { continue };
-      sink.edge(
-        EdgeKind::RequiresGuard,
-        NodeRef::Key(endpoint.clone()),
-        NodeRef::Unresolved { path, from: Some(method.local) },
-        decorator.span,
-        cert,
-        attrs([("level", json!(guard.level)), ("order", json!(order))]),
-      );
-    }
-    for (level, owner) in [("class", class), ("method", method)] {
-      for attribute in owner.attributes.iter().filter(|attribute| is_permission_decorator(attribute)) {
-        for name in attribute.args.iter().filter_map(|arg| match arg {
-          ArgSummary::Str(value) => Some(value.clone()),
-          _ => None,
-        }) {
-          let permission = EntityKey::Permission { repo: view.repo().clone(), name };
-          let decorator_name = attribute.path.join(".");
-          sink.entity(permission.clone(), attribute.span, Cert::Syntactic, attrs([("decorator", json!(decorator_name))]));
+      let level_and_order = [("level", json!(guard.level)), ("order", json!(order))];
+      match guard.target {
+        GuardTarget::Class(path) => sink.edge(
+          EdgeKind::RequiresGuard,
+          NodeRef::Key(endpoint.clone()),
+          NodeRef::Unresolved { path, from: Some(method.local) },
+          decorator.span,
+          cert,
+          attrs(level_and_order),
+        ),
+        GuardTarget::Decorator { name, attribute } => {
+          let guard = self.decorator_guard(sink, name, attribute);
+          let mut edge_attrs = attrs(level_and_order);
+          edge_attrs.extend(self.guard_arguments(attribute));
           sink.edge(
-            EdgeKind::RequiresPermission,
-            NodeRef::Local(method.local),
-            NodeRef::Key(permission),
-            attribute.span,
-            Cert::Syntactic,
-            attrs([("decorator", json!(decorator_name)), ("level", json!(level))]),
-          );
-        }
-        if attribute.args.iter().any(|arg| !matches!(arg, ArgSummary::Str(_))) {
-          sink.diagnostic(
-            Severity::Info,
-            "permission-not-literal",
-            format!("{} on {} has a non-literal argument", attribute.path.join("."), view.qualified_name(owner)),
-            Some(attribute.span),
+            EdgeKind::RequiresGuard,
+            NodeRef::Key(endpoint.clone()),
+            NodeRef::Key(guard),
+            decorator.span,
+            cert,
+            edge_attrs,
           );
         }
       }
+    }
+    for (level, owner) in [("class", class), ("method", method)] {
+      for attribute in &owner.attributes {
+        if self.is_any(attribute, &self.family.permissions) {
+          self.declared_permission(sink, method, owner, attribute, level);
+        } else if is_permission_decorator(attribute) {
+          self.named_permission(sink, method, owner, attribute, level);
+        }
+      }
+    }
+  }
+
+  fn named_permission(&self, sink: &mut Sink, method: &SymbolFact, owner: &SymbolFact, attribute: &AttributeFact, level: &str) {
+    let view = self.view;
+    for name in attribute.args.iter().filter_map(|arg| match arg {
+      ArgSummary::Str(value) => Some(value.clone()),
+      _ => None,
+    }) {
+      let permission = EntityKey::Permission { repo: view.repo().clone(), name };
+      let decorator_name = attribute.path.join(".");
+      sink.entity(permission.clone(), attribute.span, Cert::Syntactic, attrs([("decorator", json!(decorator_name))]));
+      sink.edge(
+        EdgeKind::RequiresPermission,
+        NodeRef::Local(method.local),
+        NodeRef::Key(permission),
+        attribute.span,
+        Cert::Syntactic,
+        attrs([("decorator", json!(decorator_name)), ("level", json!(level))]),
+      );
+    }
+    if attribute.args.iter().any(|arg| !matches!(arg, ArgSummary::Str(_))) {
+      self.non_literal_permission(sink, owner, attribute);
+    }
+  }
+
+  fn declared_permission(&self, sink: &mut Sink, method: &SymbolFact, owner: &SymbolFact, attribute: &AttributeFact, level: &str) {
+    let view = self.view;
+    let decorator_name = attribute.path.join(".");
+    let args = attribute.args.iter().flat_map(|arg| match arg {
+      ArgSummary::Array(items) => items.iter().collect(),
+      single => vec![single],
+    });
+    let mut unreadable = false;
+    for arg in args {
+      let Some(value) = self.permission_value(arg) else {
+        unreadable = true;
+        continue;
+      };
+      let permission = EntityKey::Permission {
+        repo: view.repo().clone(),
+        name: value.name,
+      };
+      let constant = value.constant.as_ref().map(|path| json!(self.constant_name(path)));
+      sink.entity(
+        permission.clone(),
+        attribute.span,
+        value.cert,
+        attrs([
+          ("decorator", json!(decorator_name)),
+          ("value_source", json!(value.source.label())),
+          ("constant", constant.clone().unwrap_or(Value::Null)),
+        ]),
+      );
+      sink.edge(
+        EdgeKind::RequiresPermission,
+        NodeRef::Local(method.local),
+        NodeRef::Key(permission.clone()),
+        attribute.span,
+        value.cert,
+        attrs([("decorator", json!(decorator_name)), ("level", json!(level)), ("constant", constant.unwrap_or(Value::Null))]),
+      );
+      if let (Some(path), PermissionSource::UnreadConstant) = (value.constant, value.source) {
+        sink.edge(
+          EdgeKind::References,
+          NodeRef::Key(permission),
+          NodeRef::Unresolved { path, from: Some(owner.local) },
+          attribute.span,
+          Cert::Syntactic,
+          attrs([("permission_constant", json!(true))]),
+        );
+      }
+    }
+    if unreadable {
+      self.non_literal_permission(sink, owner, attribute);
+    }
+  }
+
+  fn permission_value(&self, arg: &ArgSummary) -> Option<PermissionValue> {
+    let constant = match arg {
+      ArgSummary::Path(path) => Some(path.clone()),
+      _ => None,
+    };
+    if let Some(eval) = evaluate(self.view, None, arg)
+      && let Some(name) = eval.static_value()
+    {
+      let source = if eval.cert == Cert::Syntactic {
+        PermissionSource::Literal
+      } else {
+        PermissionSource::Constant
+      };
+      return Some(PermissionValue {
+        name,
+        cert: eval.cert,
+        source,
+        constant,
+      });
+    }
+    let path = constant?;
+    Some(PermissionValue {
+      name: self.constant_name(&path),
+      cert: Cert::heuristic(UNREAD_PERMISSION_CONFIDENCE, RULE_UNREAD_PERMISSION),
+      source: PermissionSource::UnreadConstant,
+      constant: Some(path),
+    })
+  }
+
+  fn constant_name(&self, path: &[String]) -> String {
+    let Some((head, rest)) = path.split_first() else { return String::new() };
+    match self.view.ts_import(head).map(|import| import.imported) {
+      Some(Imported::Namespace) if !rest.is_empty() => rest.join("."),
+      Some(Imported::Named(imported)) => std::iter::once(imported).chain(rest.iter().map(String::as_str)).collect::<Vec<_>>().join("."),
+      _ => path.join("."),
+    }
+  }
+
+  fn non_literal_permission(&self, sink: &mut Sink, owner: &SymbolFact, attribute: &AttributeFact) {
+    sink.diagnostic(
+      Severity::Info,
+      "permission-not-literal",
+      format!("{} on {} has a non-literal argument", attribute.path.join("."), self.view.qualified_name(owner)),
+      Some(attribute.span),
+    );
+  }
+
+  fn decorator_guard(&self, sink: &mut Sink, name: &str, attribute: &AttributeFact) -> EntityKey {
+    let view = self.view;
+    let guard = EntityKey::Other {
+      kind: EntityKind::Custom(GUARD_DECORATOR_KIND.to_owned()),
+      repo: Some(view.repo().clone()),
+      name: format!("{}:{name}", self.family.name),
+    };
+    let scheme = self.family.guard_scheme(name);
+    sink.entity(
+      guard.clone(),
+      attribute.span,
+      Cert::Syntactic,
+      attrs([
+        ("framework", json!(self.family.name)),
+        ("decorator", json!(name)),
+        ("auth_scheme", scheme.map_or(Value::Null, |scheme| json!(scheme))),
+      ]),
+    );
+    let Some(scheme) = scheme else { return guard };
+    let key = EntityKey::AuthScheme {
+      repo: view.repo().clone(),
+      scheme: scheme.to_owned(),
+    };
+    let declared = attrs([("guard_kind", json!("declared_decorator")), ("framework", json!(self.family.name))]);
+    sink.entity(key.clone(), attribute.span, Cert::Syntactic, declared.clone());
+    sink.edge(
+      EdgeKind::ImplementsAuth,
+      NodeRef::Key(guard.clone()),
+      NodeRef::Key(key),
+      attribute.span,
+      Cert::Syntactic,
+      declared,
+    );
+    guard
+  }
+
+  fn guard_arguments(&self, attribute: &AttributeFact) -> Attrs {
+    let mut options = Map::new();
+    let mut arguments = Vec::new();
+    for arg in &attribute.args {
+      match arg {
+        ArgSummary::Object(_) => {
+          if let Some(Value::Object(entries)) = self.static_value(arg) {
+            options.extend(entries);
+          }
+        }
+        other => arguments.extend(self.static_value(other)),
+      }
+    }
+    attrs([
+      ("options", if options.is_empty() { Value::Null } else { Value::Object(options) }),
+      ("arguments", if arguments.is_empty() { Value::Null } else { Value::Array(arguments) }),
+    ])
+  }
+
+  fn static_value(&self, arg: &ArgSummary) -> Option<Value> {
+    match arg {
+      ArgSummary::Number(text) => Some(text.parse::<serde_json::Number>().map_or_else(|_| json!(text), Value::Number)),
+      ArgSummary::Bool(value) => Some(json!(value)),
+      ArgSummary::Null => Some(Value::Null),
+      ArgSummary::Array(items) => items.iter().map(|item| self.static_value(item)).collect::<Option<Vec<_>>>().map(Value::Array),
+      ArgSummary::Object(entries) => Some(Value::Object(
+        entries
+          .iter()
+          .filter_map(|entry| Some((entry.key.static_name()?.to_owned(), self.static_value(&entry.value)?)))
+          .collect(),
+      )),
+      ArgSummary::Str(_) | ArgSummary::Template(_) | ArgSummary::Concat(_) | ArgSummary::Path(_) => {
+        match (evaluate(self.view, None, arg).and_then(|eval| eval.static_value()), arg) {
+          (Some(value), _) => Some(json!(value)),
+          (None, ArgSummary::Path(path)) => Some(json!({ "binding": path.join(".") })),
+          (None, _) => None,
+        }
+      }
+      _ => None,
     }
   }
 
@@ -298,14 +529,48 @@ impl Routes<'_, '_> {
     })
   }
 
-  fn guard_uses<'f>(&self, owner: &'f SymbolFact, level: &'static str) -> Vec<GuardUse<'f>> {
-    owner
-      .attributes
-      .iter()
-      .filter(|attribute| self.is_any(attribute, &self.family.guards))
-      .flat_map(|attribute| attribute.args.iter())
-      .map(|arg| GuardUse { level, arg })
-      .collect()
+  fn guard_uses<'f>(&'f self, owner: &'f SymbolFact, level: &'static str) -> Vec<GuardUse<'f>> {
+    let mut uses = Vec::new();
+    for attribute in &owner.attributes {
+      let Some(name) = self.family.guards.iter().find(|name| self.is_decorator(attribute, name)) else {
+        continue;
+      };
+      let classes: Vec<Vec<String>> = match self.family.origin {
+        FamilyOrigin::BuiltIn => attribute.args.iter().filter_map(guard_path).collect(),
+        FamilyOrigin::Declared => attribute.args.iter().filter_map(|arg| self.guard_class(arg)).collect(),
+      };
+      if classes.is_empty() && self.family.origin == FamilyOrigin::Declared {
+        uses.push(GuardUse {
+          level,
+          target: GuardTarget::Decorator { name, attribute },
+        });
+        continue;
+      }
+      uses.extend(classes.into_iter().map(|path| GuardUse {
+        level,
+        target: GuardTarget::Class(path),
+      }));
+    }
+    uses
+  }
+
+  fn guard_class(&self, arg: &ArgSummary) -> Option<Vec<String>> {
+    let path = guard_path(arg)?;
+    let class = match path.as_slice() {
+      [name] => is_class_name(name) && self.may_bind_class(name),
+      [namespace, name] => is_class_name(name) && self.view.ts_import(namespace).is_some_and(|import| import.imported == Imported::Namespace),
+      _ => false,
+    };
+    class.then_some(path)
+  }
+
+  fn may_bind_class(&self, name: &str) -> bool {
+    let Some(symbol) = self.view.top_level_named(name) else { return true };
+    match symbol.kind {
+      EntityKind::Class => true,
+      EntityKind::Constant | EntityKind::Variable => matches!(self.view.resolve_binding(None, name), Some(Binding::Init(tokens)) if creates_class(tokens)),
+      _ => false,
+    }
   }
 
   fn passport_strategies(&self, class: &SymbolFact, method: &SymbolFact) -> Vec<String> {
@@ -369,6 +634,32 @@ fn guard_path(arg: &ArgSummary) -> Option<Vec<String>> {
     }
     _ => None,
   }
+}
+
+fn creates_class(initializer: &[Token]) -> bool {
+  let (constructor, called) = match initializer.split_first() {
+    Some((first, _)) if first.is_ident("class") => return true,
+    Some((first, rest)) if first.is_ident("new") => (rest, true),
+    _ => (initializer, false),
+  };
+  let Some((name, end)) = leading_name(constructor) else { return false };
+  let called = called || constructor.get(end).is_some_and(|token| token.is_punct("("));
+  called && is_class_name(name) && !BUILT_IN_VALUE_TYPES.contains(&name)
+}
+
+fn leading_name(tokens: &[Token]) -> Option<(&str, usize)> {
+  let mut index = 0;
+  loop {
+    let name = tokens.get(index).filter(|token| token.kind == TokenKind::Ident)?;
+    if !tokens.get(index + 1).is_some_and(|token| token.is_punct(".")) {
+      return Some((&name.text, index + 1));
+    }
+    index += 2;
+  }
+}
+
+fn is_class_name(name: &str) -> bool {
+  name.starts_with(|first: char| first.is_ascii_uppercase()) && name.chars().any(|character| character.is_ascii_lowercase())
 }
 
 fn is_permission_decorator(attribute: &AttributeFact) -> bool {
