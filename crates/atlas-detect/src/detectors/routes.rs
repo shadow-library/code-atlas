@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use atlas_core::{
   ArgSummary, AttributeFact, Attrs, EdgeKind, EntityKey, EntityKind, FileFacts, HttpMethod, LanguageFamily, NodeRef, ObjectEntry, ObjectKey, RefKind, Severity, SymbolFact,
   normalize_route,
@@ -5,7 +7,7 @@ use atlas_core::{
 use serde_json::{Map, Value, json};
 
 use crate::cert::Cert;
-use crate::families::{AccessMode, DecoratorFamily, FamilyOrigin, PathArgument};
+use crate::families::{AccessMode, ClassMarker, DecoratorFamily, FamilyOrigin, OptionMerge, OptionScheme, OptionSchemes, PathArgument, UNREAD_OPTIONS};
 use crate::lex::{Token, TokenKind, lex};
 use crate::objects::const_object;
 use crate::sink::{Sink, attrs};
@@ -19,6 +21,11 @@ const UNREAD_PERMISSION_CONFIDENCE: f32 = 0.6;
 const RULE_UNREAD_PERMISSION: &str = "permission-constant-unread";
 const OVERRIDABLE_OPTION_CONFIDENCE: f32 = 0.5;
 const RULE_PERMISSION_OPTION_SPREAD: &str = "permission-option-spread";
+const RULE_PERMISSION_MERGE_UNREAD: &str = "permission-option-merge-unread";
+const UNCERTAIN_SCHEME_CONFIDENCE: f32 = 0.5;
+const RULE_OPTION_SCHEME_UNREAD: &str = "option-scheme-unread";
+const RULE_OPTION_SCHEME_SEVERAL: &str = "option-scheme-several-keys";
+const DEFAULT_OPTIONS: &str = "default";
 const BUILT_IN_VALUE_TYPES: [&str; 16] = [
   "Array", "BigInt", "Boolean", "Date", "Error", "Map", "Number", "Object", "Promise", "Proxy", "RegExp", "Set", "String", "Symbol", "WeakMap", "WeakSet",
 ];
@@ -38,6 +45,7 @@ struct Handler<'f> {
 
 struct GuardUse<'f> {
   level: &'static str,
+  position: usize,
   target: GuardTarget<'f>,
   enforcement: Enforcement,
 }
@@ -49,9 +57,10 @@ enum Enforcement {
 }
 
 impl<'f> GuardUse<'f> {
-  fn required(level: &'static str, target: GuardTarget<'f>) -> Self {
+  fn required(level: &'static str, position: usize, target: GuardTarget<'f>) -> Self {
     Self {
       level,
+      position,
       target,
       enforcement: Enforcement::Required,
     }
@@ -59,6 +68,13 @@ impl<'f> GuardUse<'f> {
 
   fn is_family_auth(&self) -> bool {
     !matches!(self.target, GuardTarget::Class(_))
+  }
+
+  fn family_decorator(&self) -> Option<&'f str> {
+    match self.target {
+      GuardTarget::Class(_) => None,
+      GuardTarget::Decorator { name, .. } | GuardTarget::ImpliedByPermission { name, .. } => Some(name),
+    }
   }
 
   fn under_marker(self, marked: bool, mode: Option<AccessMode>) -> Option<Self> {
@@ -81,11 +97,19 @@ enum GuardTarget<'f> {
   ImpliedByPermission { name: &'f str, attribute: &'f AttributeFact },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Via {
+  Own,
+  Merged,
+}
+
 struct Access<'f> {
   mode: AccessMode,
   decorator: &'f str,
   option: Option<&'f str>,
   level: &'static str,
+  via: Via,
+  position: usize,
 }
 
 impl Access<'_> {
@@ -94,21 +118,86 @@ impl Access<'_> {
     if let Some(option) = self.option {
       marker["option"] = json!(option);
     }
+    if self.via == Via::Merged {
+      marker["merged"] = json!(true);
+    }
     marker
+  }
+
+  fn unapplied(&self, reason: &str, value: &str) -> Value {
+    let mut marker = self.marker();
+    marker["mode"] = json!(self.mode.as_str());
+    marker["applied"] = json!(false);
+    marker[reason] = json!(value);
+    marker
+  }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Cause {
+  Method,
+  DecoratorOrder,
+}
+
+impl Cause {
+  fn as_str(self) -> &'static str {
+    match self {
+      Self::Method => "method",
+      Self::DecoratorOrder => "decorator_order",
+    }
   }
 }
 
 enum Marking<'f> {
   Unmarked,
   Applied(Access<'f>),
-  ContestedByMethod(Access<'f>),
+  Contested(Access<'f>, Cause),
+  Overridden(Access<'f>, Cause),
+  Limited(Access<'f>),
+}
+
+enum LevelMark<'f> {
+  Unmarked,
+  Marked(Access<'f>),
+  ContestedByOrder(Access<'f>),
+  OverriddenByOrder(Access<'f>),
+}
+
+enum OptionMark<'f> {
+  Marked(Access<'f>),
+  Uncertain(Access<'f>),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Reach {
+  Nothing,
+  ClassGuards,
+  AllGuards,
+}
+
+impl Reach {
+  fn covers(self, level: &str) -> bool {
+    match self {
+      Self::Nothing => false,
+      Self::ClassGuards => level == "class",
+      Self::AllGuards => true,
+    }
+  }
 }
 
 impl Marking<'_> {
   fn mode(&self) -> Option<AccessMode> {
     match self {
       Self::Applied(access) => Some(access.mode),
-      Self::Unmarked | Self::ContestedByMethod(_) => None,
+      Self::Unmarked | Self::Contested(..) | Self::Overridden(..) | Self::Limited(_) => None,
+    }
+  }
+
+  fn reach(&self) -> Reach {
+    match self {
+      Self::Applied(access) if access.level == "method" => Reach::AllGuards,
+      Self::Applied(_) | Self::Contested(_, Cause::Method) => Reach::ClassGuards,
+      Self::Contested(_, Cause::DecoratorOrder) | Self::Overridden(..) | Self::Limited(_) | Self::Unmarked => Reach::Nothing,
     }
   }
 
@@ -116,12 +205,71 @@ impl Marking<'_> {
     match self {
       Self::Unmarked => Value::Null,
       Self::Applied(access) => access.marker(),
-      Self::ContestedByMethod(access) => {
-        let mut marker = access.marker();
-        marker["mode"] = json!(access.mode.as_str());
-        marker["applied"] = json!(false);
-        marker["contested_by"] = json!("method");
-        marker
+      Self::Contested(access, cause) => access.unapplied("contested_by", cause.as_str()),
+      Self::Overridden(access, cause) => access.unapplied("overridden_by", cause.as_str()),
+      Self::Limited(access) => access.unapplied("scope", "decorator"),
+    }
+  }
+}
+
+#[derive(Clone, Copy)]
+enum ClassOption {
+  Kept,
+  Replaced,
+  Unread,
+}
+
+enum KeyState<'f> {
+  Unset,
+  Unknown,
+  Set { values: Vec<&'f ArgSummary>, exact: bool },
+}
+
+struct SchemeChoice {
+  suffix: String,
+  option: Value,
+  schemes: Vec<String>,
+  cert: Cert,
+}
+
+impl SchemeChoice {
+  fn unread(mapping: &OptionSchemes) -> Self {
+    let schemes = mapping.options.iter().flat_map(|option| &option.schemes).chain(&mapping.default);
+    Self {
+      suffix: UNREAD_OPTIONS.to_owned(),
+      option: json!(UNREAD_OPTIONS),
+      schemes: sorted_unique(schemes),
+      cert: Cert::heuristic(UNCERTAIN_SCHEME_CONFIDENCE, RULE_OPTION_SCHEME_UNREAD),
+    }
+  }
+
+  fn of(mapping: &OptionSchemes, present: &[&OptionScheme]) -> Self {
+    match present {
+      [] => Self {
+        suffix: DEFAULT_OPTIONS.to_owned(),
+        option: json!(DEFAULT_OPTIONS),
+        schemes: mapping.default.clone(),
+        cert: Cert::Syntactic,
+      },
+      [one] => Self {
+        suffix: one.option.clone(),
+        option: json!(one.option),
+        schemes: one.schemes.clone(),
+        cert: Cert::Syntactic,
+      },
+      several => {
+        let keys: Vec<&str> = several.iter().map(|option| option.option.as_str()).collect();
+        let first = sorted_unique(several[0].schemes.iter());
+        let agree = several.iter().all(|option| sorted_unique(option.schemes.iter()) == first);
+        Self {
+          suffix: keys.join("+"),
+          option: json!(keys),
+          schemes: sorted_unique(several.iter().flat_map(|option| &option.schemes)),
+          cert: match agree {
+            true => Cert::Syntactic,
+            false => Cert::heuristic(UNCERTAIN_SCHEME_CONFIDENCE, RULE_OPTION_SCHEME_SEVERAL),
+          },
+        }
       }
     }
   }
@@ -269,9 +417,10 @@ impl Routes<'_, '_> {
         GuardTarget::Decorator { name, attribute } => {
           let mut edge_attrs = attrs(level_and_order);
           edge_attrs.extend(self.guard_arguments(attribute));
-          (NodeRef::Key(self.decorator_guard(sink, name, attribute, None)), edge_attrs)
+          let choice = self.family.option_schemes(name).map(|mapping| self.scheme_choice(mapping, class, method));
+          (NodeRef::Key(self.decorator_guard(sink, name, attribute, None, choice)), edge_attrs)
         }
-        GuardTarget::ImpliedByPermission { name, attribute } => (NodeRef::Key(self.decorator_guard(sink, name, attribute, Some("permission"))), attrs(level_and_order)),
+        GuardTarget::ImpliedByPermission { name, attribute } => (NodeRef::Key(self.decorator_guard(sink, name, attribute, Some("permission"), None)), attrs(level_and_order)),
       };
       sink.edge(EdgeKind::RequiresGuard, NodeRef::Key(endpoint.clone()), guard, decorator.span, cert, edge_attrs);
     }
@@ -280,11 +429,13 @@ impl Routes<'_, '_> {
         if self.is_any(attribute, &self.family.permissions) {
           self.declared_permission(sink, method, owner, attribute, level);
         } else if let Some((name, keys)) = self.guard_permission_keys(attribute) {
-          if level == "class" && self.carries(method, name) {
-            continue;
-          }
           let site = PermissionSite { method, owner, attribute, level };
-          self.option_permissions(sink, &site, keys);
+          let inherited = level == "class" && self.carries(method, name);
+          match (inherited, self.family.semantics(name).options) {
+            (false, _) => self.option_permissions(sink, &site, keys, |_, _| ClassOption::Kept),
+            (true, OptionMerge::Override) => {}
+            (true, OptionMerge::DeepMerge) => self.option_permissions(sink, &site, keys, |key, value| self.merged_permission(method, name, key, value)),
+          }
         } else if is_permission_decorator(attribute) {
           self.named_permission(sink, method, owner, attribute, level);
         }
@@ -295,42 +446,94 @@ impl Routes<'_, '_> {
   fn access_and_guards<'f>(&'f self, class: &'f SymbolFact, method: &'f SymbolFact) -> (Marking<'f>, Vec<GuardUse<'f>>) {
     let class_guards = self.guard_uses(class, "class");
     let method_guards = self.guard_uses(method, "method");
-    let method_access = self.access(method, "method", None);
-    let class_access = self.access(class, "class", Some(method));
-    let class_marked = method_access.is_some() || class_access.is_some();
-    let method_marked = method_access.is_some();
-    let method_has_family_guard = method_guards.iter().any(GuardUse::is_family_auth);
-    let marking = match (method_access, class_access) {
-      (Some(access), _) => Marking::Applied(access),
-      (None, Some(access)) if method_has_family_guard => Marking::ContestedByMethod(access),
-      (None, Some(access)) => Marking::Applied(access),
-      (None, None) => Marking::Unmarked,
+    let options = self.option_marks(class, method);
+    let option_mode = |decorator: &str| {
+      options
+        .iter()
+        .filter_map(|mark| match mark {
+          OptionMark::Marked(access) if access.decorator == decorator => Some(access.mode),
+          _ => None,
+        })
+        .min()
     };
-    let mode = marking.mode();
-    let guards = class_guards
+    let self_marked = |guard: &GuardUse<'_>| guard.family_decorator().and_then(option_mode).is_some();
+    let route = match self.level_mark(method, "method", &method_guards, &self_marked) {
+      LevelMark::Marked(access) => Marking::Applied(access),
+      LevelMark::ContestedByOrder(access) => Marking::Contested(access, Cause::DecoratorOrder),
+      LevelMark::OverriddenByOrder(access) => Marking::Overridden(access, Cause::DecoratorOrder),
+      LevelMark::Unmarked => match self.level_mark(class, "class", &class_guards, &self_marked) {
+        LevelMark::Marked(access) => self.class_marking(access, &method_guards, &self_marked),
+        LevelMark::ContestedByOrder(access) => Marking::Contested(access, Cause::DecoratorOrder),
+        LevelMark::OverriddenByOrder(access) => Marking::Overridden(access, Cause::DecoratorOrder),
+        LevelMark::Unmarked => Marking::Unmarked,
+      },
+    };
+    let reach = route.reach();
+    let mode = route.mode();
+    let guards: Vec<GuardUse<'f>> = class_guards
       .into_iter()
-      .map(|guard| (guard, class_marked))
-      .chain(method_guards.into_iter().map(|guard| (guard, method_marked)))
-      .filter_map(|(guard, marked)| guard.under_marker(marked, mode))
+      .chain(method_guards)
+      .filter_map(|guard| {
+        let covered = reach.covers(guard.level);
+        let guard = guard.under_marker(covered, mode)?;
+        match guard.family_decorator().and_then(option_mode) {
+          Some(own) => guard.under_marker(true, Some(own)),
+          None => Some(guard),
+        }
+      })
       .collect();
-    (marking, guards)
+    (recorded_marking(route, options, &guards), guards)
+  }
+
+  fn class_marking<'f>(&self, access: Access<'f>, method_guards: &[GuardUse<'_>], self_marked: &dyn Fn(&GuardUse<'_>) -> bool) -> Marking<'f> {
+    let family_guards: Vec<&str> = method_guards.iter().filter(|guard| !self_marked(guard)).filter_map(GuardUse::family_decorator).collect();
+    if family_guards.is_empty() {
+      return Marking::Applied(access);
+    }
+    match family_guards.iter().any(|decorator| self.method_wins(decorator)) {
+      true => Marking::Overridden(access, Cause::Method),
+      false => Marking::Contested(access, Cause::Method),
+    }
+  }
+
+  fn method_wins(&self, decorator: &str) -> bool {
+    self.family.semantics(decorator).class_marker == ClassMarker::MethodWins
+  }
+
+  fn level_mark<'f>(&'f self, owner: &'f SymbolFact, level: &'static str, guards: &[GuardUse<'_>], self_marked: &dyn Fn(&GuardUse<'_>) -> bool) -> LevelMark<'f> {
+    let marks: Vec<Access<'f>> = owner
+      .attributes
+      .iter()
+      .enumerate()
+      .flat_map(|(position, attribute)| self.decorator_marks(attribute, level, position))
+      .collect();
+    let family_guards: Vec<&GuardUse<'_>> = guards.iter().filter(|guard| guard.family_decorator().is_some() && !self_marked(guard)).collect();
+    let winning = family_guards
+      .iter()
+      .filter(|guard| guard.family_decorator().is_some_and(|decorator| self.method_wins(decorator)))
+      .count();
+    if winning == 0 {
+      return marks.into_iter().min_by_key(|access| access.mode).map_or(LevelMark::Unmarked, LevelMark::Marked);
+    }
+    let Some(topmost) = marks.into_iter().min_by_key(|access| access.position) else {
+      return LevelMark::Unmarked;
+    };
+    if winning < family_guards.len() {
+      return LevelMark::ContestedByOrder(topmost);
+    }
+    match family_guards.iter().all(|guard| topmost.position < guard.position) {
+      true => LevelMark::Marked(topmost),
+      false => LevelMark::OverriddenByOrder(topmost),
+    }
   }
 
   fn carries(&self, owner: &SymbolFact, decorator: &str) -> bool {
     owner.attributes.iter().any(|attribute| self.is_decorator(attribute, decorator))
   }
 
-  fn access<'f>(&'f self, owner: &'f SymbolFact, level: &'static str, overriding: Option<&SymbolFact>) -> Option<Access<'f>> {
-    owner
-      .attributes
-      .iter()
-      .flat_map(|attribute| self.access_marks(attribute, level, overriding))
-      .min_by_key(|access| access.mode)
-  }
-
-  fn access_marks<'f>(&'f self, attribute: &'f AttributeFact, level: &'static str, overriding: Option<&SymbolFact>) -> Vec<Access<'f>> {
+  fn decorator_marks<'f>(&'f self, attribute: &AttributeFact, level: &'static str, position: usize) -> Vec<Access<'f>> {
     let markers = self.family.access();
-    let mut marks: Vec<Access<'f>> = AccessMode::ALL
+    AccessMode::ALL
       .into_iter()
       .filter_map(|mode| {
         let decorator = markers.decorators(mode).iter().find(|name| self.is_decorator(attribute, name))?;
@@ -339,34 +542,130 @@ impl Routes<'_, '_> {
           decorator,
           option: None,
           level,
+          via: Via::Own,
+          position,
         })
       })
-      .collect();
-    let objects: Vec<&Vec<ObjectEntry>> = attribute
-      .args
-      .iter()
-      .filter_map(|arg| match arg {
-        ArgSummary::Object(entries) => Some(entries),
-        _ => None,
-      })
-      .collect();
-    let applies = |decorator: &str| self.is_decorator(attribute, decorator) && !overriding.is_some_and(|method| self.carries(method, decorator));
-    for option in markers.options.iter().filter(|option| applies(&option.decorator)) {
+      .collect()
+  }
+
+  fn option_marks<'f>(&'f self, class: &SymbolFact, method: &SymbolFact) -> Vec<OptionMark<'f>> {
+    let mut marks = Vec::new();
+    for option in &self.family.access().options {
       for key in &option.keys {
-        if objects
-          .iter()
-          .any(|entries| matches!(OptionKey::of(entries, key), OptionKey::Fixed(ArgSummary::Bool(true))))
-        {
-          marks.push(Access {
-            mode: option.mode,
-            decorator: &option.decorator,
-            option: Some(key),
-            level,
-          });
+        let access = |level: &'static str, via: Via| Access {
+          mode: option.mode,
+          decorator: &option.decorator,
+          option: Some(key),
+          level,
+          via,
+          position: 0,
+        };
+        let on_method = self.carries(method, &option.decorator);
+        if on_method && self.sets_marker(method, &option.decorator, key) {
+          marks.push(OptionMark::Marked(access("method", Via::Own)));
+          continue;
+        }
+        if !self.sets_marker(class, &option.decorator, key) {
+          continue;
+        }
+        if !on_method {
+          marks.push(OptionMark::Marked(access("class", Via::Own)));
+          continue;
+        }
+        if self.family.semantics(&option.decorator).options == OptionMerge::Override {
+          continue;
+        }
+        match self.option_state(method, &option.decorator, key) {
+          KeyState::Unset => marks.push(OptionMark::Marked(access("class", Via::Merged))),
+          KeyState::Unknown => marks.push(OptionMark::Uncertain(access("class", Via::Own))),
+          KeyState::Set { .. } => {}
         }
       }
     }
     marks
+  }
+
+  fn sets_marker(&self, owner: &SymbolFact, decorator: &str, key: &str) -> bool {
+    owner
+      .attributes
+      .iter()
+      .filter(|attribute| self.is_decorator(attribute, decorator))
+      .flat_map(|attribute| &attribute.args)
+      .any(|arg| matches!(arg, ArgSummary::Object(entries) if matches!(OptionKey::of(entries, key), OptionKey::Fixed(ArgSummary::Bool(true)))))
+  }
+
+  fn option_state<'f>(&self, owner: &'f SymbolFact, decorator: &str, key: &str) -> KeyState<'f> {
+    let mut values = Vec::new();
+    let mut exact = true;
+    let mut unknown = false;
+    let args = owner
+      .attributes
+      .iter()
+      .filter(|attribute| self.is_decorator(attribute, decorator))
+      .flat_map(|attribute| &attribute.args);
+    for arg in args {
+      match arg {
+        ArgSummary::Object(entries) => match OptionKey::of(entries, key) {
+          OptionKey::Fixed(value) => values.push(value),
+          OptionKey::Overridable(value) => {
+            values.push(value);
+            exact = false;
+          }
+          OptionKey::SpreadOnly => unknown = true,
+          OptionKey::Absent => {}
+        },
+        ArgSummary::Path(_) | ArgSummary::Call { .. } | ArgSummary::Other(_) | ArgSummary::Truncated => unknown = true,
+        _ => {}
+      }
+    }
+    match (values.is_empty(), unknown) {
+      (true, false) => KeyState::Unset,
+      (true, true) => KeyState::Unknown,
+      (false, _) => KeyState::Set { values, exact: exact && !unknown },
+    }
+  }
+
+  fn effective_state<'f>(&self, decorator: &str, key: &str, class: &'f SymbolFact, method: &'f SymbolFact) -> KeyState<'f> {
+    if !self.carries(method, decorator) {
+      return self.option_state(class, decorator, key);
+    }
+    let method_state = self.option_state(method, decorator, key);
+    let merges = self.carries(class, decorator) && self.family.semantics(decorator).options == OptionMerge::DeepMerge;
+    match method_state {
+      KeyState::Unset if merges => self.option_state(class, decorator, key),
+      state => state,
+    }
+  }
+
+  fn scheme_choice(&self, mapping: &OptionSchemes, class: &SymbolFact, method: &SymbolFact) -> SchemeChoice {
+    let mut present = Vec::new();
+    for option in &mapping.options {
+      match self.effective_state(&mapping.decorator, &option.option, class, method) {
+        KeyState::Unset => {}
+        KeyState::Set { values, exact: true } => {
+          if values.last().is_some_and(|value| is_truthy(value)) {
+            present.push(option);
+          }
+        }
+        KeyState::Set { exact: false, .. } | KeyState::Unknown => return SchemeChoice::unread(mapping),
+      }
+    }
+    SchemeChoice::of(mapping, &present)
+  }
+
+  fn merged_permission(&self, method: &SymbolFact, decorator: &str, key: &str, class_value: &ArgSummary) -> ClassOption {
+    match self.option_state(method, decorator, key) {
+      KeyState::Unset => ClassOption::Kept,
+      KeyState::Unknown => ClassOption::Unread,
+      KeyState::Set { values, .. } => {
+        let concatenated = matches!(class_value, ArgSummary::Array(_)) && values.iter().all(|value| matches!(value, ArgSummary::Array(_)));
+        match concatenated {
+          true => ClassOption::Kept,
+          false => ClassOption::Replaced,
+        }
+      }
+    }
   }
 
   fn guard_permission_keys(&self, attribute: &AttributeFact) -> Option<(&str, &[String])> {
@@ -375,16 +674,25 @@ impl Routes<'_, '_> {
     (!keys.is_empty()).then_some((name.as_str(), keys))
   }
 
-  fn option_permissions(&self, sink: &mut Sink, site: &PermissionSite<'_>, keys: &[String]) {
+  fn option_permissions(&self, sink: &mut Sink, site: &PermissionSite<'_>, keys: &[String], inherit: impl Fn(&str, &ArgSummary) -> ClassOption) {
     for entries in site.attribute.args.iter().filter_map(|arg| match arg {
       ArgSummary::Object(entries) => Some(entries),
       _ => None,
     }) {
       for key in keys {
-        let (value, cap) = match OptionKey::of(entries, key) {
+        let (value, spread) = match OptionKey::of(entries, key) {
           OptionKey::Fixed(value) => (value, None),
           OptionKey::Overridable(value) => (value, Some(Cert::heuristic(OVERRIDABLE_OPTION_CONFIDENCE, RULE_PERMISSION_OPTION_SPREAD))),
           OptionKey::Absent | OptionKey::SpreadOnly => continue,
+        };
+        let merge = match inherit(key, value) {
+          ClassOption::Replaced => continue,
+          ClassOption::Kept => None,
+          ClassOption::Unread => Some(Cert::heuristic(OVERRIDABLE_OPTION_CONFIDENCE, RULE_PERMISSION_MERGE_UNREAD)),
+        };
+        let cap = match (spread, merge) {
+          (Some(spread), Some(merge)) => Some(spread.weaker(merge)),
+          (spread, merge) => spread.or(merge),
         };
         let args = flattened(value).into_iter().map(|arg| PermissionArg { arg, cap }).collect();
         self.emit_permissions(sink, site, args, Some(key));
@@ -525,14 +833,22 @@ impl Routes<'_, '_> {
     );
   }
 
-  fn decorator_guard(&self, sink: &mut Sink, name: &str, attribute: &AttributeFact, role: Option<&str>) -> EntityKey {
+  fn decorator_guard(&self, sink: &mut Sink, name: &str, attribute: &AttributeFact, role: Option<&str>, choice: Option<SchemeChoice>) -> EntityKey {
     let view = self.view;
+    let (key_name, schemes, implements, option) = match choice {
+      None => (
+        format!("{}:{name}", self.family.name),
+        self.family.decorator_schemes(name).to_vec(),
+        Cert::Syntactic,
+        Value::Null,
+      ),
+      Some(choice) => (format!("{}:{name}:{}", self.family.name, choice.suffix), choice.schemes, choice.cert, choice.option),
+    };
     let guard = EntityKey::Other {
       kind: EntityKind::Custom(GUARD_DECORATOR_KIND.to_owned()),
       repo: Some(view.repo().clone()),
-      name: format!("{}:{name}", self.family.name),
+      name: key_name,
     };
-    let schemes = self.family.decorator_schemes(name);
     sink.entity(
       guard.clone(),
       attribute.span,
@@ -542,12 +858,13 @@ impl Routes<'_, '_> {
         ("decorator", json!(name)),
         ("auth_schemes", if schemes.is_empty() { Value::Null } else { json!(schemes) }),
         ("role", role.map_or(Value::Null, |role| json!(role))),
+        ("scheme_option", option),
       ]),
     );
     for scheme in schemes {
       let key = EntityKey::AuthScheme {
         repo: view.repo().clone(),
-        scheme: scheme.clone(),
+        scheme,
       };
       let declared = attrs([("guard_kind", json!("declared_decorator")), ("framework", json!(self.family.name))]);
       sink.entity(key.clone(), attribute.span, Cert::Syntactic, declared.clone());
@@ -556,7 +873,7 @@ impl Routes<'_, '_> {
         NodeRef::Key(guard.clone()),
         NodeRef::Key(key),
         attribute.span,
-        Cert::Syntactic,
+        implements,
         declared,
       );
     }
@@ -750,10 +1067,11 @@ impl Routes<'_, '_> {
 
   fn guard_uses<'f>(&'f self, owner: &'f SymbolFact, level: &'static str) -> Vec<GuardUse<'f>> {
     let mut uses = Vec::new();
-    for attribute in &owner.attributes {
+    for (position, attribute) in owner.attributes.iter().enumerate() {
       if let Some(implied) = self.family.permission_schemes().iter().find(|implied| self.is_decorator(attribute, &implied.decorator)) {
         uses.push(GuardUse::required(
           level,
+          position,
           GuardTarget::ImpliedByPermission {
             name: &implied.decorator,
             attribute,
@@ -769,10 +1087,10 @@ impl Routes<'_, '_> {
         FamilyOrigin::Declared => attribute.args.iter().filter_map(|arg| self.guard_class(arg)).collect(),
       };
       if classes.is_empty() && self.family.origin == FamilyOrigin::Declared {
-        uses.push(GuardUse::required(level, GuardTarget::Decorator { name, attribute }));
+        uses.push(GuardUse::required(level, position, GuardTarget::Decorator { name, attribute }));
         continue;
       }
-      uses.extend(classes.into_iter().map(|path| GuardUse::required(level, GuardTarget::Class(path))));
+      uses.extend(classes.into_iter().map(|path| GuardUse::required(level, position, GuardTarget::Class(path))));
     }
     uses
   }
@@ -960,6 +1278,46 @@ fn capped_route(route: Route, object_cert: Cert, cap: Cert) -> Route {
     route: route.route,
     cert: route.cert.weaker(cap),
     source,
+  }
+}
+
+fn recorded_marking<'f>(route: Marking<'f>, options: Vec<OptionMark<'f>>, guards: &[GuardUse<'_>]) -> Marking<'f> {
+  if matches!(route, Marking::Applied(_) | Marking::Contested(..)) {
+    return route;
+  }
+  let mut marked = Vec::new();
+  for mark in options {
+    match mark {
+      OptionMark::Uncertain(access) => return Marking::Contested(access, Cause::Method),
+      OptionMark::Marked(access) => marked.push(access),
+    }
+  }
+  let required = guards.iter().any(|guard| guard.enforcement == Enforcement::Required);
+  let optional = guards.iter().any(|guard| guard.enforcement == Enforcement::Optional);
+  let strongest = match optional {
+    true => marked.into_iter().max_by_key(|access| access.mode),
+    false => marked.into_iter().min_by_key(|access| access.mode),
+  };
+  match (strongest, required) {
+    (None, _) => route,
+    (Some(access), false) => Marking::Applied(access),
+    (Some(_), true) if matches!(route, Marking::Overridden(..)) => route,
+    (Some(access), true) => Marking::Limited(access),
+  }
+}
+
+fn sorted_unique<'s>(schemes: impl Iterator<Item = &'s String>) -> Vec<String> {
+  schemes.cloned().collect::<BTreeSet<String>>().into_iter().collect()
+}
+
+fn is_truthy(value: &ArgSummary) -> bool {
+  match value {
+    ArgSummary::Bool(value) => *value,
+    ArgSummary::Null => false,
+    ArgSummary::Str(text) => !text.is_empty(),
+    ArgSummary::Number(text) => text.parse::<f64>().ok().is_none_or(|number| number != 0.0),
+    ArgSummary::Path(path) => !matches!(path.as_slice(), [name] if name == "undefined"),
+    _ => true,
   }
 }
 

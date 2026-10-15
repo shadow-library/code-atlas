@@ -34,6 +34,7 @@ const CLIENT_METHODS: [HttpMethod; 7] = [
 ];
 const SERVER_SECTIONS: [&str; 8] = ["packages", "controller", "routes", "guards", "permissions", "access", "params", "global_prefix"];
 const AUTH_SCHEMES: [&str; 4] = ["bearer", "api_key", "session_cookie", "basic"];
+pub(crate) const UNREAD_OPTIONS: &str = "unread";
 const NEST_ROUTES: [(&str, HttpMethod); 8] = [
   ("Get", HttpMethod::Get),
   ("Post", HttpMethod::Post),
@@ -97,6 +98,69 @@ pub(crate) struct GuardScheme {
 pub(crate) struct OptionKeys {
   pub decorator: String,
   pub keys: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct OptionScheme {
+  pub option: String,
+  pub schemes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct OptionSchemes {
+  pub decorator: String,
+  pub options: Vec<OptionScheme>,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  pub default: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum OptionMerge {
+  #[default]
+  Override,
+  DeepMerge,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ClassMarker {
+  #[default]
+  Contested,
+  MethodWins,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub(crate) struct Semantics {
+  pub options: OptionMerge,
+  pub class_marker: ClassMarker,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct DecoratorSemantics {
+  pub decorator: String,
+  pub semantics: Semantics,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub(crate) struct GuardSemantics {
+  pub default: Semantics,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  pub decorators: Vec<DecoratorSemantics>,
+}
+
+impl GuardSemantics {
+  fn is_default(&self) -> bool {
+    *self == Self::default()
+  }
+
+  pub(crate) fn of(&self, decorator: &str) -> Semantics {
+    self
+      .decorators
+      .iter()
+      .find(|entry| entry.decorator == decorator)
+      .map_or(self.default, |entry| entry.semantics)
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -263,6 +327,10 @@ pub struct DecoratorFamily {
   #[serde(skip_serializing_if = "Vec::is_empty")]
   pub(crate) guard_permissions: Vec<OptionKeys>,
   #[serde(skip_serializing_if = "Vec::is_empty")]
+  pub(crate) option_schemes: Vec<OptionSchemes>,
+  #[serde(skip_serializing_if = "GuardSemantics::is_default")]
+  pub(crate) semantics: GuardSemantics,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
   pub(crate) permissions: Vec<String>,
   #[serde(skip_serializing_if = "Vec::is_empty")]
   pub(crate) permission_schemes: Vec<GuardScheme>,
@@ -303,6 +371,8 @@ pub(crate) static NEST: LazyLock<DecoratorFamily> = LazyLock::new(|| DecoratorFa
   guards: vec!["UseGuards".to_owned()],
   guard_schemes: Vec::new(),
   guard_permissions: Vec::new(),
+  option_schemes: Vec::new(),
+  semantics: GuardSemantics::default(),
   permissions: Vec::new(),
   permission_schemes: Vec::new(),
   access: AccessMarkers::default(),
@@ -416,6 +486,14 @@ impl DecoratorFamily {
   pub(crate) fn access(&self) -> &AccessMarkers {
     &self.access
   }
+
+  pub(crate) fn option_schemes(&self, decorator: &str) -> Option<&OptionSchemes> {
+    self.option_schemes.iter().find(|mapping| mapping.decorator == decorator)
+  }
+
+  pub(crate) fn semantics(&self, decorator: &str) -> Semantics {
+    self.semantics.of(decorator)
+  }
 }
 
 pub fn check_family_name(name: &str) -> Result<(), String> {
@@ -453,6 +531,7 @@ struct GuardSection {
   decorators: Vec<String>,
   schemes: Vec<GuardScheme>,
   permission_options: Vec<OptionKeys>,
+  option_schemes: Vec<OptionSchemes>,
 }
 
 impl Reader {
@@ -497,13 +576,18 @@ impl Reader {
     let routes = if options_only { Vec::new() } else { self.route_decorators(routes_section)? };
     let route_options = self.route_options(routes_section)?;
     let route_path = self.path_argument(routes_section, "routes.")?;
-    let guards = match section(table, "guards")? {
+    let guards_section = section(table, "guards")?;
+    let guards = match guards_section {
       None => GuardSection::default(),
       Some(guards) => self.guards(guards)?,
     };
     let (permissions, permission_schemes) = match section(table, "permissions")? {
       None => (Vec::new(), Vec::new()),
       Some(permissions) => self.permissions(permissions)?,
+    };
+    let semantics = match guards_section.and_then(|guards| guards.get("semantics")) {
+      None => GuardSemantics::default(),
+      Some(value) => self.semantics(value, &guards.decorators, &permission_schemes)?,
     };
     let access = match section(table, "access")? {
       None => AccessMarkers::default(),
@@ -533,6 +617,8 @@ impl Reader {
       guards: guards.decorators,
       guard_schemes: guards.schemes,
       guard_permissions: guards.permission_options,
+      option_schemes: guards.option_schemes,
+      semantics,
       permissions,
       permission_schemes,
       access,
@@ -606,9 +692,16 @@ impl Reader {
   }
 
   fn guards(&mut self, guards: &toml::Table) -> Result<GuardSection, FamilyError> {
-    self.warn_unknown("guards.", guards, &["decorators", "auth_schemes", "permission_options"]);
+    self.warn_unknown("guards.", guards, &["decorators", "auth_schemes", "permission_options", "option_schemes", "semantics"]);
     let decorators = self.optional_decorators(guards, "decorators", "guards.")?;
     let schemes = decorator_schemes(guards.get("auth_schemes"), "guards", &decorators)?;
+    let mut option_schemes = Vec::new();
+    for (decorator, key, value) in per_decorator(guards.get("option_schemes"), "guards.option_schemes", "guards", &decorators)? {
+      if schemes.iter().any(|scheme| scheme.decorator == decorator) {
+        return Err(FamilyError::new(key, "names a decorator that guards.auth_schemes also maps; give its schemes in one place"));
+      }
+      option_schemes.push(option_scheme_map(decorator, &key, value)?);
+    }
     let permission_options = per_decorator(guards.get("permission_options"), "guards.permission_options", "guards", &decorators)?
       .into_iter()
       .map(|(decorator, key, value)| {
@@ -622,7 +715,86 @@ impl Reader {
       decorators,
       schemes,
       permission_options,
+      option_schemes,
     })
+  }
+
+  fn semantics(&mut self, value: &Value, guards: &[String], permission_schemes: &[GuardScheme]) -> Result<GuardSemantics, FamilyError> {
+    const KEY: &str = "guards.semantics";
+    let Value::Table(entries) = value else {
+      return Err(FamilyError::new(KEY, format!("must be a table, got {}", crate::describe_value(value))));
+    };
+    let mut semantics = GuardSemantics {
+      default: match entries.get("default") {
+        None => Semantics::default(),
+        Some(value) => self.semantics_entry(value, &format!("{KEY}.default"), Semantics::default(), true)?,
+      },
+      decorators: Vec::new(),
+    };
+    for (decorator, value) in entries.iter().filter(|(name, _)| name.as_str() != "default") {
+      let key = format!("{KEY}.{decorator}");
+      let is_guard = guards.contains(decorator);
+      if !is_guard && !permission_schemes.iter().any(|scheme| &scheme.decorator == decorator) {
+        return Err(FamilyError::new(
+          key,
+          "names a decorator that is neither in guards.decorators nor a permissions.decorators entry with auth_schemes",
+        ));
+      }
+      let entry = self.semantics_entry(value, &key, semantics.default, is_guard)?;
+      semantics.decorators.push(DecoratorSemantics {
+        decorator: decorator.clone(),
+        semantics: entry,
+      });
+    }
+    Ok(semantics)
+  }
+
+  fn semantics_entry(&mut self, value: &Value, key: &str, inherited: Semantics, reads_options: bool) -> Result<Semantics, FamilyError> {
+    let Value::Table(fields) = value else {
+      return Err(FamilyError::new(
+        key,
+        format!(
+          "expected a table such as {{ options = \"deep_merge\", class_marker = \"method_wins\" }}, got {}",
+          crate::describe_value(value)
+        ),
+      ));
+    };
+    self.warn_unknown(&format!("{key}."), fields, &["options", "class_marker"]);
+    if !fields.contains_key("options") && !fields.contains_key("class_marker") {
+      return Err(FamilyError::new(key, "must set options or class_marker"));
+    }
+    let mut semantics = inherited;
+    if let Some(options) = fields.get("options") {
+      if !reads_options {
+        return Err(FamilyError::new(
+          format!("{key}.options"),
+          "applies only to guards.decorators, whose options the framework reads",
+        ));
+      }
+      semantics.options = match options.as_str() {
+        Some("override") => OptionMerge::Override,
+        Some("deep_merge") => OptionMerge::DeepMerge,
+        _ => {
+          return Err(FamilyError::new(
+            format!("{key}.options"),
+            format!("expected \"override\" or \"deep_merge\", got {}", crate::describe_value(options)),
+          ));
+        }
+      };
+    }
+    if let Some(marker) = fields.get("class_marker") {
+      semantics.class_marker = match marker.as_str() {
+        Some("contested") => ClassMarker::Contested,
+        Some("method_wins") => ClassMarker::MethodWins,
+        _ => {
+          return Err(FamilyError::new(
+            format!("{key}.class_marker"),
+            format!("expected \"contested\" or \"method_wins\", got {}", crate::describe_value(marker)),
+          ));
+        }
+      };
+    }
+    Ok(semantics)
   }
 
   fn permissions(&mut self, permissions: &toml::Table) -> Result<(Vec<String>, Vec<GuardScheme>), FamilyError> {
@@ -857,6 +1029,8 @@ fn client_only(name: &str, client: ClientShape) -> DecoratorFamily {
     guards: Vec::new(),
     guard_schemes: Vec::new(),
     guard_permissions: Vec::new(),
+    option_schemes: Vec::new(),
+    semantics: GuardSemantics::default(),
     permissions: Vec::new(),
     permission_schemes: Vec::new(),
     access: AccessMarkers::default(),
@@ -901,6 +1075,44 @@ fn decorator_schemes(value: Option<&Value>, section: &str, decorators: &[String]
       })
     })
     .collect()
+}
+
+fn option_scheme_map(decorator: String, key: &str, value: &Value) -> Result<OptionSchemes, FamilyError> {
+  let Value::Table(entries) = value else {
+    return Err(FamilyError::new(
+      key,
+      format!(
+        "expected a table such as {{ default = \"session_cookie\", service = \"bearer\" }}, got {}",
+        crate::describe_value(value)
+      ),
+    ));
+  };
+  let mut mapping = OptionSchemes {
+    decorator,
+    options: Vec::new(),
+    default: Vec::new(),
+  };
+  for (option, schemes) in entries {
+    let entry = format!("{key}.{option}");
+    if option == "default" {
+      mapping.default = scheme_list(schemes, &entry)?;
+      continue;
+    }
+    if !is_identifier(option) {
+      return Err(FamilyError::new(key, "expected option keys such as \"service\""));
+    }
+    if option == UNREAD_OPTIONS {
+      return Err(FamilyError::new(entry, "is reserved for options that cannot be read; rename the key"));
+    }
+    mapping.options.push(OptionScheme {
+      option: option.clone(),
+      schemes: scheme_list(schemes, &entry)?,
+    });
+  }
+  match mapping.options.is_empty() {
+    true => Err(FamilyError::new(key, "must map at least one option key to a scheme")),
+    false => Ok(mapping),
+  }
 }
 
 fn scheme_list(value: &Value, key: &str) -> Result<Vec<String>, FamilyError> {
@@ -1564,6 +1776,135 @@ mod tests {
     }
     let with_permissions = parse(&format!("{ACME}[permissions]\ndecorators = [\"Permit\"]\n")).unwrap().family;
     assert_ne!(families_digest(std::slice::from_ref(&family)), families_digest(&[with_permissions]));
+  }
+
+  #[test]
+  fn should_parse_guard_semantics_with_a_family_default_and_option_schemes() {
+    let text = "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"Api\"]\n[routes.methods]\nRead = \"GET\"\n[guards]\ndecorators = [\"Auth\", \"Authenticated\"]\n[guards.option_schemes]\nAuth = { default = \"session_cookie\", service = \"bearer\", bot = [\"bearer\", \"api_key\"] }\n[guards.semantics]\ndefault = { class_marker = \"method_wins\" }\nAuth = { options = \"deep_merge\" }\nRequireScope = { class_marker = \"contested\" }\n[permissions]\ndecorators = [\"RequireScope\"]\nauth_schemes = { RequireScope = \"bearer\" }\n";
+    let parsed = parse(text).unwrap();
+    let family = parsed.family;
+
+    assert_eq!(parsed.warnings, Vec::<String>::new());
+    assert_eq!(
+      family.option_schemes("Auth"),
+      Some(&OptionSchemes {
+        decorator: "Auth".to_owned(),
+        options: vec![
+          OptionScheme {
+            option: "bot".to_owned(),
+            schemes: vec!["bearer".to_owned(), "api_key".to_owned()],
+          },
+          OptionScheme {
+            option: "service".to_owned(),
+            schemes: vec!["bearer".to_owned()],
+          },
+        ],
+        default: vec!["session_cookie".to_owned()],
+      })
+    );
+    let semantics = |decorator: &str| family.semantics(decorator);
+    assert_eq!(
+      (semantics("Auth"), semantics("Authenticated"), semantics("RequireScope")),
+      (
+        Semantics {
+          options: OptionMerge::DeepMerge,
+          class_marker: ClassMarker::MethodWins,
+        },
+        Semantics {
+          options: OptionMerge::Override,
+          class_marker: ClassMarker::MethodWins,
+        },
+        Semantics {
+          options: OptionMerge::Override,
+          class_marker: ClassMarker::Contested,
+        },
+      )
+    );
+  }
+
+  #[test]
+  fn should_keep_the_digest_and_defaults_of_a_family_without_or_with_only_default_semantics() {
+    let family = parse(ACME).unwrap().family;
+    let serialized = serde_json::to_string(&family).unwrap();
+    for absent in ["semantics", "option_schemes"] {
+      assert!(!serialized.contains(absent), "{serialized}");
+    }
+    assert_eq!(family.semantics("Guarded"), Semantics::default());
+    let explicit = parse(&format!("{ACME}[guards.semantics]\ndefault = {{ options = \"override\", class_marker = \"contested\" }}\n"))
+      .unwrap()
+      .family;
+    assert_eq!(families_digest(std::slice::from_ref(&family)), families_digest(&[explicit]));
+    let merging = parse(&format!("{ACME}[guards.semantics]\nGuarded = {{ options = \"deep_merge\" }}\n")).unwrap().family;
+    assert_ne!(families_digest(std::slice::from_ref(&family)), families_digest(&[merging]));
+  }
+
+  #[test]
+  fn should_reject_invalid_semantics_and_option_schemes_naming_the_key_without_echoing_values() {
+    let base = "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"Api\"]\n[routes.methods]\nRead = \"GET\"\n[guards]\ndecorators = [\"Auth\"]\n";
+    let schemes = "expected one of \"bearer\", \"api_key\", \"session_cookie\", \"basic\" or a non-empty array of them";
+    for (extra, message) in [
+      ("semantics = \"deep_merge\"\n".to_owned(), "guards.semantics: must be a table, got a string".to_owned()),
+      (
+        "[guards.semantics]\nAuth = \"deep_merge\"\n".to_owned(),
+        "guards.semantics.Auth: expected a table such as { options = \"deep_merge\", class_marker = \"method_wins\" }, got a string".to_owned(),
+      ),
+      (
+        "[guards.semantics]\nAuth = { options = \"sk-FAKEKEY123\" }\n".to_owned(),
+        "guards.semantics.Auth.options: expected \"override\" or \"deep_merge\", got a string".to_owned(),
+      ),
+      (
+        "[guards.semantics]\ndefault = { class_marker = true }\n".to_owned(),
+        "guards.semantics.default.class_marker: expected \"contested\" or \"method_wins\", got true".to_owned(),
+      ),
+      (
+        "[guards.semantics]\nAuth = {}\n".to_owned(),
+        "guards.semantics.Auth: must set options or class_marker".to_owned(),
+      ),
+      (
+        "[guards.semantics]\nPermit = { class_marker = \"method_wins\" }\n[permissions]\ndecorators = [\"Permit\"]\n".to_owned(),
+        "guards.semantics.Permit: names a decorator that is neither in guards.decorators nor a permissions.decorators entry with auth_schemes".to_owned(),
+      ),
+      (
+        "[guards.semantics]\nPermit = { options = \"deep_merge\" }\n[permissions]\ndecorators = [\"Permit\"]\nauth_schemes = { Permit = \"bearer\" }\n".to_owned(),
+        "guards.semantics.Permit.options: applies only to guards.decorators, whose options the framework reads".to_owned(),
+      ),
+      (
+        "option_schemes = { Auth = \"bearer\" }\n".to_owned(),
+        "guards.option_schemes.Auth: expected a table such as { default = \"session_cookie\", service = \"bearer\" }, got a string".to_owned(),
+      ),
+      (
+        "option_schemes = { Signed = { service = \"bearer\" } }\n".to_owned(),
+        "guards.option_schemes.Signed: names a decorator that is not listed in guards.decorators".to_owned(),
+      ),
+      (
+        "option_schemes = { Auth = { default = \"bearer\" } }\n".to_owned(),
+        "guards.option_schemes.Auth: must map at least one option key to a scheme".to_owned(),
+      ),
+      (
+        "option_schemes = { Auth = { service = \"sk-FAKEKEY123\" } }\n".to_owned(),
+        format!("guards.option_schemes.Auth.service: {schemes}, got a string"),
+      ),
+      (
+        "option_schemes = { Auth = { \"service.name\" = \"bearer\" } }\n".to_owned(),
+        "guards.option_schemes.Auth: expected option keys such as \"service\"".to_owned(),
+      ),
+      (
+        "option_schemes = { Auth = { unread = \"bearer\" } }\n".to_owned(),
+        "guards.option_schemes.Auth.unread: is reserved for options that cannot be read; rename the key".to_owned(),
+      ),
+      (
+        "auth_schemes = { Auth = \"bearer\" }\noption_schemes = { Auth = { service = \"bearer\" } }\n".to_owned(),
+        "guards.option_schemes.Auth: names a decorator that guards.auth_schemes also maps; give its schemes in one place".to_owned(),
+      ),
+    ] {
+      let error = parse(&format!("{base}{extra}")).unwrap_err();
+      assert!(!error.contains("FAKEKEY"), "{error}");
+      assert_eq!(error, message, "{extra}");
+    }
+    let warnings = parse(&format!("{base}[guards.semantics]\nAuth = {{ options = \"deep_merge\", arrays = \"concat\" }}\n"))
+      .unwrap()
+      .warnings;
+    assert_eq!(warnings, ["unknown key guards.semantics.Auth.arrays ignored"]);
   }
 
   #[test]

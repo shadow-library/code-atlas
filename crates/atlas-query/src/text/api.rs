@@ -14,9 +14,7 @@ fn redundant(attr: &AttrView, schemes_rendered: bool, marker_contested: bool) ->
 }
 
 fn marker_contested(attrs: &[AttrView]) -> bool {
-  attrs
-    .iter()
-    .any(|attr| attr.name == "auth_marker" && attr.value.get("applied").and_then(serde_json::Value::as_bool) == Some(false))
+  attrs.iter().any(|attr| attr.name == "auth_marker" && attr.value.get("contested_by").is_some())
 }
 
 fn attrs_text(attrs: &[AttrView]) -> String {
@@ -214,8 +212,18 @@ mod tests {
       ),
       (false, true, false, false, false)
     );
-    let contested = attr("auth_marker", json!({ "decorator": "Public", "level": "class", "applied": false }));
+    let contested = attr(
+      "auth_marker",
+      json!({ "decorator": "Public", "level": "class", "applied": false, "contested_by": "method" }),
+    );
+    let overridden = attr(
+      "auth_marker",
+      json!({ "decorator": "Public", "level": "class", "applied": false, "overridden_by": "method" }),
+    );
     let applied = attr("auth_marker", json!({ "decorator": "Public", "level": "class" }));
-    assert_eq!((marker_contested(&[contested]), marker_contested(&[applied])), (true, false));
+    assert_eq!(
+      (marker_contested(&[contested]), marker_contested(&[overridden]), marker_contested(&[applied])),
+      (true, false, false)
+    );
   }
 }

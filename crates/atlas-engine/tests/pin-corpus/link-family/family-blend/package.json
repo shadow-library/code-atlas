@@ -1,0 +1,1 @@
+{ "name": "family-blend", "version": "1.0.0", "dependencies": { "@acme/blend": "^1.0.0" } }

@@ -1,0 +1,30 @@
+version = 1
+packages = ["@acme/blend"]
+
+[controller]
+decorators = ["Api"]
+
+[routes.methods]
+Read = "GET"
+Write = "POST"
+
+[guards]
+decorators = ["Auth", "Authenticated"]
+auth_schemes = { Authenticated = ["bearer", "session_cookie"] }
+permission_options = { Auth = ["permission", "bot"] }
+
+[guards.option_schemes]
+Auth = { default = "session_cookie", service = "bearer", bot = "bearer", session = "session_cookie" }
+
+[guards.semantics]
+Auth = { options = "deep_merge" }
+Authenticated = { class_marker = "method_wins" }
+RequireScope = { class_marker = "method_wins" }
+
+[permissions]
+decorators = ["RequireScope"]
+auth_schemes = { RequireScope = ["bearer", "session_cookie"] }
+
+[access]
+public = ["Public"]
+options = { Auth = { public = "public" } }

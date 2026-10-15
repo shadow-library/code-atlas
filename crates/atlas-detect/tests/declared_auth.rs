@@ -3,7 +3,7 @@ mod common;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use atlas_core::{Detection, EdgeKind};
+use atlas_core::{Certainty, Detection, EdgeKind};
 use atlas_detect::{DeclaredRoutesDetector, DecoratorFamily, NestEndpointDetector};
 
 use common::{Analyzed, analyze, node, render, render_source, run, sorted};
@@ -233,18 +233,18 @@ fn endpoint_access(detection: &Detection) -> Vec<String> {
 }
 
 #[test]
-fn should_mark_routes_public_or_optional_dropping_family_guards_for_public_and_keeping_them_as_optional_for_optional() {
+fn should_mark_routes_public_or_optional_and_limit_an_option_marker_to_its_own_decorator() {
   let (analyzed, detection, diagnostics) = gate("accounts.controller.ts");
   assert_eq!(
     endpoint_access(&detection),
     [
       "endpoint:gate:GET /accounts - -",
       "endpoint:gate:GET /accounts/closed - -",
-      r#"endpoint:gate:GET /accounts/guest "optional" {"decorator":"Auth","level":"method","option":"optional"}"#,
+      r#"endpoint:gate:GET /accounts/guest - {"applied":false,"decorator":"Auth","level":"method","mode":"optional","option":"optional","scope":"decorator"}"#,
       r#"endpoint:gate:GET /accounts/health "public" {"decorator":"Public","level":"method"}"#,
       "endpoint:gate:GET /accounts/lookalike - -",
       r#"endpoint:gate:GET /accounts/me "public" {"decorator":"Public","level":"method"}"#,
-      r#"endpoint:gate:GET /accounts/open "public" {"decorator":"Auth","level":"method","option":"public"}"#,
+      r#"endpoint:gate:GET /accounts/open - {"applied":false,"decorator":"Auth","level":"method","mode":"public","option":"public","scope":"decorator"}"#,
       r#"endpoint:gate:GET /accounts/preview "optional" {"decorator":"OptionalAuth","level":"method"}"#,
       "endpoint:gate:GET /accounts/scoped - -",
       "endpoint:gate:GET /accounts/session - -",
@@ -260,8 +260,9 @@ fn should_mark_routes_public_or_optional_dropping_family_guards_for_public_and_k
       r#"requires_guard endpoint:gate:GET /accounts/closed -> other:guard_decorator:gate:acme-gate:Auth [syntactic] {"level":"method","options":{"public":false},"order":1}"#,
       r#"requires_guard endpoint:gate:GET /accounts/closed -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"level":"class","order":0}"#,
       r#"requires_guard endpoint:gate:GET /accounts/guest -> other:guard_decorator:gate:acme-gate:Auth [syntactic] {"auth":"optional","level":"method","options":{"optional":true,"permission":{"binding":"PROJECTS_READ"}},"order":1}"#,
-      r#"requires_guard endpoint:gate:GET /accounts/guest -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"auth":"optional","level":"class","order":0}"#,
+      r#"requires_guard endpoint:gate:GET /accounts/guest -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"level":"class","order":0}"#,
       r#"requires_guard endpoint:gate:GET /accounts/lookalike -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"level":"class","order":0}"#,
+      r#"requires_guard endpoint:gate:GET /accounts/open -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"level":"class","order":0}"#,
       r#"requires_guard endpoint:gate:GET /accounts/preview -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"auth":"optional","level":"class","order":0}"#,
       r#"requires_guard endpoint:gate:GET /accounts/scoped -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"level":"class","order":0}"#,
       r#"requires_guard endpoint:gate:GET /accounts/scoped -> other:guard_decorator:gate:acme-gate:RequireScope [syntactic] {"level":"method","order":1}"#,
@@ -384,4 +385,212 @@ fn should_keep_a_public_named_decorator_listed_only_as_a_guard_a_plain_guard() {
     edges_with_attrs(&analyzed, &detection, &[EdgeKind::RequiresGuard]),
     [r#"requires_guard endpoint:projects:GET /status -> other:guard_decorator:projects:acme-server:Public [syntactic] {"level":"method","order":0}"#]
   );
+}
+
+fn rule(certainty: &Certainty) -> &str {
+  match certainty {
+    Certainty::Heuristic { rule, .. } => rule,
+    _ => "-",
+  }
+}
+
+fn blend(name: &str) -> (Analyzed, Detection, Vec<String>) {
+  let text = fs::read_to_string(corpus().join("acme-blend.toml")).unwrap();
+  let parsed = DecoratorFamily::parse("acme-blend", &text).unwrap();
+  assert_eq!(parsed.warnings, Vec::<String>::new());
+  let source = fs::read_to_string(corpus().join("blend/src").join(name)).unwrap();
+  let analyzed = analyze("blend", &format!("src/{name}"), &source);
+  let (detection, diagnostics) = run(&DeclaredRoutesDetector::new(vec![parsed.family]), &analyzed);
+  let diagnostics = diagnostics.iter().map(|diagnostic| format!("{} {}", diagnostic.code, diagnostic.message)).collect();
+  (analyzed, detection, diagnostics)
+}
+
+#[test]
+fn should_merge_class_and_method_options_of_a_deep_merge_guard_decorator() {
+  let (analyzed, detection, diagnostics) = blend("billing.controller.ts");
+  assert_eq!(
+    endpoint_access(&detection),
+    [
+      "endpoint:blend:GET /billing/closed - -",
+      r#"endpoint:blend:GET /billing/invoices "public" {"decorator":"Auth","level":"class","merged":true,"option":"public"}"#,
+      r#"endpoint:blend:GET /billing/plain "public" {"decorator":"Auth","level":"class","option":"public"}"#,
+      r#"endpoint:blend:GET /billing/shared - {"applied":false,"contested_by":"method","decorator":"Auth","level":"class","mode":"public","option":"public"}"#,
+      "endpoint:blend:GET /reports - -",
+      "endpoint:blend:GET /reports/both - -",
+      "endpoint:blend:GET /reports/bound - -",
+      "endpoint:blend:GET /reports/export - -",
+      "endpoint:blend:GET /reports/inherited - -",
+      "endpoint:blend:GET /reports/mixed - -",
+      "endpoint:blend:GET /reports/off - -",
+      "endpoint:blend:GET /reports/zero - -",
+      "endpoint:blend:POST /reports/sync - -",
+    ]
+  );
+  let permissions: Vec<String> = edges_with_attrs(&analyzed, &detection, &[EdgeKind::RequiresPermission])
+    .into_iter()
+    .map(|line| line.split(" {").next().unwrap_or_default().to_owned())
+    .collect();
+  assert_eq!(
+    permissions,
+    [
+      "requires_permission BillingController.closed -> permission:blend:billing:admin [syntactic]",
+      "requires_permission BillingController.invoices -> permission:blend:billing:read [syntactic]",
+      "requires_permission ReportsController.both -> permission:blend:reports:read [syntactic]",
+      "requires_permission ReportsController.both -> permission:blend:reports:sync [resolved]",
+      "requires_permission ReportsController.bound -> permission:blend:reports:read [heuristic 0.50]",
+      "requires_permission ReportsController.exportAll -> permission:blend:reports:export [syntactic]",
+      "requires_permission ReportsController.inherited -> permission:blend:reports:read [syntactic]",
+      "requires_permission ReportsController.list -> permission:blend:reports:list [syntactic]",
+      "requires_permission ReportsController.list -> permission:blend:reports:read [syntactic]",
+      "requires_permission ReportsController.mixed -> permission:blend:reports:read [syntactic]",
+      "requires_permission ReportsController.off -> permission:blend:reports:read [syntactic]",
+      "requires_permission ReportsController.sync -> permission:blend:reports:read [syntactic]",
+      "requires_permission ReportsController.sync -> permission:blend:reports:sync [resolved]",
+      "requires_permission ReportsController.zero -> permission:blend:reports:read [syntactic]",
+    ]
+  );
+  let bound = detection
+    .edges
+    .iter()
+    .find(|edge| edge.kind == EdgeKind::RequiresPermission && node(&analyzed.facts, &edge.from) == "ReportsController.bound")
+    .unwrap();
+  assert_eq!(rule(&bound.certainty), "permission-option-merge-unread");
+  assert_eq!(diagnostics, Vec::<String>::new());
+}
+
+#[test]
+fn should_choose_the_scheme_variant_of_a_guard_decorator_from_its_effective_options() {
+  let (analyzed, detection, _) = blend("billing.controller.ts");
+  let guards: Vec<String> = edges_with_attrs(&analyzed, &detection, &[EdgeKind::RequiresGuard])
+    .into_iter()
+    .map(|line| line.split(" [").next().unwrap_or_default().to_owned())
+    .collect();
+  assert_eq!(
+    guards,
+    [
+      "requires_guard endpoint:blend:GET /billing/closed -> other:guard_decorator:blend:acme-blend:Auth:default",
+      "requires_guard endpoint:blend:GET /billing/closed -> other:guard_decorator:blend:acme-blend:Auth:default",
+      "requires_guard endpoint:blend:GET /billing/shared -> other:guard_decorator:blend:acme-blend:Auth:unread",
+      "requires_guard endpoint:blend:GET /billing/shared -> other:guard_decorator:blend:acme-blend:Auth:unread",
+      "requires_guard endpoint:blend:GET /reports -> other:guard_decorator:blend:acme-blend:Auth:default",
+      "requires_guard endpoint:blend:GET /reports -> other:guard_decorator:blend:acme-blend:Auth:default",
+      "requires_guard endpoint:blend:GET /reports/both -> other:guard_decorator:blend:acme-blend:Auth:bot+service",
+      "requires_guard endpoint:blend:GET /reports/both -> other:guard_decorator:blend:acme-blend:Auth:bot+service",
+      "requires_guard endpoint:blend:GET /reports/bound -> other:guard_decorator:blend:acme-blend:Auth:unread",
+      "requires_guard endpoint:blend:GET /reports/bound -> other:guard_decorator:blend:acme-blend:Auth:unread",
+      "requires_guard endpoint:blend:GET /reports/export -> other:guard_decorator:blend:acme-blend:Auth:service",
+      "requires_guard endpoint:blend:GET /reports/export -> other:guard_decorator:blend:acme-blend:Auth:service",
+      "requires_guard endpoint:blend:GET /reports/inherited -> other:guard_decorator:blend:acme-blend:Auth:default",
+      "requires_guard endpoint:blend:GET /reports/mixed -> other:guard_decorator:blend:acme-blend:Auth:service+session",
+      "requires_guard endpoint:blend:GET /reports/mixed -> other:guard_decorator:blend:acme-blend:Auth:service+session",
+      "requires_guard endpoint:blend:GET /reports/off -> other:guard_decorator:blend:acme-blend:Auth:default",
+      "requires_guard endpoint:blend:GET /reports/off -> other:guard_decorator:blend:acme-blend:Auth:default",
+      "requires_guard endpoint:blend:GET /reports/zero -> other:guard_decorator:blend:acme-blend:Auth:default",
+      "requires_guard endpoint:blend:GET /reports/zero -> other:guard_decorator:blend:acme-blend:Auth:default",
+      "requires_guard endpoint:blend:POST /reports/sync -> other:guard_decorator:blend:acme-blend:Auth:bot",
+      "requires_guard endpoint:blend:POST /reports/sync -> other:guard_decorator:blend:acme-blend:Auth:bot",
+    ]
+  );
+  assert_eq!(
+    edges_with_attrs(&analyzed, &detection, &[EdgeKind::ImplementsAuth]),
+    [
+      r#"implements_auth other:guard_decorator:blend:acme-blend:Auth:bot -> auth:blend:bearer [syntactic] {"framework":"acme-blend","guard_kind":"declared_decorator"}"#,
+      r#"implements_auth other:guard_decorator:blend:acme-blend:Auth:bot+service -> auth:blend:bearer [syntactic] {"framework":"acme-blend","guard_kind":"declared_decorator"}"#,
+      r#"implements_auth other:guard_decorator:blend:acme-blend:Auth:default -> auth:blend:session_cookie [syntactic] {"framework":"acme-blend","guard_kind":"declared_decorator"}"#,
+      r#"implements_auth other:guard_decorator:blend:acme-blend:Auth:service -> auth:blend:bearer [syntactic] {"framework":"acme-blend","guard_kind":"declared_decorator"}"#,
+      r#"implements_auth other:guard_decorator:blend:acme-blend:Auth:service+session -> auth:blend:bearer [heuristic 0.50] {"framework":"acme-blend","guard_kind":"declared_decorator"}"#,
+      r#"implements_auth other:guard_decorator:blend:acme-blend:Auth:service+session -> auth:blend:session_cookie [heuristic 0.50] {"framework":"acme-blend","guard_kind":"declared_decorator"}"#,
+      r#"implements_auth other:guard_decorator:blend:acme-blend:Auth:unread -> auth:blend:bearer [heuristic 0.50] {"framework":"acme-blend","guard_kind":"declared_decorator"}"#,
+      r#"implements_auth other:guard_decorator:blend:acme-blend:Auth:unread -> auth:blend:session_cookie [heuristic 0.50] {"framework":"acme-blend","guard_kind":"declared_decorator"}"#,
+    ]
+  );
+  let rules = sorted(
+    detection
+      .edges
+      .iter()
+      .filter(|edge| edge.kind == EdgeKind::ImplementsAuth)
+      .map(|edge| format!("{} {}", node(&analyzed.facts, &edge.from), rule(&edge.certainty)))
+      .collect(),
+  );
+  assert_eq!(
+    rules,
+    [
+      "other:guard_decorator:blend:acme-blend:Auth:bot -",
+      "other:guard_decorator:blend:acme-blend:Auth:bot+service -",
+      "other:guard_decorator:blend:acme-blend:Auth:default -",
+      "other:guard_decorator:blend:acme-blend:Auth:service -",
+      "other:guard_decorator:blend:acme-blend:Auth:service+session option-scheme-several-keys",
+      "other:guard_decorator:blend:acme-blend:Auth:unread option-scheme-unread",
+    ]
+  );
+  assert_eq!(
+    entity_attrs(&detection, "other:guard_decorator:"),
+    [
+      r#"other:guard_decorator:blend:acme-blend:Auth:bot [syntactic] {"auth_schemes":["bearer"],"decorator":"Auth","framework":"acme-blend","scheme_option":"bot"}"#,
+      r#"other:guard_decorator:blend:acme-blend:Auth:bot+service [syntactic] {"auth_schemes":["bearer"],"decorator":"Auth","framework":"acme-blend","scheme_option":["bot","service"]}"#,
+      r#"other:guard_decorator:blend:acme-blend:Auth:default [syntactic] {"auth_schemes":["session_cookie"],"decorator":"Auth","framework":"acme-blend","scheme_option":"default"}"#,
+      r#"other:guard_decorator:blend:acme-blend:Auth:service [syntactic] {"auth_schemes":["bearer"],"decorator":"Auth","framework":"acme-blend","scheme_option":"service"}"#,
+      r#"other:guard_decorator:blend:acme-blend:Auth:service+session [syntactic] {"auth_schemes":["bearer","session_cookie"],"decorator":"Auth","framework":"acme-blend","scheme_option":["service","session"]}"#,
+      r#"other:guard_decorator:blend:acme-blend:Auth:unread [syntactic] {"auth_schemes":["bearer","session_cookie"],"decorator":"Auth","framework":"acme-blend","scheme_option":"unread"}"#,
+    ]
+  );
+}
+
+#[test]
+fn should_let_a_method_wins_guard_override_a_class_marker_and_keep_others_contested() {
+  let (analyzed, detection, diagnostics) = blend("catalog.controller.ts");
+  assert_eq!(
+    endpoint_access(&detection),
+    [
+      r#"endpoint:blend:GET /catalog "public" {"decorator":"Public","level":"class"}"#,
+      r#"endpoint:blend:GET /catalog/drafts - {"applied":false,"decorator":"Public","level":"class","mode":"public","overridden_by":"method"}"#,
+      r#"endpoint:blend:GET /catalog/hooks - {"applied":false,"contested_by":"method","decorator":"Public","level":"class","mode":"public"}"#,
+      r#"endpoint:blend:GET /catalog/scoped - {"applied":false,"decorator":"Public","level":"class","mode":"public","overridden_by":"method"}"#,
+      "endpoint:blend:GET /vault - -",
+      "endpoint:blend:GET /vault/service - -",
+    ]
+  );
+  assert_eq!(
+    edges_with_attrs(&analyzed, &detection, &[EdgeKind::RequiresGuard]),
+    [
+      r#"requires_guard endpoint:blend:GET /catalog/drafts -> other:guard_decorator:blend:acme-blend:Authenticated [syntactic] {"level":"method","order":0}"#,
+      r#"requires_guard endpoint:blend:GET /catalog/hooks -> other:guard_decorator:blend:acme-blend:Auth:service [syntactic] {"level":"method","options":{"service":"hooks"},"order":0}"#,
+      r#"requires_guard endpoint:blend:GET /catalog/scoped -> other:guard_decorator:blend:acme-blend:RequireScope [syntactic] {"level":"method","order":0}"#,
+      r#"requires_guard endpoint:blend:GET /vault -> other:guard_decorator:blend:acme-blend:Authenticated [syntactic] {"level":"class","order":0}"#,
+      r#"requires_guard endpoint:blend:GET /vault -> other:guard_decorator:blend:acme-blend:RequireScope [syntactic] {"level":"class","order":1}"#,
+      r#"requires_guard endpoint:blend:GET /vault/service -> other:guard_decorator:blend:acme-blend:Auth:service [syntactic] {"level":"method","options":{"service":"vault"},"order":2}"#,
+      r#"requires_guard endpoint:blend:GET /vault/service -> other:guard_decorator:blend:acme-blend:Authenticated [syntactic] {"level":"class","order":0}"#,
+      r#"requires_guard endpoint:blend:GET /vault/service -> other:guard_decorator:blend:acme-blend:RequireScope [syntactic] {"level":"class","order":1}"#,
+    ]
+  );
+  assert_eq!(diagnostics, Vec::<String>::new());
+}
+
+#[test]
+fn should_limit_an_option_marker_to_its_decorator_and_order_markers_among_method_wins_guards() {
+  let (analyzed, detection, diagnostics) = blend("mixed.controller.ts");
+  assert_eq!(
+    endpoint_access(&detection),
+    [
+      r#"endpoint:blend:GET /lock - {"applied":false,"decorator":"Public","level":"class","mode":"public","overridden_by":"decorator_order"}"#,
+      r#"endpoint:blend:GET /mixed/a - {"applied":false,"decorator":"Auth","level":"class","mode":"public","option":"public","scope":"decorator"}"#,
+      r#"endpoint:blend:GET /mixed/b - {"applied":false,"decorator":"Auth","level":"class","merged":true,"mode":"public","option":"public","scope":"decorator"}"#,
+      r#"endpoint:blend:GET /mixed/open "public" {"decorator":"Auth","level":"class","option":"public"}"#,
+      r#"endpoint:blend:GET /order/guard-first - {"applied":false,"decorator":"Public","level":"method","mode":"public","overridden_by":"decorator_order"}"#,
+      r#"endpoint:blend:GET /order/marker-first "public" {"decorator":"Public","level":"method"}"#,
+      r#"endpoint:blend:GET /order/unequal - {"applied":false,"contested_by":"decorator_order","decorator":"Public","level":"method","mode":"public"}"#,
+    ]
+  );
+  assert_eq!(
+    edges_with_attrs(&analyzed, &detection, &[EdgeKind::RequiresGuard]),
+    [
+      r#"requires_guard endpoint:blend:GET /lock -> other:guard_decorator:blend:acme-blend:Authenticated [syntactic] {"level":"class","order":0}"#,
+      r#"requires_guard endpoint:blend:GET /mixed/a -> other:guard_decorator:blend:acme-blend:Authenticated [syntactic] {"level":"method","order":0}"#,
+      r#"requires_guard endpoint:blend:GET /mixed/b -> other:guard_decorator:blend:acme-blend:Authenticated [syntactic] {"level":"method","order":0}"#,
+      r#"requires_guard endpoint:blend:GET /order/guard-first -> other:guard_decorator:blend:acme-blend:Authenticated [syntactic] {"level":"method","order":0}"#,
+      r#"requires_guard endpoint:blend:GET /order/unequal -> other:guard_decorator:blend:acme-blend:Auth:service [syntactic] {"level":"method","options":{"service":"order"},"order":1}"#,
+      r#"requires_guard endpoint:blend:GET /order/unequal -> other:guard_decorator:blend:acme-blend:Authenticated [syntactic] {"level":"method","order":0}"#,
+    ]
+  );
+  assert_eq!(diagnostics, Vec::<String>::new());
 }

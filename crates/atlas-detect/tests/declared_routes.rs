@@ -9,9 +9,9 @@ use atlas_detect::{DECLARED_ROUTES_VERSION, DeclaredRoutesDetector, DecoratorFam
 use common::{Analyzed, analyze, render, run, sorted};
 
 const PINNED: (u32, &str, &str) = (
-  5,
-  "5c055ee4b8c96ddda27d6e52b5748f56d38252c4e8c1560be0ea9b9d06b0450f",
-  "475e911908c1d1890f64a1211c0b554028685e4d6dc68bcbf24cca111474ae4c",
+  6,
+  "f9e018786ff2a9c36ea9135c426d795e8248aca7792c4800d79146c9cdaec71a",
+  "1f2463de79b5e8f6d0371cd28ac4a7a026f341f9d45d2c8f350198079c0c78f1",
 );
 
 fn corpus() -> PathBuf {
@@ -33,6 +33,11 @@ fn acme_server() -> DecoratorFamily {
 fn acme_gate() -> DecoratorFamily {
   let text = fs::read_to_string(corpus().join("acme-gate.toml")).unwrap();
   DecoratorFamily::parse("acme-gate", &text).unwrap().family
+}
+
+fn acme_blend() -> DecoratorFamily {
+  let text = fs::read_to_string(corpus().join("acme-blend.toml")).unwrap();
+  DecoratorFamily::parse("acme-blend", &text).unwrap().family
 }
 
 fn detector() -> DeclaredRoutesDetector {
@@ -166,6 +171,7 @@ fn should_change_declared_route_output_over_the_corpus_only_with_a_version_bump(
     (acme(), ["imports", "lookalike", "orders"].as_slice()),
     (acme_server(), ["projects"].as_slice()),
     (acme_gate(), ["gate"].as_slice()),
+    (acme_blend(), ["blend"].as_slice()),
   ] {
     let detector = DeclaredRoutesDetector::new(vec![family.clone()]);
     inputs.extend(families_digest(std::slice::from_ref(&family)).to_string().into_bytes());

@@ -14,9 +14,9 @@ const PINNED_STRUCTURE: (u32, &str, &str) = (
   "ec3f51b2a78d7e98e15aa5e2c7e63822eeeec8282aac7b8cc0ed688a426f1776",
 );
 const PINNED_LINK: (u32, &str, &str) = (
-  7,
-  "8c600d8c7e75a61d45b6d7401592c967ead0ddeeed012b20cd45fb0a165db778",
-  "2552a1bdc337c4775ae2984d710b214dcb5def2599bde75ff74f469d1337da09",
+  8,
+  "9e75d112081556d86ea81fa2febe5a51a33c389fb80329f5154dc620c70b2248",
+  "aff7a6ca5c5932f48920b016a035f65f0696b978594125d7ef0b0ea8c01c2c17",
 );
 
 #[derive(Default)]
@@ -82,10 +82,16 @@ fn link_family_project(tree: &Path) -> Project {
       repo_config(&name, &target)
     })
     .collect();
-  let definition = fs::read_to_string(root.join("acme-http.toml")).unwrap();
   let mut project = project("link-family", repos);
-  project.settings.detect.route_families = vec!["acme-http".to_owned()];
-  project.settings.detect.families = vec![atlas_detect::DecoratorFamily::parse("acme-http", &definition).unwrap().family];
+  for name in ["acme-blend", "acme-http"] {
+    let definition = fs::read_to_string(root.join(format!("{name}.toml"))).unwrap();
+    project.settings.detect.route_families.push(name.to_owned());
+    project
+      .settings
+      .detect
+      .families
+      .push(atlas_detect::DecoratorFamily::parse(name, &definition).unwrap().family);
+  }
   project
 }
 
@@ -216,6 +222,7 @@ fn should_compose_family_prefixes_and_link_surface_clients_and_option_routes_in_
       "findOrder -> endpoint:family-api:GET /api/orders/{id}",
       "latestExportFile -> endpoint:family-api:GET /api/exports/{exportId}/drafts/{n}/files/latest",
       "listScoped -> endpoint:family-api:GET /api/scoped",
+      "loadLedger -> endpoint:family-blend:GET /billing/ledger",
       "loadMaybe -> endpoint:family-api:GET /api/access/maybe",
       "loadOrder -> endpoint:family-api:GET /api/orders/{id}",
       "loadProject -> endpoint:family-api:GET /api/projects/{id}",
@@ -286,8 +293,30 @@ fn should_derive_auth_and_permissions_of_declared_guard_decorators_in_the_link_p
       "supports_auth endpoint:family-api:GET /scoped -> auth:family-api:bearer [heuristic 0.99]",
       "supports_auth endpoint:family-api:GET /scoped/session -> auth:family-api:bearer [heuristic 0.99]",
       "supports_auth endpoint:family-api:GET /scoped/session -> auth:family-api:session_cookie [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /billing/ledger -> auth:family-blend:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /billing/session -> auth:family-blend:session_cookie [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /billing/shared -> auth:family-blend:bearer [heuristic 0.50]",
+      "supports_auth endpoint:family-blend:GET /billing/shared -> auth:family-blend:session_cookie [heuristic 0.50]",
+      "supports_auth endpoint:family-blend:GET /catalog/drafts -> auth:family-blend:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /catalog/drafts -> auth:family-blend:session_cookie [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /catalog/hooks -> auth:family-blend:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /lock -> auth:family-blend:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /lock -> auth:family-blend:session_cookie [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /mixed/a -> auth:family-blend:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /mixed/a -> auth:family-blend:session_cookie [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /mixed/b -> auth:family-blend:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /mixed/b -> auth:family-blend:session_cookie [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /order/guard-first -> auth:family-blend:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /order/guard-first -> auth:family-blend:session_cookie [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /order/unequal -> auth:family-blend:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /order/unequal -> auth:family-blend:session_cookie [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /vault -> auth:family-blend:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /vault -> auth:family-blend:session_cookie [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /vault/service -> auth:family-blend:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-blend:GET /vault/service -> auth:family-blend:session_cookie [heuristic 0.99]",
       "uses_auth ts:family-web:family-web:src/access::listScoped#function -> auth:family-api:bearer [heuristic 0.75]",
       "uses_auth ts:family-web:family-web:src/access::loadMaybe#function -> auth:family-api:bearer [heuristic 0.75]",
+      "uses_auth ts:family-web:family-web:src/billing::loadLedger#function -> auth:family-blend:bearer [heuristic 0.75]",
       "uses_auth ts:family-web:family-web:src/projects::loadProject#function -> auth:family-api:bearer [heuristic 0.75]",
     ]
   );
@@ -375,6 +404,21 @@ fn should_derive_public_optional_implied_scheme_and_per_handler_requirements_in_
       r#"endpoint:family-api:GET /scoped/session {"any_of":["bearer","session_cookie"]} "any_of" [syntactic]"#,
       r#"endpoint:family-api:POST /api/orders {"all_of":["unknown_guard:SessionGuard"]} "all_of" [heuristic 0.50]"#,
       r#"endpoint:family-api:POST /orders {"all_of":["unknown_guard:SessionGuard"]} "all_of" [heuristic 0.50]"#,
+      r#"endpoint:family-blend:GET /billing/invoices "public" - [syntactic]"#,
+      r#"endpoint:family-blend:GET /billing/ledger {"all_of":["bearer"]} "all_of" [syntactic]"#,
+      r#"endpoint:family-blend:GET /billing/session {"all_of":["session_cookie"]} "all_of" [syntactic]"#,
+      r#"endpoint:family-blend:GET /billing/shared {"any_of":["bearer","session_cookie"]} "any_of" [heuristic 0.50]"#,
+      r#"endpoint:family-blend:GET /catalog/drafts {"any_of":["bearer","session_cookie"]} "any_of" [syntactic]"#,
+      r#"endpoint:family-blend:GET /catalog/hooks {"all_of":["bearer"]} "all_of" [heuristic 0.50]"#,
+      r#"endpoint:family-blend:GET /lock {"any_of":["bearer","session_cookie"]} "any_of" [syntactic]"#,
+      r#"endpoint:family-blend:GET /mixed/a {"any_of":["bearer","session_cookie"]} "any_of" [syntactic]"#,
+      r#"endpoint:family-blend:GET /mixed/b {"any_of":["bearer","session_cookie"]} "any_of" [syntactic]"#,
+      r#"endpoint:family-blend:GET /mixed/open "public" - [syntactic]"#,
+      r#"endpoint:family-blend:GET /order/guard-first {"any_of":["bearer","session_cookie"]} "any_of" [syntactic]"#,
+      r#"endpoint:family-blend:GET /order/marker-first "public" - [syntactic]"#,
+      r#"endpoint:family-blend:GET /order/unequal {"all_of":[{"any_of":["bearer","session_cookie"]},"bearer"]} "all_of" [heuristic 0.50]"#,
+      r#"endpoint:family-blend:GET /vault {"any_of":["bearer","session_cookie"]} "any_of" [syntactic]"#,
+      r#"endpoint:family-blend:GET /vault/service {"all_of":[{"any_of":["bearer","session_cookie"]},"bearer"]} "all_of" [syntactic]"#,
     ]
   );
   let monorepo = open(&link_monorepo_project(scratch.path()), &scratch.path().join("home-monorepo"));

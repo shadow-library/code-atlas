@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use atlas_core::{ATTR_TEST, Certainty, Edge, EdgeKind, Entity, EntityId, EntityKey, EntityKind, Evidence, LanguageFamily, RelPath, RepoName, SymbolKey, is_test_code};
+use atlas_core::{ATTR_TEST, Certainty, Edge, EdgeKind, Entity, EntityId, EntityKey, EntityKind, Evidence, LanguageFamily, RelPath, RepoName, Span, SymbolKey, is_test_code};
 use serde_json::{Value, json};
 
 use crate::compose::{Route, Routes, entity_evidence};
@@ -32,6 +32,7 @@ const RULE_CONTESTED_MARKER: &str = "class-marker-method-guard";
 const ACCESS_MODES: [&str; 2] = ["public", OPTIONAL];
 const COMBINATOR_PER_HANDLER: &str = "per_handler";
 const AUTHORIZATION_GUARD_MARKERS: [&str; 7] = ["permission", "role", "polic", "abilit", "acl", "authoriz", "claim"];
+const MAX_IMPLEMENTATION_SITES: usize = 3;
 
 #[derive(Default)]
 struct SchemeDetail {
@@ -112,6 +113,61 @@ struct Derived {
   combinator: Option<&'static str>,
 }
 
+#[derive(PartialEq, Eq)]
+enum Part {
+  Schemes(Vec<String>),
+  Label(String),
+}
+
+struct GuardSite<'s> {
+  repo: &'s RepoName,
+  path: &'s RelPath,
+  package: Option<&'s str>,
+  packages: &'s PackageIndex,
+  anchor: Option<Span>,
+  handlers: Vec<Span>,
+}
+
+impl GuardSite<'_> {
+  fn closeness(&self, evidence: &Evidence) -> u8 {
+    let same_repo = evidence.repo == *self.repo;
+    if same_repo && evidence.path == *self.path {
+      return 0;
+    }
+    if same_repo && self.package.is_some() && self.packages.nearest(&evidence.repo, evidence.path.as_str()) == self.package {
+      return 1;
+    }
+    match same_repo {
+      true => 2,
+      false => 3,
+    }
+  }
+
+  fn nearness(&self, evidence: &Evidence) -> (u8, bool, u32) {
+    let tier = self.closeness(evidence);
+    if tier > 0 {
+      return (tier, true, 0);
+    }
+    let span = evidence.span;
+    let outside = !self
+      .handlers
+      .iter()
+      .any(|handler| handler.start_byte <= span.start_byte && span.end_byte <= handler.end_byte);
+    let distance = self.anchor.map_or(0, |anchor| anchor.start_byte.abs_diff(span.start_byte));
+    (tier, outside, distance)
+  }
+
+  fn closest(&self, evidence: &[Evidence]) -> Vec<Evidence> {
+    let Some(best) = evidence.iter().map(|evidence| self.closeness(evidence)).min() else {
+      return Vec::new();
+    };
+    let mut chosen: Vec<&Evidence> = evidence.iter().filter(|evidence| self.closeness(evidence) == best).collect();
+    chosen.sort_by_key(|evidence| (self.nearness(evidence), evidence.repo.as_str(), evidence.path.as_str(), evidence.span));
+    chosen.dedup();
+    chosen.into_iter().take(MAX_IMPLEMENTATION_SITES).cloned().collect()
+  }
+}
+
 struct Support {
   confidence: f32,
   via: BTreeSet<String>,
@@ -189,7 +245,11 @@ pub(crate) fn link_endpoint_auth(facts: &Facts<'_, '_>, routes: &Routes, package
         }
       }
     }
-    for (scheme, support) in by_scheme {
+    for (scheme, mut support) in by_scheme {
+      let mut seen = BTreeSet::new();
+      support
+        .evidence
+        .retain(|evidence| seen.insert((evidence.repo.clone(), evidence.path.clone(), evidence.span, evidence.note.clone())));
       let certainty = heuristic(support.confidence, support.rule)?;
       auth.support_certainties.entry(scheme).or_default().push(certainty.clone());
       let mut edge = Edge::new(EdgeKind::SupportsAuth, route.id, scheme, "", certainty);
@@ -212,7 +272,7 @@ fn exposures(facts: &Facts<'_, '_>, packages: &PackageIndex, route: &Route) -> L
   for (repo, path, asserted) in facts.file_assertions(route.guard_source)? {
     let exposure = exposure_at(&mut by_file, packages, repo, path);
     exposure.access = attr_str(&asserted.attrs, ATTR_ACCESS).filter(|mode| ACCESS_MODES.contains(mode)).map(str::to_owned);
-    exposure.marker_contested = asserted.attrs.get(ATTR_MARKER).and_then(|marker| marker.get("applied")) == Some(&json!(false));
+    exposure.marker_contested = asserted.attrs.get(ATTR_MARKER).is_some_and(|marker| marker.get("contested_by").is_some());
   }
   for (repo, path, exposed) in facts.file_edges_to(route.guard_source, &EdgeKind::ExposesEndpoint)? {
     exposure_at(&mut by_file, packages, repo, path).handlers.push(exposed.from);
@@ -220,8 +280,20 @@ fn exposures(facts: &Facts<'_, '_>, packages: &PackageIndex, route: &Route) -> L
   let mut requires = facts.file_edges_from(route.guard_source, &EdgeKind::RequiresGuard)?;
   requires.sort_by_key(|(_, _, edge)| (edge.attrs.get("order").and_then(Value::as_u64).unwrap_or(u64::MAX), edge.id));
   for (repo, path, edge) in requires {
-    let exposure = exposure_at(&mut by_file, packages, repo, path);
-    if let Some(guard) = guard_auth(facts, edge, &exposure.handlers)? {
+    let exposure = exposure_at(&mut by_file, packages, repo.clone(), path.clone());
+    let site = GuardSite {
+      repo: &repo,
+      path: &path,
+      package: exposure.package.as_deref(),
+      packages,
+      anchor: edge
+        .evidence
+        .iter()
+        .find(|evidence| evidence.repo == repo && evidence.path == path)
+        .map(|evidence| evidence.span),
+      handlers: handler_spans(facts, &exposure.handlers, &repo, &path)?,
+    };
+    if let Some(guard) = guard_auth(facts, edge, &exposure.handlers, &site)? {
       exposure.guards.push(guard);
     }
   }
@@ -231,6 +303,17 @@ fn exposures(facts: &Facts<'_, '_>, packages: &PackageIndex, route: &Route) -> L
     exposures.retain(in_route_packages);
   }
   Ok(exposures)
+}
+
+fn handler_spans(facts: &Facts<'_, '_>, handlers: &[EntityId], repo: &RepoName, path: &RelPath) -> LinkResult<Vec<Span>> {
+  let mut spans = Vec::new();
+  for handler in handlers {
+    let Some(entity) = facts.entity(*handler)? else { continue };
+    if entity.repo.as_ref() == Some(repo) && entity.path.as_ref() == Some(path) {
+      spans.extend(entity.span);
+    }
+  }
+  Ok(spans)
 }
 
 fn exposure_at<'m>(by_file: &'m mut BTreeMap<(RepoName, RelPath), Exposure>, packages: &PackageIndex, repo: RepoName, path: RelPath) -> &'m mut Exposure {
@@ -245,9 +328,9 @@ fn exposure_at<'m>(by_file: &'m mut BTreeMap<(RepoName, RelPath), Exposure>, pac
   })
 }
 
-fn guard_auth(facts: &Facts<'_, '_>, edge: Edge, handlers: &[EntityId]) -> LinkResult<Option<GuardAuth>> {
+fn guard_auth(facts: &Facts<'_, '_>, edge: Edge, handlers: &[EntityId], site: &GuardSite<'_>) -> LinkResult<Option<GuardAuth>> {
   let Some(guard) = facts.entity(edge.to)? else { return Ok(None) };
-  let (alternatives, mut kind) = guard_alternatives(facts, &guard, 0)?;
+  let (alternatives, mut kind) = guard_alternatives(facts, &guard, site, 0)?;
   let mut classification = Vec::new();
   if alternatives.is_empty() {
     kind = GuardKind::Unknown;
@@ -275,9 +358,10 @@ fn guard_auth(facts: &Facts<'_, '_>, edge: Edge, handlers: &[EntityId]) -> LinkR
 fn derive(auth: &EndpointAuth, exposure: &Exposure) -> Derived {
   let enforced: Vec<&GuardAuth> = exposure.guards.iter().filter(|guard| guard.enforced()).collect();
   if !enforced.is_empty() {
+    let (requirement, combinator) = requirement(auth, &enforced);
     return Derived {
-      requirement: Some(requirement(auth, &enforced)),
-      combinator: Some(combinator_of(&enforced)),
+      requirement: Some(requirement),
+      combinator: Some(combinator),
     };
   }
   let accepts_scheme = exposure.guards.iter().any(GuardAuth::names_scheme);
@@ -335,14 +419,7 @@ fn guard_names(exposures: &[Exposure], kind: GuardKind) -> Vec<&str> {
   names
 }
 
-fn combinator_of(guards: &[&GuardAuth]) -> &'static str {
-  match guards {
-    [single] if distinct_schemes(single).len() > 1 => "any_of",
-    _ => "all_of",
-  }
-}
-
-fn guard_alternatives(facts: &Facts<'_, '_>, guard: &Entity, depth: usize) -> LinkResult<(Vec<Alternative>, GuardKind)> {
+fn guard_alternatives(facts: &Facts<'_, '_>, guard: &Entity, site: &GuardSite<'_>, depth: usize) -> LinkResult<(Vec<Alternative>, GuardKind)> {
   let mut alternatives = Vec::new();
   for implementation in facts.edges_from(guard.id, &EdgeKind::ImplementsAuth)? {
     alternatives.push(Alternative {
@@ -350,8 +427,8 @@ fn guard_alternatives(facts: &Facts<'_, '_>, guard: &Entity, depth: usize) -> Li
       confidence: confidence_of(&implementation.certainty),
       certainty: implementation.certainty.clone(),
       via: vec![guard.name.clone()],
-      evidence: implementation
-        .evidence
+      evidence: site
+        .closest(&implementation.evidence)
         .iter()
         .map(|evidence| relabel(evidence, Some("implements auth".to_owned())))
         .collect(),
@@ -365,7 +442,7 @@ fn guard_alternatives(facts: &Facts<'_, '_>, guard: &Entity, depth: usize) -> Li
       continue;
     }
     let Some(delegate) = facts.entity(delegation.to)? else { continue };
-    let (inner, _) = guard_alternatives(facts, &delegate, depth + 1)?;
+    let (inner, _) = guard_alternatives(facts, &delegate, site, depth + 1)?;
     for alternative in inner {
       let mut via = vec![guard.name.clone()];
       via.extend(alternative.via);
@@ -391,28 +468,38 @@ fn scheme_name(auth: &EndpointAuth, scheme: EntityId) -> String {
   auth.schemes.get(&scheme).map_or_else(|| scheme.to_string(), |entity| entity.name.clone())
 }
 
-fn requirement(auth: &EndpointAuth, guards: &[&GuardAuth]) -> Value {
-  let group = |guard: &GuardAuth| -> Vec<String> {
-    let names: BTreeSet<String> = distinct_schemes(guard).into_iter().map(|scheme| scheme_name(auth, scheme)).collect();
-    names.into_iter().collect()
-  };
-  if let [single] = guards
-    && distinct_schemes(single).len() > 1
-  {
-    return json!({ "any_of": group(single) });
+fn requirement(auth: &EndpointAuth, guards: &[&GuardAuth]) -> (Value, &'static str) {
+  let mut parts: Vec<Part> = Vec::new();
+  for guard in guards {
+    let part = match guard.kind {
+      GuardKind::AuthorizationOnly => Part::Label(format!("authorization_only:{}", guard.name)),
+      GuardKind::Unknown => Part::Label(format!("unknown_guard:{}", guard.name)),
+      GuardKind::Direct | GuardKind::Composite => {
+        let names: BTreeSet<String> = distinct_schemes(guard).into_iter().map(|scheme| scheme_name(auth, scheme)).collect();
+        Part::Schemes(names.into_iter().collect())
+      }
+    };
+    if parts.contains(&part) {
+      continue;
+    }
+    parts.push(part);
   }
-  let parts: Vec<Value> = guards
-    .iter()
-    .map(|guard| match guard.kind {
-      GuardKind::AuthorizationOnly => json!(format!("authorization_only:{}", guard.name)),
-      GuardKind::Unknown => json!(format!("unknown_guard:{}", guard.name)),
-      GuardKind::Direct | GuardKind::Composite => match group(guard).as_slice() {
+  if let [Part::Schemes(schemes)] = parts.as_slice()
+    && schemes.len() > 1
+  {
+    return (json!({ "any_of": schemes }), "any_of");
+  }
+  let parts: Vec<Value> = parts
+    .into_iter()
+    .map(|part| match part {
+      Part::Label(label) => json!(label),
+      Part::Schemes(schemes) => match schemes.as_slice() {
         [one] => json!(one),
         many => json!({ "any_of": many }),
       },
     })
     .collect();
-  json!({ "all_of": parts })
+  (json!({ "all_of": parts }), "all_of")
 }
 
 impl EndpointAuth {
@@ -714,4 +801,48 @@ fn owning_class(facts: &Facts<'_, '_>, caller: &Entity) -> LinkResult<Option<Ent
     }
   }
   Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn auth() -> EndpointAuth {
+    EndpointAuth {
+      endpoints: BTreeMap::new(),
+      schemes: BTreeMap::new(),
+      details: BTreeMap::new(),
+      supported: BTreeMap::new(),
+      support_certainties: BTreeMap::new(),
+    }
+  }
+
+  fn unknown(name: &str, target: &str) -> GuardAuth {
+    let id = |key: &str| {
+      EntityId::of(&EntityKey::Other {
+        kind: EntityKind::Custom("guard_decorator".to_owned()),
+        repo: None,
+        name: key.to_owned(),
+      })
+    };
+    GuardAuth {
+      name: name.to_owned(),
+      requires: Edge::new(EdgeKind::RequiresGuard, id("route"), id(target), "", Certainty::Syntactic),
+      alternatives: Vec::new(),
+      kind: GuardKind::Unknown,
+      classification: Vec::new(),
+      credential: Credential::Required,
+    }
+  }
+
+  #[test]
+  fn should_list_an_unknown_guard_once_when_two_guards_share_its_name() {
+    let first = unknown("SessionGuard", "a/SessionGuard");
+    let second = unknown("SessionGuard", "b/SessionGuard");
+    let other = unknown("AdminGuard", "AdminGuard");
+    assert_eq!(
+      requirement(&auth(), &[&first, &second, &other]),
+      (json!({ "all_of": ["unknown_guard:SessionGuard", "unknown_guard:AdminGuard"] }), "all_of")
+    );
+  }
 }
