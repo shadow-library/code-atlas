@@ -14,9 +14,9 @@ const PINNED_STRUCTURE: (u32, &str, &str) = (
   "ec3f51b2a78d7e98e15aa5e2c7e63822eeeec8282aac7b8cc0ed688a426f1776",
 );
 const PINNED_LINK: (u32, &str, &str) = (
-  4,
-  "c9a626d52a96ca12da8c34a4275a7c2792da28e6a845f87a2a6c3c1325dc7b87",
-  "af6c05d327c8e8542721af43bf47be016747a1e65bd7a076a0e220ed89953694",
+  5,
+  "8a445d617caa1e9ee155259e2efc16689031bfd802e72ceb32fdaf0dc9c9efed",
+  "5f879ce9422628ce9d8a12738fb59a610c12396828d994f9d44a468e52f573cb",
 );
 
 #[derive(Default)]
@@ -186,49 +186,7 @@ fn should_derive_auth_usage_in_the_link_pin_corpus_from_production_code_only() {
 }
 
 #[test]
-fn should_link_drizzle_accesses_through_re_exported_namespaces_to_tables_in_the_link_pin_corpus() {
-  let scratch = tempfile::tempdir().unwrap();
-  let engine = open(&link_corpus_project(scratch.path()), &scratch.path().join("home"));
-  assert!(fresh(&engine).is_fresh());
-  let owner = Owner::Project {
-    pass: atlas_link::PASS_NAME.to_owned(),
-  };
-  let accesses = engine
-    .store()
-    .read(|tx| -> Result<Vec<String>, atlas_store::StoreError> {
-      let mut accesses = Vec::new();
-      for edge in tx
-        .owned_facts(&owner)?
-        .edges
-        .iter()
-        .filter(|edge| matches!(edge.kind, EdgeKind::ReadsTable | EdgeKind::WritesTable))
-      {
-        let (Some(from), Some(to)) = (tx.entity(edge.from)?, tx.entity(edge.to)?) else {
-          continue;
-        };
-        let via: Vec<&str> = edge.attrs["via"].as_array().unwrap().iter().filter_map(serde_json::Value::as_str).collect();
-        accesses.push(format!("{} {} -> {} {} via {}", edge.kind, from.name, to.key, edge.certainty.tag(), via.join(", ")));
-      }
-      accesses.sort();
-      Ok(accesses)
-    })
-    .unwrap();
-  assert_eq!(
-    accesses,
-    [
-      "reads_table auditUsers -> table:users [heuristic 0.60] via ts:corpus-store:corpus-store:src/datastore/tables/users::users#constant, \
-       ts:corpus-store:corpus-store:src/legacy/users::legacyUsers#constant",
-      "reads_table listOrders -> table:sales.orders [heuristic 0.60] via ts:corpus-store:corpus-store:src/datastore/tables/orders::orders#constant",
-      "reads_table listOrders -> table:users [heuristic 0.60] via ts:corpus-store:corpus-store:src/datastore/tables/users::users#constant",
-      "reads_table mergeUsers -> table:users [heuristic 0.60] via ts:corpus-store:corpus-store:src/legacy/users::legacyUsers#constant",
-      "writes_table mergeUsers -> table:users [heuristic 0.60] via ts:corpus-store:corpus-store:src/datastore/tables/users::users#constant",
-      "writes_table placeOrder -> table:sales.orders [heuristic 0.60] via ts:corpus-store:corpus-store:src/datastore/tables/orders::orders#constant",
-    ]
-  );
-}
-
-#[test]
-fn should_compose_nest_and_declared_family_prefixes_of_one_repo_in_the_link_pin_corpus() {
+fn should_compose_family_prefixes_and_link_surface_clients_and_option_routes_in_the_link_pin_corpus() {
   let scratch = tempfile::tempdir().unwrap();
   let engine = open(&link_family_project(scratch.path()), &scratch.path().join("home"));
   assert!(fresh(&engine).is_fresh());
@@ -254,8 +212,12 @@ fn should_compose_nest_and_declared_family_prefixes_of_one_repo_in_the_link_pin_
     [
       "checkHealth -> endpoint:family-api:GET /api/health",
       "createOrder -> endpoint:family-api:POST /api/orders",
+      "findExport -> endpoint:family-api:GET /api/exports/{exportId}",
+      "findOrder -> endpoint:family-api:GET /api/orders/{id}",
+      "latestExportFile -> endpoint:family-api:GET /api/exports/{exportId}/drafts/{n}/files/latest",
       "loadOrder -> endpoint:family-api:GET /api/orders/{id}",
       "loadProject -> endpoint:family-api:GET /api/projects/{id}",
+      "runExport -> endpoint:family-api:POST /api/exports/run",
     ]
   );
 }

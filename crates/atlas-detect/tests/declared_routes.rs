@@ -9,9 +9,9 @@ use atlas_detect::{DECLARED_ROUTES_VERSION, DeclaredRoutesDetector, DecoratorFam
 use common::{Analyzed, analyze, render, run, sorted};
 
 const PINNED: (u32, &str, &str) = (
-  3,
-  "a359a79b9781d693d316e77f762eb02b34a6f98038e5cb31116b2d4df2de0359",
-  "35740ef2f97f3840ebe4c46220b74f58bdc4bcac74a0498a849a22c4be93a66a",
+  4,
+  "df00fdde65320254f25200afdd36d8bc0a1641ad0ac889fbf31ee0aff401477f",
+  "ac16ea46e20e503df757db3e3fe8eb7c269598710c76661937c7db4de7b03ed7",
 );
 
 fn corpus() -> PathBuf {
@@ -157,7 +157,7 @@ fn should_version_the_detector_by_its_families() {
 fn should_change_declared_route_output_over_the_corpus_only_with_a_version_bump() {
   let mut inputs = Vec::new();
   let mut outputs = Vec::new();
-  for (family, repos) in [(acme(), ["lookalike", "orders"].as_slice()), (acme_server(), ["projects"].as_slice())] {
+  for (family, repos) in [(acme(), ["imports", "lookalike", "orders"].as_slice()), (acme_server(), ["projects"].as_slice())] {
     let detector = DeclaredRoutesDetector::new(vec![family.clone()]);
     inputs.extend(families_digest(std::slice::from_ref(&family)).to_string().into_bytes());
     for (repo, path, analyzed) in repos
@@ -182,4 +182,87 @@ fn should_change_declared_route_output_over_the_corpus_only_with_a_version_bump(
     true => "DECLARED_ROUTES_VERSION changed: re-pin",
   };
   assert_eq!((actual.0, actual.1.as_str(), actual.2.as_str()), PINNED, "{advice}");
+}
+
+#[test]
+fn should_read_the_last_option_key_from_inline_and_same_file_const_objects_and_cap_keys_a_spread_may_override() {
+  let (_, analyzed) = corpus_files("imports").into_iter().next().unwrap();
+  let (detection, diagnostics) = run(&detector(), &analyzed);
+  assert_eq!(
+    sorted(render(&analyzed.facts, &detection)),
+    [
+      "endpoint:imports:DELETE /imports [syntactic]",
+      "endpoint:imports:GET /imports/status/{jobId} [resolved]",
+      "endpoint:imports:PATCH /imports/touch [syntactic]",
+      "endpoint:imports:POST /imports/archive [heuristic 0.50]",
+      "endpoint:imports:POST /imports/run [resolved]",
+      "endpoint:imports:PUT /imports/resume/{jobId} [heuristic 0.80]",
+      "endpoint:imports:PUT /imports/retry/{jobId} [heuristic 0.80]",
+      "exposes_endpoint ImportsController.archive -> endpoint:imports:POST /imports/archive [heuristic 0.50]",
+      "exposes_endpoint ImportsController.cancelAll -> endpoint:imports:DELETE /imports [syntactic]",
+      "exposes_endpoint ImportsController.retry -> endpoint:imports:PUT /imports/resume/{jobId} [heuristic 0.80]",
+      "exposes_endpoint ImportsController.retry -> endpoint:imports:PUT /imports/retry/{jobId} [heuristic 0.80]",
+      "exposes_endpoint ImportsController.run -> endpoint:imports:POST /imports/run [resolved]",
+      "exposes_endpoint ImportsController.status -> endpoint:imports:GET /imports/status/{jobId} [resolved]",
+      "exposes_endpoint ImportsController.touch -> endpoint:imports:PATCH /imports/touch [syntactic]",
+    ]
+  );
+  let route_sources: Vec<String> = detection.entities.iter().map(|entity| format!("{} {}", entity.key, entity.attrs["route_source"])).collect();
+  assert_eq!(
+    route_sources,
+    [
+      "endpoint:imports:POST /imports/run \"constant\"",
+      "endpoint:imports:GET /imports/status/{jobId} \"constant\"",
+      "endpoint:imports:PUT /imports/retry/{jobId} \"literal\"",
+      "endpoint:imports:PUT /imports/resume/{jobId} \"literal\"",
+      "endpoint:imports:DELETE /imports \"literal\"",
+      "endpoint:imports:PATCH /imports/touch \"literal\"",
+      "endpoint:imports:POST /imports/archive \"literal\"",
+    ]
+  );
+  let messages: Vec<(&str, &str)> = diagnostics.iter().map(|diagnostic| (diagnostic.code.as_str(), diagnostic.message.as_str())).collect();
+  assert_eq!(
+    messages,
+    [
+      (
+        "route-options-unresolved",
+        "@Route on ImportsController.exported takes options that are neither an object literal nor a const object literal declared in this file"
+      ),
+      (
+        "route-options-unresolved",
+        "@Route on ImportsController.noMethod has no HTTP method that can be determined statically under `method`"
+      ),
+      (
+        "route-options-spread",
+        "@Route on ImportsController.archive takes `method`, `path` from options a spread may override"
+      ),
+    ]
+  );
+}
+
+#[test]
+fn should_survive_a_deeply_nested_option_const_on_a_two_mebibyte_stack() {
+  let depth = 20_000;
+  let source = format!(
+    "import {{ Api, Route }} from '@acme/http';\n\nconst DEEP = {{ method: 'GET', path: 'deep', extra: {}0{} }};\n\n@Api('deep')\nexport class DeepController {{\n  @Route(DEEP)\n  read() {{\n    return 0;\n  }}\n}}\n",
+    "{ a: ".repeat(depth),
+    " }".repeat(depth)
+  );
+  let analyzed = analyze("deep", "src/deep.controller.ts", &source);
+  let lines = std::thread::Builder::new()
+    .stack_size(2 * 1024 * 1024)
+    .spawn(move || {
+      let (detection, _) = run(&detector(), &analyzed);
+      sorted(render(&analyzed.facts, &detection))
+    })
+    .unwrap()
+    .join()
+    .unwrap();
+  assert_eq!(
+    lines,
+    [
+      "endpoint:deep:GET /deep/deep [resolved]",
+      "exposes_endpoint DeepController.read -> endpoint:deep:GET /deep/deep [resolved]",
+    ]
+  );
 }

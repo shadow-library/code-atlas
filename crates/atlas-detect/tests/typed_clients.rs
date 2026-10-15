@@ -9,9 +9,9 @@ use common::{Analyzed, analyze, lines, render, run, sorted};
 use serde_json::{Value, json};
 
 const PINNED_DECLARED: (u32, &str, &str) = (
-  1,
-  "ee5330dff50f306d7474d7f6cceedae814acd5b98cefc0cd3b487048e8ccd3b7",
-  "71f471e3db33e64cac9f3a6113675803c557b18b07d3a3da15b1325fab8fde39",
+  2,
+  "94c4b9275e30842aeda4c217f5bb81bdd37677d98887a0e5994ff23d4e0e89cb",
+  "27d975c37c8c5d588de0f624d78ebf459370e3b8d5d18e9e2e688b91bf57bfb1",
 );
 
 fn detect(detector: &dyn DiagnosingDetector, path: &str, source: &str) -> (Vec<String>, Detection) {
@@ -272,9 +272,13 @@ fn acme_books() -> DecoratorFamily {
   family("acme-books", &fs::read_to_string(corpus().join("acme-books.toml")).unwrap())
 }
 
+fn corpus_clients() -> Vec<DecoratorFamily> {
+  vec![acme_books(), family("acme-kit", &fs::read_to_string(corpus().join("acme-kit.toml")).unwrap())]
+}
+
 #[test]
 fn should_detect_every_declared_client_call_of_the_corpus() {
-  let detector = DeclaredClientsDetector::new(&[acme_books()]);
+  let detector = DeclaredClientsDetector::new(&corpus_clients());
   let mut found = Vec::new();
   for (_, analyzed) in books_web() {
     found.extend(render(&analyzed.facts, &run(&detector, &analyzed).0));
@@ -283,22 +287,35 @@ fn should_detect_every_declared_client_call_of_the_corpus() {
     sorted(found),
     lines(&[
       "client:books-web:DELETE /books/{} [syntactic]",
+      "client:books-web:DELETE /current [syntactic]",
       "client:books-web:DELETE {}/shelves/{} [heuristic 0.70]",
       "client:books-web:GET /books/{} [syntactic]",
+      "client:books-web:GET /current [syntactic]",
+      "client:books-web:GET /shelves [syntactic]",
+      "client:books-web:HEAD /api/v2/ping [syntactic]",
+      "client:books-web:PATCH /shelves/{} [syntactic]",
       "client:books-web:POST /books [syntactic]",
       "makes_request addBook -> client:books-web:POST /books [syntactic]",
+      "makes_request currentSession -> client:books-web:GET /current [syntactic]",
+      "makes_request endSession -> client:books-web:DELETE /current [syntactic]",
+      "makes_request listShelves -> client:books-web:GET /shelves [syntactic]",
       "makes_request loadBook -> client:books-web:GET /books/{} [syntactic]",
+      "makes_request pingShelves -> client:books-web:HEAD /api/v2/ping [syntactic]",
       "makes_request removeBook -> client:books-web:DELETE /books/{} [syntactic]",
       "makes_request removeShelf -> client:books-web:DELETE {}/shelves/{} [heuristic 0.70]",
+      "makes_request renameShelf -> client:books-web:PATCH /shelves/{} [syntactic]",
+      "other:typed_client:books-web:src/transport.ts#ShelfRequest [syntactic]",
+      "other:typed_client:books-web:src/transport.ts#kitClient.session [syntactic]",
+      "other:typed_client:books-web:src/transport.ts#kitClient.shelves [syntactic]",
     ])
   );
 }
 
 #[test]
 fn should_change_declared_client_output_over_the_corpus_only_with_a_version_bump() {
-  let family = acme_books();
-  let detector = DeclaredClientsDetector::new(std::slice::from_ref(&family));
-  let mut inputs = serde_json::to_vec(&family).unwrap();
+  let families = corpus_clients();
+  let detector = DeclaredClientsDetector::new(&families);
+  let mut inputs = serde_json::to_vec(&families).unwrap();
   let mut outputs = Vec::new();
   for (path, analyzed) in books_web() {
     inputs.extend(serde_json::to_vec(&analyzed.facts).unwrap());
@@ -357,4 +374,196 @@ const internalApi = createClient<paths>();
   );
   assert_eq!(attrs("#staticApi")["base"], json!("/api"));
   assert_eq!(attrs("#staticApi").get("base_source"), None);
+}
+
+const KIT_CLIENT: &str = "[client]\nfiles = [\"apps/web/src/transport.ts\"]\nexports = [\"APIRequest\", \"apiClient\"]\nbase = \"/api\"\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces\"\n";
+
+const TRANSPORT: &str = r#"import { createApiClient } from '@acme/http-kit';
+import { ssr } from './env';
+
+const AUTH_SURFACES = { auth: '/api/auth/', admin: `/api/admin` } as const;
+
+export const apiClient = createApiClient({ surfaces: { v1: '/api/v1', auth: `${process.env.AUTH_ORIGIN}/api/auth/`, ...extra, [KEY]: '/k' }, ssr });
+export const authClient = await createApiClient<Surfaces>({ surfaces: AUTH_SURFACES });
+export const APIRequest = apiClient.v1;
+export const AdminRequest: Surface = authClient.admin as Surface;
+export const Missing = apiClient.v2;
+export const Called = apiClient.v1.withAuth();
+export const Indexed = apiClient['v1'];
+const internal = createApiClient({ surfaces: { v9: '/v9' } });
+export const local = internal.v9;
+
+export const session = () => apiClient.auth.get('/session');
+export const users = () => APIRequest.get('/admin/users').query({ page: 1 }).execute();
+"#;
+
+fn entity_attrs(detection: &Detection) -> Vec<(String, Value)> {
+  detection
+    .entities
+    .iter()
+    .filter(|entity| entity.key.to_string().starts_with("other:typed_client:"))
+    .map(|entity| (entity.key.to_string(), serde_json::to_value(&entity.attrs).unwrap()))
+    .collect()
+}
+
+#[test]
+fn should_record_each_surface_of_an_exported_container_and_each_exported_member_as_a_client_definition() {
+  let (lines_found, detection) = detect(&declared(KIT_CLIENT), "apps/web/src/transport.ts", TRANSPORT);
+  assert_eq!(
+    lines_found,
+    lines(&[
+      "client:web:GET /api/v1/admin/users [syntactic]",
+      "client:web:GET {}/api/auth/session [heuristic 0.70]",
+      "makes_request session -> client:web:GET {}/api/auth/session [heuristic 0.70]",
+      "makes_request users -> client:web:GET /api/v1/admin/users [syntactic]",
+      "other:typed_client:web:apps/web/src/transport.ts#APIRequest [syntactic]",
+      "other:typed_client:web:apps/web/src/transport.ts#AdminRequest [syntactic]",
+      "other:typed_client:web:apps/web/src/transport.ts#apiClient.auth [syntactic]",
+      "other:typed_client:web:apps/web/src/transport.ts#apiClient.v1 [syntactic]",
+      "other:typed_client:web:apps/web/src/transport.ts#authClient.admin [syntactic]",
+      "other:typed_client:web:apps/web/src/transport.ts#authClient.auth [syntactic]",
+      "other:typed_client:web:apps/web/src/transport.ts#local [syntactic]",
+    ])
+  );
+  let module = json!(["apps/web/src/transport"]);
+  let definition = |export: &str, surface: &str, base: &str| json!({ "library": "acme-books", "export": export, "modules": module, "surface": surface, "base": base });
+  let mut auth = definition("apiClient.auth", "auth", "{}/api/auth");
+  auth["base_source"] = json!("env:AUTH_ORIGIN");
+  assert_eq!(
+    entity_attrs(&detection),
+    [
+      ("other:typed_client:web:apps/web/src/transport.ts#apiClient.auth".to_owned(), auth),
+      (
+        "other:typed_client:web:apps/web/src/transport.ts#apiClient.v1".to_owned(),
+        definition("apiClient.v1", "v1", "/api/v1")
+      ),
+      (
+        "other:typed_client:web:apps/web/src/transport.ts#authClient.admin".to_owned(),
+        definition("authClient.admin", "admin", "/api/admin")
+      ),
+      (
+        "other:typed_client:web:apps/web/src/transport.ts#authClient.auth".to_owned(),
+        definition("authClient.auth", "auth", "/api/auth")
+      ),
+      (
+        "other:typed_client:web:apps/web/src/transport.ts#APIRequest".to_owned(),
+        definition("APIRequest", "v1", "/api/v1")
+      ),
+      (
+        "other:typed_client:web:apps/web/src/transport.ts#AdminRequest".to_owned(),
+        definition("AdminRequest", "admin", "/api/admin")
+      ),
+      ("other:typed_client:web:apps/web/src/transport.ts#local".to_owned(), definition("local", "v9", "/v9")),
+    ]
+  );
+  assert_eq!(request_attrs(&detection, "client:web:GET /api/v1/admin/users").get("client_base"), None);
+  assert_eq!(request_attrs(&detection, "client:web:GET {}/api/auth/session")["base_source"], json!("env:AUTH_ORIGIN"));
+}
+
+const TRANSPORT_CALLERS: &str = r#"import { APIRequest, apiClient as client, helpers } from './transport';
+import * as transport from './transport';
+
+export const loadUsers = (q: string) => APIRequest.get('/admin/users').query(q).execute<User[]>();
+export const createDraft = (id: string) => APIRequest.post(`/projects/${id}/drafts`).body({}).execute();
+export const loadSession = () => client.auth.get('/session');
+export const endSession = () => transport.apiClient.auth.delete('/session');
+export const checkHealth = () => transport.APIRequest.head('/health');
+export const notAClient = () => helpers.cache.get('/cached');
+export const findUser = (id: string) => APIRequest.get(`/${id}`).execute();
+"#;
+
+#[test]
+fn should_record_the_export_or_container_member_a_call_goes_through_for_the_link_join() {
+  let (lines_found, detection) = detect(&declared(KIT_CLIENT), "apps/web/src/users.ts", TRANSPORT_CALLERS);
+  assert_eq!(
+    lines_found,
+    lines(&[
+      "client:web:DELETE /session [syntactic]",
+      "client:web:GET /admin/users [syntactic]",
+      "client:web:GET /session [syntactic]",
+      "client:web:GET /{} [syntactic]",
+      "client:web:HEAD /health [syntactic]",
+      "client:web:POST /projects/{}/drafts [syntactic]",
+      "makes_request checkHealth -> client:web:HEAD /health [syntactic]",
+      "makes_request createDraft -> client:web:POST /projects/{}/drafts [syntactic]",
+      "makes_request endSession -> client:web:DELETE /session [syntactic]",
+      "makes_request findUser -> client:web:GET /{} [syntactic]",
+      "makes_request loadSession -> client:web:GET /session [syntactic]",
+      "makes_request loadUsers -> client:web:GET /admin/users [syntactic]",
+    ])
+  );
+  let joined = |client: &str| {
+    let attrs = request_attrs(&detection, client);
+    (attrs["client_module"].clone(), attrs["client_export"].clone(), attrs["client_base"].clone())
+  };
+  let module = json!("apps/web/src/transport");
+  assert_eq!(joined("client:web:GET /admin/users"), (module.clone(), json!("APIRequest"), json!("/api")));
+  assert_eq!(joined("client:web:GET /session"), (module.clone(), json!("apiClient.auth"), json!("/api")));
+  assert_eq!(joined("client:web:DELETE /session"), (module.clone(), json!("apiClient.auth"), json!("/api")));
+  assert_eq!(joined("client:web:HEAD /health"), (module, json!("APIRequest"), json!("/api")));
+
+  let without_surfaces = "[client]\nfiles = [\"apps/web/src/transport.ts\"]\nexports = [\"APIRequest\", \"apiClient\"]\n";
+  let (direct_only, detection) = detect(&declared(without_surfaces), "apps/web/src/users.ts", TRANSPORT_CALLERS);
+  assert_eq!(
+    direct_only,
+    lines(&[
+      "client:web:GET /admin/users [syntactic]",
+      "client:web:GET /{} [syntactic]",
+      "client:web:HEAD /health [syntactic]",
+      "client:web:POST /projects/{}/drafts [syntactic]",
+      "makes_request checkHealth -> client:web:HEAD /health [syntactic]",
+      "makes_request createDraft -> client:web:POST /projects/{}/drafts [syntactic]",
+      "makes_request findUser -> client:web:GET /{} [syntactic]",
+      "makes_request loadUsers -> client:web:GET /admin/users [syntactic]",
+    ])
+  );
+  assert_eq!(request_attrs(&detection, "client:web:GET /admin/users").get("client_base"), None);
+
+  let unjoinable = "import { booksApi } from '@acme/books-client';
+
+export const findBook = (id: string) => booksApi.get(`/${id}`);
+";
+  let (lines_found, _) = detect(&declared(BOOKS_CLIENT), "apps/web/src/books.ts", unjoinable);
+  assert_eq!(lines_found, Vec::<String>::new());
+}
+
+#[test]
+fn should_not_take_surfaces_from_lookalike_factories_or_shadowed_containers() {
+  let source = r#"import { createApiClient } from '@acme/other-kit';
+import { createApiClient as kit } from '@acme/http-kit';
+
+export const apiClient = createApiClient({ surfaces: { v1: '/api/v1' } });
+export const wrongOption = kit({ bases: { v1: '/api/v1' } });
+
+export function shadowed(apiClient: { v1: { get(path: string): void } }) {
+  return apiClient.v1.get('/users');
+}
+"#;
+  let (lines_found, _) = detect(&declared(KIT_CLIENT), "apps/web/src/transport.ts", source);
+  assert_eq!(lines_found, Vec::<String>::new());
+}
+
+#[test]
+fn should_follow_members_only_of_declared_containers() {
+  let source = r#"import { APIRequest, apiClient } from './transport';
+import * as transport from './transport';
+
+export const loadSession = () => apiClient.auth.get('/session');
+export const endSession = () => transport.apiClient.auth.delete('/session');
+export const cached = () => APIRequest.cache.get('/users');
+export const cachedViaNamespace = () => transport.APIRequest.cache.post('/users');
+"#;
+  let with_containers = KIT_CLIENT.replace("option = \"surfaces\"\n", "option = \"surfaces\"\ncontainers = [\"apiClient\"]\n");
+  let (lines_found, _) = detect(&declared(&with_containers), "apps/web/src/session.ts", source);
+  assert_eq!(
+    lines_found,
+    lines(&[
+      "client:web:DELETE /session [syntactic]",
+      "client:web:GET /session [syntactic]",
+      "makes_request endSession -> client:web:DELETE /session [syntactic]",
+      "makes_request loadSession -> client:web:GET /session [syntactic]",
+    ])
+  );
+  let (without_containers, _) = detect(&declared(KIT_CLIENT), "apps/web/src/session.ts", source);
+  assert_eq!(without_containers.len(), 8);
 }

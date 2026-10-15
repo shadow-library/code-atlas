@@ -18,3 +18,16 @@ decorators = ["Permit"]
 [global_prefix]
 factory = "AcmeServer.create"
 method = "setGlobalPrefix"
+
+[routes.options]
+decorators = ["Route"]
+
+[client]
+files = ["src/transport.ts"]
+exports = ["ExportsRequest", "kitClient"]
+
+[client.surfaces]
+modules = ["@acme/http-kit"]
+factory = "createKitClient"
+option = "surfaces"
+containers = ["kitClient"]

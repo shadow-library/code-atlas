@@ -1,14 +1,14 @@
 use atlas_core::{ContentHash, DetectInput, Detection, Detector, Diagnostic, FileFacts, LanguageFamily, Producer};
 
 use super::clients::{Request, emit_requests};
-use super::typed_clients::{TypedShape, shape_applies, typed_request};
+use super::typed_clients::{TypedShape, emit_client_definitions, emit_surface_definitions, shape_applies, typed_request};
 use crate::families::{ClientShape, DecoratorFamily};
 use crate::registry::DiagnosingDetector;
 use crate::sink::Sink;
 use crate::view::FileView;
 
 pub const DECLARED_CLIENTS_ID: &str = "http-clients-declared";
-pub const DECLARED_CLIENTS_VERSION: u32 = 1;
+pub const DECLARED_CLIENTS_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeclaredClientsDetector {
@@ -73,6 +73,10 @@ impl DiagnosingDetector for DeclaredClientsDetector {
       .filter_map(|reference| shapes.iter().find_map(|typed| typed_request(&view, reference, typed)))
       .collect();
     emit_requests(&view, &mut sink, &requests);
+    for typed in &shapes {
+      emit_client_definitions(&view, &mut sink, typed);
+      emit_surface_definitions(&view, &mut sink, typed);
+    }
     sink.finish()
   }
 }

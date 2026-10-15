@@ -1,0 +1,12 @@
+version = 1
+
+[client]
+files = ["src/transport.ts"]
+exports = ["ShelfRequest", "kitClient"]
+base = "/api"
+
+[client.surfaces]
+modules = ["@acme/http-kit"]
+factory = "createKitClient"
+option = "surfaces"
+containers = ["kitClient"]

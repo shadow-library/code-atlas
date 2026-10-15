@@ -7,7 +7,7 @@ use crate::sink::Sink;
 use crate::view::FileView;
 
 pub const DECLARED_ROUTES_ID: &str = "http-endpoints-declared";
-pub const DECLARED_ROUTES_VERSION: u32 = 3;
+pub const DECLARED_ROUTES_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeclaredRoutesDetector {

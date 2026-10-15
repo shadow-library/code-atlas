@@ -2,6 +2,7 @@ mod cert;
 mod detectors;
 mod families;
 mod lex;
+mod objects;
 mod registry;
 mod sink;
 mod strings;

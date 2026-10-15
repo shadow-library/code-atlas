@@ -1,12 +1,13 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use atlas_core::{ArgSummary, Attrs, EntityKey, EntityKind, FileFacts, ImportFact, LocalSymbolId, ObjectEntry, RefKind, ReferenceFact, Visibility};
+use atlas_core::{ArgSummary, Attrs, EntityKey, EntityKind, FileFacts, ImportFact, LocalSymbolId, ObjectEntry, RefKind, ReferenceFact, Span, SymbolFact, Visibility};
 use serde_json::json;
 
 use super::clients::{MethodSource, Request, apply_header_hints, apply_header_options, classify_base_arg};
 use crate::cert::Cert;
 use crate::families::{ClientExports, ClientShape, PathArgument, PathStyle};
 use crate::lex::{Token, TokenKind};
+use crate::objects::const_object;
 use crate::sink::Sink;
 use crate::strings::{Piece, StringEval, evaluate};
 use crate::view::{Binding, FileView, Imported, starts_with_call};
@@ -39,45 +40,75 @@ pub(super) fn shape_applies(facts: &FileFacts, shape: &ClientShape) -> bool {
     | ImportFact::TsRequire {
       specifier: ArgSummary::Str(specifier),
       ..
-    } => module_matches(shape, facts.file.path.as_str(), specifier),
+    } => module_matches(shape, facts.file.path.as_str(), specifier) || imports_surface_factory(shape, specifier),
     _ => false,
   })
 }
 
+fn imports_surface_factory(shape: &ClientShape, specifier: &str) -> bool {
+  shape.surfaces.as_ref().is_some_and(|surfaces| surfaces.modules.iter().any(|module| module == specifier))
+}
+
 pub(super) fn emit_client_definitions(view: &FileView<'_>, sink: &mut Sink, typed: &TypedShape<'_>) {
+  for symbol in exported_bindings(view) {
+    if let Some(client) = factory_client(view, None, &symbol.name, typed.shape) {
+      emit_definition(view, sink, typed, &symbol.name, symbol.span, client);
+    }
+  }
+}
+
+pub(super) fn emit_surface_definitions(view: &FileView<'_>, sink: &mut Sink, typed: &TypedShape<'_>) {
+  if typed.shape.surfaces.is_none() {
+    return;
+  }
+  for symbol in exported_bindings(view) {
+    match surface_container(view, None, &symbol.name, typed.shape) {
+      Some(surfaces) => {
+        for (member, client) in surfaces {
+          emit_definition(view, sink, typed, &format!("{}.{member}", symbol.name), symbol.span, client);
+        }
+      }
+      None => {
+        if let Some(client) = surface_member(view, None, &symbol.name, typed.shape) {
+          emit_definition(view, sink, typed, &symbol.name, symbol.span, client);
+        }
+      }
+    }
+  }
+}
+
+fn exported_bindings<'v>(view: &FileView<'v>) -> impl Iterator<Item = &'v SymbolFact> {
+  view.facts.symbols.iter().filter(|symbol| {
+    symbol.parent.is_none() && symbol.item_path.len() == 1 && matches!(symbol.kind, EntityKind::Constant | EntityKind::Variable) && symbol.visibility == Visibility::Exported
+  })
+}
+
+fn emit_definition(view: &FileView<'_>, sink: &mut Sink, typed: &TypedShape<'_>, export: &str, span: Span, client: ClientBinding) {
   let Ok(kind) = CLIENT_DEFINITION_KIND.parse::<EntityKind>() else { return };
   let path = view.facts.file.path.as_str();
   let stem = module_stem(path);
   let mut modules = vec![stem.to_owned()];
   modules.extend(stem.strip_suffix("/index").map(str::to_owned));
-  let exported = view.facts.symbols.iter().filter(|symbol| {
-    symbol.parent.is_none() && symbol.item_path.len() == 1 && matches!(symbol.kind, EntityKind::Constant | EntityKind::Variable) && symbol.visibility == Visibility::Exported
-  });
-  for symbol in exported {
-    let Some(client) = factory_client(view, None, &symbol.name, typed.shape) else {
-      continue;
+  let mut attrs = client.extra;
+  attrs.insert("library".to_owned(), json!(typed.library));
+  attrs.insert("export".to_owned(), json!(export));
+  attrs.insert("modules".to_owned(), json!(modules));
+  if !client.base_pieces.is_empty() {
+    let base = StringEval {
+      pieces: client.base_pieces,
+      cert: Cert::Syntactic,
     };
-    let mut attrs = client.extra;
-    attrs.insert("library".to_owned(), json!(typed.library));
-    attrs.insert("export".to_owned(), json!(symbol.name));
-    attrs.insert("modules".to_owned(), json!(modules));
-    if !client.base_pieces.is_empty() {
-      let base = StringEval {
-        pieces: client.base_pieces,
-        cert: Cert::Syntactic,
-      };
-      attrs.insert("base".to_owned(), json!(base.pattern(PLACEHOLDER)));
-    }
-    if let Some(source) = client.base {
-      attrs.insert("base_source".to_owned(), json!(source));
-    }
-    let key = EntityKey::Other {
-      kind: kind.clone(),
-      repo: Some(view.repo().clone()),
-      name: format!("{path}#{}", symbol.name),
-    };
-    sink.entity(key, symbol.span, Cert::Syntactic, attrs);
+    attrs.insert("base".to_owned(), json!(base.pattern(PLACEHOLDER)));
   }
+  if let Some(source) = client.base {
+    attrs.insert("base_source".to_owned(), json!(source));
+  }
+  let key = EntityKey::Other {
+    kind,
+    repo: Some(view.repo().clone()),
+    name: format!("{path}#{export}"),
+  };
+  sink.entity(key, span, Cert::Syntactic, attrs);
 }
 
 pub(super) fn typed_request<'f>(view: &FileView<'_>, reference: &'f ReferenceFact, typed: &TypedShape<'_>) -> Option<Request<'f>> {
@@ -101,6 +132,9 @@ pub(super) fn typed_request<'f>(view: &FileView<'_>, reference: &'f ReferenceFac
   if let Some(target) = &typed.shape.target_package {
     request.extra.insert("target_package".to_owned(), json!(target));
   }
+  if let (true, Some(base)) = (request.base_pieces.is_empty(), &typed.shape.base) {
+    request.extra.insert("client_base".to_owned(), json!(base));
+  }
   if let Some(entries) = options {
     apply_header_options(view, scope, entries, &mut request);
   }
@@ -123,15 +157,97 @@ fn path_argument<'a>(args: &'a [ArgSummary], path: &PathArgument) -> Option<(&'a
 
 fn client_binding(view: &FileView<'_>, scope: Option<LocalSymbolId>, receiver: &[String], shape: &ClientShape) -> Option<ClientBinding> {
   match receiver {
-    [name] if is_shadowed(view, scope, name) => factory_client(view, scope, name, shape),
+    [name] if is_shadowed(view, scope, name) => factory_client(view, scope, name, shape).or_else(|| surface_member(view, scope, name, shape)),
     [name] => imported_client(view, name, shape),
+    [container, member] if shape.surfaces.is_some() && is_shadowed(view, scope, container) => surface_container(view, scope, container, shape)?.remove(member.as_str()),
     [namespace, export] if !is_shadowed(view, scope, namespace) => {
       let import = view.ts_import(namespace)?;
-      let accepted = import.imported == Imported::Namespace && module_matches(shape, view.facts.file.path.as_str(), import.specifier) && shape.is_client_export(export);
+      if import.imported != Imported::Namespace {
+        return imported_member_client(view, namespace, export, shape);
+      }
+      let accepted = module_matches(shape, view.facts.file.path.as_str(), import.specifier) && shape.is_client_export(export);
       accepted.then(|| imported_binding(view, import.specifier, Some(export)))
+    }
+    [namespace, container, member] if !is_shadowed(view, scope, namespace) => {
+      let surfaces = shape.surfaces.as_ref()?;
+      let import = view.ts_import(namespace)?;
+      let accepted = import.imported == Imported::Namespace
+        && module_matches(shape, view.facts.file.path.as_str(), import.specifier)
+        && shape.is_client_export(container)
+        && surfaces.follows_members_of(container);
+      accepted.then(|| imported_binding(view, import.specifier, Some(&format!("{container}.{member}"))))
     }
     _ => None,
   }
+}
+
+fn imported_member_client(view: &FileView<'_>, name: &str, member: &str, shape: &ClientShape) -> Option<ClientBinding> {
+  let surfaces = shape.surfaces.as_ref()?;
+  let import = view.ts_import(name)?;
+  let container = match import.imported {
+    Imported::Named(imported) => imported,
+    Imported::Default => "default",
+    Imported::Namespace => return None,
+  };
+  let accepted = module_matches(shape, view.facts.file.path.as_str(), import.specifier) && shape.is_client_export(container) && surfaces.follows_members_of(container);
+  accepted.then(|| imported_binding(view, import.specifier, Some(&format!("{container}.{member}"))))
+}
+
+fn surface_container(view: &FileView<'_>, scope: Option<LocalSymbolId>, name: &str, shape: &ClientShape) -> Option<BTreeMap<String, ClientBinding>> {
+  let Binding::Init(tokens) = view.resolve_binding(scope, name)? else { return None };
+  let tokens = skip_await(tokens);
+  let head = tokens.first()?;
+  if !starts_with_call(tokens, &[&head.text], ".") || is_shadowed(view, scope, &head.text) {
+    return None;
+  }
+  let import = view.ts_import(&head.text)?;
+  let imported = match import.imported {
+    Imported::Named(imported) => imported,
+    Imported::Default => "default",
+    Imported::Namespace => return None,
+  };
+  let surfaces = shape.surface_factory(import.specifier, imported)?;
+  let factory = view
+    .facts
+    .references
+    .iter()
+    .find(|reference| reference.kind == RefKind::Call && reference.span.start_byte == head.start && reference.path.last() == Some(&head.text))?;
+  let Some(ArgSummary::Object(options)) = factory.args.first() else { return None };
+  let map = options.iter().find(|entry| entry.key.static_name() == Some(surfaces.option.as_str()))?;
+  let entries = match &map.value {
+    ArgSummary::Object(entries) => entries.clone(),
+    ArgSummary::Path(path) => match path.as_slice() {
+      [constant] => const_object(view, factory.from, constant)?,
+      _ => return None,
+    },
+    _ => return None,
+  };
+  let bases = entries.iter().filter_map(|entry| {
+    let member = entry.key.static_name()?;
+    let (base, base_pieces) = base_of(view, factory.from, &entry.value);
+    let mut client = ClientBinding {
+      base,
+      base_pieces,
+      ..ClientBinding::default()
+    };
+    client.extra.insert("surface".to_owned(), json!(member));
+    Some((member.to_owned(), client))
+  });
+  Some(bases.collect())
+}
+
+fn surface_member(view: &FileView<'_>, scope: Option<LocalSymbolId>, name: &str, shape: &ClientShape) -> Option<ClientBinding> {
+  shape.surfaces.as_ref()?;
+  let Binding::Init(tokens) = view.resolve_binding(scope, name)? else { return None };
+  let [container, dot, member, rest @ ..] = tokens else { return None };
+  let ends = match rest.first() {
+    None => true,
+    Some(next) => next.is_punct(";") || next.is_ident("as") || next.is_ident("satisfies"),
+  };
+  if !ends || !dot.is_punct(".") || container.kind != TokenKind::Ident || member.kind != TokenKind::Ident {
+    return None;
+  }
+  surface_container(view, scope, &container.text, shape)?.remove(member.text.as_str())
 }
 
 fn is_shadowed(view: &FileView<'_>, scope: Option<LocalSymbolId>, name: &str) -> bool {
@@ -201,10 +317,14 @@ fn factory_base(view: &FileView<'_>, factory: &ReferenceFact) -> (Option<String>
   let Some(base) = entries.iter().find(|entry| entry.key.static_name().is_some_and(|name| BASE_URL_KEYS.contains(&name))) else {
     return (None, Vec::new());
   };
-  let mut pieces = evaluate(view, factory.from, &base.value).map_or_else(|| vec![Piece::Dyn(base.value.clone())], |eval| eval.pieces);
+  base_of(view, factory.from, &base.value)
+}
+
+fn base_of(view: &FileView<'_>, scope: Option<LocalSymbolId>, value: &ArgSummary) -> (Option<String>, Vec<Piece>) {
+  let mut pieces = evaluate(view, scope, value).map_or_else(|| vec![Piece::Dyn(value.clone())], |eval| eval.pieces);
   trim_trailing_slash(&mut pieces);
   let source = match pieces.first() {
-    Some(Piece::Dyn(leading)) => Some(classify_base_arg(view, factory.from, leading)),
+    Some(Piece::Dyn(leading)) => Some(classify_base_arg(view, scope, leading)),
     _ => None,
   };
   (source, pieces)

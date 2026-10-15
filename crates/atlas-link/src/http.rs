@@ -9,7 +9,7 @@ use crate::compose::{Route, Routes, entity_evidence};
 use crate::error::LinkResult;
 use crate::facts::Facts;
 use crate::output::{Output, absence, attr_str, confidence_of, heuristic, relabel, rounded, weaker};
-use crate::route::{BaseKind, ClientPath, RouteMatch, match_route, parse_client_target};
+use crate::route::{BaseKind, ClientPath, RouteMatch, anchored_client_target, match_route, parse_client_target};
 use crate::scopes::{PackageIndex, package_of_specifier};
 
 const RULE: &str = "http-route-match";
@@ -26,6 +26,7 @@ const ABSOLUTE_SAME_REPO_WEIGHT: f32 = 0.4;
 const ATTR_SITE_ATTRS: &str = "site_attrs";
 const CLIENT_DEFINITION_KIND: &str = "typed_client";
 const INHERITED_ATTRS: [&str; 3] = ["base_source", "types_module", "types_path"];
+const ATTR_CLIENT_BASE: &str = "client_base";
 
 pub(crate) struct Site {
   pub caller: Entity,
@@ -150,7 +151,7 @@ pub(crate) fn link_clients(facts: &Facts<'_, '_>, routes: &Routes, packages: &Pa
     };
     let mut matched = false;
     for mut site in sites {
-      let site_path = site_target(&site, target).map(|joined| parse_client_target(&joined));
+      let site_path = site_target(&site, target);
       let joined_candidates = site_path.as_ref().map(|site_path| candidates_for(routes, *method, site_path));
       let (candidates, base) = match (&joined_candidates, &site_path) {
         (Some(joined), Some(site_path)) => (joined, &site_path.base),
@@ -168,6 +169,7 @@ pub(crate) fn link_clients(facts: &Facts<'_, '_>, routes: &Routes, packages: &Pa
       let source = BaseSource::parse(attr_str(&site.attrs, "base_source"));
       let named = names.evidence(facts, repo, &source)?;
       let preference = preferred_package(candidates, routes, packages, repo, &site, base);
+      let joined_base = site_path.as_ref().and_then(|_| site_base(&site)).map(str::to_owned);
       let pool: Vec<&Candidate<'_>> = candidates
         .iter()
         .filter(|candidate| preference.as_ref().is_none_or(|preference| has_package(routes, candidate.route, &preference.package)))
@@ -177,6 +179,7 @@ pub(crate) fn link_clients(facts: &Facts<'_, '_>, routes: &Routes, packages: &Pa
         let scope = SiteScope {
           endpoint_packages: routes.packages_of(placement.candidate.route),
           preference: preference.as_ref(),
+          joined_base: joined_base.as_deref(),
         };
         output.edge(calls_endpoint(facts, &site, placement, &named, &scope, &alternatives(candidates, &placements, placement))?);
         site.links.push(SiteLink {
@@ -198,9 +201,20 @@ pub(crate) fn link_clients(facts: &Facts<'_, '_>, routes: &Routes, packages: &Pa
   Ok(links)
 }
 
-fn site_target(site: &Site, target: &str) -> Option<String> {
-  let base = attr_str(&site.definition.as_ref()?.attrs, "base")?;
-  target.starts_with('/').then(|| format!("{base}{target}"))
+fn site_target(site: &Site, target: &str) -> Option<ClientPath> {
+  let base = site_base(site)?;
+  match target.starts_with('/') {
+    true => Some(parse_client_target(&format!("{base}{target}"))),
+    false => anchored_client_target(base, target),
+  }
+}
+
+fn site_base(site: &Site) -> Option<&str> {
+  match &site.definition {
+    Some(definition) => attr_str(&definition.attrs, "base").or_else(|| attr_str(&site.attrs, ATTR_CLIENT_BASE)),
+    None if attr_str(&site.attrs, "client_export").is_some_and(|export| export.contains('.')) => None,
+    None => attr_str(&site.attrs, ATTR_CLIENT_BASE),
+  }
 }
 
 fn has_package(routes: &Routes, route: &Route, package: &str) -> bool {
@@ -274,8 +288,8 @@ fn candidates_for<'r>(routes: &'r Routes, method: HttpMethod, path: &ClientPath)
       })
     })
     .collect();
-  if candidates.iter().any(|candidate| candidate.found.base_path_segments == 0) {
-    candidates.retain(|candidate| candidate.found.base_path_segments == 0);
+  if let Some(tier) = candidates.iter().map(|candidate| candidate.found.prefix_tier()).min() {
+    candidates.retain(|candidate| candidate.found.prefix_tier() == tier);
   }
   match candidates.is_empty() {
     true => Err(Unmatched::NoEndpoint),
@@ -378,6 +392,7 @@ fn alternatives(candidates: &[Candidate<'_>], placements: &[Placement<'_>], curr
 struct SiteScope<'s> {
   endpoint_packages: &'s [String],
   preference: Option<&'s Preference>,
+  joined_base: Option<&'s str>,
 }
 
 fn calls_endpoint(
@@ -410,6 +425,7 @@ fn calls_endpoint(
       "catch_all": found.catch_all,
       "skipped_optional": found.skipped_optional,
       "base_path_segments": found.base_path_segments,
+      "dynamic_head_segments": found.dynamic_head_segments,
     }),
   );
   attrs.insert("alternatives".to_owned(), json!(alternatives));
@@ -425,6 +441,9 @@ fn calls_endpoint(
   }
   if let Some(definition) = &site.definition {
     attrs.insert("client_defined_in".to_owned(), json!(definition.key.to_string()));
+  }
+  if let Some(base) = scope.joined_base {
+    attrs.insert(ATTR_CLIENT_BASE.to_owned(), json!(base));
   }
   let note = format!("{} -> {} {}", site.client, route.method, route.route);
   edge.evidence.push(relabel(&site.evidence, Some(note)));

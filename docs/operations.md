@@ -252,6 +252,11 @@ Read = "GET"
 Write = "POST"
 Remove = "DELETE"
 
+[routes.options]                     # optional; decorators whose first argument is an options object
+decorators = ["Route"]               # @Route({ method: 'POST', path: 'run' }) or @Route(RUN_OPTIONS)
+method = "method"                    # optional; the key holding the HTTP method (default as shown)
+path = "path"                        # optional; the key holding the path (default as shown)
+
 [guards]
 decorators = ["Guarded", "Authenticated"]    # guard classes in the arguments, or the decorator itself (below)
 auth_schemes = { Authenticated = "bearer" }  # optional; the scheme a decorator guard implements: bearer, api_key, session_cookie or basic
@@ -269,7 +274,7 @@ factory = "AcmeServer.create"        # const app = await AcmeServer.create(...)
 method = "setGlobalPrefix"           # app.setGlobalPrefix('v2')
 ```
 
-`packages`, `[controller] decorators` and `[routes.methods]` are required, unless the file declares only a `[client]` (below). Each decorator name has one role. Unknown keys are ignored with a warning (`detectors/acme-http.toml: unknown key server ignored`), so a file written for a newer `catl` still loads. Invalid files:
+`packages`, `[controller] decorators` and `[routes.methods]` or `[routes.options]` are required, unless the file declares only a `[client]` (below). Each decorator name has one role. Unknown keys are ignored with a warning (`detectors/acme-http.toml: unknown key server ignored`), so a file written for a newer `catl` still loads. Invalid files:
 
 - a file whose name is not a family name (`Acme Http.toml`) is skipped with a warning;
 - an invalid value, a missing required key or broken syntax in a family that no project enables is skipped with a warning naming the file and the key;
@@ -282,6 +287,8 @@ Guards and permissions:
 - `auth_schemes` maps such a decorator to an auth scheme: the detector then records `implements_auth` from the decorator guard to `auth:<repo>:<scheme>` (`syntactic`, `guard_kind = "declared_decorator"`), and the link pass derives `supports_auth` for its endpoints and `uses_auth` for clients sending a matching credential, as for guard classes. A decorator guard without a scheme stays an unclassified guard.
 - A `[permissions]` decorator's string literal is the permission (`syntactic`); a string constant or a template of constants declared in the same file is read (`resolved`, attr `constant`). The values of imported constants are not read, because the analyzer stores no constant values: any other constant (imported, an enum member) keeps its name as the permission (`permission:<repo>:PROJECTS_READ`, `heuristic 0.60`, rule `permission-constant-unread`, `value_source = "unread_constant"`) and gets a `references` edge (`permission_constant = true`) to the constant, which the engine resolves through imports. The name is the exported one whatever the import style: an alias (`PROJECTS_READ as PR`) is mapped back, a namespace qualifier (`P.PROJECTS_READ`) is dropped, and the qualifier of a named enum or object import stays (`Scope.Admin`). One permission can therefore appear twice: under its value where the constant is declared in the same file or the literal is written, and under the constant's name elsewhere. Other arguments give the `permission-not-literal` diagnostic. Decorators not listed keep the name rule NestJS uses (`Require(s)Permission`, `Role`, `Scope`, string literals only).
 - A decorator has one role, so listing one in both `[guards]` and `[permissions]` is an error. Guard and permission decorators match only when imported from `packages`, like every other decorator; list the package that exports them.
+
+An option-route decorator reads its first argument: an object literal, or the name of a `const` object literal declared at the top level of the same file (`as const` and `satisfies` are allowed). As in JavaScript, the last entry with a key wins, and a spread before it is overridden; a spread after it (or a spread with no such entry) may override the method or path at runtime, so the endpoint is capped at `heuristic 0.50` (rule `option-route-spread`) and an Info diagnostic `route-options-spread` names the keys. Objects nested deeper than 32 levels are not read beyond that depth. Its `method` value is a string in any case, a string constant of the same file (`resolved`), or a member such as `Verb.POST`, read by its last name (`heuristic 0.80`, rule `option-route-method-member`); its `path` value follows the rules of a route path (string, template, string constant, array), and a missing path means the controller path alone. Routes read from a `const` object are `resolved`, like routes built from constants. An imported constant cannot be read by a per-file detector: the decorator then yields no endpoint and a `route-options-unresolved` warning, as does an options object without a readable method.
 
 `packages` holds import specifiers compared as written:
 
@@ -316,11 +323,42 @@ methods = ["get", "post", "delete"]    # optional; method names, each an HTTP me
 path = { argument = 0, key = "path" }  # optional; the path argument, or that key of an object-literal argument (default as shown)
 style = "openapi"                      # optional; "openapi" for /books/{id}, "express" for /books/:id
 target_package = "@acme/books-api"     # optional; the package whose endpoints these calls target
+base = "/api"                          # optional; the base of calls whose client has none of its own
 ```
 
 `modules` or `files` is required. A relative import (`./api/client`, `../api/client.js`) is resolved against the importing file and matched against `files` with the usual source extensions and `index` files; `*` and `?` match within one path segment and `**` across segments. A call matches when its receiver is a named, aliased, default or namespace-member import from a listed module (`booksApi.get(...)`, `clients.booksApi.get(...)`), a namespace import of such a module when `exports` is not set (`api.get(...)` for `import * as api`), or a local initialised by a listed factory (`const api = createBooksClient({ baseUrl })`). A parameter or local that shadows the import, a rebinding (`const c = booksApi`), destructured methods and class fields are not followed. A factory's `baseUrl` or `baseURL` option becomes the request's base: a literal value is prefixed to the URL without a trailing `/`, a value starting with an environment variable or identifier is recorded as `base_source` (`env:X`, `ident:x`, or `expr` for other expressions such as `import.meta.env.X` inside a template), and a static suffix such as the `/api` of ``${process.env.X}/api/`` stays a path prefix. `headers` options on the factory or the call become auth hints. The certainty is `syntactic` for a literal path, as for `fetch` and `axios`.
 
-A client imported from another file is matched only through `files` or `modules`, so its call records only the path written at the call (`booksApi.get('/books/{id}')` gives `GET /books/{}`), not the creating file's base URL or generated types. For the built-in shape the creating file supplies them: an exported constant initialised by `openapi-fetch`'s `createClient` (`export const booksApi = createClient<paths>({ baseUrl: '/api/' })`) is recorded as an `other:typed_client:<repo>:<path>#<export>` entity with its `base`, `base_source`, `types_module` and `types_path`. When a `files` client is imported by a relative specifier, the call records `client_module` (the resolved module path without extension) and `client_export`, and the link pass joins the two: it matches `<base><path>` against routes, inherits the definition's `base_source` and types for placement, and names the definition in `client_defined_in` on the `calls_endpoint` edge. Not joined: clients imported through `modules` (package specifiers and tsconfig path aliases cannot be resolved to a file per file), clients created by declared `factories`, `export default createClient(...)`, `export { api }` lists and re-exports through a barrel (a client defined in a directory's `index` file is found through the directory itself).
+A client imported from another file is matched only through `files` or `modules`, so its call records only the path written at the call (`booksApi.get('/books/{id}')` gives `GET /books/{}`), not the creating file's base URL or generated types. For the built-in shape the creating file supplies them: an exported constant initialised by `openapi-fetch`'s `createClient` (`export const booksApi = createClient<paths>({ baseUrl: '/api/' })`) is recorded as an `other:typed_client:<repo>:<path>#<export>` entity with its `base`, `base_source`, `types_module` and `types_path`. When a `files` client is imported by a relative specifier, the call records `client_module` (the resolved module path without extension) and `client_export`, and the link pass joins the two: it matches `<base><path>` against routes, inherits the definition's `base_source` and types for placement, and names the definition in `client_defined_in` on the `calls_endpoint` edge. An exported constant initialised by one of the section's own `factories` is recorded the same way, with its `baseUrl`. Not joined: clients imported through `modules` (package specifiers and tsconfig path aliases cannot be resolved to a file per file), `export default createClient(...)`, `export { api }` lists and re-exports through a barrel (a client defined in a directory's `index` file is found through the directory itself).
+
+`base` is a static base path (`/api/v1`) or origin (`https://api.acme.test/v1`); a trailing `/` is dropped. A call whose client gets no base from a factory option or a surface (below) records it as `client_base`, and the link pass matches `<base><path>` for a path starting with `/`, unless the call is joined to a client definition with a base, which wins. The `client:` key keeps the path as written at the call; the `calls_endpoint` edge records the base it used in `client_base`.
+
+#### Client surfaces
+
+Some transports create one client per API surface from a map of bases and export the members:
+
+```ts
+// apps/web/src/transport.ts
+import { createApiClient } from '@acme/http-kit';
+export const apiClient = createApiClient({ surfaces: { v1: '/api/v1', auth: '/api/auth' }, ssr });
+export const APIRequest = apiClient.v1;
+```
+
+```toml
+[client]
+files = ["apps/web/src/transport.ts"]
+exports = ["APIRequest", "apiClient"]
+methods = ["get", "post", "put", "patch", "delete"]
+
+[client.surfaces]
+modules = ["@acme/http-kit"]           # import specifiers the factory comes from, compared as written
+factory = "createApiClient"            # the factory's export name ("default" for a default export)
+option = "surfaces"                    # the factory option holding { name: base }
+containers = ["apiClient"]             # optional; follow members only of these exports
+```
+
+A binding initialised by calling the factory (named, aliased or default import from a listed module) is a container, and its member `<name>` is a client with the base mapped to `<name>`. The map is an object literal in the call or a top-level `const` object literal of the same file; computed keys and spreads are skipped, and each value is evaluated like `baseUrl` (a literal is a base, a leading environment variable or identifier becomes `base_source`). In the transport file, an exported container is recorded as one `other:typed_client:<repo>:<path>#<container>.<name>` definition per surface, an exported `const X = container.name` (optionally `as T`) as `#X`, and calls such as `apiClient.v1.get(...)` or `APIRequest.get(...)` in that file get the base directly. In other files, `APIRequest.get('/admin/users').query(q).execute()` (chained builders are matched on their first call) records `client_export = APIRequest`, and with `[client.surfaces]` declared a call on a member of an imported client export, `apiClient.auth.get('/session')` after `import { apiClient } from './transport'` or `transport.apiClient.auth.get(...)` through a namespace import, records `client_export = apiClient.auth`; the link pass joins both to their definitions, so they match `/api/v1/admin/users` and `/api/auth/session`. With `containers` set, only members of the listed exports are followed (`APIRequest.cache.get(...)` is then not a client call); without it, a member of any client export is, and one that finds no definition (`APIRequest.cache`, or `apiClient.v2` when `v2` is not a surface) keeps only its written path: the section's `base` is not applied to it. Without `[client.surfaces]`, members of imports are not followed. Not recognised: `createApiClient(...).v1` without a binding, destructuring (`const { v1 } = apiClient`) and computed members (`apiClient['v1']`).
+
+A URL with no literal text after a leading `/` (`APIRequest.get(`/${id}`)`) is kept for a call that will be joined to a definition or has a `base`, because the base supplies its static segments; other fully dynamic URLs are still dropped with the `http.dynamic_url` diagnostic.
 
 Whole path segments in the declared style (`{id}`, or `:id` for `express`) are rewritten to the `{}` placeholder the link pass matches against routes, and the path as written is kept in the `path_template` attr of the `makes_request` edge. Partial segments (`{name}.json`) and the query string stay literal. `target_package` is copied to every call as an attr and steers link placement (below).
 

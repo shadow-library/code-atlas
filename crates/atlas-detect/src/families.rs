@@ -138,6 +138,32 @@ pub(crate) struct ClientShape {
   pub style: PathStyle,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub target_package: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub base: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub surfaces: Option<SurfaceMap>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct SurfaceMap {
+  pub modules: Vec<String>,
+  pub factory: String,
+  pub option: String,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  pub containers: Vec<String>,
+}
+
+impl SurfaceMap {
+  pub(crate) fn follows_members_of(&self, export: &str) -> bool {
+    self.containers.is_empty() || self.containers.iter().any(|container| container == export)
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct RouteOptions {
+  pub decorators: Vec<String>,
+  pub method: String,
+  pub path: String,
 }
 
 impl ClientShape {
@@ -158,6 +184,13 @@ impl ClientShape {
 
   pub(crate) fn is_factory(&self, imported: &str) -> bool {
     self.factories.iter().any(|factory| factory == imported)
+  }
+
+  pub(crate) fn surface_factory(&self, specifier: &str, imported: &str) -> Option<&SurfaceMap> {
+    self
+      .surfaces
+      .as_ref()
+      .filter(|surfaces| surfaces.factory == imported && surfaces.modules.iter().any(|module| module == specifier))
   }
 }
 
@@ -180,6 +213,8 @@ pub struct DecoratorFamily {
   pub(crate) origin: FamilyOrigin,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub(crate) client: Option<ClientShape>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub(crate) route_options: Option<RouteOptions>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -219,6 +254,7 @@ pub(crate) static NEST: LazyLock<DecoratorFamily> = LazyLock::new(|| DecoratorFa
   }),
   origin: FamilyOrigin::BuiltIn,
   client: None,
+  route_options: None,
 });
 
 pub(crate) static OPENAPI_FETCH: LazyLock<ClientShape> = LazyLock::new(|| ClientShape {
@@ -236,6 +272,8 @@ pub(crate) static OPENAPI_FETCH: LazyLock<ClientShape> = LazyLock::new(|| Client
   path: PathArgument { index: 0, key: None },
   style: PathStyle::Openapi,
   target_package: None,
+  base: None,
+  surfaces: None,
 });
 
 impl DecoratorFamily {
@@ -244,7 +282,7 @@ impl DecoratorFamily {
   }
 
   pub fn has_routes(&self) -> bool {
-    !self.routes.is_empty()
+    !self.routes.is_empty() || self.route_options.is_some()
   }
 
   pub fn has_client(&self) -> bool {
@@ -253,6 +291,10 @@ impl DecoratorFamily {
 
   pub(crate) fn client(&self) -> Option<&ClientShape> {
     self.client.as_ref()
+  }
+
+  pub(crate) fn route_options(&self) -> Option<&RouteOptions> {
+    self.route_options.as_ref()
   }
 
   pub fn parse(name: &str, text: &str) -> Result<ParsedFamily, FamilyError> {
@@ -348,8 +390,10 @@ impl Reader {
     let controllers = self.decorator_list(required(controller, "decorators", "controller.")?, "controller.decorators")?;
     let controller_path = self.path_argument(controller, "controller.")?;
     let routes_section = section(table, "routes")?.ok_or_else(|| FamilyError::new("routes", "missing; map route decorators to HTTP methods under [routes.methods]"))?;
-    self.warn_unknown("routes.", routes_section, &["methods", "path"]);
-    let routes = self.route_decorators(routes_section)?;
+    self.warn_unknown("routes.", routes_section, &["methods", "path", "options"]);
+    let options_only = !routes_section.contains_key("methods") && routes_section.contains_key("options");
+    let routes = if options_only { Vec::new() } else { self.route_decorators(routes_section)? };
+    let route_options = self.route_options(routes_section)?;
     let route_path = self.path_argument(routes_section, "routes.")?;
     let (guards, guard_schemes) = match section(table, "guards")? {
       None => (Vec::new(), Vec::new()),
@@ -387,6 +431,7 @@ impl Reader {
       global_prefix,
       origin: FamilyOrigin::Declared,
       client,
+      route_options,
     })
   }
 
@@ -394,7 +439,7 @@ impl Reader {
     self.warn_unknown(
       "client.",
       client,
-      &["modules", "files", "exports", "factories", "methods", "path", "style", "target_package"],
+      &["modules", "files", "exports", "factories", "methods", "path", "style", "target_package", "base", "surfaces"],
     );
     let modules = match client.get("modules") {
       None => Vec::new(),
@@ -430,6 +475,8 @@ impl Reader {
       Some(other) => return Err(FamilyError::new("client.style", format!("expected \"openapi\" or \"express\", got {other}"))),
     };
     let target_package = client.get("target_package").map(|value| package_name(value, "client.target_package")).transpose()?;
+    let base = client.get("base").map(client_base).transpose()?;
+    let surfaces = self.surfaces(client)?;
     Ok(ClientShape {
       modules,
       files,
@@ -439,6 +486,8 @@ impl Reader {
       path,
       style,
       target_package,
+      base,
+      surfaces,
     })
   }
 
@@ -475,6 +524,43 @@ impl Reader {
   fn permissions(&mut self, permissions: &toml::Table) -> Result<Vec<String>, FamilyError> {
     self.warn_unknown("permissions.", permissions, &["decorators"]);
     self.decorator_list(required(permissions, "decorators", "permissions.")?, "permissions.decorators")
+  }
+
+  fn surfaces(&mut self, client: &toml::Table) -> Result<Option<SurfaceMap>, FamilyError> {
+    let surfaces = match client.get("surfaces") {
+      None => return Ok(None),
+      Some(Value::Table(surfaces)) => surfaces,
+      Some(_) => return Err(FamilyError::new("client.surfaces", "must be a table")),
+    };
+    self.warn_unknown("client.surfaces.", surfaces, &["modules", "factory", "option", "containers"]);
+    Ok(Some(SurfaceMap {
+      modules: package_list(required(surfaces, "modules", "client.surfaces.")?, "client.surfaces.modules")?,
+      factory: identifier(required(surfaces, "factory", "client.surfaces.")?, "client.surfaces.factory")?,
+      option: identifier(required(surfaces, "option", "client.surfaces.")?, "client.surfaces.option")?,
+      containers: match surfaces.get("containers") {
+        None => Vec::new(),
+        Some(value) => identifiers(value, "client.surfaces.containers")?,
+      },
+    }))
+  }
+
+  fn route_options(&mut self, routes: &toml::Table) -> Result<Option<RouteOptions>, FamilyError> {
+    let options = match routes.get("options") {
+      None => return Ok(None),
+      Some(Value::Table(options)) => options,
+      Some(_) => return Err(FamilyError::new("routes.options", "must be a table")),
+    };
+    self.warn_unknown("routes.options.", options, &["decorators", "method", "path"]);
+    let decorators = self.decorator_list(required(options, "decorators", "routes.options.")?, "routes.options.decorators")?;
+    let key = |name: &str| match options.get(name) {
+      None => Ok(name.to_owned()),
+      Some(value) => identifier(value, &format!("routes.options.{name}")),
+    };
+    Ok(Some(RouteOptions {
+      decorators,
+      method: key("method")?,
+      path: key("path")?,
+    }))
   }
 
   fn warn_unknown(&mut self, prefix: &str, table: &toml::Table, known: &[&str]) {
@@ -599,6 +685,24 @@ fn client_only(name: &str, client: ClientShape) -> DecoratorFamily {
     global_prefix: None,
     origin: FamilyOrigin::Declared,
     client: Some(client),
+    route_options: None,
+  }
+}
+
+fn client_base(value: &Value) -> Result<String, FamilyError> {
+  let invalid = || {
+    FamilyError::new(
+      "client.base",
+      format!("expected a base path such as \"/api/v1\" or an origin such as \"https://api.acme.test/v1\", got {value}"),
+    )
+  };
+  let base = value.as_str().ok_or_else(invalid)?;
+  let well_formed = (base.starts_with('/') || base.starts_with("https://") || base.starts_with("http://"))
+    && !base.chars().any(|character| character.is_whitespace() || matches!(character, '{' | '}' | '?' | '#'));
+  let trimmed = base.trim_end_matches('/');
+  match well_formed && !trimmed.is_empty() {
+    true => Ok(trimmed.to_owned()),
+    false => Err(invalid()),
   }
 }
 
@@ -775,7 +879,7 @@ mod tests {
 
   #[test]
   fn should_warn_about_unknown_keys_at_every_level() {
-    let text = format!("future = 1\n{ACME}[controller.path]\nargument = 0\nstyle = \"x\"\n[client]\nmodules = [\"@acme/books-client\"]\nbase = 1\n[server]\nport = 1\n");
+    let text = format!("future = 1\n{ACME}[controller.path]\nargument = 0\nstyle = \"x\"\n[client]\nmodules = [\"@acme/books-client\"]\nretries = 1\n[server]\nport = 1\n");
     let warnings = parse(&text).unwrap().warnings;
     assert_eq!(
       warnings,
@@ -783,7 +887,7 @@ mod tests {
         "unknown key future ignored",
         "unknown key server ignored",
         "unknown key controller.path.style ignored",
-        "unknown key client.base ignored"
+        "unknown key client.retries ignored"
       ]
     );
   }
@@ -843,7 +947,7 @@ mod tests {
 
   #[test]
   fn should_parse_a_client_only_family_with_every_client_key() {
-    let text = "[client]\nmodules = [\"@acme/books-client\"]\nfiles = [\"apps/web/src/api/*.ts\"]\nexports = [\"booksApi\", \"default\"]\nfactories = [\"createBooksClient\"]\nmethods = [\"get\", \"POST\"]\npath = { argument = 1 }\nstyle = \"express\"\ntarget_package = \"@acme/books-api\"\n";
+    let text = "[client]\nmodules = [\"@acme/books-client\"]\nfiles = [\"apps/web/src/api/*.ts\"]\nexports = [\"booksApi\", \"default\"]\nfactories = [\"createBooksClient\"]\nmethods = [\"get\", \"POST\"]\npath = { argument = 1 }\nstyle = \"express\"\ntarget_package = \"@acme/books-api\"\nbase = \"/api/v1/\"\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces\"\ncontainers = [\"apiClient\"]\n";
     let parsed = parse(text).unwrap();
     let family = parsed.family;
 
@@ -873,6 +977,13 @@ mod tests {
         },
         style: PathStyle::Express,
         target_package: Some("@acme/books-api".to_owned()),
+        base: Some("/api/v1".to_owned()),
+        surfaces: Some(SurfaceMap {
+          modules: vec!["@acme/http-kit".to_owned()],
+          factory: "createApiClient".to_owned(),
+          option: "surfaces".to_owned(),
+          containers: vec!["apiClient".to_owned()],
+        }),
       })
     );
   }
@@ -933,15 +1044,81 @@ mod tests {
         "client.target_package: expected a package name such as \"@acme/books-api\", got \"\"",
       ),
       ("client = 1\n", "client: must be a table"),
+      (
+        "[client]\nmodules = [\"x\"]\nbase = \"api/v1\"\n",
+        "client.base: expected a base path such as \"/api/v1\" or an origin such as \"https://api.acme.test/v1\", got \"api/v1\"",
+      ),
+      (
+        "[client]\nmodules = [\"x\"]\nbase = \"/api/{version}\"\n",
+        "client.base: expected a base path such as \"/api/v1\" or an origin such as \"https://api.acme.test/v1\", got \"/api/{version}\"",
+      ),
+      (
+        "[client]\nmodules = [\"x\"]\nbase = \"/\"\n",
+        "client.base: expected a base path such as \"/api/v1\" or an origin such as \"https://api.acme.test/v1\", got \"/\"",
+      ),
+      ("[client]\nmodules = [\"x\"]\nsurfaces = 1\n", "client.surfaces: must be a table"),
+      (
+        "[client]\nmodules = [\"x\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\noption = \"surfaces\"\n",
+        "client.surfaces.factory: missing",
+      ),
+      (
+        "[client]\nmodules = [\"x\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces.map\"\n",
+        "client.surfaces.option: expected an identifier, got \"surfaces.map\"",
+      ),
+      (
+        "[client]\nmodules = [\"x\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces\"\ncontainers = [\"api.client\"]\n",
+        "client.surfaces.containers: expected export names such as \"booksApi\" or \"default\", got \"api.client\"",
+      ),
     ] {
       assert_eq!(parse(text), Err(message.to_owned()), "{text}");
     }
   }
 
   #[test]
+  fn should_parse_option_route_decorators_with_default_and_custom_keys() {
+    let family = parse(&format!("{ACME}[routes.options]\ndecorators = [\"Route\"]\n")).unwrap().family;
+    assert_eq!(
+      family.route_options,
+      Some(RouteOptions {
+        decorators: vec!["Route".to_owned()],
+        method: "method".to_owned(),
+        path: "path".to_owned(),
+      })
+    );
+    let only = "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"Api\"]\n[routes.options]\ndecorators = [\"Route\"]\nmethod = \"verb\"\npath = \"url\"\n";
+    let family = parse(only).unwrap().family;
+    assert!(family.has_routes() && family.routes.is_empty());
+    assert_eq!(
+      family.route_options.map(|options| (options.method, options.path)),
+      Some(("verb".to_owned(), "url".to_owned()))
+    );
+  }
+
+  #[test]
+  fn should_reject_invalid_option_route_values_naming_the_key() {
+    let base = "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"Api\"]\n";
+    for (extra, message) in [
+      ("[routes]\noptions = 1\n", "routes.options: must be a table"),
+      ("[routes.options]\nmethod = \"verb\"\n", "routes.options.decorators: missing"),
+      (
+        "[routes.methods]\nRoute = \"GET\"\n[routes.options]\ndecorators = [\"Route\"]\n",
+        "routes.options.decorators: Route is listed more than once; each decorator has one role",
+      ),
+      (
+        "[routes.options]\ndecorators = [\"Route\"]\npath = \"options.path\"\n",
+        "routes.options.path: expected an identifier, got \"options.path\"",
+      ),
+      ("[routes]\npath = { argument = 0 }\n", "routes.methods: missing"),
+    ] {
+      assert_eq!(parse(&format!("{base}{extra}")), Err(message.to_owned()), "{extra}");
+    }
+  }
+
+  #[test]
   fn should_keep_the_digest_of_a_family_without_a_client_section() {
     let family = parse(ACME).unwrap().family;
-    assert!(!serde_json::to_string(&family).unwrap().contains("client"));
+    let serialized = serde_json::to_string(&family).unwrap();
+    assert!(!serialized.contains("client") && !serialized.contains("route_options"), "{serialized}");
     let with_client = parse(&format!("{ACME}[client]\nmodules = [\"@acme/http/client\"]\n")).unwrap().family;
     assert_ne!(families_digest(std::slice::from_ref(&family)), families_digest(&[with_client]));
   }

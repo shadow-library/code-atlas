@@ -27,6 +27,7 @@ pub(crate) const DYNAMIC_URL: &str = "http.dynamic_url";
 const BODYLESS_METHODS: [&str; 4] = ["get", "delete", "head", "options"];
 const BODY_METHODS: [&str; 3] = ["post", "put", "patch"];
 const REQWEST_METHODS: [&str; 6] = ["get", "post", "put", "patch", "delete", "head"];
+const JOINED_BASE_ATTRS: [&str; 2] = ["client_export", "client_base"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum MethodSource {
@@ -166,7 +167,7 @@ fn emit(view: &FileView<'_>, sink: &mut Sink, request: &Request<'_>, from: Optio
     }
   }
   let combined = StringEval { pieces, cert };
-  if !combined.has_literal_text() {
+  if !combined.has_literal_text() && !joins_a_base(request, &combined) {
     let caller = from
       .and_then(|local| view.symbol(local))
       .map_or_else(|| "<file>".to_owned(), |symbol| view.qualified_name(symbol));
@@ -213,6 +214,11 @@ fn emit(view: &FileView<'_>, sink: &mut Sink, request: &Request<'_>, from: Optio
   ]);
   edge_attrs.extend(request.extra.clone());
   sink.edge(EdgeKind::MakesRequest, view.node(from), NodeRef::Key(client), request.reference.span, cert, edge_attrs);
+}
+
+fn joins_a_base(request: &Request<'_>, url: &StringEval) -> bool {
+  let joinable = JOINED_BASE_ATTRS.iter().any(|name| request.extra.contains_key(*name));
+  joinable && matches!(url.pieces.first(), Some(Piece::Lit(prefix)) if prefix.starts_with('/'))
 }
 
 fn ts_request<'f>(view: &FileView<'_>, reference: &'f ReferenceFact) -> Option<Request<'f>> {

@@ -1,11 +1,13 @@
 use atlas_core::{
-  ArgSummary, AttributeFact, Attrs, EdgeKind, EntityKey, EntityKind, FileFacts, HttpMethod, LanguageFamily, NodeRef, RefKind, Severity, SymbolFact, normalize_route,
+  ArgSummary, AttributeFact, Attrs, EdgeKind, EntityKey, EntityKind, FileFacts, HttpMethod, LanguageFamily, NodeRef, ObjectEntry, ObjectKey, RefKind, Severity, SymbolFact,
+  normalize_route,
 };
 use serde_json::{Map, Value, json};
 
 use crate::cert::Cert;
 use crate::families::{DecoratorFamily, FamilyOrigin, PathArgument};
 use crate::lex::{Token, TokenKind, lex};
+use crate::objects::const_object;
 use crate::sink::{Sink, attrs};
 use crate::strings::{StringEval, evaluate};
 use crate::view::{Binding, FileView, Imported, starts_with_call};
@@ -90,14 +92,16 @@ impl Routes<'_, '_> {
       let Some(prefixes) = self.controller_prefixes(class, controller, sink) else { continue };
       for method in view.facts.children(class.local).filter(|symbol| symbol.kind == EntityKind::Method) {
         for decorator in &method.attributes {
-          let Some(http_method) = self.route_method(decorator) else { continue };
+          let Some((http_method, paths)) = self.handler_routes(method, decorator, sink) else {
+            continue;
+          };
           let handler = Handler {
             class,
             method,
             decorator,
             http_method,
           };
-          for path in self.decorator_paths(method, decorator, sink) {
+          for path in paths {
             for prefix in &prefixes {
               self.emit_endpoint(sink, &handler, prefix, &path);
             }
@@ -466,6 +470,13 @@ impl Routes<'_, '_> {
     self.path_routes(class, controller, &self.family.controller_path, sink)
   }
 
+  fn handler_routes(&self, method: &SymbolFact, decorator: &AttributeFact, sink: &mut Sink) -> Option<(HttpMethod, Vec<Route>)> {
+    match self.route_method(decorator) {
+      Some(http_method) => Some((http_method, self.decorator_paths(method, decorator, sink))),
+      None => self.option_route(method, decorator, sink),
+    }
+  }
+
   fn decorator_paths(&self, method: &SymbolFact, decorator: &AttributeFact, sink: &mut Sink) -> Vec<Route> {
     self.path_routes(method, decorator, &self.family.route_path, sink).unwrap_or_default()
   }
@@ -610,6 +621,133 @@ impl Routes<'_, '_> {
       .find(|param| param.attributes.iter().any(|attribute| self.is_any(attribute, decorators)))
       .and_then(|param| param.type_text.clone())
       .map_or(json!(null), |type_text| json!(type_text))
+  }
+}
+
+impl Routes<'_, '_> {
+  fn option_route(&self, owner: &SymbolFact, decorator: &AttributeFact, sink: &mut Sink) -> Option<(HttpMethod, Vec<Route>)> {
+    let options = self.family.route_options()?;
+    if !self.is_any(decorator, &options.decorators) {
+      return None;
+    }
+    let Some((entries, object_cert)) = self.option_entries(decorator) else {
+      self.option_diagnostic(
+        sink,
+        owner,
+        decorator,
+        "takes options that are neither an object literal nor a const object literal declared in this file",
+      );
+      return None;
+    };
+    let method = OptionKey::of(&entries, &options.method);
+    let Some((http_method, method_cert)) = method.value().and_then(|arg| self.option_method(arg)) else {
+      let message = format!("has no HTTP method that can be determined statically under `{}`", options.method);
+      self.option_diagnostic(sink, owner, decorator, &message);
+      return None;
+    };
+    let path = OptionKey::of(&entries, &options.path);
+    let overridable: Vec<&str> = [(&method, options.method.as_str()), (&path, options.path.as_str())]
+      .into_iter()
+      .filter(|(key, _)| key.is_overridable())
+      .map(|(_, name)| name)
+      .collect();
+    let mut cap = object_cert.weaker(method_cert);
+    if !overridable.is_empty() {
+      cap = cap.capped(0.5, "option-route-spread");
+      sink.diagnostic(
+        Severity::Info,
+        "route-options-spread",
+        format!(
+          "@{} on {} takes `{}` from options a spread may override",
+          decorator.path.join("."),
+          self.view.qualified_name(owner),
+          overridable.join("`, `")
+        ),
+        Some(decorator.span),
+      );
+    }
+    let routes = match path.value() {
+      None => vec![literal_route("")],
+      Some(arg) => self.route_values(owner, arg, decorator, sink)?,
+    };
+    Some((http_method, routes.into_iter().map(|route| capped_route(route, object_cert, cap)).collect()))
+  }
+
+  fn option_entries(&self, decorator: &AttributeFact) -> Option<(Vec<ObjectEntry>, Cert)> {
+    match decorator.args.first()? {
+      ArgSummary::Object(entries) => Some((entries.clone(), Cert::Syntactic)),
+      ArgSummary::Path(path) => match path.as_slice() {
+        [name] => const_object(self.view, None, name).map(|entries| (entries, Cert::Resolved)),
+        _ => None,
+      },
+      _ => None,
+    }
+  }
+
+  fn option_method(&self, arg: &ArgSummary) -> Option<(HttpMethod, Cert)> {
+    let parse = |text: &str| HttpMethod::parse_lenient(text).filter(|method| *method != HttpMethod::Unknown);
+    match arg {
+      ArgSummary::Str(text) => parse(text).map(|method| (method, Cert::Syntactic)),
+      ArgSummary::Path(path) => match path.as_slice() {
+        [name] => parse(&self.view.module_const_string(name)?).map(|method| (method, Cert::Resolved)),
+        [.., member] => parse(member).map(|method| (method, Cert::heuristic(0.8, "option-route-method-member"))),
+        [] => None,
+      },
+      _ => None,
+    }
+  }
+
+  fn option_diagnostic(&self, sink: &mut Sink, owner: &SymbolFact, decorator: &AttributeFact, problem: &str) {
+    sink.diagnostic(
+      Severity::Warning,
+      "route-options-unresolved",
+      format!("@{} on {} {problem}", decorator.path.join("."), self.view.qualified_name(owner)),
+      Some(decorator.span),
+    );
+  }
+}
+
+enum OptionKey<'e> {
+  Fixed(&'e ArgSummary),
+  Overridable(&'e ArgSummary),
+  Absent,
+  SpreadOnly,
+}
+
+impl<'e> OptionKey<'e> {
+  fn of(entries: &'e [ObjectEntry], key: &str) -> Self {
+    let last = entries.iter().rposition(|entry| entry.key.static_name() == Some(key));
+    let spread_after = |from: usize| entries[from..].iter().any(|entry| entry.key == ObjectKey::Spread);
+    match last {
+      Some(index) if spread_after(index + 1) => Self::Overridable(&entries[index].value),
+      Some(index) => Self::Fixed(&entries[index].value),
+      None if spread_after(0) => Self::SpreadOnly,
+      None => Self::Absent,
+    }
+  }
+
+  fn value(&self) -> Option<&'e ArgSummary> {
+    match self {
+      Self::Fixed(value) | Self::Overridable(value) => Some(value),
+      Self::Absent | Self::SpreadOnly => None,
+    }
+  }
+
+  fn is_overridable(&self) -> bool {
+    matches!(self, Self::Overridable(_) | Self::SpreadOnly)
+  }
+}
+
+fn capped_route(route: Route, object_cert: Cert, cap: Cert) -> Route {
+  let source = match (route.source, object_cert) {
+    ("literal", Cert::Syntactic) => "literal",
+    ("literal", _) => "constant",
+    (source, _) => source,
+  };
+  Route {
+    route: route.route,
+    cert: route.cert.weaker(cap),
+    source,
   }
 }
 

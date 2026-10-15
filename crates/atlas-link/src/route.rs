@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 
 const PLACEHOLDER: &str = "{}";
 const MAX_BASE_PATH_SEGMENTS: usize = 2;
+const MIN_DYNAMIC_HEAD_TAIL_STATICS: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum BaseKind {
@@ -20,6 +21,7 @@ pub(crate) enum ClientSegment {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ClientPath {
   pub base: BaseKind,
+  pub anchor: Vec<String>,
   pub segments: Vec<ClientSegment>,
 }
 
@@ -42,6 +44,7 @@ pub(crate) struct RouteMatch {
   pub catch_all: bool,
   pub skipped_optional: u32,
   pub base_path_segments: u32,
+  pub dynamic_head_segments: u32,
 }
 
 impl RouteMatch {
@@ -65,7 +68,18 @@ impl RouteMatch {
     if self.base_path_segments > 0 {
       confidence *= 0.75;
     }
+    if self.dynamic_head_segments > 0 {
+      confidence *= 0.6;
+    }
     confidence
+  }
+
+  pub fn prefix_tier(&self) -> u8 {
+    match (self.base_path_segments, self.dynamic_head_segments) {
+      (0, 0) => 0,
+      (_, 0) => 1,
+      _ => 2,
+    }
   }
 
   pub fn rule(&self) -> &'static str {
@@ -75,6 +89,8 @@ impl RouteMatch {
       "literal-on-param-segment"
     } else if self.catch_all {
       "catch-all-route"
+    } else if self.dynamic_head_segments > 0 {
+      "dynamic-head-prefix"
     } else if self.base_path_segments > 0 {
       "base-path-prefix"
     } else if self.partial_segments > 0 {
@@ -117,7 +133,20 @@ pub(crate) fn parse_client_target(target: &str) -> ClientPath {
   let path = target.split(['?', '#']).next().unwrap_or_default();
   let (base, rest) = split_base(path);
   let segments = rest.split('/').filter(|segment| !segment.is_empty()).map(client_segment).collect();
-  ClientPath { base, segments }
+  ClientPath {
+    base,
+    anchor: Vec::new(),
+    segments,
+  }
+}
+
+pub(crate) fn anchored_client_target(base: &str, target: &str) -> Option<ClientPath> {
+  if !base.starts_with('/') || base.contains(PLACEHOLDER) || !target.starts_with(PLACEHOLDER) {
+    return None;
+  }
+  let mut path = parse_client_target(target);
+  path.anchor = base.split('/').filter(|segment| !segment.is_empty()).map(str::to_owned).collect();
+  Some(path)
 }
 
 fn split_base(path: &str) -> (BaseKind, &str) {
@@ -177,6 +206,7 @@ fn route_segment(segment: &str) -> RouteSegment {
 }
 
 pub(crate) fn match_route(client: &ClientPath, route: &[RouteSegment]) -> Option<RouteMatch> {
+  let route = strip_anchor(&client.anchor, route)?;
   let mut best = best_match(&client.segments, route, RouteMatch::default());
   if client.base != BaseKind::Relative {
     for skipped in 1..=MAX_BASE_PATH_SEGMENTS.min(route.len()) {
@@ -190,7 +220,45 @@ pub(crate) fn match_route(client: &ClientPath, route: &[RouteSegment]) -> Option
       best = better(best, best_match(&client.segments, &route[skipped..], start));
     }
   }
-  best.filter(|found| found.statics > 0)
+  match best.filter(|found| found.statics > 0) {
+    None if client.base == BaseKind::Dynamic && !client.anchor.is_empty() => dynamic_head(client, route),
+    found => found,
+  }
+}
+
+fn strip_anchor<'r>(anchor: &[String], route: &'r [RouteSegment]) -> Option<&'r [RouteSegment]> {
+  let anchored = route.len() >= anchor.len()
+    && anchor
+      .iter()
+      .zip(route)
+      .all(|(expected, segment)| matches!(segment, RouteSegment::Static(value) if value == expected));
+  anchored.then(|| &route[anchor.len()..])
+}
+
+fn dynamic_head(client: &ClientPath, route: &[RouteSegment]) -> Option<RouteMatch> {
+  let fixed_length = route
+    .iter()
+    .all(|segment| matches!(segment, RouteSegment::Static(_) | RouteSegment::Param | RouteSegment::Pattern { .. }));
+  let skips = match fixed_length {
+    true => route
+      .len()
+      .checked_sub(client.segments.len())
+      .filter(|skipped| *skipped > 0)
+      .map_or(0..0, |skipped| skipped..skipped + 1),
+    false => 1..route.len(),
+  };
+  let mut best = None;
+  for skipped in skips {
+    if route[..skipped].contains(&RouteSegment::CatchAll) {
+      break;
+    }
+    let start = RouteMatch {
+      dynamic_head_segments: skipped as u32,
+      ..RouteMatch::default()
+    };
+    best = better(best, best_match(&client.segments, &route[skipped..], start));
+  }
+  best.filter(|found| found.statics >= MIN_DYNAMIC_HEAD_TAIL_STATICS)
 }
 
 fn better(left: Option<RouteMatch>, right: Option<RouteMatch>) -> Option<RouteMatch> {
@@ -354,6 +422,69 @@ mod tests {
     assert_eq!((found.statics, found.params), (1, 1));
     let partial = matched("/reports/{}.csv", "/reports/latest.csv").unwrap();
     assert_eq!(partial.partial_segments, 1);
+  }
+
+  fn anchored(target: &str, route: &str) -> Option<RouteMatch> {
+    let client = anchored_client_target("/api", target).unwrap();
+    match_route(&client, &parse_route(&normalize_route(route)))
+  }
+
+  #[test]
+  fn should_let_an_anchored_dynamic_head_stand_for_any_leading_segments_before_a_static_tail_of_two() {
+    let found = anchored("{}/versions/latest", "/api/projects/:id/drafts/:n/versions/latest").unwrap();
+    assert_eq!((found.dynamic_head_segments, found.statics, found.params), (4, 2, 0));
+    assert_eq!((found.rule(), found.prefix_tier()), ("dynamic-head-prefix", 2));
+    assert!(found.confidence() < matched("{}/users/{}", "/api/users/:id").unwrap().confidence());
+    let with_param = anchored("{}/versions/{}/restore", "/api/books/:id/versions/:v/restore").unwrap();
+    assert_eq!((with_param.dynamic_head_segments, with_param.statics, with_param.params), (2, 2, 1));
+    assert_eq!(anchored("{}/chapters", "/api/books/:id/chapters"), None);
+    assert_eq!(anchored("{}/versions/{}", "/api/books/:id/versions/:v"), None);
+  }
+
+  #[test]
+  fn should_never_let_an_unanchored_dynamic_head_skip_more_than_two_static_segments() {
+    assert_eq!(matched("{}/oauth/token", "/partners/:partnerId/oauth/token"), None);
+    assert_eq!(matched("{}/versions/latest", "/projects/:id/drafts/:n/versions/latest"), None);
+    assert_eq!(matched("{}/oauth/token", "/v1/partners/oauth/token").map(|found| found.base_path_segments), Some(2));
+    assert_eq!(matched("{}/oauth/token", "/a/b/c/oauth/token"), None);
+  }
+
+  #[test]
+  fn should_keep_the_static_base_path_rule_ahead_of_the_dynamic_head_rule() {
+    let prefixed = anchored("{}/versions/latest", "/api/v2/versions/latest").unwrap();
+    assert_eq!((prefixed.base_path_segments, prefixed.dynamic_head_segments, prefixed.prefix_tier()), (1, 0, 1));
+    assert_eq!(anchored("{}/versions/latest", "/api/versions/latest").unwrap().prefix_tier(), 0);
+  }
+
+  #[test]
+  fn should_apply_the_dynamic_head_rule_to_dynamic_bases_only() {
+    assert_eq!(matched("/x/versions/latest", "/projects/:id/versions/latest"), None);
+    assert_eq!(matched("https://api.acme.test/versions/latest", "/projects/:id/versions/latest"), None);
+  }
+
+  #[test]
+  fn should_try_every_head_length_on_routes_with_optional_or_catch_all_segments() {
+    let optional = anchored("{}/versions/latest", "/api/projects/:id?/drafts/versions/latest").unwrap();
+    assert_eq!((optional.dynamic_head_segments, optional.statics), (3, 2));
+    let tail = anchored("{}/files/raw", "/api/repos/:id/files/raw/*").unwrap();
+    assert_eq!((tail.dynamic_head_segments, tail.catch_all), (2, true));
+    assert_eq!(anchored("{}/files/raw", "/api/*/:id/files/raw"), None);
+  }
+
+  #[test]
+  fn should_anchor_a_dynamic_head_behind_a_known_static_base() {
+    let anchored = anchored_client_target("/api/v1", "{}/versions/latest").unwrap();
+    assert_eq!(
+      (anchored.base.clone(), anchored.anchor.clone()),
+      (BaseKind::Dynamic, vec!["api".to_owned(), "v1".to_owned()])
+    );
+    let found = match_route(&anchored, &parse_route("/api/v1/projects/{id}/versions/latest")).unwrap();
+    assert_eq!((found.dynamic_head_segments, found.statics), (2, 2));
+    assert_eq!(match_route(&anchored, &parse_route("/api/auth/projects/{id}/versions/latest")), None);
+    assert_eq!(match_route(&anchored, &parse_route("/api")), None);
+    assert_eq!(anchored_client_target("{}/api", "{}/versions/latest"), None);
+    assert_eq!(anchored_client_target("https://api.acme.test", "{}/versions/latest"), None);
+    assert_eq!(anchored_client_target("/api/v1", "versions/latest"), None);
   }
 
   #[test]
