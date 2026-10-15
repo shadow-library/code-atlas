@@ -1,0 +1,9 @@
+version = 1
+
+[client]
+files = ["src/api/*.ts"]
+modules = ["@acme/books-client"]
+exports = ["booksApi", "default"]
+factories = ["createBooksClient"]
+methods = ["get", "post", "delete"]
+target_package = "@acme/books-api"

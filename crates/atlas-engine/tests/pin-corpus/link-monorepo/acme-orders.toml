@@ -1,0 +1,7 @@
+version = 1
+
+[client]
+files = ["apps/web/src/api/*.ts"]
+exports = ["ordersApi"]
+methods = ["get", "post"]
+target_package = "@acme/orders-api"

@@ -8,8 +8,31 @@ use toml::Value;
 
 const SCHEMA_VERSION: i64 = 1;
 const MAX_NAME_LEN: usize = 64;
-const BUILT_IN_FRAMEWORKS: [&str; 7] = ["nestjs", "express", "fastify", "koa", "axum", "actix", "rocket"];
+const BUILT_IN_FRAMEWORKS: [&str; 12] = [
+  "nestjs",
+  "express",
+  "fastify",
+  "koa",
+  "axum",
+  "actix",
+  "rocket",
+  "fetch",
+  "axios",
+  "nest_http",
+  "openapi-fetch",
+  "reqwest",
+];
 const DEFAULT_PATH_KEY: &str = "path";
+const CLIENT_METHODS: [HttpMethod; 7] = [
+  HttpMethod::Get,
+  HttpMethod::Post,
+  HttpMethod::Put,
+  HttpMethod::Patch,
+  HttpMethod::Delete,
+  HttpMethod::Head,
+  HttpMethod::Options,
+];
+const SERVER_SECTIONS: [&str; 6] = ["packages", "controller", "routes", "guards", "params", "global_prefix"];
 const NEST_ROUTES: [(&str, HttpMethod); 8] = [
   ("Get", HttpMethod::Get),
   ("Post", HttpMethod::Post),
@@ -76,6 +99,61 @@ pub(crate) struct GlobalPrefix {
   pub method: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PathStyle {
+  Openapi,
+  Express,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ClientExports {
+  All,
+  Only(Vec<String>),
+  None,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct ClientMethod {
+  pub name: String,
+  pub method: HttpMethod,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct ClientShape {
+  pub modules: Vec<String>,
+  pub files: Vec<String>,
+  pub exports: ClientExports,
+  pub factories: Vec<String>,
+  pub methods: Vec<ClientMethod>,
+  pub path: PathArgument,
+  pub style: PathStyle,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub target_package: Option<String>,
+}
+
+impl ClientShape {
+  pub(crate) fn method(&self, name: &str) -> Option<HttpMethod> {
+    self.methods.iter().find(|method| method.name == name).map(|method| method.method)
+  }
+
+  pub(crate) fn is_client_export(&self, imported: &str) -> bool {
+    if self.factories.iter().any(|factory| factory == imported) {
+      return false;
+    }
+    match &self.exports {
+      ClientExports::All => true,
+      ClientExports::Only(names) => names.iter().any(|name| name == imported),
+      ClientExports::None => false,
+    }
+  }
+
+  pub(crate) fn is_factory(&self, imported: &str) -> bool {
+    self.factories.iter().any(|factory| factory == imported)
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DecoratorFamily {
   pub(crate) name: String,
@@ -89,6 +167,8 @@ pub struct DecoratorFamily {
   pub(crate) params: ParamDecorators,
   pub(crate) global_prefix: Option<GlobalPrefix>,
   pub(crate) origin: FamilyOrigin,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub(crate) client: Option<ClientShape>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,11 +205,41 @@ pub(crate) static NEST: LazyLock<DecoratorFamily> = LazyLock::new(|| DecoratorFa
     method: "setGlobalPrefix".to_owned(),
   }),
   origin: FamilyOrigin::BuiltIn,
+  client: None,
+});
+
+pub(crate) static OPENAPI_FETCH: LazyLock<ClientShape> = LazyLock::new(|| ClientShape {
+  modules: vec!["openapi-fetch".to_owned()],
+  files: Vec::new(),
+  exports: ClientExports::None,
+  factories: vec!["default".to_owned(), "createClient".to_owned()],
+  methods: CLIENT_METHODS
+    .iter()
+    .map(|method| ClientMethod {
+      name: method.as_str().to_owned(),
+      method: *method,
+    })
+    .collect(),
+  path: PathArgument { index: 0, key: None },
+  style: PathStyle::Openapi,
+  target_package: None,
 });
 
 impl DecoratorFamily {
   pub fn name(&self) -> &str {
     &self.name
+  }
+
+  pub fn has_routes(&self) -> bool {
+    !self.routes.is_empty()
+  }
+
+  pub fn has_client(&self) -> bool {
+    self.client.is_some()
+  }
+
+  pub(crate) fn client(&self) -> Option<&ClientShape> {
+    self.client.as_ref()
   }
 
   pub fn parse(name: &str, text: &str) -> Result<ParsedFamily, FamilyError> {
@@ -197,7 +307,7 @@ struct Reader {
 
 impl Reader {
   fn family(&mut self, name: &str, table: &toml::Table) -> Result<DecoratorFamily, FamilyError> {
-    let known = ["version", "packages", "controller", "routes", "guards", "params", "global_prefix"];
+    let known = ["version", "packages", "controller", "routes", "guards", "params", "global_prefix", "client"];
     self.warn_unknown("", table, &known);
     match table.get("version") {
       None | Some(Value::Integer(SCHEMA_VERSION)) => {}
@@ -207,6 +317,12 @@ impl Reader {
           format!("unsupported version {other}; this catl reads version {SCHEMA_VERSION}"),
         ));
       }
+    }
+    let client_section = section(table, "client")?;
+    if let Some(client) = client_section
+      && !SERVER_SECTIONS.iter().any(|name| table.contains_key(*name))
+    {
+      return Ok(client_only(name, self.client(client)?));
     }
     let packages = required(table, "packages", "")?;
     let packages = package_list(packages, "packages")?;
@@ -237,6 +353,7 @@ impl Reader {
       }
     };
     let global_prefix = section(table, "global_prefix")?.map(|prefix| self.global_prefix(prefix)).transpose()?;
+    let client = client_section.map(|client| self.client(client)).transpose()?;
     Ok(DecoratorFamily {
       name: name.to_owned(),
       packages,
@@ -249,6 +366,59 @@ impl Reader {
       params,
       global_prefix,
       origin: FamilyOrigin::Declared,
+      client,
+    })
+  }
+
+  fn client(&mut self, client: &toml::Table) -> Result<ClientShape, FamilyError> {
+    self.warn_unknown(
+      "client.",
+      client,
+      &["modules", "files", "exports", "factories", "methods", "path", "style", "target_package"],
+    );
+    let modules = match client.get("modules") {
+      None => Vec::new(),
+      Some(value) => package_list(value, "client.modules")?,
+    };
+    let files = match client.get("files") {
+      None => Vec::new(),
+      Some(value) => file_globs(value, "client.files")?,
+    };
+    if modules.is_empty() && files.is_empty() {
+      return Err(FamilyError::new("client", "name the modules a client is imported from in client.modules or client.files"));
+    }
+    let exports = match client.get("exports") {
+      None => ClientExports::All,
+      Some(value) => ClientExports::Only(identifiers(value, "client.exports")?),
+    };
+    let factories = match client.get("factories") {
+      None => Vec::new(),
+      Some(value) => identifiers(value, "client.factories")?,
+    };
+    let methods = match client.get("methods") {
+      None => CLIENT_METHODS
+        .iter()
+        .flat_map(|method| [method.as_str().to_owned(), method.as_str().to_ascii_lowercase()].map(|name| ClientMethod { name, method: *method }))
+        .collect(),
+      Some(value) => client_methods(value)?,
+    };
+    let path = self.path_argument(client, "client.")?;
+    let style = match client.get("style") {
+      None => PathStyle::Openapi,
+      Some(Value::String(style)) if style == "openapi" => PathStyle::Openapi,
+      Some(Value::String(style)) if style == "express" => PathStyle::Express,
+      Some(other) => return Err(FamilyError::new("client.style", format!("expected \"openapi\" or \"express\", got {other}"))),
+    };
+    let target_package = client.get("target_package").map(|value| package_name(value, "client.target_package")).transpose()?;
+    Ok(ClientShape {
+      modules,
+      files,
+      exports,
+      factories,
+      methods,
+      path,
+      style,
+      target_package,
     })
   }
 
@@ -349,6 +519,75 @@ impl Reader {
       true => Ok(()),
       false => Err(FamilyError::new(key, format!("{decorator} is listed more than once; each decorator has one role"))),
     }
+  }
+}
+
+fn client_only(name: &str, client: ClientShape) -> DecoratorFamily {
+  DecoratorFamily {
+    name: name.to_owned(),
+    packages: Vec::new(),
+    scope: ImportScope::Packages,
+    controllers: Vec::new(),
+    controller_path: PathArgument {
+      index: 0,
+      key: Some(DEFAULT_PATH_KEY.to_owned()),
+    },
+    routes: Vec::new(),
+    route_path: PathArgument {
+      index: 0,
+      key: Some(DEFAULT_PATH_KEY.to_owned()),
+    },
+    guards: Vec::new(),
+    params: ParamDecorators::default(),
+    global_prefix: None,
+    origin: FamilyOrigin::Declared,
+    client: Some(client),
+  }
+}
+
+fn package_name(value: &Value, key: &str) -> Result<String, FamilyError> {
+  value
+    .as_str()
+    .filter(|name| !name.is_empty() && !name.chars().any(char::is_whitespace))
+    .map(str::to_owned)
+    .ok_or_else(|| FamilyError::new(key, format!("expected a package name such as \"@acme/books-api\", got {value}")))
+}
+
+fn client_methods(value: &Value) -> Result<Vec<ClientMethod>, FamilyError> {
+  let names = strings(value, "client.methods")?;
+  if names.is_empty() {
+    return Err(FamilyError::new("client.methods", "must name at least one method, such as \"get\""));
+  }
+  names
+    .into_iter()
+    .map(|name| {
+      let method = HttpMethod::parse_lenient(&name)
+        .filter(|method| !matches!(method, HttpMethod::Unknown | HttpMethod::Any))
+        .ok_or_else(|| FamilyError::new("client.methods", format!("expected HTTP method names such as \"get\" or \"GET\", got {name:?}")))?;
+      Ok(ClientMethod { name, method })
+    })
+    .collect()
+}
+
+fn identifiers(value: &Value, key: &str) -> Result<Vec<String>, FamilyError> {
+  let names = strings(value, key)?;
+  match names.iter().find(|name| !is_identifier(name)) {
+    Some(name) => Err(FamilyError::new(key, format!("expected export names such as \"booksApi\" or \"default\", got {name:?}"))),
+    None => Ok(names),
+  }
+}
+
+fn file_globs(value: &Value, key: &str) -> Result<Vec<String>, FamilyError> {
+  let globs = strings(value, key)?;
+  let invalid = globs
+    .iter()
+    .find(|glob| glob.is_empty() || glob.starts_with('/') || glob.starts_with("./") || glob.split('/').any(|segment| segment.is_empty() || segment == ".."));
+  match invalid {
+    Some(glob) => Err(FamilyError::new(
+      key,
+      format!("expected repository-relative paths such as \"apps/web/src/api/*.ts\", got {glob:?}"),
+    )),
+    None => Ok(globs),
   }
 }
 
@@ -479,11 +718,16 @@ mod tests {
 
   #[test]
   fn should_warn_about_unknown_keys_at_every_level() {
-    let text = format!("future = 1\n{ACME}[controller.path]\nargument = 0\nstyle = \"x\"\n[client]\nbase = 1\n");
+    let text = format!("future = 1\n{ACME}[controller.path]\nargument = 0\nstyle = \"x\"\n[client]\nmodules = [\"@acme/books-client\"]\nbase = 1\n[server]\nport = 1\n");
     let warnings = parse(&text).unwrap().warnings;
     assert_eq!(
       warnings,
-      ["unknown key client ignored", "unknown key future ignored", "unknown key controller.path.style ignored"]
+      [
+        "unknown key future ignored",
+        "unknown key server ignored",
+        "unknown key controller.path.style ignored",
+        "unknown key client.base ignored"
+      ]
     );
   }
 
@@ -541,9 +785,118 @@ mod tests {
   }
 
   #[test]
+  fn should_parse_a_client_only_family_with_every_client_key() {
+    let text = "[client]\nmodules = [\"@acme/books-client\"]\nfiles = [\"apps/web/src/api/*.ts\"]\nexports = [\"booksApi\", \"default\"]\nfactories = [\"createBooksClient\"]\nmethods = [\"get\", \"POST\"]\npath = { argument = 1 }\nstyle = \"express\"\ntarget_package = \"@acme/books-api\"\n";
+    let parsed = parse(text).unwrap();
+    let family = parsed.family;
+
+    assert_eq!(parsed.warnings, Vec::<String>::new());
+    assert!(!family.has_routes() && family.has_client());
+    assert!(!family.applies_to(&[]));
+    assert_eq!(
+      family.client,
+      Some(ClientShape {
+        modules: vec!["@acme/books-client".to_owned()],
+        files: vec!["apps/web/src/api/*.ts".to_owned()],
+        exports: ClientExports::Only(vec!["booksApi".to_owned(), "default".to_owned()]),
+        factories: vec!["createBooksClient".to_owned()],
+        methods: vec![
+          ClientMethod {
+            name: "get".to_owned(),
+            method: HttpMethod::Get
+          },
+          ClientMethod {
+            name: "POST".to_owned(),
+            method: HttpMethod::Post
+          },
+        ],
+        path: PathArgument {
+          index: 1,
+          key: Some("path".to_owned())
+        },
+        style: PathStyle::Express,
+        target_package: Some("@acme/books-api".to_owned()),
+      })
+    );
+  }
+
+  #[test]
+  fn should_default_client_methods_to_both_cases_and_keep_a_server_side_optional() {
+    let client = parse("[client]\nfiles = [\"src/api/**\"]\n").unwrap().family.client.unwrap();
+    let names: Vec<&str> = client.methods.iter().map(|method| method.name.as_str()).collect();
+    assert_eq!(
+      names,
+      [
+        "GET", "get", "POST", "post", "PUT", "put", "PATCH", "patch", "DELETE", "delete", "HEAD", "head", "OPTIONS", "options"
+      ]
+    );
+    assert_eq!((client.exports, client.style, client.target_package), (ClientExports::All, PathStyle::Openapi, None));
+    let both = parse(&format!("{ACME}[client]\nmodules = [\"@acme/http/client\"]\n")).unwrap().family;
+    assert!(both.has_routes() && both.has_client());
+    assert_eq!(
+      parse("packages = [\"@acme/http\"]\n[client]\nmodules = [\"x\"]\n"),
+      Err("controller: missing; name the controller decorators".to_owned())
+    );
+  }
+
+  #[test]
+  fn should_reject_invalid_client_values_naming_the_key() {
+    for (text, message) in [
+      (
+        "[client]\nexports = [\"api\"]\n",
+        "client: name the modules a client is imported from in client.modules or client.files",
+      ),
+      ("[client]\nmodules = []\n", "client.modules: must name at least one package, such as \"@acme/http\""),
+      (
+        "[client]\nfiles = [\"../web/api.ts\"]\n",
+        "client.files: expected repository-relative paths such as \"apps/web/src/api/*.ts\", got \"../web/api.ts\"",
+      ),
+      (
+        "[client]\nfiles = [\"/abs/api.ts\"]\n",
+        "client.files: expected repository-relative paths such as \"apps/web/src/api/*.ts\", got \"/abs/api.ts\"",
+      ),
+      (
+        "[client]\nmodules = [\"x\"]\nmethods = [\"fetch\"]\n",
+        "client.methods: expected HTTP method names such as \"get\" or \"GET\", got \"fetch\"",
+      ),
+      (
+        "[client]\nmodules = [\"x\"]\nmethods = []\n",
+        "client.methods: must name at least one method, such as \"get\"",
+      ),
+      (
+        "[client]\nmodules = [\"x\"]\nstyle = \"rails\"\n",
+        "client.style: expected \"openapi\" or \"express\", got \"rails\"",
+      ),
+      (
+        "[client]\nmodules = [\"x\"]\nexports = [\"books.api\"]\n",
+        "client.exports: expected export names such as \"booksApi\" or \"default\", got \"books.api\"",
+      ),
+      (
+        "[client]\nmodules = [\"x\"]\ntarget_package = \"\"\n",
+        "client.target_package: expected a package name such as \"@acme/books-api\", got \"\"",
+      ),
+      ("client = 1\n", "client: must be a table"),
+    ] {
+      assert_eq!(parse(text), Err(message.to_owned()), "{text}");
+    }
+  }
+
+  #[test]
+  fn should_keep_the_digest_of_a_family_without_a_client_section() {
+    let family = parse(ACME).unwrap().family;
+    assert!(!serde_json::to_string(&family).unwrap().contains("client"));
+    let with_client = parse(&format!("{ACME}[client]\nmodules = [\"@acme/http/client\"]\n")).unwrap().family;
+    assert_ne!(families_digest(std::slice::from_ref(&family)), families_digest(&[with_client]));
+  }
+
+  #[test]
   fn should_reject_malformed_and_built_in_family_names() {
     assert_eq!(check_family_name("acme-http"), Ok(()));
     assert_eq!(check_family_name("nestjs"), Err("\"nestjs\" names a built-in framework; choose another name".to_owned()));
+    assert_eq!(
+      check_family_name("openapi-fetch"),
+      Err("\"openapi-fetch\" names a built-in framework; choose another name".to_owned())
+    );
     assert!(check_family_name("Acme").is_err());
     assert!(check_family_name("9acme").is_err());
     assert!(check_family_name("").is_err());

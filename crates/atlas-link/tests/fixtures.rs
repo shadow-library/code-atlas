@@ -469,7 +469,7 @@ fn should_compose_mounted_express_routes_and_match_clients_against_them() {
     .entities
     .iter()
     .filter(|entity| entity.kind == EntityKind::ApiEndpoint)
-    .map(|entity| (entity.key.to_string(), entity.attrs["composed_from"].as_str().unwrap().to_owned()))
+    .filter_map(|entity| Some((entity.key.to_string(), entity.attrs.get("composed_from")?.as_str()?.to_owned())))
     .collect();
   composed.sort();
   assert_eq!(

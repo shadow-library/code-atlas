@@ -109,6 +109,20 @@ impl<'t, 'c> Facts<'t, 'c> {
     Ok(edges)
   }
 
+  pub fn file_assertions(&self, id: EntityId) -> LinkResult<Vec<(RepoName, RelPath, Entity)>> {
+    Ok(
+      self
+        .tx
+        .entity_assertions(id)?
+        .into_iter()
+        .filter_map(|assertion| match assertion.owner {
+          Owner::File { repo, path } if self.in_project(&repo) => Some((repo, path, assertion.fact)),
+          _ => None,
+        })
+        .collect(),
+    )
+  }
+
   pub fn file_hash(&self, repo: &RepoName, path: &RelPath) -> LinkResult<Option<atlas_core::ContentHash>> {
     Ok(self.tx.file(repo, path)?.map(|record| record.content_hash))
   }

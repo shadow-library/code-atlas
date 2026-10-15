@@ -8,6 +8,7 @@ use crate::error::LinkResult;
 use crate::facts::Facts;
 use crate::output::{Output, attr_str, confidence_of, evidence, heuristic, relabel, weaker};
 use crate::route::{RouteSegment, parse_route};
+use crate::scopes::PackageIndex;
 
 const MOUNTS_KIND: &str = "mounts";
 const GLOBAL_PREFIX_KIND: &str = "http_global_prefix";
@@ -26,6 +27,7 @@ type GlobalPrefixes = BTreeMap<(RepoName, String), Vec<Prefix>>;
 struct Prefix {
   value: String,
   entity: Entity,
+  packages: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -61,17 +63,23 @@ pub(crate) struct Route {
   pub route: String,
   pub segments: Vec<RouteSegment>,
   pub guard_source: EntityId,
+  pub packages: Vec<String>,
 }
 
 pub(crate) struct Routes {
   pub all: Vec<Route>,
   pub matchable: Vec<Route>,
+  packages: BTreeMap<EntityId, Vec<String>>,
   composed: usize,
 }
 
 impl Routes {
   pub fn composed_count(&self) -> usize {
     self.composed
+  }
+
+  pub fn packages_of(&self, route: &Route) -> &[String] {
+    self.packages.get(&route.id).map_or(&[], Vec::as_slice)
   }
 }
 
@@ -81,19 +89,22 @@ struct Chain {
   confidence: f32,
   rule: &'static str,
   evidence: Vec<Evidence>,
+  packages: Vec<String>,
 }
 
-pub(crate) fn compose_routes(facts: &Facts<'_, '_>, output: &mut Output) -> LinkResult<Routes> {
+pub(crate) fn compose_routes(facts: &Facts<'_, '_>, packages: &PackageIndex, output: &mut Output) -> LinkResult<Routes> {
   let mounts = EdgeKind::custom(MOUNTS_KIND)?;
-  let prefixes = global_prefixes(facts)?;
+  let prefixes = global_prefixes(facts, packages)?;
   let mut routes = Routes {
     all: Vec::new(),
     matchable: Vec::new(),
+    packages: BTreeMap::new(),
     composed: 0,
   };
   for endpoint in facts.entities(&EntityKind::ApiEndpoint)? {
-    let Some(base) = route_of(&endpoint, endpoint.id) else { continue };
-    let chains = chains_for(facts, &mounts, &prefixes, &endpoint)?;
+    let endpoint_packages = packages.of_entity(facts, endpoint.id)?;
+    let Some(base) = route_of(&endpoint, endpoint.id, endpoint_packages) else { continue };
+    let chains = chains_for(facts, &mounts, &prefixes, &endpoint, &base.packages)?;
     if chains.is_empty() && attr_str(&endpoint.attrs, "route_scope") != Some("router_relative") {
       routes.matchable.push(base.clone());
     }
@@ -105,6 +116,18 @@ pub(crate) fn compose_routes(facts: &Facts<'_, '_>, output: &mut Output) -> Link
     }
     routes.all.push(base);
   }
+  for route in &routes.all {
+    let union = routes.packages.entry(route.id).or_default();
+    union.extend(route.packages.iter().cloned());
+    union.sort();
+    union.dedup();
+  }
+  for route in &routes.all {
+    let route_packages = &routes.packages[&route.id];
+    if !route_packages.is_empty() && packages.has_several(&route.repo) {
+      output.extend_entity(&route.entity, weaker(&route.entity.certainty, &Certainty::Syntactic), [("packages", json!(route_packages))]);
+    }
+  }
   routes.matchable.sort_by_key(|route| route.id);
   routes.matchable.dedup_by_key(|route| route.id);
   routes.all.sort_by_key(|route| route.id);
@@ -112,7 +135,7 @@ pub(crate) fn compose_routes(facts: &Facts<'_, '_>, output: &mut Output) -> Link
   Ok(routes)
 }
 
-fn route_of(entity: &Entity, guard_source: EntityId) -> Option<Route> {
+fn route_of(entity: &Entity, guard_source: EntityId, packages: Vec<String>) -> Option<Route> {
   let EntityKey::Endpoint { repo, method, route } = &entity.key else { return None };
   Some(Route {
     id: entity.id,
@@ -122,31 +145,45 @@ fn route_of(entity: &Entity, guard_source: EntityId) -> Option<Route> {
     route: route.clone(),
     segments: parse_route(route),
     guard_source,
+    packages,
   })
 }
 
-fn global_prefixes(facts: &Facts<'_, '_>) -> LinkResult<GlobalPrefixes> {
+fn global_prefixes(facts: &Facts<'_, '_>, packages: &PackageIndex) -> LinkResult<GlobalPrefixes> {
   let mut prefixes = GlobalPrefixes::new();
   for entity in facts.entities(&EntityKind::custom(GLOBAL_PREFIX_KIND)?)? {
     let Some(repo) = entity.repo.clone() else { continue };
     let value = entity.name.clone();
-    prefixes.entry((repo, NEST_FRAMEWORK.to_owned())).or_default().push(Prefix { value, entity });
+    let packages = packages.of_entity(facts, entity.id)?;
+    prefixes.entry((repo, NEST_FRAMEWORK.to_owned())).or_default().push(Prefix { value, entity, packages });
   }
   for entity in facts.entities(&EntityKind::custom(FAMILY_PREFIX_KIND)?)? {
     let Some(repo) = entity.repo.clone() else { continue };
     let Some((family, value)) = entity.name.split_once(':') else { continue };
     let (family, value) = (family.to_owned(), value.to_owned());
-    prefixes.entry((repo, family)).or_default().push(Prefix { value, entity });
+    let packages = packages.of_entity(facts, entity.id)?;
+    prefixes.entry((repo, family)).or_default().push(Prefix { value, entity, packages });
   }
   prefixes.values_mut().for_each(|candidates| candidates.retain(|prefix| prefix.value != "/"));
   Ok(prefixes)
 }
 
-fn chains_for(facts: &Facts<'_, '_>, mounts: &EdgeKind, prefixes: &GlobalPrefixes, endpoint: &Entity) -> LinkResult<Vec<Chain>> {
+fn chains_for(facts: &Facts<'_, '_>, mounts: &EdgeKind, prefixes: &GlobalPrefixes, endpoint: &Entity, endpoint_packages: &[String]) -> LinkResult<Vec<Chain>> {
   let Some(repo) = &endpoint.repo else { return Ok(Vec::new()) };
-  let prefixes_of = |framework: &str| prefixes.get(&(repo.clone(), framework.to_owned())).map(Vec::as_slice).unwrap_or_default();
+  let prefixes_of = |framework: &str| {
+    let all = prefixes.get(&(repo.clone(), framework.to_owned())).map(Vec::as_slice).unwrap_or_default();
+    let own: Vec<Prefix> = all
+      .iter()
+      .filter(|prefix| prefix.packages.iter().any(|package| endpoint_packages.contains(package)))
+      .cloned()
+      .collect();
+    match own.is_empty() {
+      true => all.to_vec(),
+      false => own,
+    }
+  };
   match attr_str(&endpoint.attrs, "framework") {
-    Some(NEST_FRAMEWORK) => prefix_chains(facts, prefixes_of(NEST_FRAMEWORK), PrefixSource::Nest),
+    Some(NEST_FRAMEWORK) => prefix_chains(facts, &prefixes_of(NEST_FRAMEWORK), PrefixSource::Nest),
     Some("express") => match (attr_str(&endpoint.attrs, "route_scope"), attr_str(&endpoint.attrs, "router"), &endpoint.path) {
       (Some("router_relative"), Some(router), Some(path)) => match router_symbol(facts, repo, path, router)? {
         Some(router) => express_chains(facts, mounts, &router, &mut BTreeSet::new()),
@@ -158,7 +195,7 @@ fn chains_for(facts: &Facts<'_, '_>, mounts: &EdgeKind, prefixes: &GlobalPrefixe
       Some(function) => axum_chains(facts, mounts, &function, &mut BTreeSet::new()),
       None => Ok(Vec::new()),
     },
-    Some(family) => prefix_chains(facts, prefixes_of(family), PrefixSource::DeclaredFamily),
+    Some(family) => prefix_chains(facts, &prefixes_of(family), PrefixSource::DeclaredFamily),
     None => Ok(Vec::new()),
   }
 }
@@ -172,6 +209,7 @@ fn prefix_chains(facts: &Facts<'_, '_>, prefixes: &[Prefix], source: PrefixSourc
       confidence,
       rule,
       evidence: entity_evidence(facts, &prefix.entity, Some(source.note(&prefix.value)))?.into_iter().collect(),
+      packages: prefix.packages.clone(),
     });
   }
   Ok(chains)
@@ -235,6 +273,7 @@ fn mount_chain(mount: &Edge, prefix: &str) -> Chain {
     confidence: confidence_of(&mount.certainty),
     rule: "route-composition",
     evidence: mount.evidence.iter().map(|evidence| relabel(evidence, Some(format!("mount {prefix}")))).collect(),
+    packages: Vec::new(),
   }
 }
 
@@ -244,6 +283,7 @@ fn join(outer: &Chain, inner: &Chain) -> Chain {
     confidence: outer.confidence.min(inner.confidence),
     rule: inner.rule,
     evidence: outer.evidence.iter().chain(&inner.evidence).cloned().collect(),
+    packages: Vec::new(),
   }
 }
 
@@ -325,9 +365,18 @@ fn compose(facts: &Facts<'_, '_>, endpoint: &Entity, base: &Route, chain: &Chain
     segments: parse_route(&route),
     route,
     guard_source: base.id,
+    packages: chain_packages(&base.packages, &chain.packages),
   };
   output.entity(composed);
   Ok(composed_route)
+}
+
+fn chain_packages(base: &[String], chain: &[String]) -> Vec<String> {
+  let shared: Vec<String> = base.iter().filter(|package| chain.contains(package)).cloned().collect();
+  match shared.is_empty() {
+    true => base.to_vec(),
+    false => shared,
+  }
 }
 
 pub(crate) fn entity_evidence(facts: &Facts<'_, '_>, entity: &Entity, note: Option<String>) -> LinkResult<Option<Evidence>> {

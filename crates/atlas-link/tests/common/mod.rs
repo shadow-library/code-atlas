@@ -50,6 +50,10 @@ pub fn write_tree(root: &Path, files: &[(&str, &str)]) {
 }
 
 pub fn index_tree(scratch: &Path, name: &str, source: &Path, repos: &[&str]) -> Indexed {
+  index_tree_with(scratch, name, source, repos, ProjectSettings::default())
+}
+
+pub fn index_tree_with(scratch: &Path, name: &str, source: &Path, repos: &[&str], settings: ProjectSettings) -> Indexed {
   let repos = repos
     .iter()
     .map(|repo| {
@@ -66,7 +70,7 @@ pub fn index_tree(scratch: &Path, name: &str, source: &Path, repos: &[&str]) -> 
     .collect();
   let project = Project {
     name: ProjectName::new(name).unwrap(),
-    settings: ProjectSettings::default(),
+    settings,
     repos,
   };
   let engine = Engine::open(&project, &AtlasHome::rooted_at(scratch.join("home")), EngineOptions::default()).unwrap();

@@ -224,7 +224,7 @@ config.toml + app/.code-atlas.toml  repo.app.exclude = ["**/*.gen.ts", "legacy/*
 
 ## Route families
 
-A route family describes a decorator-based HTTP framework that Code Atlas does not compile in (only NestJS is built in). Declare it once per user in `<config dir>/detectors/<name>.toml` (under `CODE_ATLAS_HOME/config` when that is set) and enable it where it is used. The file name is the family name: a lowercase letter followed by lowercase letters, digits, `-` or `_`; the names of built-in frameworks (`nestjs`, `express`, `fastify`, `koa`, `axum`, `actix`, `rocket`) are refused. Matching is described in [languages and frameworks](languages-and-frameworks.md#declared-route-families).
+A route family describes a decorator-based HTTP framework that Code Atlas does not compile in (only NestJS is built in), the typed client a web app calls it with, or both. Declare it once per user in `<config dir>/detectors/<name>.toml` (under `CODE_ATLAS_HOME/config` when that is set) and enable it where it is used. The file name is the family name: a lowercase letter followed by lowercase letters, digits, `-` or `_`; the names of built-in frameworks and client libraries (`nestjs`, `express`, `fastify`, `koa`, `axum`, `actix`, `rocket`, `fetch`, `axios`, `nest_http`, `openapi-fetch`, `reqwest`) are refused, because a family's name is the `framework` of its endpoints and the `library` of its client calls. Matching is described in [languages and frameworks](languages-and-frameworks.md#declared-route-families).
 
 ```toml
 # ~/.config/code-atlas/detectors/acme-http.toml  (an invented framework)
@@ -256,7 +256,7 @@ factory = "AcmeServer.create"        # const app = await AcmeServer.create(...)
 method = "setGlobalPrefix"           # app.setGlobalPrefix('v2')
 ```
 
-`packages`, `[controller] decorators` and `[routes.methods]` are required. Each decorator name has one role. Unknown keys are ignored with a warning (`detectors/acme-http.toml: unknown key client ignored`), so a file written for a newer `catl` still loads. Invalid files:
+`packages`, `[controller] decorators` and `[routes.methods]` are required, unless the file declares only a `[client]` (below). Each decorator name has one role. Unknown keys are ignored with a warning (`detectors/acme-http.toml: unknown key server ignored`), so a file written for a newer `catl` still loads. Invalid files:
 
 - a file whose name is not a family name (`Acme Http.toml`) is skipped with a warning;
 - an invalid value, a missing required key or broken syntax in a family that no project enables is skipped with a warning naming the file and the key;
@@ -276,9 +276,46 @@ Enable a family with the fact key `detect.route_families`:
 
 The effective list is the project value plus every repo file's list; it applies to all repos of the project, which is harmless because matching is anchored on imports of the family's packages. Environment variables cannot set it (`CODE_ATLAS_DETECT_ROUTE_FAMILIES` is ignored with a warning). An enabled name without a file is ignored with a warning and reported by `status`. `catl config show --origin` lists `detect.route_families` with every layer that contributed; `doctor` lists the declared families.
 
-The enabled names and the definitions they resolve to enter the project fingerprint and the version of the `http-endpoints-declared` detector. Editing a family file, or enabling or disabling one, therefore re-analyses every file of the project on the next query (once), and a long-lived MCP server reloads at its next call instead of re-analysing files back and forth with a CLI that reads the new definition. `catl watch` does not re-read family files on its own: it picks up an edit only after another process (any `catl` command or the MCP server) has re-adopted the project; restart it otherwise. Projects that enable no family keep their fingerprint and detector list unchanged.
+The enabled names and the definitions they resolve to enter the project fingerprint and the versions of the `http-endpoints-declared` and `http-clients-declared` detectors. Editing a family file, or enabling or disabling one, therefore re-analyses every file of the project on the next query (once), and a long-lived MCP server reloads at its next call instead of re-analysing files back and forth with a CLI that reads the new definition. `catl watch` does not re-read family files on its own: it picks up an edit only after another process (any `catl` command or the MCP server) has re-adopted the project; restart it otherwise. Projects that enable no family keep their fingerprint and detector list unchanged.
 
 A family's global prefix is stored as `other:http_family_prefix:<repo>:<family>:<prefix>`, separate from the NestJS `other:http_global_prefix:<repo>:<prefix>`, so a NestJS app and a family app in one repo with the same prefix value keep one prefix each.
+
+### Typed clients
+
+A `[client]` section describes how a web app calls such a server: a client binding imported from a module, or created by calling a factory imported from one, whose methods take the request path. `openapi-fetch` (`createClient<paths>()`, methods `GET` to `OPTIONS`) is built in and needs no file. A file may hold only a `[client]` section, for a client whose server is not a decorator framework.
+
+```toml
+# ~/.config/code-atlas/detectors/acme-books.toml  (an invented client)
+[client]
+modules = ["@acme/books-client"]       # import specifiers, compared as written (also tsconfig path aliases)
+files = ["apps/web/src/api/*.ts"]      # repository-relative globs of in-repo modules imported with ./ or ../
+exports = ["booksApi", "default"]      # optional; imported names that are clients (default: every name except the factories)
+factories = ["createBooksClient"]      # optional; a binding initialised by calling one of these is a client ("default" for a default export)
+methods = ["get", "post", "delete"]    # optional; method names, each an HTTP method in any case (default: GET..OPTIONS in upper and lower case)
+path = { argument = 0, key = "path" }  # optional; the path argument, or that key of an object-literal argument (default as shown)
+style = "openapi"                      # optional; "openapi" for /books/{id}, "express" for /books/:id
+target_package = "@acme/books-api"     # optional; the package whose endpoints these calls target
+```
+
+`modules` or `files` is required. A relative import (`./api/client`, `../api/client.js`) is resolved against the importing file and matched against `files` with the usual source extensions and `index` files; `*` and `?` match within one path segment and `**` across segments. A call matches when its receiver is a named, aliased, default or namespace-member import from a listed module (`booksApi.get(...)`, `clients.booksApi.get(...)`), a namespace import of such a module when `exports` is not set (`api.get(...)` for `import * as api`), or a local initialised by a listed factory (`const api = createBooksClient({ baseUrl })`). A parameter or local that shadows the import, a rebinding (`const c = booksApi`), destructured methods and class fields are not followed. A factory's `baseUrl` or `baseURL` option becomes the request's base: a literal value is prefixed to the URL without a trailing `/`, a value starting with an environment variable or identifier is recorded as `base_source` (`env:X`, `ident:x`, or `expr` for other expressions such as `import.meta.env.X` inside a template), and a static suffix such as the `/api` of ``${process.env.X}/api/`` stays a path prefix. `headers` options on the factory or the call become auth hints. The certainty is `syntactic` for a literal path, as for `fetch` and `axios`.
+
+A client imported from another file is matched only through `files` or `modules`, so its call records only the path written at the call (`booksApi.get('/books/{id}')` gives `GET /books/{}`), not the creating file's base URL or generated types. For the built-in shape the creating file supplies them: an exported constant initialised by `openapi-fetch`'s `createClient` (`export const booksApi = createClient<paths>({ baseUrl: '/api/' })`) is recorded as an `other:typed_client:<repo>:<path>#<export>` entity with its `base`, `base_source`, `types_module` and `types_path`. When a `files` client is imported by a relative specifier, the call records `client_module` (the resolved module path without extension) and `client_export`, and the link pass joins the two: it matches `<base><path>` against routes, inherits the definition's `base_source` and types for placement, and names the definition in `client_defined_in` on the `calls_endpoint` edge. Not joined: clients imported through `modules` (package specifiers and tsconfig path aliases cannot be resolved to a file per file), clients created by declared `factories`, `export default createClient(...)`, `export { api }` lists and re-exports through a barrel (a client defined in a directory's `index` file is found through the directory itself).
+
+Whole path segments in the declared style (`{id}`, or `:id` for `express`) are rewritten to the `{}` placeholder the link pass matches against routes, and the path as written is kept in the `path_template` attr of the `makes_request` edge. Partial segments (`{name}.json`) and the query string stay literal. `target_package` is copied to every call as an attr and steers link placement (below).
+
+The `[client]` section and its enabling follow the rules of the whole file: it is enabled through `detect.route_families` under the file's name, its definition enters the project fingerprint, and it runs as the detector `http-clients-declared`, whose version is a digest of `DECLARED_CLIENTS_VERSION` and every enabled client section, registered only when an enabled family has one. `status` adds the number of client calls each family matched and warns when a client section matched none.
+
+### Several apps in one repository
+
+Endpoint keys are scoped by repository, not by package, so two apps of one monorepo that expose the same route (`GET /health`) share one endpoint entity; key formats never change. The link pass therefore works with packages, the nearest `package.json` or `Cargo.toml` above a file:
+
+- in a repository with more than one manifest, each endpoint and client call records the `packages` its asserting files belong to (two entries for a route both apps expose); a route composed from a global prefix carries only the packages it shares with that prefix;
+- when one of an endpoint's packages declares a global prefix, only prefixes of the endpoint's packages are composed onto it and other packages' prefixes no longer are; when none does, every prefix of the repo applies, as before, so an endpoint never loses all of its compositions;
+- a client call prefers endpoints of one package, in this order: the package its generated types are imported from (`createClient<paths>()` with `paths` imported from `@acme/books-api/...` or from a relative path inside that package), the client section's `target_package`, and, for a relative URL, the caller's own package. Each step applies only when a matching endpoint lives in that package; otherwise the call is placed across all matching endpoints as before. The `calls_endpoint` edge records `client_package`, `endpoint_packages`, `target_package` and `package_rule` (`types-package`, `configured-package`, `same-package`).
+
+A shared route stays one endpoint with both handlers' `exposes_endpoint` edges, so `callers --via-http` of either handler lists every client of the route; read `target_package` on the link to see which app a call was attributed to.
+
+Limits: generated types that live in the web app itself (`apps/web/src/generated/books.ts`) name the web package, so they narrow placement only if the web package exposes the route; otherwise the next rule applies. A repository whose apps share one root manifest, with no `package.json` or `Cargo.toml` per app, has a single package, so no package placement happens there and calls are placed by route and repository as before.
 
 `status` prints `route family acme-http: 3 controllers, 12 routes` for each enabled family (controllers that expose at least one route), and a warning for a family that matched nothing or has no file:
 

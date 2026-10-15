@@ -1,4 +1,4 @@
-use atlas_engine::{AutoScipOutcome, AutoScipSetting, RouteFamilyState, RouteFamilyStatus};
+use atlas_engine::{AutoScipOutcome, AutoScipSetting, RouteFamilyState, RouteFamilyStatus, ServerMatches};
 
 use crate::freshness::ScipState;
 use crate::queries::{AutoScipView, BudgetRetryView, ChangesAnswer, ReadAnswer, StatusAnswer};
@@ -59,13 +59,35 @@ fn counted(count: u64, noun: &str) -> String {
 
 fn render_route_family(family: &RouteFamilyStatus, out: &mut TextOut) {
   let name = &family.name;
-  match &family.state {
-    RouteFamilyState::Matched { controllers: 0, routes: 0 } => out.line(
+  let (server, client_calls) = match &family.state {
+    RouteFamilyState::Matched { server, client_calls } => (server, client_calls),
+    RouteFamilyState::Undeclared { path } => {
+      out.line(0, format!("warning: route family {name} is enabled but not declared: {path} does not exist"));
+      return;
+    }
+  };
+  let silent_server = matches!(server, Some(ServerMatches { controllers: 0, routes: 0 }));
+  let mut found = Vec::new();
+  if let Some(ServerMatches { controllers, routes }) = server.filter(|_| !silent_server) {
+    found.extend([counted(controllers, "controller"), counted(routes, "route")]);
+  }
+  if let Some(calls) = client_calls.filter(|calls| *calls > 0) {
+    found.push(counted(calls, "client call"));
+  }
+  if !found.is_empty() {
+    out.line(0, format!("route family {name}: {}", found.join(", ")));
+  }
+  if silent_server {
+    out.line(
       0,
       format!("warning: route family {name} matched no controllers or routes; check its packages and decorator names"),
-    ),
-    RouteFamilyState::Matched { controllers, routes } => out.line(0, format!("route family {name}: {}, {}", counted(*controllers, "controller"), counted(*routes, "route"))),
-    RouteFamilyState::Undeclared { path } => out.line(0, format!("warning: route family {name} is enabled but not declared: {path} does not exist")),
+    );
+  }
+  if *client_calls == Some(0) {
+    out.line(
+      0,
+      format!("warning: route family {name} matched no client calls; check its client modules, files, exports and method names"),
+    );
   }
 }
 
@@ -265,11 +287,24 @@ mod tests {
     status.route_families = vec![
       RouteFamilyStatus {
         name: "acme-http".to_owned(),
-        state: RouteFamilyState::Matched { controllers: 2, routes: 7 },
+        state: RouteFamilyState::Matched {
+          server: Some(ServerMatches { controllers: 2, routes: 7 }),
+          client_calls: Some(3),
+        },
       },
       RouteFamilyStatus {
         name: "acme-rpc".to_owned(),
-        state: RouteFamilyState::Matched { controllers: 0, routes: 0 },
+        state: RouteFamilyState::Matched {
+          server: Some(ServerMatches { controllers: 0, routes: 0 }),
+          client_calls: None,
+        },
+      },
+      RouteFamilyStatus {
+        name: "acme-books".to_owned(),
+        state: RouteFamilyState::Matched {
+          server: None,
+          client_calls: Some(0),
+        },
       },
       RouteFamilyStatus {
         name: "acme-htp".to_owned(),
@@ -283,8 +318,9 @@ mod tests {
 
     assert!(
       text.contains(
-        "route family acme-http: 2 controllers, 7 routes\n\
+        "route family acme-http: 2 controllers, 7 routes, 3 client calls\n\
          warning: route family acme-rpc matched no controllers or routes; check its packages and decorator names\n\
+         warning: route family acme-books matched no client calls; check its client modules, files, exports and method names\n\
          warning: route family acme-htp is enabled but not declared: /home/config/detectors/acme-htp.toml does not exist\n"
       ),
       "{text}"

@@ -8,6 +8,7 @@ use serde_json::json;
 use crate::error::LinkResult;
 use crate::facts::Facts;
 use crate::output::Output;
+use crate::scopes::PackageIndex;
 use crate::{auth, compose, events, http, packages};
 
 pub const PASS_NAME: &str = "link";
@@ -25,9 +26,10 @@ pub fn link(tx: &ReadTx<'_>, project: &Project) -> LinkResult<LinkOutput> {
   let facts = Facts::new(tx, repos);
   let mut output = Output::default();
   packages::link_packages(&facts, &mut output)?;
-  let routes = compose::compose_routes(&facts, &mut output)?;
+  let package_index = PackageIndex::load(&facts)?;
+  let routes = compose::compose_routes(&facts, &package_index, &mut output)?;
   let endpoint_auth = auth::link_endpoint_auth(&facts, &routes, &mut output)?;
-  let clients = http::link_clients(&facts, &routes, &mut output)?;
+  let clients = http::link_clients(&facts, &routes, &package_index, &mut output)?;
   auth::link_client_auth(&facts, &clients, &endpoint_auth, &mut output)?;
   events::annotate_events(&facts, &mut output)?;
   output.entity(status_entity(&routes, &clients)?);

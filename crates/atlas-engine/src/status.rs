@@ -1,13 +1,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use atlas_core::{EntityKey, Freshness, Owner, ParseStatus, UnresolvedReason};
+use atlas_core::{EdgeKind, EntityKey, Freshness, Owner, ParseStatus, UnresolvedReason};
+use atlas_detect::DecoratorFamily;
 use atlas_scip::ScipFacts;
 use atlas_store::{FreshnessPolicy, InferredQuery, OwnedFacts};
 
 use crate::engine::{Engine, lock_inner};
 use crate::error::EngineResult;
 use crate::passes::{PASS_LINEAGE, PASS_REPOS, PASS_STRUCTURE};
-use crate::report::{BudgetRetryStatus, FailedFile, IndexStatus, InferredCounts, LlmSpend, RouteFamilyState, RouteFamilyStatus, ScanKind, ScipCoverage, SkippedSummary};
+use crate::report::{
+  BudgetRetryStatus, FailedFile, IndexStatus, InferredCounts, LlmSpend, RouteFamilyState, RouteFamilyStatus, ScanKind, ScipCoverage, ServerMatches, SkippedSummary,
+};
 
 const STATUS_RUNS: usize = 10;
 const SPEND_RUNS: usize = 1_000;
@@ -53,6 +56,7 @@ impl FactTally {
 struct RouteTally {
   controllers: BTreeMap<String, BTreeSet<(String, String)>>,
   routes: BTreeMap<String, u64>,
+  client_calls: BTreeMap<String, u64>,
 }
 
 impl RouteTally {
@@ -66,12 +70,22 @@ impl RouteTally {
         self.controllers.entry(framework.to_owned()).or_default().insert((owner.to_owned(), controller.to_owned()));
       }
     }
+    for edge in facts.edges.iter().filter(|edge| edge.kind == EdgeKind::MakesRequest) {
+      let Some(library) = edge.attrs.get("library").and_then(serde_json::Value::as_str) else {
+        continue;
+      };
+      *self.client_calls.entry(library.to_owned()).or_default() += edge.evidence.len() as u64;
+    }
   }
 
-  fn matched(&self, family: &str) -> RouteFamilyState {
+  fn matched(&self, family: &DecoratorFamily) -> RouteFamilyState {
+    let name = family.name();
     RouteFamilyState::Matched {
-      controllers: self.controllers.get(family).map_or(0, |controllers| controllers.len() as u64),
-      routes: self.routes.get(family).copied().unwrap_or(0),
+      server: family.has_routes().then(|| ServerMatches {
+        controllers: self.controllers.get(name).map_or(0, |controllers| controllers.len() as u64),
+        routes: self.routes.get(name).copied().unwrap_or(0),
+      }),
+      client_calls: family.has_client().then(|| self.client_calls.get(name).copied().unwrap_or(0)),
     }
   }
 }
@@ -84,9 +98,9 @@ impl Engine {
       .iter()
       .map(|name| RouteFamilyStatus {
         name: name.clone(),
-        state: match detect.families.iter().any(|family| family.name() == name) {
-          true => tally.matched(name),
-          false => RouteFamilyState::Undeclared {
+        state: match detect.families.iter().find(|family| family.name() == name) {
+          Some(family) => tally.matched(family),
+          None => RouteFamilyState::Undeclared {
             path: self.home.detectors_dir().join(format!("{name}.toml")).display().to_string(),
           },
         },

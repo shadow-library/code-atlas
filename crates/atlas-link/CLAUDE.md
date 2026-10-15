@@ -13,9 +13,9 @@ Cross-repo linking for one project, exposed as `link(tx, project) -> LinkOutput`
 The store unions attrs across assertions (see `crates/atlas-store/CLAUDE.md`), so these attrs are visible through `entity()` and `edge()`; the pass's own assertion stays available through `entity_assertions`, `edge_assertions` and `owned_facts(Project { pass: "link" })`:
 
 - `AuthScheme`: `consumers`, `used`, `evidence_count`, `supported_by_endpoints`
-- `Endpoint` (detector-owned keys): `auth_requirement`, `auth_combinator`, `unclassified_guards`, `authorization_guards`
+- `Endpoint` (detector-owned keys): `auth_requirement`, `auth_combinator`, `unclassified_guards`, `authorization_guards`, `packages`
 - `Event`: `producers`, `consumers`, `producer_repos`, `consumer_repos`, `cross_repo`, `orphan`
-- `ClientCall`: `unmatched`, `unmatched_reason`
+- `ClientCall`: `unmatched`, `unmatched_reason`, `packages`
 - manifest `depends_on_package` edges: `cross_repo`, `target_repo`
 
 The store keeps one assertion per owner and key, so each annotation entity has one certainty for all its attrs. That certainty is the weakest, by `cmp_strength`, of every input behind any of its attrs (heuristic becomes `Heuristic { rule: "link-derived", confidence: min }`), never stronger than the entity itself:
@@ -26,6 +26,7 @@ The store keeps one assertion per owner and key, so each annotation entity has o
 - Event: `publishes` and `subscribes` edges. An event with no producer or no consumer (`orphan`, zero counts) is also capped at `Heuristic { rule: "no-detected-counterpart", confidence: 0.5 }`.
 - `depends_on_package` `cross_repo`/`target_repo`: `Resolved` at most, from manifests.
 - ClientCall `unmatched`: capped at `Heuristic { rule: "no-matching-route", confidence: 0.5 }`.
+- `packages` (Endpoint, ClientCall): the nearest package manifest of every file asserting the key (`scopes.rs`, built from file-owned `Package` entities whose `manifest` attr is their owner's path), so at most `syntactic`. A composed endpoint carries the packages its base shares with the prefix that composed it (the base's when the prefix has none or shares none). Annotated only in repos with more than one manifest; placement uses packages in every repo.
 - Absence caps use a fixed 0.5 confidence; only the heuristic class matters, and no negative attr may render under a syntactic tag.
 
 The merged entity keeps the strongest certainty across owners, so only the per-attr source certainty from `entity_with_sources` drops.
@@ -33,6 +34,12 @@ The merged entity keeps the strongest certainty across owners, so only the per-a
 `uses_auth` never comes from test code: `atlas_core::is_test_code`, or a Rust item inside a module entity that carries `ATTR_TEST` (`#[cfg(test)] mod fixtures`). Any change to this pass's output bumps `LINK_VERSION` and its pin in `atlas-engine/tests/version_pin.rs`.
 
 Tests assert the `[[auth]]` summary through `entity()` and the rest through the pass's own facts.
+
+## Package placement
+
+- When some global prefix of the repo shares a package with an endpoint, only those prefixes are composed onto it: prefixes of other packages no longer are. When none does, every prefix of the repo applies as before, so an endpoint never loses all of its compositions.
+- A site whose `makes_request` carries `client_module`/`client_export` (a declared `files` client imported by a relative specifier) is joined to the file-owned `other:typed_client` entity whose `modules` and `export` match in the same repo: the site matches `<base><target>` for a relative target, inherits the definition's `base_source`, `types_module` and `types_path` when it has none, and records `client_defined_in` plus the definition's evidence. A client is `unmatched` only when no site found a candidate.
+- A client site's candidates are restricted to one package, first match wins, and only if a candidate lives there: the package of `types_path` (nearest manifest in the caller's repo) or of `types_module` (bare or scoped package name that is an in-project package), then `target_package` (must be an in-project package), then the caller's package when the URL is relative. Restricting changes shares, never route confidence; excluded candidates stay in `alternatives` with `linked: false`.
 
 ## Base-URL evidence
 

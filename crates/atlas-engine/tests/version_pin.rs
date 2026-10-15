@@ -10,13 +10,13 @@ use common::{copy_dir, digest, fixtures_root, fresh, open, project, repo_config}
 
 const PINNED_STRUCTURE: (u32, &str, &str) = (
   1,
-  "acddf82b80d3b2bd73856c9e12c48b9fc44f51b271e793952be3aa27429c1641",
+  "0154b55c1b0c1e883618b6a6bca69c3fa73cdc4fddf4281755bc1c6cd380ef63",
   "ec3f51b2a78d7e98e15aa5e2c7e63822eeeec8282aac7b8cc0ed688a426f1776",
 );
 const PINNED_LINK: (u32, &str, &str) = (
-  2,
-  "9aa32f3ac8ef24db202a445436e72175853b7fe24a242a1cd21ced0f353e6186",
-  "8658847d920c60071aaafbf9f0df7eccd02bbff3385c434bdbfaa417bbaf9b02",
+  3,
+  "e4a512a646c73e042edcc176e9e927cc202feae2c79666431f285b471593225f",
+  "9cd2bae20b37137302561f90d66803d3e6f4e43389e0074ec0682ad05f8b217d",
 );
 
 #[derive(Default)]
@@ -89,6 +89,24 @@ fn link_family_project(tree: &Path) -> Project {
   project
 }
 
+fn link_monorepo_project(tree: &Path) -> Project {
+  let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/pin-corpus/link-monorepo");
+  let repos = walk_dirs(&root)
+    .into_iter()
+    .map(|source| {
+      let name = source.file_name().unwrap().to_string_lossy().into_owned();
+      let target = tree.join("link-monorepo").join(&name);
+      copy_dir(&source, &target);
+      repo_config(&name, &target)
+    })
+    .collect();
+  let definition = fs::read_to_string(root.join("acme-orders.toml")).unwrap();
+  let mut project = project("link-monorepo", repos);
+  project.settings.detect.route_families = vec!["acme-orders".to_owned()];
+  project.settings.detect.families = vec![atlas_detect::DecoratorFamily::parse("acme-orders", &definition).unwrap().family];
+  project
+}
+
 fn canonical_owner(facts: &atlas_store::OwnedFacts) -> Vec<u8> {
   let mut lines: Vec<String> = facts.entities.iter().map(|entity| serde_json::to_string(entity).unwrap()).collect();
   lines.extend(facts.edges.iter().map(|edge| serde_json::to_string(edge).unwrap()));
@@ -103,6 +121,7 @@ fn pass_digests(scratch: &Path) -> (PassDigests, PassDigests) {
   let mut projects: Vec<(Project, bool)> = fixture_projects(&tree).into_iter().map(|project| (project, true)).collect();
   projects.push((link_corpus_project(&tree), false));
   projects.push((link_family_project(&tree), false));
+  projects.push((link_monorepo_project(&tree), false));
   for (index, (project, with_structure)) in projects.iter().enumerate() {
     let engine = open(project, &scratch.join(format!("home-{index}")));
     assert!(fresh(&engine).is_fresh());
@@ -194,6 +213,44 @@ fn should_compose_nest_and_declared_family_prefixes_of_one_repo_in_the_link_pin_
       "checkHealth -> endpoint:family-api:GET /api/health",
       "createOrder -> endpoint:family-api:POST /api/orders",
       "loadOrder -> endpoint:family-api:GET /api/orders/{id}",
+    ]
+  );
+}
+
+#[test]
+fn should_place_monorepo_client_calls_by_package_in_the_link_pin_corpus() {
+  let scratch = tempfile::tempdir().unwrap();
+  let engine = open(&link_monorepo_project(scratch.path()), &scratch.path().join("home"));
+  assert!(fresh(&engine).is_fresh());
+  let owner = Owner::Project {
+    pass: atlas_link::PASS_NAME.to_owned(),
+  };
+  let links = engine
+    .store()
+    .read(|tx| -> Result<Vec<String>, atlas_store::StoreError> {
+      let mut links = Vec::new();
+      for edge in tx.owned_facts(&owner)?.edges.iter().filter(|edge| edge.kind == EdgeKind::CallsEndpoint) {
+        let (Some(from), Some(to)) = (tx.entity(edge.from)?, tx.entity(edge.to)?) else {
+          continue;
+        };
+        let rule = edge.attrs.get("package_rule").and_then(serde_json::Value::as_str).unwrap_or("-");
+        let target = edge.attrs.get("target_package").and_then(serde_json::Value::as_str).unwrap_or("-");
+        links.push(format!("{} -> {} ({rule} {target}, share {})", from.name, to.key, edge.attrs["share"]));
+      }
+      links.sort();
+      Ok(links)
+    })
+    .unwrap();
+  assert_eq!(
+    links,
+    [
+      "checkBooks -> endpoint:mono:GET /api/health (types-package @acme/books-api, share 1.0)",
+      "checkOrders -> endpoint:mono:GET /api/health (configured-package @acme/orders-api, share 1.0)",
+      "createOrderItem -> endpoint:mono:POST /api/items (configured-package @acme/orders-api, share 1.0)",
+      "loadAnyItem -> endpoint:mono:GET /api/items/{id} (- -, share 0.5)",
+      "loadAnyItem -> endpoint:mono:GET /api/items/{itemId} (- -, share 0.5)",
+      "loadBookItem -> endpoint:mono:GET /api/items/{id} (types-package @acme/books-api, share 1.0)",
+      "loadOrderItem -> endpoint:mono:GET /api/items/{itemId} (configured-package @acme/orders-api, share 1.0)",
     ]
   );
 }

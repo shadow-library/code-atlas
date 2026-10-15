@@ -1,13 +1,16 @@
 use std::collections::BTreeSet;
 
 use atlas_core::{
-  ArgSummary, EdgeKind, EntityKey, EntityKind, FileFacts, HttpMethod, ImportFact, LanguageFamily, LocalSymbolId, NodeRef, ObjectEntry, RefKind, ReferenceFact, Severity, SymbolFact,
+  ArgSummary, Attrs, EdgeKind, EntityKey, EntityKind, FileFacts, HttpMethod, ImportFact, LanguageFamily, LocalSymbolId, NodeRef, ObjectEntry, RefKind, ReferenceFact, Severity,
+  SymbolFact,
 };
 use serde_json::json;
 
 use super::headers::{HeaderValue, classify_header, hints_from_object, hints_from_tokens};
+use super::typed_clients::{TypedShape, emit_client_definitions, rewrite_template, typed_request};
 use super::{detector, same_statement, strip_ws};
 use crate::cert::Cert;
+use crate::families::{OPENAPI_FETCH, PathStyle};
 use crate::lex::{Token, TokenKind, lex};
 use crate::sink::{Sink, attrs};
 use crate::strings::{Piece, StringEval, evaluate};
@@ -15,16 +18,18 @@ use crate::view::{Binding, FileView, starts_with_call};
 
 pub struct HttpClientDetector;
 
-detector!(HttpClientDetector, "http-clients", 2);
+detector!(HttpClientDetector, "http-clients", 3);
 
 const AXIOS: [&str; 1] = ["axios"];
+const OPENAPI_FETCH_LIBRARY: &str = "openapi-fetch";
+const TS_CLIENT_PACKAGES: [&str; 3] = ["axios", "@nestjs/axios", OPENAPI_FETCH_LIBRARY];
 pub(crate) const DYNAMIC_URL: &str = "http.dynamic_url";
 const BODYLESS_METHODS: [&str; 4] = ["get", "delete", "head", "options"];
 const BODY_METHODS: [&str; 3] = ["post", "put", "patch"];
 const REQWEST_METHODS: [&str; 6] = ["get", "post", "put", "patch", "delete", "head"];
 
 #[derive(Debug, Clone, PartialEq)]
-enum MethodSource {
+pub(super) enum MethodSource {
   Literal(HttpMethod),
   Default,
   Param(String),
@@ -50,17 +55,38 @@ impl MethodSource {
 }
 
 #[derive(Debug, Clone)]
-struct Request<'f> {
-  reference: &'f ReferenceFact,
-  library: &'static str,
-  method: MethodSource,
-  url: Option<StringEval>,
-  url_arg: Option<ArgSummary>,
-  base: Option<String>,
-  base_pieces: Vec<Piece>,
-  hints: BTreeSet<String>,
-  hint_source: Option<String>,
-  cap: Option<Cert>,
+pub(super) struct Request<'f> {
+  pub reference: &'f ReferenceFact,
+  pub library: String,
+  pub method: MethodSource,
+  pub url: Option<StringEval>,
+  pub url_arg: Option<ArgSummary>,
+  pub base: Option<String>,
+  pub base_pieces: Vec<Piece>,
+  pub hints: BTreeSet<String>,
+  pub hint_source: Option<String>,
+  pub cap: Option<Cert>,
+  pub style: Option<PathStyle>,
+  pub extra: Attrs,
+}
+
+impl<'f> Request<'f> {
+  pub(super) fn new(reference: &'f ReferenceFact, library: &str, method: MethodSource) -> Self {
+    Self {
+      reference,
+      library: library.to_owned(),
+      method,
+      url: None,
+      url_arg: None,
+      base: None,
+      base_pieces: Vec::new(),
+      hints: BTreeSet::new(),
+      hint_source: None,
+      cap: None,
+      style: None,
+      extra: Attrs::new(),
+    }
+  }
 }
 
 impl HttpClientDetector {
@@ -73,7 +99,7 @@ impl HttpClientDetector {
         }) || facts
           .imports
           .iter()
-          .any(|import| matches!(import, ImportFact::TsImport { specifier, .. } if specifier == "axios" || specifier == "@nestjs/axios"))
+          .any(|import| matches!(import, ImportFact::TsImport { specifier, .. } if TS_CLIENT_PACKAGES.contains(&specifier.as_str())))
       }
       LanguageFamily::Rust => {
         facts
@@ -87,31 +113,42 @@ impl HttpClientDetector {
   }
 
   fn run(&self, view: &FileView<'_>, sink: &mut Sink) {
+    let openapi_fetch = TypedShape {
+      library: OPENAPI_FETCH_LIBRARY,
+      shape: &OPENAPI_FETCH,
+    };
     let requests: Vec<Request<'_>> = view
       .facts
       .references
       .iter()
       .filter_map(|reference| match view.family() {
         LanguageFamily::Rust => rust_request(view, reference),
-        _ => ts_request(view, reference),
+        _ => ts_request(view, reference).or_else(|| typed_request(view, reference, &openapi_fetch)),
       })
       .collect();
-    let mut wrapped = BTreeSet::new();
+    emit_requests(view, sink, &requests);
     if view.family() == LanguageFamily::Ts {
-      for request in &requests {
-        let WrapperCalls { specialised, own_request } = wrapper_calls(view, request);
-        if own_request == OwnRequest::Replaced {
-          wrapped.insert(request.reference.span.start_byte);
-        }
-        for (caller, call) in specialised {
-          emit(view, sink, &call, caller);
-        }
-      }
       sdk_auth_options(view, sink);
+      emit_client_definitions(view, sink, &openapi_fetch);
     }
-    for request in requests.iter().filter(|request| !wrapped.contains(&request.reference.span.start_byte)) {
-      emit(view, sink, request, request.reference.from);
+  }
+}
+
+pub(super) fn emit_requests(view: &FileView<'_>, sink: &mut Sink, requests: &[Request<'_>]) {
+  let mut wrapped = BTreeSet::new();
+  if view.family() == LanguageFamily::Ts {
+    for request in requests {
+      let WrapperCalls { specialised, own_request } = wrapper_calls(view, request);
+      if own_request == OwnRequest::Replaced {
+        wrapped.insert(request.reference.span.start_byte);
+      }
+      for (caller, call) in specialised {
+        emit(view, sink, &call, caller);
+      }
     }
+  }
+  for request in requests.iter().filter(|request| !wrapped.contains(&request.reference.span.start_byte)) {
+    emit(view, sink, request, request.reference.from);
   }
 }
 
@@ -141,7 +178,14 @@ fn emit(view: &FileView<'_>, sink: &mut Sink, request: &Request<'_>, from: Optio
     );
     return;
   }
-  let target = combined.pattern("{}");
+  let (target, template) = match request.style {
+    Some(style) => {
+      let written = request.url.as_ref().map(|url| url.pattern("{}"));
+      let template = written.filter(|written| rewrite_template(written, style) != *written);
+      (rewrite_template(&combined.pattern("{}"), style), template)
+    }
+    None => (combined.pattern("{}"), None),
+  };
   let base = request.base.clone().or_else(|| base_source(view, from, &combined));
   if combined.leading_dynamic().is_some() {
     cert = cert.capped(0.7, "client-dynamic-base");
@@ -159,20 +203,16 @@ fn emit(view: &FileView<'_>, sink: &mut Sink, request: &Request<'_>, from: Optio
   };
   sink.entity(client.clone(), request.reference.span, cert, attrs([("library", json!(request.library))]));
   let hints: Vec<&String> = request.hints.iter().collect();
-  sink.edge(
-    EdgeKind::MakesRequest,
-    view.node(from),
-    NodeRef::Key(client),
-    request.reference.span,
-    cert,
-    attrs([
-      ("library", json!(request.library)),
-      ("method_source", json!(request.method.label())),
-      ("base_source", base.map_or(json!(null), |base| json!(base))),
-      ("auth_hint", if hints.is_empty() { json!(null) } else { json!(hints) }),
-      ("auth_hint_source", request.hint_source.as_ref().map_or(json!(null), |source| json!(source))),
-    ]),
-  );
+  let mut edge_attrs = attrs([
+    ("library", json!(request.library)),
+    ("method_source", json!(request.method.label())),
+    ("base_source", base.map_or(json!(null), |base| json!(base))),
+    ("auth_hint", if hints.is_empty() { json!(null) } else { json!(hints) }),
+    ("auth_hint_source", request.hint_source.as_ref().map_or(json!(null), |source| json!(source))),
+    ("path_template", template.map_or(json!(null), |template| json!(template))),
+  ]);
+  edge_attrs.extend(request.extra.clone());
+  sink.edge(EdgeKind::MakesRequest, view.node(from), NodeRef::Key(client), request.reference.span, cert, edge_attrs);
 }
 
 fn ts_request<'f>(view: &FileView<'_>, reference: &'f ReferenceFact) -> Option<Request<'f>> {
@@ -206,19 +246,9 @@ fn is_global(view: &FileView<'_>, scope: Option<LocalSymbolId>, name: &str) -> b
 
 fn fetch_request<'f>(view: &FileView<'_>, reference: &'f ReferenceFact) -> Option<Request<'f>> {
   let scope = reference.from;
-  let url = evaluate(view, scope, reference.args.first()?);
-  let mut request = Request {
-    reference,
-    library: "fetch",
-    method: MethodSource::Default,
-    url,
-    url_arg: reference.args.first().cloned(),
-    base: None,
-    base_pieces: Vec::new(),
-    hints: BTreeSet::new(),
-    hint_source: None,
-    cap: None,
-  };
+  let mut request = Request::new(reference, "fetch", MethodSource::Default);
+  request.url = evaluate(view, scope, reference.args.first()?);
+  request.url_arg = reference.args.first().cloned();
   match reference.args.get(1) {
     None if request.url.is_none() && !is_string_param(view, scope, reference.args.first()) => request.method = MethodSource::Unknown,
     None => {}
@@ -248,18 +278,11 @@ fn axios_method_request<'f>(
   let http_method = HttpMethod::parse_lenient(method)?;
   let scope = reference.from;
   let (base_label, base_pieces) = base.unwrap_or_default();
-  let mut request = Request {
-    reference,
-    library,
-    method: MethodSource::Literal(http_method),
-    url: evaluate(view, scope, reference.args.first()?),
-    url_arg: reference.args.first().cloned(),
-    base: base_label,
-    base_pieces,
-    hints: BTreeSet::new(),
-    hint_source: None,
-    cap: None,
-  };
+  let mut request = Request::new(reference, library, MethodSource::Literal(http_method));
+  request.url = evaluate(view, scope, reference.args.first()?);
+  request.url_arg = reference.args.first().cloned();
+  request.base = base_label;
+  request.base_pieces = base_pieces;
   if let Some(ArgSummary::Object(entries)) = reference.args.get(config_index) {
     apply_header_options(view, scope, entries, &mut request);
   }
@@ -274,18 +297,9 @@ fn axios_config_request<'f>(view: &FileView<'_>, reference: &'f ReferenceFact, f
     (url, Some(ArgSummary::Object(entries))) => (Some(url), Some(entries)),
     (url, _) => (Some(url), None),
   };
-  let mut request = Request {
-    reference,
-    library: "axios",
-    method: MethodSource::Default,
-    url: url_arg.and_then(|url| evaluate(view, scope, url)),
-    url_arg: url_arg.cloned(),
-    base: None,
-    base_pieces: Vec::new(),
-    hints: BTreeSet::new(),
-    hint_source: None,
-    cap: None,
-  };
+  let mut request = Request::new(reference, "axios", MethodSource::Default);
+  request.url = url_arg.and_then(|url| evaluate(view, scope, url));
+  request.url_arg = url_arg.cloned();
   if let Some(entries) = config {
     request.method = method_from_entries(view, scope, entries);
     apply_header_options(view, scope, entries, &mut request);
@@ -308,36 +322,40 @@ fn method_from_entries(view: &FileView<'_>, scope: Option<LocalSymbolId>, entrie
   }
 }
 
-fn apply_header_options(view: &FileView<'_>, scope: Option<LocalSymbolId>, entries: &[ObjectEntry], request: &mut Request<'_>) {
+pub(super) fn apply_header_options(view: &FileView<'_>, scope: Option<LocalSymbolId>, entries: &[ObjectEntry], request: &mut Request<'_>) {
+  apply_header_hints(view, scope, entries, &mut request.hints, &mut request.hint_source);
+}
+
+pub(super) fn apply_header_hints(view: &FileView<'_>, scope: Option<LocalSymbolId>, entries: &[ObjectEntry], hints: &mut BTreeSet<String>, hint_source: &mut Option<String>) {
   for entry in entries {
     match (entry.key.static_name(), &entry.value) {
       (Some("headers"), ArgSummary::Object(headers)) => {
-        let (hints, dynamic) = hints_from_object(headers);
-        request.hints.extend(hints);
-        if dynamic && request.hints.is_empty() {
-          request.hints.insert("unknown".to_owned());
+        let (found, dynamic) = hints_from_object(headers);
+        hints.extend(found);
+        if dynamic && hints.is_empty() {
+          hints.insert("unknown".to_owned());
         }
       }
       (Some("headers"), ArgSummary::Call { callee, .. }) => match helper_hints(view, scope, callee) {
-        Some((hints, source)) => {
-          request.hints.extend(hints);
-          request.hint_source = Some(source);
+        Some((found, source)) => {
+          hints.extend(found);
+          *hint_source = Some(source);
         }
         None => {
-          request.hints.insert("unknown".to_owned());
+          hints.insert("unknown".to_owned());
         }
       },
       (Some("headers"), _) => {
-        request.hints.insert("unknown".to_owned());
+        hints.insert("unknown".to_owned());
       }
       (Some("credentials"), ArgSummary::Str(value)) if value == "include" => {
-        request.hints.insert("cookie:*".to_owned());
+        hints.insert("cookie:*".to_owned());
       }
       (Some("withCredentials"), ArgSummary::Bool(true)) => {
-        request.hints.insert("cookie:*".to_owned());
+        hints.insert("cookie:*".to_owned());
       }
       (Some("auth"), ArgSummary::Object(_)) => {
-        request.hints.insert("basic".to_owned());
+        hints.insert("basic".to_owned());
       }
       _ => {}
     }
@@ -367,15 +385,19 @@ fn axios_instance_base(view: &FileView<'_>, scope: Option<LocalSymbolId>, receiv
     .references
     .iter()
     .find(|reference| reference.span.start_byte == head.start && reference.path.last().is_some_and(|name| name == "create"))?;
-  let Some(ArgSummary::Object(entries)) = create.args.first() else {
-    return Some((None, Vec::new()));
+  Some(factory_base(view, create, &["baseURL"]))
+}
+
+pub(super) fn factory_base(view: &FileView<'_>, factory: &ReferenceFact, keys: &[&str]) -> (Option<String>, Vec<Piece>) {
+  let Some(ArgSummary::Object(entries)) = factory.args.first() else {
+    return (None, Vec::new());
   };
-  let Some(base) = entries.iter().find(|entry| entry.key.static_name() == Some("baseURL")) else {
-    return Some((None, Vec::new()));
+  let Some(base) = entries.iter().find(|entry| entry.key.static_name().is_some_and(|name| keys.contains(&name))) else {
+    return (None, Vec::new());
   };
-  match evaluate(view, create.from, &base.value) {
-    Some(eval) if eval.static_value().is_some() => Some((None, eval.pieces)),
-    _ => Some((Some(classify_base_arg(view, create.from, &base.value)), vec![Piece::Dyn(base.value.clone())])),
+  match evaluate(view, factory.from, &base.value) {
+    Some(eval) if eval.static_value().is_some() => (None, eval.pieces),
+    _ => (Some(classify_base_arg(view, factory.from, &base.value)), vec![Piece::Dyn(base.value.clone())]),
   }
 }
 
@@ -410,7 +432,7 @@ fn base_source(view: &FileView<'_>, scope: Option<LocalSymbolId>, url: &StringEv
   Some(format!("literal:{}", &prefix[..origin_len]))
 }
 
-fn classify_base_arg(view: &FileView<'_>, scope: Option<LocalSymbolId>, arg: &ArgSummary) -> String {
+pub(super) fn classify_base_arg(view: &FileView<'_>, scope: Option<LocalSymbolId>, arg: &ArgSummary) -> String {
   match arg {
     ArgSummary::Path(path) => match path.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
       ["process", "env", name] | ["import", "meta", "env", name] => format!("env:{name}"),
@@ -538,7 +560,7 @@ fn bind_wrapper<'f>(view: &FileView<'f>, request: &Request<'f>, wrapper: &Symbol
   }
   Some(Request {
     reference: caller,
-    library: request.library,
+    library: request.library.clone(),
     method,
     url,
     url_arg: None,
@@ -547,6 +569,8 @@ fn bind_wrapper<'f>(view: &FileView<'f>, request: &Request<'f>, wrapper: &Symbol
     hints: request.hints.clone(),
     hint_source: Some(request.hint_source.clone().unwrap_or_else(|| view.qualified_name(wrapper))),
     cap: Some(Cert::heuristic(0.6, "same-file-wrapper")),
+    style: request.style,
+    extra: request.extra.clone(),
   })
 }
 
@@ -626,18 +650,10 @@ fn rust_request<'f>(view: &FileView<'_>, reference: &'f ReferenceFact) -> Option
     _ => return None,
   };
   let (url, cap) = rust_url(view, scope, url_arg);
-  let mut request = Request {
-    reference,
-    library: "reqwest",
-    method,
-    url,
-    url_arg: Some(url_arg.clone()),
-    base: None,
-    base_pieces: Vec::new(),
-    hints: BTreeSet::new(),
-    hint_source: None,
-    cap,
-  };
+  let mut request = Request::new(reference, "reqwest", method);
+  request.url = url;
+  request.url_arg = Some(url_arg.clone());
+  request.cap = cap;
   rust_chain_hints(view, reference, &mut request.hints);
   Some(request)
 }

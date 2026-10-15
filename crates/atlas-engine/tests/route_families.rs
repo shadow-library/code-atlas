@@ -5,7 +5,7 @@ use std::path::Path;
 
 use atlas_core::EntityKind;
 use atlas_detect::DecoratorFamily;
-use atlas_engine::{FreshnessReport, RouteFamilyState, RouteFamilyStatus};
+use atlas_engine::{FreshnessReport, RouteFamilyState, RouteFamilyStatus, ServerMatches};
 use atlas_project::Project;
 use atlas_store::EntityFilter;
 
@@ -45,6 +45,18 @@ fn endpoints(engine: &atlas_engine::Engine) -> Vec<String> {
   keys
 }
 
+fn client_calls(engine: &atlas_engine::Engine) -> Vec<String> {
+  let mut keys: Vec<String> = engine
+    .store()
+    .read(|tx| tx.entities_by_kind(&EntityKind::ApiClientCall, &EntityFilter::default()))
+    .unwrap()
+    .into_iter()
+    .map(|entity| entity.key.to_string())
+    .collect();
+  keys.sort();
+  keys
+}
+
 fn files_analyzed(engine: &atlas_engine::Engine) -> u64 {
   engine.store().read(|tx| tx.runs(1)).unwrap()[0].report.counts["files_analyzed"]
 }
@@ -74,11 +86,17 @@ fn should_index_an_enabled_family_and_report_what_each_family_matched() {
       },
       RouteFamilyStatus {
         name: "acme-http".to_owned(),
-        state: RouteFamilyState::Matched { controllers: 1, routes: 2 },
+        state: RouteFamilyState::Matched {
+          server: Some(ServerMatches { controllers: 1, routes: 2 }),
+          client_calls: None,
+        },
       },
       RouteFamilyStatus {
         name: "acme-rpc".to_owned(),
-        state: RouteFamilyState::Matched { controllers: 0, routes: 0 },
+        state: RouteFamilyState::Matched {
+          server: Some(ServerMatches { controllers: 0, routes: 0 }),
+          client_calls: None,
+        },
       },
     ]
   );
@@ -137,4 +155,58 @@ fn should_reanalyse_on_a_definition_change_and_stop_an_engine_holding_the_old_on
   assert!(fresh(&old).is_fresh());
   assert_eq!(files_analyzed(&old), 2);
   assert!(endpoints(&old).is_empty());
+}
+
+#[test]
+fn should_index_a_client_only_family_and_count_its_calls_and_silent_shapes() {
+  let scratch = tempfile::tempdir().unwrap();
+  let root = scratch.path().join("orders");
+  let client = "[client]\nfiles = [\"src/api/*.ts\"]\nmethods = [\"get\"]\n";
+  let enabled = with_families(
+    service(&root),
+    &["acme-books", "acme-http", "acme-silent"],
+    vec![
+      family("acme-books", client),
+      family("acme-http", &format!("{FAMILY}[client]\nmodules = [\"@acme/http/client\"]\n")),
+      family("acme-silent", "[client]\nmodules = [\"@acme/none\"]\n"),
+    ],
+  );
+  fs::create_dir_all(root.join("src/api")).unwrap();
+  fs::write(root.join("src/api/books.ts"), "export const booksApi = { get: (path: string) => path };\n").unwrap();
+  fs::write(
+    root.join("src/shelf.ts"),
+    "import { booksApi } from './api/books';\n\nexport const loadBook = (id: string) => booksApi.get('/books/{id}');\nexport const loadShelf = () => booksApi.get('/shelves');\n",
+  )
+  .unwrap();
+  let engine = open(&enabled, &scratch.path().join("home"));
+
+  assert!(fresh(&engine).is_fresh());
+
+  assert_eq!(client_calls(&engine), ["client:orders:GET /books/{}", "client:orders:GET /shelves"]);
+  assert_eq!(
+    engine.status().unwrap().route_families,
+    [
+      RouteFamilyStatus {
+        name: "acme-books".to_owned(),
+        state: RouteFamilyState::Matched {
+          server: None,
+          client_calls: Some(2),
+        },
+      },
+      RouteFamilyStatus {
+        name: "acme-http".to_owned(),
+        state: RouteFamilyState::Matched {
+          server: Some(ServerMatches { controllers: 1, routes: 2 }),
+          client_calls: Some(0),
+        },
+      },
+      RouteFamilyStatus {
+        name: "acme-silent".to_owned(),
+        state: RouteFamilyState::Matched {
+          server: None,
+          client_calls: Some(0),
+        },
+      },
+    ]
+  );
 }

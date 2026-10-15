@@ -7,13 +7,13 @@ use atlas_detect::DetectorRegistry;
 use atlas_lang_rust::RustAnalyzer;
 use atlas_lang_ts::TsAnalyzer;
 
-const PINNED_INPUTS: &str = "98b3d9f3f5a3ec9f0698fd240fcdd8f829c4c76e43a225ef94809664bc1daac8";
+const PINNED_INPUTS: &str = "ddfe1af5d9d51faa22caf7109f6c1959759a5a737aebbdc6d5840b997f2cee1e";
 const PINNED: [(&str, u32, &str); 11] = [
   ("auth-schemes", 1, "8fa6fd38da5eabf63f5d072ca900a04da55fdca21bef5a27c4d4b042a296afcc"),
-  ("config-env", 2, "60a6f33c64c73386fea20ff868e66b18fb07f7bf7759b17fb3a7ab6799ce12bb"),
+  ("config-env", 2, "a76eba94a4f5232d2aa922aeae18efa3994b7f3ea1d19349fc47cedd313a09e0"),
   ("db", 2, "5e92fd016b1ad7a71ef5f7c3d424ed9fc4a3dcb6c49170ba0cfca809ca29f012"),
   ("events", 1, "56ea15b0eee70175cbc18b834b599a38e9d4e84b2913700bf6c5d5023d568560"),
-  ("http-clients", 2, "5a99dc031055c7c3ab7f499f7fcc2f433ce0f565433134f4b6d66666b74527e5"),
+  ("http-clients", 3, "0809a99dff7fd846cddd8cc76dd1e6e2b8c95a6cfebac4b053350144e730f6b4"),
   ("http-endpoints-axum", 1, "4e8073d521653481c3f481efd33b1f32b71341b97bb752d18751ac9fd016c260"),
   ("http-endpoints-express", 1, "633c6c825f8b3d613b9994233ebe2f768f78fbb084734a2e3c975139ebb05626"),
   ("http-endpoints-nest", 1, "dcc852828b9f41afbaf0a5109810f9b96ab33bf7b0ff4b4bd00d5801643554ff"),

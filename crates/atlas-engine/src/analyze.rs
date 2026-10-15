@@ -9,7 +9,7 @@ use atlas_core::{
   AnalysisInput, ContentHash, DetectInput, Detection, Detector, Diagnostic, FileFacts, FileRef, Language, LanguageAnalyzer, LanguageFamily, PackageContext, ParseBudget,
   ParseStatus, Producer,
 };
-use atlas_detect::{DeclaredRoutesDetector, DetectorRegistry, DiagnosingDetector};
+use atlas_detect::{DeclaredClientsDetector, DeclaredRoutesDetector, DetectorRegistry, DiagnosingDetector};
 use atlas_lang_rust::RustAnalyzer;
 use atlas_lang_ts::TsAnalyzer;
 use atlas_project::Project;
@@ -46,10 +46,17 @@ impl Toolchain {
   pub fn new(project: &Project, extra: &[Arc<dyn DiagnosingDetector>], budget: ParseBudget) -> Self {
     let detectors = DetectorRegistry::default();
     let families = &project.settings.detect.families;
-    let declared = match families.is_empty() {
-      true => DetectorRegistry::new(Vec::new()),
-      false => DetectorRegistry::new(vec![Box::new(DeclaredRoutesDetector::new(families.clone()))]),
-    };
+    let mut declared: Vec<Box<dyn DiagnosingDetector>> = Vec::new();
+    if families.iter().any(|family| family.has_routes()) {
+      declared.push(Box::new(DeclaredRoutesDetector::new(
+        families.iter().filter(|family| family.has_routes()).cloned().collect(),
+      )));
+    }
+    let clients = DeclaredClientsDetector::new(families);
+    if !clients.is_empty() {
+      declared.push(Box::new(clients));
+    }
+    let declared = DetectorRegistry::new(declared);
     let extra = DetectorRegistry::new(
       extra
         .iter()

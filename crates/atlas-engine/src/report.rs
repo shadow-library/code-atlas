@@ -189,8 +189,21 @@ pub struct LlmSpend {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum RouteFamilyState {
-  Matched { controllers: u64, routes: u64 },
-  Undeclared { path: String },
+  Matched {
+    #[serde(flatten)]
+    server: Option<ServerMatches>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    client_calls: Option<u64>,
+  },
+  Undeclared {
+    path: String,
+  },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct ServerMatches {
+  pub controllers: u64,
+  pub routes: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
