@@ -1,0 +1,712 @@
+diff --git a/corvid/apps/portal/package.json b/corvid/apps/portal/package.json
+new file mode 100644
+index 0000000..30219b9
+--- /dev/null
++++ b/corvid/apps/portal/package.json
+@@ -0,0 +1,8 @@
++{
++  "name": "corvid-portal",
++  "private": true,
++  "dependencies": {
++    "@corvid/core": "workspace:*",
++    "@corvid/web": "workspace:*"
++  }
++}
+diff --git a/corvid/apps/portal/src/feeds/feed.controller.ts b/corvid/apps/portal/src/feeds/feed.controller.ts
+new file mode 100644
+index 0000000..96ca140
+--- /dev/null
++++ b/corvid/apps/portal/src/feeds/feed.controller.ts
+@@ -0,0 +1,24 @@
++import { Fetch, Payload, Reply, type ReplyHandle, Resource, Store } from '@corvid/web';
++
++import { FeedService } from './feed.service';
++
++@Resource()
++export class FeedController {
++  private readonly feeds = new FeedService();
++
++  @Fetch('/feeds/export')
++  async feedExport(@Reply() reply: ReplyHandle) {
++    const xml = await this.feeds.exportXml();
++    reply.send(xml, 'application/atom+xml');
++  }
++
++  @Fetch('/feeds/latest')
++  latest() {
++    return this.feeds.latest();
++  }
++
++  @Store('/feeds/subscribe')
++  subscribe(@Payload() payload: { url: string }) {
++    return { subscribers: this.feeds.subscribe(payload.url) };
++  }
++}
+diff --git a/corvid/apps/portal/src/feeds/feed.service.ts b/corvid/apps/portal/src/feeds/feed.service.ts
+new file mode 100644
+index 0000000..1664270
+--- /dev/null
++++ b/corvid/apps/portal/src/feeds/feed.service.ts
+@@ -0,0 +1,23 @@
++const ENTRIES = [
++  { id: 'launch', title: 'Portal launch', updated: '2026-09-01' },
++  { id: 'export', title: 'Feed export', updated: '2026-09-20' },
++];
++
++export class FeedService {
++  private readonly subscribers: string[] = [];
++
++  async exportXml(): Promise<string> {
++    const items = ENTRIES.map(entry => `  <entry><id>${entry.id}</id><title>${entry.title}</title><updated>${entry.updated}</updated></entry>`);
++    return ['<?xml version="1.0" encoding="UTF-8"?>', '<feed xmlns="http://www.w3.org/2005/Atom">', ...items, '</feed>'].join('\n');
++  }
++
++  latest(): { id: string; title: string } {
++    const [first] = ENTRIES;
++    return { id: first.id, title: first.title };
++  }
++
++  subscribe(url: string): number {
++    this.subscribers.push(url);
++    return this.subscribers.length;
++  }
++}
+diff --git a/corvid/apps/portal/src/health/health.controller.ts b/corvid/apps/portal/src/health/health.controller.ts
+new file mode 100644
+index 0000000..19f3a6d
+--- /dev/null
++++ b/corvid/apps/portal/src/health/health.controller.ts
+@@ -0,0 +1,19 @@
++import { Fetch, Header, Probe, Reply, type ReplyHandle, Resource } from '@corvid/web';
++
++@Resource({ order: -1 })
++export class HealthController {
++  @Fetch('/health/live')
++  live(@Reply() reply: ReplyHandle) {
++    reply.send('ok');
++  }
++
++  @Probe('/health/live')
++  probe(@Reply() reply: ReplyHandle) {
++    reply.status(200).send('');
++  }
++
++  @Fetch('/health/ready')
++  ready(@Header('user-agent') agent: string | undefined) {
++    return { ready: true, agent: agent ?? null };
++  }
++}
+diff --git a/corvid/apps/portal/src/legacy/legacy.controller.ts b/corvid/apps/portal/src/legacy/legacy.controller.ts
+new file mode 100644
+index 0000000..0b05410
+--- /dev/null
++++ b/corvid/apps/portal/src/legacy/legacy.controller.ts
+@@ -0,0 +1,9 @@
++import { defineRoute, Reply, type ReplyHandle, Resource, Verb } from '@corvid/web';
++
++@Resource({ order: 10 })
++export class LegacyController {
++  @defineRoute({ verb: Verb.Every, path: '/legacy/feed.rss', summary: 'RSS feed kept for old readers' })
++  rss(@Reply() reply: ReplyHandle) {
++    reply.send('<rss version="2.0"><channel/></rss>', 'application/rss+xml');
++  }
++}
+diff --git a/corvid/apps/portal/src/main.ts b/corvid/apps/portal/src/main.ts
+new file mode 100644
+index 0000000..ee926d9
+--- /dev/null
++++ b/corvid/apps/portal/src/main.ts
+@@ -0,0 +1,14 @@
++import { Kernel } from '@corvid/core';
++import { WebRouter } from '@corvid/web';
++
++import { FeedController } from './feeds/feed.controller';
++import { HealthController } from './health/health.controller';
++import { LegacyController } from './legacy/legacy.controller';
++import { UsersController } from './users/users.controller';
++
++export const router = new WebRouter();
++
++export const kernel = Kernel.boot({
++  transport: router,
++  units: [HealthController, FeedController, UsersController, LegacyController],
++});
+diff --git a/corvid/apps/portal/src/users/users.controller.ts b/corvid/apps/portal/src/users/users.controller.ts
+new file mode 100644
+index 0000000..571855c
+--- /dev/null
++++ b/corvid/apps/portal/src/users/users.controller.ts
+@@ -0,0 +1,23 @@
++import { Amend, Fetch, Payload, Query, Remove, Reply, type ReplyHandle, Resource } from '@corvid/web';
++
++import { UsersService } from './users.service';
++
++@Resource()
++export class UsersController {
++  private readonly users = new UsersService();
++
++  @Fetch('/users')
++  list() {
++    return this.users.list();
++  }
++
++  @Amend('/users/name')
++  rename(@Query('id') id: string, @Payload() payload: { name: string }) {
++    return this.users.rename(id, payload.name);
++  }
++
++  @Remove('/users')
++  remove(@Query('id') id: string, @Reply() reply: ReplyHandle) {
++    if (!this.users.remove(id)) reply.status(404).send('unknown user');
++  }
++}
+diff --git a/corvid/apps/portal/src/users/users.service.ts b/corvid/apps/portal/src/users/users.service.ts
+new file mode 100644
+index 0000000..5792ba3
+--- /dev/null
++++ b/corvid/apps/portal/src/users/users.service.ts
+@@ -0,0 +1,24 @@
++export interface User {
++  id: string;
++  name: string;
++}
++
++export class UsersService {
++  private readonly users = new Map<string, User>([['1', { id: '1', name: 'Ada' }]]);
++
++  list(): User[] {
++    return [...this.users.values()];
++  }
++
++  rename(id: string, name: string): User | null {
++    const user = this.users.get(id);
++    if (!user) return null;
++    const renamed = { ...user, name };
++    this.users.set(id, renamed);
++    return renamed;
++  }
++
++  remove(id: string): boolean {
++    return this.users.delete(id);
++  }
++}
+diff --git a/corvid/package.json b/corvid/package.json
+new file mode 100644
+index 0000000..9302779
+--- /dev/null
++++ b/corvid/package.json
+@@ -0,0 +1,5 @@
++{
++  "name": "corvid",
++  "private": true,
++  "workspaces": ["packages/*", "apps/*"]
++}
+diff --git a/corvid/packages/core/package.json b/corvid/packages/core/package.json
+new file mode 100644
+index 0000000..089d055
+--- /dev/null
++++ b/corvid/packages/core/package.json
+@@ -0,0 +1,8 @@
++{
++  "name": "@corvid/core",
++  "version": "2.1.0",
++  "main": "src/index.ts",
++  "dependencies": {
++    "@corvid/meta": "workspace:*"
++  }
++}
+diff --git a/corvid/packages/core/src/entry.ts b/corvid/packages/core/src/entry.ts
+new file mode 100644
+index 0000000..2b29708
+--- /dev/null
++++ b/corvid/packages/core/src/entry.ts
+@@ -0,0 +1,14 @@
++import { MetaStore } from '@corvid/meta';
++
++export const ENTRY_KEY = Symbol('corvid:entry');
++export const UNIT_ENTRY_KEY = Symbol('corvid:unit-entry');
++
++export function markEntry(options: object): MethodDecorator {
++  return (_target, _property, descriptor) => {
++    MetaStore.merge(ENTRY_KEY, options, descriptor.value as object);
++  };
++}
++
++export function markUnitEntry(options: object): ClassDecorator {
++  return target => MetaStore.merge(UNIT_ENTRY_KEY, options, target);
++}
+diff --git a/corvid/packages/core/src/index.ts b/corvid/packages/core/src/index.ts
+new file mode 100644
+index 0000000..66c4b91
+--- /dev/null
++++ b/corvid/packages/core/src/index.ts
+@@ -0,0 +1,5 @@
++export * from './entry';
++export * from './inject';
++export * from './transport';
++export * from './scanner';
++export * from './kernel';
+diff --git a/corvid/packages/core/src/inject.ts b/corvid/packages/core/src/inject.ts
+new file mode 100644
+index 0000000..924683f
+--- /dev/null
++++ b/corvid/packages/core/src/inject.ts
+@@ -0,0 +1,11 @@
++import { MetaStore } from '@corvid/meta';
++
++export const SINGLETON_KEY = Symbol('corvid:singleton');
++
++export function Singleton(): ClassDecorator {
++  return target => MetaStore.merge(SINGLETON_KEY, true, target);
++}
++
++export function isSingleton(type: object): boolean {
++  return MetaStore.read<boolean>(SINGLETON_KEY, type) ?? false;
++}
+diff --git a/corvid/packages/core/src/kernel.ts b/corvid/packages/core/src/kernel.ts
+new file mode 100644
+index 0000000..a9193e6
+--- /dev/null
++++ b/corvid/packages/core/src/kernel.ts
+@@ -0,0 +1,44 @@
++import { isSingleton } from './inject';
++import { Scanner } from './scanner';
++import { type Transport } from './transport';
++
++export interface KernelOptions {
++  transport: Transport;
++  units: Array<new () => object>;
++}
++
++export class Kernel {
++  private readonly scanner: Scanner;
++  private readonly instances = new Map<new () => object, object>();
++
++  private constructor(private readonly options: KernelOptions) {
++    this.scanner = new Scanner(this);
++  }
++
++  static boot(options: KernelOptions): Kernel {
++    const kernel = new Kernel(options);
++    for (const Type of options.units) kernel.load(Type);
++    return kernel;
++  }
++
++  get transport(): Transport {
++    return this.options.transport;
++  }
++
++  unit<T extends object>(type: new () => T): T | undefined {
++    return this.instances.get(type) as T | undefined;
++  }
++
++  shutdown(): Promise<void> {
++    this.instances.clear();
++    return this.options.transport.close();
++  }
++
++  private load(Type: new () => object): void {
++    const existing = this.instances.get(Type);
++    if (existing && isSingleton(Type)) return;
++    const instance = new Type();
++    this.instances.set(Type, instance);
++    this.scanner.collect(instance);
++  }
++}
+diff --git a/corvid/packages/core/src/scanner.ts b/corvid/packages/core/src/scanner.ts
+new file mode 100644
+index 0000000..811143e
+--- /dev/null
++++ b/corvid/packages/core/src/scanner.ts
+@@ -0,0 +1,23 @@
++import { MetaStore } from '@corvid/meta';
++
++import { ENTRY_KEY, UNIT_ENTRY_KEY } from './entry';
++import { type Kernel } from './kernel';
++import { type EntryBundle } from './transport';
++
++export class Scanner {
++  constructor(private readonly kernel: Kernel) {}
++
++  collect(unit: object): void {
++    const prototype = Object.getPrototypeOf(unit) as Record<string, unknown>;
++    const unitOptions = MetaStore.read<object>(UNIT_ENTRY_KEY, unit.constructor) ?? {};
++    const bundles: EntryBundle[] = [];
++    for (const property of Object.getOwnPropertyNames(prototype)) {
++      const method = prototype[property];
++      if (property === 'constructor' || typeof method !== 'function') continue;
++      const options = MetaStore.read<object>(ENTRY_KEY, method);
++      if (options) bundles.push({ unit, property, method: method as EntryBundle['method'], options: { ...unitOptions, ...options }, unitOptions });
++    }
++    const transport = this.kernel.transport;
++    transport.mount(bundles);
++  }
++}
+diff --git a/corvid/packages/core/src/transport.ts b/corvid/packages/core/src/transport.ts
+new file mode 100644
+index 0000000..e868886
+--- /dev/null
++++ b/corvid/packages/core/src/transport.ts
+@@ -0,0 +1,13 @@
++export interface EntryBundle {
++  unit: object;
++  property: string;
++  method: (...args: unknown[]) => unknown;
++  options: object;
++  unitOptions: object;
++}
++
++export abstract class Transport {
++  abstract mount(bundles: EntryBundle[]): void;
++
++  abstract close(): Promise<void>;
++}
+diff --git a/corvid/packages/meta/package.json b/corvid/packages/meta/package.json
+new file mode 100644
+index 0000000..f06d09f
+--- /dev/null
++++ b/corvid/packages/meta/package.json
+@@ -0,0 +1,5 @@
++{
++  "name": "@corvid/meta",
++  "version": "2.1.0",
++  "main": "src/index.ts"
++}
+diff --git a/corvid/packages/meta/src/index.ts b/corvid/packages/meta/src/index.ts
+new file mode 100644
+index 0000000..e5a1ae0
+--- /dev/null
++++ b/corvid/packages/meta/src/index.ts
+@@ -0,0 +1 @@
++export * from './meta-store';
+diff --git a/corvid/packages/meta/src/meta-store.ts b/corvid/packages/meta/src/meta-store.ts
+new file mode 100644
+index 0000000..06c3784
+--- /dev/null
++++ b/corvid/packages/meta/src/meta-store.ts
+@@ -0,0 +1,29 @@
++export type MetaKey = string | symbol;
++
++const bags = new WeakMap<object, Map<MetaKey, unknown>>();
++
++export class MetaStore {
++  static merge<T>(key: MetaKey, value: T, target: object): void {
++    const bag = bags.get(target) ?? new Map<MetaKey, unknown>();
++    bag.set(key, combine(bag.get(key), value));
++    bags.set(target, bag);
++  }
++
++  static read<T>(key: MetaKey, target: object): T | undefined {
++    return bags.get(target)?.get(key) as T | undefined;
++  }
++
++  static has(key: MetaKey, target: object): boolean {
++    return bags.get(target)?.has(key) ?? false;
++  }
++}
++
++function combine(current: unknown, value: unknown): unknown {
++  if (Array.isArray(current) && Array.isArray(value)) return [...current, ...value];
++  if (isRecord(current) && isRecord(value)) return { ...current, ...value };
++  return value;
++}
++
++function isRecord(value: unknown): value is Record<string, unknown> {
++  return typeof value === 'object' && value !== null && !Array.isArray(value);
++}
+diff --git a/corvid/packages/web/package.json b/corvid/packages/web/package.json
+new file mode 100644
+index 0000000..4600360
+--- /dev/null
++++ b/corvid/packages/web/package.json
+@@ -0,0 +1,9 @@
++{
++  "name": "@corvid/web",
++  "version": "2.1.0",
++  "main": "src/index.ts",
++  "dependencies": {
++    "@corvid/core": "workspace:*",
++    "@corvid/meta": "workspace:*"
++  }
++}
+diff --git a/corvid/packages/web/src/index.ts b/corvid/packages/web/src/index.ts
+new file mode 100644
+index 0000000..c85faab
+--- /dev/null
++++ b/corvid/packages/web/src/index.ts
+@@ -0,0 +1,8 @@
++export * from './verb';
++export * from './route.options';
++export * from './route.docs';
++export * from './route.decorators';
++export * from './resource.decorator';
++export * from './params';
++export * from './reply';
++export * from './web-router';
+diff --git a/corvid/packages/web/src/params.ts b/corvid/packages/web/src/params.ts
+new file mode 100644
+index 0000000..1abf98b
+--- /dev/null
++++ b/corvid/packages/web/src/params.ts
+@@ -0,0 +1,27 @@
++import { MetaStore } from '@corvid/meta';
++
++export const INPUT_SLOTS = Symbol('corvid:web:inputs');
++
++export type SlotKind = 'reply' | 'payload' | 'query' | 'header';
++
++export interface InputSlot {
++  index: number;
++  kind: SlotKind;
++  name?: string;
++}
++
++export function bindInput(kind: SlotKind, name?: string): ParameterDecorator {
++  return (target, property, index) => {
++    const method = (target as Record<string | symbol, object>)[property as string | symbol];
++    MetaStore.merge<InputSlot[]>(INPUT_SLOTS, [{ index, kind, name }], method);
++  };
++}
++
++export function ReplyParam(): ParameterDecorator {
++  return bindInput('reply');
++}
++
++export const Reply = ReplyParam;
++export const Payload = () => bindInput('payload');
++export const Query = (name: string) => bindInput('query', name);
++export const Header = (name: string) => bindInput('header', name);
+diff --git a/corvid/packages/web/src/reply.ts b/corvid/packages/web/src/reply.ts
+new file mode 100644
+index 0000000..5427719
+--- /dev/null
++++ b/corvid/packages/web/src/reply.ts
+@@ -0,0 +1,43 @@
++export interface WireRequest {
++  verb: string;
++  path: string;
++  headers: Record<string, string | undefined>;
++  query?: Record<string, string>;
++  payload?: unknown;
++}
++
++export interface WireReply {
++  status: number;
++  headers: Record<string, string>;
++  content: string;
++}
++
++export const NO_CONTENT: WireReply = { status: 204, headers: {}, content: '' };
++
++export class ReplyHandle {
++  private code = 200;
++  private written: WireReply | undefined;
++
++  get sent(): boolean {
++    return this.written !== undefined;
++  }
++
++  status(code: number): this {
++    this.code = code;
++    return this;
++  }
++
++  send(content: string, contentType = 'text/plain; charset=utf-8'): void {
++    this.written = { status: this.code, headers: { 'content-type': contentType }, content };
++  }
++
++  toWire(): WireReply {
++    return this.written ?? NO_CONTENT;
++  }
++}
++
++export function toWire(result: unknown): WireReply {
++  if (result === undefined) return NO_CONTENT;
++  if (typeof result === 'string') return { status: 200, headers: { 'content-type': 'text/plain; charset=utf-8' }, content: result };
++  return { status: 200, headers: { 'content-type': 'application/json' }, content: JSON.stringify(result) };
++}
+diff --git a/corvid/packages/web/src/resource.decorator.ts b/corvid/packages/web/src/resource.decorator.ts
+new file mode 100644
+index 0000000..98e2608
+--- /dev/null
++++ b/corvid/packages/web/src/resource.decorator.ts
+@@ -0,0 +1,11 @@
++import { MetaStore } from '@corvid/meta';
++
++export const RESOURCE_KIND = Symbol('corvid:web:resource');
++
++export interface ResourceOptions {
++  order?: number;
++}
++
++export function Resource(options: ResourceOptions = {}): ClassDecorator {
++  return target => MetaStore.merge(RESOURCE_KIND, { order: options.order ?? 0 }, target);
++}
+diff --git a/corvid/packages/web/src/route.decorators.ts b/corvid/packages/web/src/route.decorators.ts
+new file mode 100644
+index 0000000..1f435fe
+--- /dev/null
++++ b/corvid/packages/web/src/route.decorators.ts
+@@ -0,0 +1,18 @@
++import { markEntry } from '@corvid/core';
++
++import { withSummary } from './route.docs';
++import { type RouteOptions } from './route.options';
++import { Verb } from './verb';
++
++export function defineRoute(options: RouteOptions): MethodDecorator {
++  return markEntry(withSummary(options));
++}
++
++export const Fetch = (path?: string) => defineRoute({ verb: Verb.Fetch, path });
++export const Store = (path?: string) => defineRoute({ verb: Verb.Store, path });
++export const Replace = (path?: string) => defineRoute({ verb: Verb.Replace, path });
++export const Amend = (path?: string) => defineRoute({ verb: Verb.Amend, path });
++export const Remove = (path?: string) => defineRoute({ verb: Verb.Remove, path });
++export const Probe = (path?: string) => defineRoute({ verb: Verb.Probe, path });
++export const Preflight = (path?: string) => defineRoute({ verb: Verb.Preflight, path });
++export const Every = (path?: string) => defineRoute({ verb: Verb.Every, path });
+diff --git a/corvid/packages/web/src/route.docs.ts b/corvid/packages/web/src/route.docs.ts
+new file mode 100644
+index 0000000..299df7a
+--- /dev/null
++++ b/corvid/packages/web/src/route.docs.ts
+@@ -0,0 +1,5 @@
++import { type RouteOptions } from './route.options';
++
++export function withSummary(options: RouteOptions): RouteOptions {
++  return { ...options, summary: options.summary ?? `${options.verb} ${options.path ?? '/'}` };
++}
+diff --git a/corvid/packages/web/src/route.options.ts b/corvid/packages/web/src/route.options.ts
+new file mode 100644
+index 0000000..070349c
+--- /dev/null
++++ b/corvid/packages/web/src/route.options.ts
+@@ -0,0 +1,7 @@
++import { type Verb } from './verb';
++
++export interface RouteOptions {
++  verb: Verb;
++  path?: string;
++  summary?: string;
++}
+diff --git a/corvid/packages/web/src/verb.ts b/corvid/packages/web/src/verb.ts
+new file mode 100644
+index 0000000..535b245
+--- /dev/null
++++ b/corvid/packages/web/src/verb.ts
+@@ -0,0 +1,10 @@
++export enum Verb {
++  Fetch = 'GET',
++  Store = 'POST',
++  Replace = 'PUT',
++  Amend = 'PATCH',
++  Remove = 'DELETE',
++  Probe = 'HEAD',
++  Preflight = 'OPTIONS',
++  Every = 'ALL',
++}
+diff --git a/corvid/packages/web/src/web-router.ts b/corvid/packages/web/src/web-router.ts
+new file mode 100644
+index 0000000..2236a73
+--- /dev/null
++++ b/corvid/packages/web/src/web-router.ts
+@@ -0,0 +1,77 @@
++import { type EntryBundle, Transport } from '@corvid/core';
++import { MetaStore } from '@corvid/meta';
++
++import { INPUT_SLOTS, type InputSlot } from './params';
++import { ReplyHandle, toWire, type WireReply, type WireRequest } from './reply';
++import { RESOURCE_KIND } from './resource.decorator';
++
++type Invoker = (request: WireRequest) => Promise<WireReply>;
++
++interface MountedRoute {
++  verb: string;
++  path: string;
++  invoke: Invoker;
++}
++
++const MISSING: WireReply = { status: 404, headers: { 'content-type': 'application/json' }, content: '{"message":"Not Found"}' };
++
++export class WebRouter extends Transport {
++  private readonly routes = new Map<string, MountedRoute>();
++
++  mount(bundles: EntryBundle[]): void {
++    for (const bundle of this.sortResources(bundles)) {
++      const { verb, path } = bundle.options as { verb: string; path?: string };
++      const route: MountedRoute = { verb, path: normalizePath(path ?? ''), invoke: this.buildInvoker(bundle) };
++      this.routes.set(`${route.verb} ${route.path}`, route);
++    }
++  }
++
++  dispatch(request: WireRequest): Promise<WireReply> {
++    const path = normalizePath(request.path.split('?')[0] ?? '');
++    const route = this.routes.get(`${request.verb} ${path}`) ?? this.routes.get(`ALL ${path}`);
++    if (!route) return Promise.resolve(MISSING);
++    return route.invoke(request);
++  }
++
++  routeTable(): string[] {
++    return [...this.routes.keys()].sort();
++  }
++
++  async close(): Promise<void> {
++    this.routes.clear();
++  }
++
++  private sortResources(bundles: EntryBundle[]): EntryBundle[] {
++    const order = (bundle: EntryBundle) => MetaStore.read<{ order: number }>(RESOURCE_KIND, bundle.unit.constructor)?.order ?? 0;
++    return bundles.filter(bundle => MetaStore.has(RESOURCE_KIND, bundle.unit.constructor)).sort((left, right) => order(left) - order(right));
++  }
++
++  private buildInvoker(bundle: EntryBundle): Invoker {
++    const slots = MetaStore.read<InputSlot[]>(INPUT_SLOTS, bundle.method) ?? [];
++    return async request => {
++      const reply = new ReplyHandle();
++      const args: unknown[] = [];
++      for (const slot of slots) args[slot.index] = this.argumentFor(slot, request, reply);
++      const pending = bundle.method.apply(bundle.unit, args);
++      if (reply.sent) return reply.toWire();
++      return toWire(await pending);
++    };
++  }
++
++  private argumentFor(slot: InputSlot, request: WireRequest, reply: ReplyHandle): unknown {
++    switch (slot.kind) {
++      case 'reply':
++        return reply;
++      case 'payload':
++        return request.payload;
++      case 'query':
++        return request.query?.[slot.name ?? ''];
++      case 'header':
++        return request.headers[slot.name ?? ''];
++    }
++  }
++}
++
++function normalizePath(path: string): string {
++  return `/${path}`.replace(/\/+/g, '/').replace(/(.)\/$/, '$1');
++}
+diff --git a/corvid/tsconfig.json b/corvid/tsconfig.json
+new file mode 100644
+index 0000000..3617bad
+--- /dev/null
++++ b/corvid/tsconfig.json
+@@ -0,0 +1,15 @@
++{
++  "compilerOptions": {
++    "target": "ES2022",
++    "module": "ESNext",
++    "moduleResolution": "Bundler",
++    "experimentalDecorators": true,
++    "strict": true,
++    "baseUrl": ".",
++    "paths": {
++      "@corvid/meta": ["packages/meta/src/index.ts"],
++      "@corvid/core": ["packages/core/src/index.ts"],
++      "@corvid/web": ["packages/web/src/index.ts"]
++    }
++  }
++}

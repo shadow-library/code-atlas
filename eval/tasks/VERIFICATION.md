@@ -183,6 +183,14 @@ In the tables below, `$V` stands for `./node_modules/.bin/vitest run --project m
 | reference | hidden test | exit 0, 9 passed |
 | `toReply` fix instead (text replies become buffers) | hidden test | **exit 1**, 2 failed / 7 passed: the uncompressed raw and string replies no longer match what the handler produced. Checked with Bun directly on a scratch copy, not through the harness. |
 
+`t12-deferred-reply-handle` is built the same way (its `base.patch` adds a three-package `corvid/` workspace) and was checked on 2026-10-15 with the same two `--base-only` runs.
+
+### t12-deferred-reply-handle (planted bug, serving path)
+| tree | command | result |
+|---|---|---|
+| base | `cd corvid && bun test packages/web/test/reply-handle.test.ts` | **exit 1**, 2 failed / 4 passed (0.2 s). The failing tests are the two async handlers that send after an await; the sync sender, the returned value, the parameter position and the empty 204 pass. |
+| reference | hidden test | exit 0, 6 passed |
+
 ## Dry-run of the full suite
 
 `atlas-eval agent run --dry-run --runs-per-condition 2 --model claude-sonnet-5-5` (2026-10-04, seed 1, parallel 2):

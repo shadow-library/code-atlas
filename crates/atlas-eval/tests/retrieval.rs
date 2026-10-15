@@ -333,3 +333,23 @@ fn should_put_the_router_of_the_invented_framework_in_must_read_from_the_first_l
   assert_eq!(first_line.must_change.expected, ["corvid/packages/http/src/module/http-router.ts"]);
   assert_eq!(first_line.must_change.channels.must_read.recall, Some(1.0));
 }
+
+#[test]
+fn should_put_the_invoker_builder_in_must_read_from_the_first_line_through_the_handlers_parameter_decorator() {
+  let work = tempfile::tempdir().unwrap();
+  let tasks = workspace_root().join("eval/tasks");
+  let config = SeededConfig {
+    config: AtlasConfig::load(&tasks.join("t12-deferred-reply-handle/atlas-config")).unwrap(),
+    atlas_bin: catl_binary().to_owned(),
+  };
+
+  let report = run_configured(&work, tasks, "t12-deferred-reply-handle", Some(config));
+
+  let seeded = report.settings.atlas_config.as_ref().unwrap();
+  assert_eq!(seeded.files, ["config.toml", "detectors/corvid-web.toml"]);
+  let task = scored(&report);
+  assert_eq!(task.index.degraded, None);
+  let first_line = only_query(task, QueryVariant::FirstLine);
+  assert_eq!(first_line.must_change.expected, ["corvid/packages/web/src/web-router.ts"]);
+  assert_eq!(first_line.must_change.channels.must_read.recall, Some(1.0));
+}

@@ -1,4 +1,4 @@
-use atlas_core::{ATTR_ATTRIBUTES, ATTR_TEST, AttributeFact, EdgeKind, Entity, EntityId, EntityKey, EntityKind, LanguageFamily, PackageEcosystem, RelPath};
+use atlas_core::{ATTR_ATTRIBUTES, ATTR_PARAMS, ATTR_TEST, AttributeFact, EdgeKind, Entity, EntityId, EntityKey, EntityKind, LanguageFamily, PackageEcosystem, ParamFact, RelPath};
 use atlas_store::EdgeEnd;
 
 use crate::QueryEngine;
@@ -24,6 +24,17 @@ pub(crate) fn attributes(entity: &Entity) -> Vec<AttributeFact> {
     .get(ATTR_ATTRIBUTES)
     .and_then(|value| serde_json::from_value::<Vec<AttributeFact>>(value.clone()).ok())
     .unwrap_or_default()
+}
+
+pub(crate) fn parameter_attributes(entity: &Entity) -> Vec<AttributeFact> {
+  entity
+    .attrs
+    .get(ATTR_PARAMS)
+    .and_then(|value| serde_json::from_value::<Vec<ParamFact>>(value.clone()).ok())
+    .unwrap_or_default()
+    .into_iter()
+    .flat_map(|param| param.attributes)
+    .collect()
 }
 
 pub(crate) fn attribute_names(entity: &Entity) -> Vec<String> {

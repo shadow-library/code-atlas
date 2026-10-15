@@ -1,0 +1,44 @@
+id = "t12-deferred-reply-handle"
+title = "Planted bug: a kernel-based web adapter drops replies that async handlers send through a parameter decorator"
+repo = { fixture = "acme" }
+base_commit = "e5209b4c5c99df0e0e5cdab2bd885b0821b91927"
+base_patch = "base.patch"
+strip = ["acme-api", "acme-billing", "acme-sdk", "acme-web"]
+prompt = """
+`GET /feeds/export` answers 204 with nothing in it instead of the Atom feed. \
+The handler loads the entries and then writes the feed through its `@Reply()` handle; handlers that return their value, or that send right away, still work.
+
+Please fix it so that whatever a handler sends through its reply handle before it finishes is what the client gets, for sync and async handlers alike, \
+with the status and content type the handler set. A handler that neither returns a value nor sends anything must still answer 204.
+
+The portal app lives in `corvid/apps/portal` and uses the framework packages `@corvid/core` and `@corvid/web` in `corvid/packages`. \
+Add or update tests for the new behaviour.
+
+Environment note: dependencies are already installed; run the tests with `bun test` from the `corvid` directory.
+"""
+category = ["planted-bug", "serving-path"]
+timeout_minutes = 20
+max_turns = 60
+atlas_repos = ["corvid"]
+atlas_config = "atlas-config"
+
+[validation]
+hidden_tests = ["hidden/corvid/packages/web/test/reply-handle.test.ts"]
+commands = ["cd corvid && bun test packages/web/test/reply-handle.test.ts"]
+
+[ground_truth]
+relevant_files = [
+  "corvid/packages/web/src/web-router.ts",
+  "corvid/packages/web/src/reply.ts",
+  "corvid/packages/web/src/params.ts",
+  "corvid/apps/portal/src/feeds/feed.controller.ts",
+]
+must_change = ["corvid/packages/web/src/web-router.ts"]
+must_consider = [
+  "corvid/packages/web/src/reply.ts",
+  "corvid/packages/web/src/params.ts",
+  "corvid/packages/core/src/scanner.ts",
+  "corvid/packages/web/src/route.decorators.ts",
+]
+reuse_targets = []
+forbidden_duplicates = []

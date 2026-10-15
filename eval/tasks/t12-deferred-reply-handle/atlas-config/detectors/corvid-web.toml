@@ -1,0 +1,15 @@
+version = 1
+packages = ["@corvid/web"]
+
+[controller]
+decorators = ["Resource"]
+
+[routes.methods]
+Fetch = "GET"
+Store = "POST"
+Replace = "PUT"
+Amend = "PATCH"
+Remove = "DELETE"
+Probe = "HEAD"
+Preflight = "OPTIONS"
+Every = "ANY"

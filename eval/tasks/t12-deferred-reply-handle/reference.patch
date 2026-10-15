@@ -1,0 +1,16 @@
+diff --git a/corvid/packages/web/src/web-router.ts b/corvid/packages/web/src/web-router.ts
+index 2236a73..34a3f2c 100644
+--- a/corvid/packages/web/src/web-router.ts
++++ b/corvid/packages/web/src/web-router.ts
+@@ -52,9 +52,9 @@ export class WebRouter extends Transport {
+       const reply = new ReplyHandle();
+       const args: unknown[] = [];
+       for (const slot of slots) args[slot.index] = this.argumentFor(slot, request, reply);
+-      const pending = bundle.method.apply(bundle.unit, args);
++      const result = await bundle.method.apply(bundle.unit, args);
+       if (reply.sent) return reply.toWire();
+-      return toWire(await pending);
++      return toWire(result);
+     };
+   }
+ 

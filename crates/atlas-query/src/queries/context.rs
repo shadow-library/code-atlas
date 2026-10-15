@@ -44,6 +44,7 @@ const SITE_EDGES: [EdgeKind; 8] = [
   EdgeKind::UsesAuth,
 ];
 const EXPAND_THRESHOLD: f64 = 0.25;
+const CALLEE_FACTOR: f64 = 0.5;
 const MEMBERS_PER_TYPE: usize = 8;
 const SKELETON_MEMBERS: usize = 15;
 const PAGERANK_ITERATIONS: usize = 30;
@@ -536,7 +537,7 @@ impl Pack {
   fn expand_callee(&mut self, graph: &Graph<'_, '_>, from: &Node, to: Entity, edge: &Edge, hub: f64) -> QueryResult<()> {
     let id = to.id;
     let before = self.nodes.get(&id).map(|node| node.hub_factor);
-    self.expand_to(graph, from, to, edge, 0.5, Role::Code)?;
+    self.expand_to(graph, from, to, edge, CALLEE_FACTOR, Role::Code)?;
     let reached = from.hub_factor * hub;
     if let Some(node) = self.nodes.get_mut(&id) {
       node.hub_factor = before.map_or(reached, |before| before.max(reached));
@@ -1571,6 +1572,15 @@ fn same_skeleton(left: &[String], right: &[String]) -> bool {
   left.len() == right.len() && left.iter().zip(right).all(|(left, right)| (left == "{}") == (right == "{}"))
 }
 
+fn only_method(endpoints: &[Entity], wanted: &[String]) -> Option<HttpMethod> {
+  let mut methods = endpoints.iter().filter_map(|endpoint| match &endpoint.key {
+    EntityKey::Endpoint { method, route, .. } if route_shape(route) == wanted => Some(*method),
+    _ => None,
+  });
+  let method = methods.next()?;
+  methods.next().is_none().then_some(method)
+}
+
 fn route_seeds(graph: &Graph<'_, '_>, task: &str, pack: &mut Pack) -> QueryResult<()> {
   let mentions = route_mentions(task);
   if mentions.is_empty() {
@@ -1581,11 +1591,12 @@ fn route_seeds(graph: &Graph<'_, '_>, task: &str, pack: &mut Pack) -> QueryResul
   for mention in &mentions {
     let wanted = route_shape(&mention.route);
     let resource = first_static(&wanted).map(str::to_owned);
+    let mentioned = mention.method.or_else(|| only_method(&endpoints, &wanted));
     let mut named: Option<Node> = None;
     let mut siblings = 0;
     for endpoint in &endpoints {
       let EntityKey::Endpoint { method, route, .. } = &endpoint.key else { continue };
-      if route_shape(route) == wanted && mention.method.is_some_and(|wanted| wanted == *method) {
+      if route_shape(route) == wanted && mentioned.is_some_and(|wanted| wanted == *method) {
         pack.seed(endpoint.clone(), 1.0, format!("the endpoint {method} {route} named in the task"), true);
         named = named.or_else(|| pack.nodes.get(&endpoint.id).cloned());
       }
@@ -1593,7 +1604,7 @@ fn route_seeds(graph: &Graph<'_, '_>, task: &str, pack: &mut Pack) -> QueryResul
     for endpoint in &endpoints {
       let EntityKey::Endpoint { method, route, .. } = &endpoint.key else { continue };
       let shape = route_shape(route);
-      let same_method = mention.method.is_some_and(|wanted| wanted == *method);
+      let same_method = mentioned.is_some_and(|wanted| wanted == *method);
       let sibling = match (shape == wanted, same_method) {
         (true, true) => continue,
         (true, false) => {
@@ -1876,9 +1887,17 @@ fn hub_factor(graph: &Graph<'_, '_>, id: EntityId) -> QueryResult<f64> {
 }
 
 fn production_users(graph: &Graph<'_, '_>, id: EntityId, kinds: &[EdgeKind], cap: usize) -> QueryResult<usize> {
+  production_users_where(graph, &[id], kinds, cap, |_| true)
+}
+
+fn production_users_where(graph: &Graph<'_, '_>, ids: &[EntityId], kinds: &[EdgeKind], cap: usize, counted: impl Fn(&Entity) -> bool) -> QueryResult<usize> {
   let mut users: BTreeSet<EntityId> = BTreeSet::new();
   let mut examined: BTreeSet<EntityId> = BTreeSet::new();
-  for link in graph.links_in(id, kinds)? {
+  let mut links = Vec::new();
+  for id in ids {
+    links.extend(graph.links_in(*id, kinds)?);
+  }
+  for link in links {
     if users.len() >= cap {
       break;
     }
@@ -1889,7 +1908,7 @@ fn production_users(graph: &Graph<'_, '_>, id: EntityId, kinds: &[EdgeKind], cap
       return Ok(cap);
     }
     let Some(user) = graph.entity(link.from)? else { continue };
-    if is_test(&user) || is_test_support(&user) || graph.edge(link.id)?.is_some_and(|edge| is_mock_edge(&edge)) {
+    if is_test(&user) || is_test_support(&user) || !counted(&user) || graph.edge(link.id)?.is_some_and(|edge| is_mock_edge(&edge)) {
       continue;
     }
     users.insert(link.from);
