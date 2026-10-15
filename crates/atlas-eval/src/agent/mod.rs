@@ -1,6 +1,7 @@
 mod access;
 mod accuracy;
 mod atlas_cli;
+mod atlas_config;
 mod bash;
 mod claude;
 mod diff;
@@ -36,6 +37,7 @@ mod workspace;
 pub use access::*;
 pub use accuracy::*;
 pub use atlas_cli::*;
+pub use atlas_config::*;
 pub use bash::*;
 pub use claude::*;
 pub use diff::*;

@@ -883,9 +883,13 @@ fn render_environment(out: &mut String, report: &AgentReport) {
     ("repo override", environment.repo_override.clone().unwrap_or_else(|| "none".to_owned())),
     ("spent (reported)", report.spent_usd.map_or_else(|| "unknown".to_owned(), |spent| format!("${spent:.2}"))),
   ];
+  let atlas_config = environment
+    .atlas_config
+    .as_ref()
+    .map(|record| ("atlas config", format!("blake3 {}: {}", record.blake3, record.files.join(", "))));
   let _ = writeln!(out, "| key | value |");
   let _ = writeln!(out, "|---|---|");
-  for (key, value) in rows {
+  for (key, value) in rows.into_iter().chain(atlas_config) {
     let _ = writeln!(out, "| {key} | {value} |");
   }
   out.push('\n');
@@ -973,6 +977,7 @@ mod tests {
       claude_code_version: Some("2.1.289".to_owned()),
       preamble_version: None,
       preamble_variant: None,
+      atlas_config_blake3: None,
       args: Vec::new(),
       env_names: Vec::new(),
       atlas_project: None,
@@ -1160,6 +1165,7 @@ mod tests {
         preamble_version: 1,
         preamble_variant: PreambleVariant::Standard,
         repo_override: None,
+        atlas_config: None,
         probe: None,
       },
       tasks: vec!["t00-smoke".to_owned()],

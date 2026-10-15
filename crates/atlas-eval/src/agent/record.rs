@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::accuracy::AtlasAccuracy;
+use super::atlas_config::AtlasConfigRecord;
 use super::claude::ConfigIsolation;
 use super::error::{AgentError, AgentResult};
 use super::judge::JudgeOutcome;
@@ -89,6 +90,8 @@ pub struct RunManifest {
   pub preamble_version: Option<u32>,
   #[serde(default)]
   pub preamble_variant: Option<PreambleVariant>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub atlas_config_blake3: Option<String>,
   pub args: Vec<String>,
   pub env_names: Vec<String>,
   pub atlas_project: Option<String>,
@@ -231,6 +234,8 @@ pub struct Environment {
   #[serde(default)]
   pub preamble_variant: PreambleVariant,
   pub repo_override: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub atlas_config: Option<AtlasConfigRecord>,
   pub probe: Option<ProbeReport>,
 }
 

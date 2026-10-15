@@ -10,6 +10,8 @@ use super::error::{AgentError, AgentResult};
 use super::process::{CapturedOutput, ProcessExit, run_captured, tail};
 
 pub const ATLAS_HOME_VAR: &str = "CODE_ATLAS_HOME";
+const SANDBOX_PATH: &str = "/usr/bin:/bin";
+const SANDBOX_CLEARED_VARS: [&str; 3] = ["RUST_LOG", "XDG_CONFIG_HOME", "XDG_DATA_HOME"];
 const ERROR_TAIL_BYTES: usize = 2000;
 const SYMBOL_FIELDS: [&str; 5] = ["key", "symbol", "qualified_name", "target", "name"];
 const STRUCTURAL_FIELDS: [&str; 2] = ["structural_score", "jaccard"];
@@ -22,6 +24,7 @@ pub struct AtlasCli {
   binary: PathBuf,
   home: PathBuf,
   timeout: Duration,
+  sandbox: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -48,7 +51,13 @@ impl AtlasCli {
       binary: binary.into(),
       home: home.into(),
       timeout,
+      sandbox: None,
     }
+  }
+
+  pub fn sandboxed(mut self, user_dir: impl Into<PathBuf>) -> Self {
+    self.sandbox = Some(user_dir.into());
+    self
   }
 
   pub fn home(&self) -> &Path {
@@ -66,6 +75,24 @@ impl AtlasCli {
 
   pub fn index(&self, project: &str, cwd: &Path) -> AgentResult<CapturedOutput> {
     self.run(&["index".to_owned(), "--project".to_owned(), project.to_owned()], cwd)
+  }
+
+  pub fn config_show(&self, project: &str, cwd: &Path) -> AgentResult<CapturedOutput> {
+    self.run(&["config".to_owned(), "show".to_owned(), "--project".to_owned(), project.to_owned()], cwd)
+  }
+
+  pub fn doctor(&self, project: &str, cwd: &Path) -> AgentResult<CapturedOutput> {
+    let args = ["doctor".to_owned(), "--project".to_owned(), project.to_owned()];
+    let output = self.execute(&args, cwd);
+    let detail = match &output.exit {
+      ProcessExit::Exited { .. } => return Ok(output),
+      ProcessExit::TimedOut => format!("timed out after {}s", self.timeout.as_secs()),
+      ProcessExit::SpawnFailed { reason } => format!("cannot start: {reason}"),
+    };
+    Err(AgentError::Command {
+      command: self.render(&args),
+      detail,
+    })
   }
 
   pub fn similar_snippet(&self, path: &str, start_line: u32, end_line: u32, cwd: &Path) -> AgentResult<Vec<SimilarMatch>> {
@@ -100,9 +127,7 @@ impl AtlasCli {
   }
 
   fn run(&self, args: &[String], cwd: &Path) -> AgentResult<CapturedOutput> {
-    let mut command = isolated_command(&self.binary);
-    command.args(args).current_dir(cwd).env(ATLAS_HOME_VAR, &self.home);
-    let output = run_captured(command, None, self.timeout);
+    let output = self.execute(args, cwd);
     let detail = match &output.exit {
       ProcessExit::Exited { code: Some(0) } => return Ok(output),
       ProcessExit::Exited { code } => format!("exited with {code:?}: {}", tail(output.stderr.trim(), ERROR_TAIL_BYTES)),
@@ -113,6 +138,22 @@ impl AtlasCli {
       command: self.render(args),
       detail,
     })
+  }
+
+  fn execute(&self, args: &[String], cwd: &Path) -> CapturedOutput {
+    let mut command = isolated_command(&self.binary);
+    command.args(args).current_dir(cwd).env(ATLAS_HOME_VAR, &self.home);
+    if let Some(user_dir) = &self.sandbox {
+      for name in SANDBOX_CLEARED_VARS {
+        command.env_remove(name);
+      }
+      command
+        .env("HOME", user_dir)
+        .env("CLAUDE_CONFIG_DIR", user_dir.join("claude"))
+        .env("CODEX_HOME", user_dir.join("codex"))
+        .env("PATH", SANDBOX_PATH);
+    }
+    run_captured(command, None, self.timeout)
   }
 
   fn render(&self, args: &[String]) -> String {

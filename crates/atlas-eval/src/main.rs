@@ -103,6 +103,12 @@ struct RunArgs {
   atlas_bin: Option<PathBuf>,
   #[arg(long)]
   repo_override: Option<PathBuf>,
+  #[arg(
+    long,
+    value_name = "DIR",
+    help = "Seed every isolated Code Atlas home of the atlas arm with DIR/config.toml and DIR/detectors/*.toml (refused when DIR is missing or the configuration does not load)"
+  )]
+  atlas_config: Option<PathBuf>,
   #[arg(long, value_enum, default_value_t = JudgeMode::Claude)]
   judge: JudgeMode,
   #[arg(long, value_enum, default_value_t = PreambleVariant::Standard)]
@@ -299,6 +305,7 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
   let mut conditions = args.condition.clone();
   conditions.sort();
   conditions.dedup();
+  let atlas_config = args.atlas_config.as_deref().map(agent::AtlasConfig::load).transpose()?;
   let planned = planned_runs(args, &tasks, &conditions);
   let atlas_bin = locate_atlas_bin(args.atlas_bin.as_deref(), &repo_root);
   let judge_model = (args.judge == JudgeMode::Claude).then_some(args.claude.judge_model.as_str());
@@ -310,6 +317,13 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
         Some(path) => format!("catl binary {} does not exist yet; atlas runs would fail at setup", path.display()),
         None => "no catl binary found (target/release, target/debug, PATH); atlas runs would fail at setup — pass --atlas-bin".to_owned(),
       });
+    }
+    if let Some(atlas_config) = &atlas_config {
+      notes.push(format!(
+        "atlas config {} is copied into the session home of each atlas run and the duplication-scoring home (atlas-post-home) of every run, baseline included; the baseline session sees none of it; keys set: {}",
+        atlas_config.describe(),
+        atlas_config.keys().join(", ")
+      ));
     }
     let context = DryRunContext {
       tasks: &tasks,
@@ -330,7 +344,7 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
     None => EvalHome::of_tasks(&tasks_dir)?,
   };
   agent::keep_private_untracked(&[&tasks_dir], &[home.root()])?;
-  let config = runner_config(args, repo_root, &home, atlas_bin);
+  let config = runner_config(args, repo_root, &home, atlas_bin, atlas_config);
   let manifest = agent::run_batch(&config, &tasks, planned)?;
   tracing::info!(
     batch = %config.batch_dir.display(),
@@ -348,7 +362,7 @@ fn planned_runs(args: &RunArgs, tasks: &[LoadedTask], conditions: &[Condition]) 
   agent::plan_runs(tasks, conditions, args.runs_per_condition, args.seed)
 }
 
-fn runner_config(args: &RunArgs, repo_root: PathBuf, home: &EvalHome, atlas_bin: Option<PathBuf>) -> RunnerConfig {
+fn runner_config(args: &RunArgs, repo_root: PathBuf, home: &EvalHome, atlas_bin: Option<PathBuf>, atlas_config: Option<agent::AtlasConfig>) -> RunnerConfig {
   let batch = args.batch.clone().unwrap_or_else(|| format!("{}-seed{}", agent::today_utc(), args.seed));
   RunnerConfig {
     repo_root,
@@ -368,6 +382,7 @@ fn runner_config(args: &RunArgs, repo_root: PathBuf, home: &EvalHome, atlas_bin:
     seed: args.seed,
     probe: !args.no_probe && !args.base_only,
     preamble: args.atlas_preamble,
+    atlas_config,
   }
 }
 
@@ -502,7 +517,13 @@ mod tests {
   }
 
   fn config(flags: &[&str]) -> RunnerConfig {
-    runner_config(&run_args(flags), PathBuf::from("/work"), &EvalHome::new("/work/eval"), None)
+    runner_config(&run_args(flags), PathBuf::from("/work"), &EvalHome::new("/work/eval"), None, None)
+  }
+
+  #[test]
+  fn should_pass_the_atlas_config_directory_through_the_flag() {
+    assert_eq!(run_args(&[]).atlas_config, None);
+    assert_eq!(run_args(&["--atlas-config", "/cfg"]).atlas_config, Some(PathBuf::from("/cfg")));
   }
 
   #[test]

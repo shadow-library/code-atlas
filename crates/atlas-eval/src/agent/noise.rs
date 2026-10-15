@@ -1305,6 +1305,7 @@ mod tests {
       preamble_version: 1,
       preamble_variant: PreambleVariant::Standard,
       repo_override: None,
+      atlas_config: None,
       probe: None,
     }
   }

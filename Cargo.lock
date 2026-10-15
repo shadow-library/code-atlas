@@ -248,6 +248,7 @@ dependencies = [
  "atlas-scip",
  "atlas-similarity",
  "atlas-store",
+ "atlas-test-lsp",
  "blake3",
  "clap",
  "insta",

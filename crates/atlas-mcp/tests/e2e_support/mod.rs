@@ -1,10 +1,8 @@
 #![allow(dead_code)]
 
-use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Stdio};
-use std::sync::OnceLock;
+use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
 use atlas_test_lsp::hermetic::hermetic_catl;
@@ -22,31 +20,7 @@ pub fn fixtures() -> PathBuf {
   Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures")
 }
 
-// The binary lives in atlas-cli, so Cargo gives this crate no CARGO_BIN_EXE_catl; build it into the same target dir and profile.
-pub fn binary() -> &'static Path {
-  static BINARY: OnceLock<PathBuf> = OnceLock::new();
-  BINARY.get_or_init(|| {
-    if let Some(path) = std::env::var_os("CODE_ATLAS_BIN") {
-      return PathBuf::from(path);
-    }
-    let test_exe = std::env::current_exe().unwrap();
-    let profile_dir = test_exe.parent().and_then(Path::parent).unwrap().to_path_buf();
-    let target_dir = profile_dir.parent().unwrap();
-    let profile = match profile_dir.file_name().and_then(OsStr::to_str) {
-      Some("debug") | None => "dev".to_owned(),
-      Some(other) => other.to_owned(),
-    };
-    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let status = Command::new(cargo)
-      .args(["build", "--quiet", "-p", "atlas-cli", "--bin", "catl", "--profile", &profile, "--target-dir"])
-      .arg(target_dir)
-      .current_dir(env!("CARGO_MANIFEST_DIR"))
-      .status()
-      .unwrap();
-    assert!(status.success(), "building catl failed");
-    fs::canonicalize(profile_dir.join("catl")).unwrap()
-  })
-}
+pub use atlas_test_lsp::hermetic::catl_binary as binary;
 
 fn copy_dir(from: &Path, to: &Path) {
   fs::create_dir_all(to).unwrap();

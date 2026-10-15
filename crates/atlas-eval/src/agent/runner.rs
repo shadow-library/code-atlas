@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use super::access::{AccessPolicy, contaminated, out_of_tree_accesses};
 use super::accuracy::atlas_accuracy;
 use super::atlas_cli::AtlasCli;
+use super::atlas_config::AtlasConfig;
 use super::claude::{ATLAS_SERVER_NAME, ATLAS_TOOL_PREFIX, ClaudeConfig, EMPTY_MCP_CONFIG, SessionRequest, host_env, project_instructions, session_invocation};
 use super::diff::{Diff, FileChange};
 use super::error::{AgentError, AgentResult};
@@ -64,6 +65,7 @@ pub struct RunnerConfig {
   pub seed: u64,
   pub probe: bool,
   pub preamble: PreambleVariant,
+  pub atlas_config: Option<AtlasConfig>,
 }
 
 struct RunContext<'a> {
@@ -97,12 +99,17 @@ pub fn environment(config: &RunnerConfig) -> Environment {
     preamble_version: config.preamble.version(),
     preamble_variant: config.preamble,
     repo_override: config.repo_override.as_ref().map(|path| path.display().to_string()),
+    atlas_config: config.atlas_config.as_ref().map(AtlasConfig::record),
     probe: None,
   }
 }
 
 pub fn run_batch(config: &RunnerConfig, tasks: &[LoadedTask], planned: Vec<PlannedRun>) -> AgentResult<BatchManifest> {
   fs::create_dir_all(&config.batch_dir).map_err(|error| AgentError::io(&config.batch_dir, error))?;
+  ensure_same_atlas_config(config, &planned)?;
+  if let Some(atlas_config) = config.atlas_config.as_ref().filter(|_| !planned.is_empty()) {
+    validate_atlas_config(config, atlas_config)?;
+  }
   let mut environment = environment(config);
   if config.probe {
     environment.probe = Some(probe(config)?);
@@ -171,6 +178,41 @@ pub fn run_batch(config: &RunnerConfig, tasks: &[LoadedTask], planned: Vec<Plann
   Ok(manifest)
 }
 
+fn validate_atlas_config(config: &RunnerConfig, atlas_config: &AtlasConfig) -> AgentResult<()> {
+  fs::create_dir_all(&config.tree_root).map_err(|error| AgentError::io(&config.tree_root, error))?;
+  let probe = tempfile::Builder::new()
+    .prefix("ae-config-probe-")
+    .tempdir_in(&config.tree_root)
+    .map_err(|error| AgentError::io(&config.tree_root, error))?;
+  check_isolated_location(probe.path(), &[&config.repo_root, &config.eval_home])?;
+  atlas_config.validate(&config.atlas_bin, probe.path(), config.atlas_timeout)
+}
+
+fn ensure_same_atlas_config(config: &RunnerConfig, planned: &[PlannedRun]) -> AgentResult<()> {
+  let expected = config.atlas_config.as_ref().map(AtlasConfig::digest);
+  let mut differing = Vec::new();
+  let mut recorded = BTreeSet::new();
+  for run in planned {
+    let dir = config.batch_dir.join(&run.run_id);
+    if !dir.join(SCORE_FILE).is_file() {
+      continue;
+    }
+    let manifest: RunManifest = read_json(&dir.join(RUN_FILE))?;
+    if manifest.atlas_config_blake3 != expected {
+      recorded.insert(manifest.atlas_config_blake3.unwrap_or_else(|| "none".to_owned()));
+      differing.push(run.run_id.clone());
+    }
+  }
+  if differing.is_empty() {
+    return Ok(());
+  }
+  Err(AgentError::AtlasConfigMismatch {
+    runs: differing.join(", "),
+    recorded: recorded.into_iter().collect::<Vec<_>>().join(", "),
+    expected: expected.unwrap_or_else(|| "none".to_owned()),
+  })
+}
+
 fn probe(config: &RunnerConfig) -> AgentResult<ProbeReport> {
   let dir = config.batch_dir.join("_probe");
   let recorded = dir.join("probe.json");
@@ -192,29 +234,35 @@ fn isolated_atlas_home(config: &RunnerConfig, scratch: &Path, name: &str) -> Age
   let home = scratch.join(name);
   fs::create_dir_all(&home).map_err(|error| AgentError::io(&home, error))?;
   check_isolated_location(&home, &[&config.repo_root, &config.eval_home])?;
+  if let Some(atlas_config) = &config.atlas_config {
+    atlas_config.apply(&home)?;
+  }
   Ok(home)
 }
 
-fn preserve_atlas_artifacts(scratch: &Path, run_dir: &Path) {
+fn preserve_atlas_artifacts(config: &RunnerConfig, scratch: &Path, run_dir: &Path) {
+  let seeded = config.atlas_config.as_ref().map(AtlasConfig::seeded_paths).unwrap_or_default();
   for home in [ATLAS_HOME, ATLAS_POST_HOME] {
     let source = scratch.join(home);
     if !source.is_dir() {
       continue;
     }
-    if let Err(error) = copy_small_artifacts(&source, &run_dir.join(home)) {
+    if let Err(error) = copy_small_artifacts(&source, &source, &run_dir.join(home), &seeded) {
       tracing::warn!(home, %error, "cannot preserve Code Atlas artifacts");
     }
   }
 }
 
-fn copy_small_artifacts(from: &Path, to: &Path) -> std::io::Result<()> {
+fn copy_small_artifacts(root: &Path, from: &Path, to: &Path, skip: &BTreeSet<PathBuf>) -> std::io::Result<()> {
   fs::create_dir_all(to)?;
   for entry in fs::read_dir(from)? {
     let entry = entry?;
     let path = entry.path();
     let name = entry.file_name().to_string_lossy().into_owned();
     if entry.file_type()?.is_dir() {
-      copy_small_artifacts(&path, &to.join(&name))?;
+      copy_small_artifacts(root, &path, &to.join(&name), skip)?;
+    } else if path.strip_prefix(root).is_ok_and(|relative| skip.contains(relative)) {
+      continue;
     } else if !INDEX_DATA_SUFFIXES.iter().any(|suffix| name.ends_with(suffix)) {
       fs::copy(&path, to.join(&name))?;
     }
@@ -294,6 +342,7 @@ fn execute_run(context: &RunContext<'_>) -> AgentResult<f64> {
     claude_code_version: None,
     preamble_version: is_atlas.then(|| context.config.preamble.version()),
     preamble_variant: is_atlas.then_some(context.config.preamble),
+    atlas_config_blake3: context.config.atlas_config.as_ref().map(AtlasConfig::digest),
     args: Vec::new(),
     env_names: Vec::new(),
     atlas_project: None,
@@ -319,7 +368,7 @@ fn execute_run(context: &RunContext<'_>) -> AgentResult<f64> {
       };
       write_json(&dir.join(RUN_FILE), &manifest)?;
       if let Some(scratch) = manifest.tree.as_deref().and_then(|tree| Path::new(tree).parent()) {
-        preserve_atlas_artifacts(scratch, dir);
+        preserve_atlas_artifacts(context.config, scratch, dir);
         release_scratch(context.config, scratch);
       }
       return Ok(0.0);
@@ -327,7 +376,7 @@ fn execute_run(context: &RunContext<'_>) -> AgentResult<f64> {
   };
   let tree = scratch.join("tree");
   let scored = score_session(context, &scratch, &tree, &base_sha, &mut manifest);
-  preserve_atlas_artifacts(&scratch, dir);
+  preserve_atlas_artifacts(context.config, &scratch, dir);
   release_scratch(context.config, &scratch);
   scored
 }

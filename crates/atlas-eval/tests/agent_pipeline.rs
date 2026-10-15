@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use atlas_eval::agent::{
-  self, ClaudeConfig, Condition, ConfigIsolation, DuplicationCheck, JudgeMode, Metrics, PreambleVariant, RUN_FILE, RunManifest, RunStatus, RunnerConfig, SCORE_FILE, Score,
-  SessionOutcome, TargetRole,
+  self, AgentError, AtlasConfig, ClaudeConfig, Condition, ConfigIsolation, DuplicationCheck, JudgeMode, Metrics, PreambleVariant, RUN_FILE, RunManifest, RunStatus, RunnerConfig,
+  SCORE_FILE, Score, SessionOutcome, TargetRole,
 };
 
 const FAKE_CLAUDE: &str = r#"#!/bin/sh
@@ -59,7 +59,12 @@ case "$1" in
     [ -n "$CODE_ATLAS_HOME" ] || exit 9
     echo '{"files":4}' > "$CODE_ATLAS_HOME/index-run.json"
     echo data > "$CODE_ATLAS_HOME/atlas.db"
+    { cat "$CODE_ATLAS_HOME/config/config.toml" "$CODE_ATLAS_HOME"/config/detectors/*.toml; } > "$CODE_ATLAS_HOME/seen-config.txt" 2>/dev/null
     echo "indexed 4 files"
+    ;;
+  doctor) echo "ok    home"; if grep -q failmcp "$CODE_ATLAS_HOME/config/config.toml" 2>/dev/null; then echo "FAIL  mcp tools"; exit 1; fi ;;
+  config)
+    if grep -q reject "$CODE_ATLAS_HOME/config/config.toml" 2>/dev/null; then echo "error: invalid config file" >&2; exit 2; fi
     ;;
   query) echo '{"matches":[{"key":"ts:acme-api:acme-api:src/users/users.service::UsersService::findOne#method","structural_score":0.93,"location":"acme-api:src/users/users.service.ts:2"}]}' ;;
   *) exit 2 ;;
@@ -135,6 +140,7 @@ impl Fixture {
       seed: 3,
       probe: false,
       preamble: PreambleVariant::Standard,
+      atlas_config: None,
     }
   }
 }
@@ -498,6 +504,7 @@ fn should_record_the_directed_preamble_in_the_batch_and_every_atlas_manifest() {
   let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
   let config = RunnerConfig {
     preamble: PreambleVariant::Directed,
+    atlas_config: None,
     ..fixture.config(2, None)
   };
   let manifest = agent::run_batch(&config, &tasks, agent::plan_runs(&tasks, &Condition::ALL, 1, 3)).unwrap();
@@ -511,9 +518,118 @@ fn should_record_the_directed_preamble_in_the_batch_and_every_atlas_manifest() {
   agent::ensure_single_preamble(batch.as_ref(), &records).unwrap();
   let standard = RunnerConfig {
     preamble: PreambleVariant::Standard,
+    atlas_config: None,
     ..fixture.config(2, None)
   };
   agent::run_batch(&standard, &tasks, agent::plan_runs(&tasks, &[Condition::Atlas], 1, 3)).unwrap();
   let (batch, records) = agent::load_runs(&fixture.batch).unwrap();
   assert!(matches!(agent::ensure_single_preamble(batch.as_ref(), &records), Err(agent::AgentError::MixedPreamble(_))));
+}
+
+fn private_config(root: &Path, config_toml: &str) -> PathBuf {
+  let dir = root.join("atlas-config");
+  write(&dir.join("config.toml"), config_toml);
+  write(&dir.join("detectors/acme-http.toml"), "version = 1\n# private_marker\n");
+  dir
+}
+
+#[test]
+fn should_seed_every_atlas_home_with_the_configuration_and_record_only_its_digest() {
+  let fixture = fixture();
+  let dir = private_config(fixture._root.path(), "[defaults.detect]\nroute_families = [\"acme-http\"]\n");
+  let loaded = AtlasConfig::load(&dir).unwrap();
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let config = RunnerConfig {
+    atlas_config: Some(loaded.clone()),
+    ..fixture.config(1, None)
+  };
+
+  let manifest = agent::run_batch(&config, &tasks, agent::plan_runs(&tasks, &Condition::ALL, 1, 3)).unwrap();
+
+  let recorded = manifest.environment.atlas_config.unwrap();
+  assert_eq!(
+    (recorded.blake3.as_str(), recorded.files.as_slice()),
+    (loaded.digest().as_str(), &["config.toml".to_owned(), "detectors/acme-http.toml".to_owned()][..])
+  );
+  assert_eq!(recorded.keys, ["defaults.detect.route_families"]);
+  let batch = fs::read_to_string(fixture.batch.join("batch.json")).unwrap();
+  assert!(
+    batch.contains(&loaded.digest()) && !batch.contains("private_marker") && !batch.contains("version = 1"),
+    "{batch}"
+  );
+  let atlas_run = fixture.batch.join("t99-pipeline.atlas.r0");
+  let seen = fs::read_to_string(atlas_run.join("atlas-home/seen-config.txt")).unwrap();
+  assert!(seen.contains("route_families") && seen.contains("private_marker"), "{seen}");
+  assert!(!atlas_run.join("atlas-home/config/config.toml").exists() && !atlas_run.join("atlas-home/config/detectors/acme-http.toml").exists());
+  assert!(!fixture.batch.join("t99-pipeline.baseline.r0/atlas-home").exists());
+}
+
+#[test]
+fn should_change_nothing_without_an_atlas_config() {
+  let fixture = fixture();
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+
+  agent::run_batch(&fixture.config(1, None), &tasks, agent::plan_runs(&tasks, &Condition::ALL, 1, 3)).unwrap();
+
+  let batch: serde_json::Value = agent::read_json(&fixture.batch.join("batch.json")).unwrap();
+  assert!(batch["environment"].get("atlas_config").is_none());
+  let atlas_run = fixture.batch.join("t99-pipeline.atlas.r0/atlas-home");
+  assert!(!atlas_run.join("config").exists() && !fs::read_to_string(atlas_run.join("seen-config.txt")).unwrap().contains("route_families"));
+}
+
+#[test]
+fn should_refuse_the_batch_before_any_session_when_the_configuration_does_not_load() {
+  let fixture = fixture();
+  let dir = private_config(fixture._root.path(), "# reject\n");
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let config = RunnerConfig {
+    atlas_config: Some(AtlasConfig::load(&dir).unwrap()),
+    ..fixture.config(1, None)
+  };
+
+  let error = agent::run_batch(&config, &tasks, agent::plan_runs(&tasks, &Condition::ALL, 1, 3)).unwrap_err();
+
+  assert!(matches!(error, AgentError::AtlasConfigRejected { .. }), "{error}");
+  assert!(!fixture.batch.join("batch.json").exists() && !fixture.batch.join("t99-pipeline.baseline.r0").exists());
+}
+
+#[test]
+fn should_refuse_a_missing_atlas_config_directory() {
+  let missing = Path::new("/definitely/not/here/atlas-config");
+  assert!(matches!(AtlasConfig::load(missing), Err(AgentError::AtlasConfigMissing(path)) if path == missing));
+}
+
+#[test]
+fn should_record_the_digest_in_every_run_and_refuse_to_resume_under_another_configuration() {
+  let fixture = fixture();
+  let dir = private_config(fixture._root.path(), "[defaults.detect]\nroute_families = [\"acme-http\"]\n");
+  let loaded = AtlasConfig::load(&dir).unwrap();
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let planned = agent::plan_runs(&tasks, &Condition::ALL, 1, 3);
+  let config = RunnerConfig {
+    atlas_config: Some(loaded.clone()),
+    ..fixture.config(1, None)
+  };
+  agent::run_batch(&config, &tasks, planned.clone()).unwrap();
+
+  for condition in ["baseline", "atlas"] {
+    let run: RunManifest = agent::read_json(&fixture.batch.join(format!("t99-pipeline.{condition}.r0")).join(RUN_FILE)).unwrap();
+    assert_eq!(run.atlas_config_blake3, Some(loaded.digest()), "{condition}");
+  }
+  let recorded = agent::read_json::<serde_json::Value>(&fixture.batch.join("batch.json")).unwrap();
+  assert_eq!(recorded["environment"]["atlas_config"]["keys"][0], "defaults.detect.route_families");
+
+  let without = agent::run_batch(&fixture.config(1, None), &tasks, planned.clone()).unwrap_err();
+  assert!(matches!(without, AgentError::AtlasConfigMismatch { ref expected, .. } if expected == "none"), "{without}");
+  write(&dir.join("detectors/acme-http.toml"), "version = 1\n# changed\n");
+  let changed = RunnerConfig {
+    atlas_config: Some(AtlasConfig::load(&dir).unwrap()),
+    ..fixture.config(1, None)
+  };
+  let error = agent::run_batch(&changed, &tasks, planned.clone()).unwrap_err();
+  assert!(
+    matches!(error, AgentError::AtlasConfigMismatch { ref recorded, .. } if *recorded == loaded.digest()),
+    "{error}"
+  );
+  assert!(agent::run_batch(&config, &tasks, planned).is_ok());
 }

@@ -41,3 +41,4 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
+atlas-test-lsp.workspace = true

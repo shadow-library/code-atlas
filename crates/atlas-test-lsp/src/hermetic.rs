@@ -1,6 +1,7 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 
 const SYSTEM_PATH: &str = "/usr/bin:/bin";
 const CLEARED_VARS: [&str; 5] = ["RUST_LOG", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME"];
@@ -55,4 +56,35 @@ pub fn hermetic_catl(binary: impl AsRef<OsStr>, atlas_home: &Path) -> Command {
     command.env("CARGO_HOME", cargo_home);
   }
   command
+}
+
+// The binary lives in atlas-cli, so Cargo gives other crates no CARGO_BIN_EXE_catl; build it into the caller's target dir and profile.
+pub fn catl_binary() -> &'static Path {
+  static BINARY: OnceLock<PathBuf> = OnceLock::new();
+  BINARY.get_or_init(|| {
+    if let Some(path) = std::env::var_os("CODE_ATLAS_BIN") {
+      return PathBuf::from(path);
+    }
+    let test_exe = std::env::current_exe().unwrap_or_else(|error| panic!("cannot locate the running test binary: {error}"));
+    let Some(profile_dir) = test_exe.parent().and_then(Path::parent).map(Path::to_path_buf) else {
+      panic!("{} is not inside a Cargo target directory", test_exe.display());
+    };
+    let Some(target_dir) = profile_dir.parent() else {
+      panic!("{} is not inside a Cargo target directory", profile_dir.display());
+    };
+    let profile = match profile_dir.file_name().and_then(OsStr::to_str) {
+      Some("debug") | None => "dev".to_owned(),
+      Some(other) => other.to_owned(),
+    };
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let status = Command::new(cargo)
+      .args(["build", "--quiet", "-p", "atlas-cli", "--bin", "catl", "--profile", &profile, "--target-dir"])
+      .arg(target_dir)
+      .current_dir(env!("CARGO_MANIFEST_DIR"))
+      .status()
+      .unwrap_or_else(|error| panic!("cannot run cargo to build catl: {error}"));
+    assert!(status.success(), "building catl failed: {status}");
+    let binary = profile_dir.join(format!("catl{}", std::env::consts::EXE_SUFFIX));
+    std::fs::canonicalize(&binary).unwrap_or_else(|error| panic!("{} was not built: {error}", binary.display()))
+  })
 }
