@@ -59,8 +59,12 @@ fn counted(count: u64, noun: &str) -> String {
 
 fn render_route_family(family: &RouteFamilyStatus, out: &mut TextOut) {
   let name = &family.name;
-  let (server, client_calls) = match &family.state {
-    RouteFamilyState::Matched { server, client_calls } => (server, client_calls),
+  let (server, client_calls, conflicts) = match &family.state {
+    RouteFamilyState::Matched {
+      server,
+      client_calls,
+      definition_conflicts,
+    } => (server, client_calls, *definition_conflicts),
     RouteFamilyState::Undeclared { path } => {
       out.line(0, format!("warning: route family {name} is enabled but not declared: {path} does not exist"));
       return;
@@ -81,6 +85,15 @@ fn render_route_family(family: &RouteFamilyStatus, out: &mut TextOut) {
     out.line(
       0,
       format!("warning: route family {name} matched no controllers or routes; check its packages and decorator names"),
+    );
+  }
+  if conflicts > 0 {
+    out.line(
+      0,
+      format!(
+        "warning: route family {name} shares {} with another family and records none of them; narrow the `files` of the client families",
+        counted(conflicts, "client definition")
+      ),
     );
   }
   if *client_calls == Some(0) {
@@ -291,6 +304,7 @@ mod tests {
         state: RouteFamilyState::Matched {
           server: Some(ServerMatches { controllers: 2, routes: 7 }),
           client_calls: Some(3),
+          definition_conflicts: 1,
         },
       },
       RouteFamilyStatus {
@@ -298,6 +312,7 @@ mod tests {
         state: RouteFamilyState::Matched {
           server: Some(ServerMatches { controllers: 0, routes: 0 }),
           client_calls: None,
+          definition_conflicts: 0,
         },
       },
       RouteFamilyStatus {
@@ -305,6 +320,7 @@ mod tests {
         state: RouteFamilyState::Matched {
           server: None,
           client_calls: Some(0),
+          definition_conflicts: 0,
         },
       },
       RouteFamilyStatus {
@@ -320,6 +336,7 @@ mod tests {
     assert!(
       text.contains(
         "route family acme-http: 2 controllers, 7 routes, 3 client calls\n\
+         warning: route family acme-http shares 1 client definition with another family and records none of them; narrow the `files` of the client families\n\
          warning: route family acme-rpc matched no controllers or routes; check its packages and decorator names\n\
          warning: route family acme-books matched no client calls; check its client modules, files, exports and method names\n\
          warning: route family acme-htp is enabled but not declared: /home/config/detectors/acme-htp.toml does not exist\n"

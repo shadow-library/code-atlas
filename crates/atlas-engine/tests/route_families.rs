@@ -89,6 +89,7 @@ fn should_index_an_enabled_family_and_report_what_each_family_matched() {
         state: RouteFamilyState::Matched {
           server: Some(ServerMatches { controllers: 1, routes: 2 }),
           client_calls: None,
+          definition_conflicts: 0,
         },
       },
       RouteFamilyStatus {
@@ -96,6 +97,7 @@ fn should_index_an_enabled_family_and_report_what_each_family_matched() {
         state: RouteFamilyState::Matched {
           server: Some(ServerMatches { controllers: 0, routes: 0 }),
           client_calls: None,
+          definition_conflicts: 0,
         },
       },
     ]
@@ -191,6 +193,7 @@ fn should_index_a_client_only_family_and_count_its_calls_and_silent_shapes() {
         state: RouteFamilyState::Matched {
           server: None,
           client_calls: Some(2),
+          definition_conflicts: 0,
         },
       },
       RouteFamilyStatus {
@@ -198,6 +201,7 @@ fn should_index_a_client_only_family_and_count_its_calls_and_silent_shapes() {
         state: RouteFamilyState::Matched {
           server: Some(ServerMatches { controllers: 1, routes: 2 }),
           client_calls: Some(0),
+          definition_conflicts: 0,
         },
       },
       RouteFamilyStatus {
@@ -205,8 +209,37 @@ fn should_index_a_client_only_family_and_count_its_calls_and_silent_shapes() {
         state: RouteFamilyState::Matched {
           server: None,
           client_calls: Some(0),
+          definition_conflicts: 0,
         },
       },
     ]
   );
+}
+
+#[test]
+fn should_count_the_definition_conflicts_of_each_tied_family_in_status() {
+  let scratch = tempfile::tempdir().unwrap();
+  let root = scratch.path().join("orders");
+  let client = "[client]\nmodules = [\"@acme/http-kit\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces\"\n";
+  let enabled = with_families(service(&root), &["one-web", "two-web"], vec![family("one-web", client), family("two-web", client)]);
+  fs::write(
+    root.join("src/transport.ts"),
+    "import { createApiClient } from '@acme/http-kit';\n\nexport const apiClient = createApiClient({ surfaces: { v1: '/api/v1' } });\n",
+  )
+  .unwrap();
+  let engine = open(&enabled, &scratch.path().join("home"));
+
+  assert!(fresh(&engine).is_fresh());
+
+  let conflicts: Vec<(String, u64)> = engine
+    .status()
+    .unwrap()
+    .route_families
+    .into_iter()
+    .map(|family| match family.state {
+      RouteFamilyState::Matched { definition_conflicts, .. } => (family.name, definition_conflicts),
+      RouteFamilyState::Undeclared { .. } => (family.name, u64::MAX),
+    })
+    .collect();
+  assert_eq!(conflicts, [("one-web".to_owned(), 1), ("two-web".to_owned(), 1)]);
 }

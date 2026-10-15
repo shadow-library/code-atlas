@@ -1,0 +1,12 @@
+version = 1
+
+[client]
+files = ["src/admin/transport.ts"]
+exports = ["AdminRequest"]
+base = "/admin"
+target_package = "@acme/admin-api"
+
+[client.surfaces]
+modules = ["@acme/http-kit"]
+factory = "createKitClient"
+option = "surfaces"

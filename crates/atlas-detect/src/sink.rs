@@ -37,6 +37,11 @@ impl Sink {
     });
   }
 
+  pub fn adopt(&mut self, entity: DetectedEntity) {
+    debug_assert!(self.detection.entities.iter().all(|existing| existing.key != entity.key));
+    self.detection.entities.push(entity);
+  }
+
   pub fn edge(&mut self, kind: EdgeKind, from: NodeRef, to: NodeRef, span: Span, cert: Cert, attrs: Attrs) {
     let Some(certainty) = cert.to_certainty() else {
       tracing::warn!(kind = %kind, "dropping edge with an invalid confidence");

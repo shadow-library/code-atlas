@@ -21,7 +21,7 @@ pub use clients::HttpClientDetector;
 pub use config::ConfigEnvDetector;
 pub use db::DbDetector;
 pub use declared::{DECLARED_ROUTES_ID, DECLARED_ROUTES_VERSION, DeclaredRoutesDetector};
-pub use declared_clients::{DECLARED_CLIENTS_ID, DECLARED_CLIENTS_VERSION, DeclaredClientsDetector};
+pub use declared_clients::{CLIENT_DEFINITION_CONFLICT, DECLARED_CLIENTS_ID, DECLARED_CLIENTS_VERSION, DeclaredClientsDetector, conflicting_families};
 pub use events::EventDetector;
 pub use express::ExpressEndpointDetector;
 pub use jobs::JobDetector;

@@ -362,6 +362,8 @@ A URL with no literal text after a leading `/` (`APIRequest.get(`/${id}`)`) is k
 
 Whole path segments in the declared style (`{id}`, or `:id` for `express`) are rewritten to the `{}` placeholder the link pass matches against routes, and the path as written is kept in the `path_template` attr of the `makes_request` edge. Partial segments (`{name}.json`) and the query string stay literal. `target_package` is copied to every call as an attr and steers link placement (below).
 
+Definitions are recorded only for files a family owns: with `files` set, the files its globs match (importing one of its `modules` does not make a file its own); without `files`, every file, at a lower rank. When several enabled families share one factory (one per web app, each with its own `files`), each records its own transport file only, and a broad family without `files` yields to them. If two families of the same rank claim one definition (two globs matching one file, or two families without `files`), none records it and the file carries a `client-definition-conflict` warning (its `detector_diagnostics` attribute) and `status` warns for each tied family with the number of definitions; narrow their `files`.
+
 The `[client]` section and its enabling follow the rules of the whole file: it is enabled through `detect.route_families` under the file's name, its definition enters the project fingerprint, and it runs as the detector `http-clients-declared`, whose version is a digest of `DECLARED_CLIENTS_VERSION` and every enabled client section, registered only when an enabled family has one. `status` adds the number of client calls each family matched and warns when a client section matched none.
 
 ### Several apps in one repository

@@ -9,9 +9,9 @@ use common::{Analyzed, analyze, lines, render, run, sorted};
 use serde_json::{Value, json};
 
 const PINNED_DECLARED: (u32, &str, &str) = (
-  2,
-  "741ee398f99ef02121077b5a4f83ddaba783a406b21e86113fe5249f48970033",
-  "27d975c37c8c5d588de0f624d78ebf459370e3b8d5d18e9e2e688b91bf57bfb1",
+  3,
+  "e8b6188bcd7a65ed0e2909d0188dcc0ce872990c062d210b7fcfad11f727ca57",
+  "54fe8b5c8cde43605809ebf01beb9f9bac46b2ac6c8a5b892505b82417b20128",
 );
 
 fn detect(detector: &dyn DiagnosingDetector, path: &str, source: &str) -> (Vec<String>, Detection) {
@@ -273,7 +273,8 @@ fn acme_books() -> DecoratorFamily {
 }
 
 fn corpus_clients() -> Vec<DecoratorFamily> {
-  vec![acme_books(), family("acme-kit", &fs::read_to_string(corpus().join("acme-kit.toml")).unwrap())]
+  let kits = ["acme-kit", "acme-kit-admin"].map(|name| family(name, &fs::read_to_string(corpus().join(format!("{name}.toml"))).unwrap()));
+  std::iter::once(acme_books()).chain(kits).collect()
 }
 
 #[test]
@@ -304,10 +305,44 @@ fn should_detect_every_declared_client_call_of_the_corpus() {
       "makes_request removeBook -> client:books-web:DELETE /books/{} [syntactic]",
       "makes_request removeShelf -> client:books-web:DELETE {}/shelves/{} [heuristic 0.70]",
       "makes_request renameShelf -> client:books-web:PATCH /shelves/{} [syntactic]",
+      "other:typed_client:books-web:src/admin/transport.ts#AdminRequest [syntactic]",
+      "other:typed_client:books-web:src/admin/transport.ts#adminKit.audit [syntactic]",
+      "other:typed_client:books-web:src/admin/transport.ts#adminKit.users [syntactic]",
       "other:typed_client:books-web:src/transport.ts#ShelfRequest [syntactic]",
       "other:typed_client:books-web:src/transport.ts#kitClient.session [syntactic]",
       "other:typed_client:books-web:src/transport.ts#kitClient.shelves [syntactic]",
     ])
+  );
+}
+
+#[test]
+fn should_attribute_each_corpus_transport_definition_to_the_family_owning_its_file() {
+  let detector = DeclaredClientsDetector::new(&corpus_clients());
+  let mut owners = Vec::new();
+  for (path, analyzed) in books_web() {
+    let (detection, _) = run(&detector, &analyzed);
+    owners.extend(
+      entity_attrs(&detection)
+        .into_iter()
+        .map(|(key, attrs)| (key, attrs["library"].as_str().unwrap().to_owned())),
+    );
+    assert!(path.ends_with("transport.ts") || entity_attrs(&detection).is_empty(), "{path}");
+  }
+  owners.sort();
+  let libraries: Vec<(&str, &str)> = owners
+    .iter()
+    .map(|(key, library)| (if key.contains("/admin/") { "admin" } else { "src" }, library.as_str()))
+    .collect();
+  assert_eq!(
+    libraries,
+    vec![
+      ("admin", "acme-kit-admin"),
+      ("admin", "acme-kit-admin"),
+      ("admin", "acme-kit-admin"),
+      ("src", "acme-kit"),
+      ("src", "acme-kit"),
+      ("src", "acme-kit")
+    ]
   );
 }
 
@@ -566,4 +601,121 @@ export const cachedViaNamespace = () => transport.APIRequest.cache.post('/users'
   );
   let (without_containers, _) = detect(&declared(KIT_CLIENT), "apps/web/src/session.ts", source);
   assert_eq!(without_containers.len(), 8);
+}
+
+fn web_family(files: &str) -> String {
+  format!("[client]\nfiles = [\"{files}\"]\nexports = [\"APIRequest\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces\"\n")
+}
+
+const WEB_TRANSPORT: &str = r#"import { createApiClient } from '@acme/http-kit';
+
+export const apiClient = createApiClient({ surfaces: { v1: '/api/v1' } });
+export const APIRequest = apiClient.v1;
+"#;
+
+fn definitions(detector: &DeclaredClientsDetector, path: &str) -> Vec<(String, Value)> {
+  let analyzed = analyze("web", path, WEB_TRANSPORT);
+  let (detection, _) = run(detector, &analyzed);
+  entity_attrs(&detection)
+}
+
+#[test]
+fn should_record_a_shared_factory_definition_only_for_the_family_whose_files_match() {
+  let detector = DeclaredClientsDetector::new(&[
+    family("alpha-web", &web_family("apps/alpha/src/transport.ts")),
+    family("beta-web", &web_family("apps/beta/src/transport.ts")),
+  ]);
+  for (path, owner) in [("apps/alpha/src/transport.ts", "alpha-web"), ("apps/beta/src/transport.ts", "beta-web")] {
+    let entities = definitions(&detector, path);
+    let mut keys: Vec<&str> = entities.iter().map(|(key, _)| key.as_str()).collect();
+    keys.sort();
+    assert_eq!(
+      keys,
+      vec![format!("other:typed_client:web:{path}#APIRequest"), format!("other:typed_client:web:{path}#apiClient.v1")]
+    );
+    assert!(entities.iter().all(|(_, attrs)| attrs["library"] == json!(owner)));
+  }
+  let entities = definitions(&detector, "apps/gamma/src/transport.ts");
+  assert_eq!(entities, Vec::new());
+}
+
+#[test]
+fn should_record_no_definition_claimed_by_two_families_and_report_the_conflict() {
+  let detector = DeclaredClientsDetector::new(&[
+    family("alpha-web", &web_family("apps/*/src/transport.ts")),
+    family("beta-web", &web_family("apps/beta/src/transport.ts")),
+  ]);
+  let analyzed = analyze("web", "apps/beta/src/transport.ts", WEB_TRANSPORT);
+  let (detection, diagnostics) = run(&detector, &analyzed);
+  assert_eq!(entity_attrs(&detection), Vec::new());
+  let messages: Vec<(&str, &str)> = diagnostics.iter().map(|diagnostic| (diagnostic.code.as_str(), diagnostic.message.as_str())).collect();
+  assert_eq!(
+    messages,
+    vec![
+      (
+        "client-definition-conflict",
+        "client definition other:typed_client:web:apps/beta/src/transport.ts#APIRequest is claimed by families alpha-web, beta-web; none records it"
+      ),
+      (
+        "client-definition-conflict",
+        "client definition other:typed_client:web:apps/beta/src/transport.ts#apiClient.v1 is claimed by families alpha-web, beta-web; none records it"
+      ),
+    ]
+  );
+  let entities = definitions(&detector, "apps/alpha/src/transport.ts");
+  assert_eq!(entities.len(), 2);
+  assert!(entities.iter().all(|(_, attrs)| attrs["library"] == json!("alpha-web")));
+}
+
+fn broad_family() -> String {
+  "[client]\nmodules = [\"@acme/http-kit\"]\nexports = [\"APIRequest\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces\"\n"
+    .to_owned()
+}
+
+fn libraries(detector: &DeclaredClientsDetector, path: &str) -> (Vec<String>, Vec<String>) {
+  let analyzed = analyze("web", path, WEB_TRANSPORT);
+  let (detection, diagnostics) = run(detector, &analyzed);
+  let mut libraries: Vec<String> = entity_attrs(&detection).iter().map(|(_, attrs)| attrs["library"].as_str().unwrap().to_owned()).collect();
+  libraries.dedup();
+  (libraries, diagnostics.into_iter().map(|diagnostic| diagnostic.code).collect())
+}
+
+#[test]
+fn should_not_record_a_definition_for_a_family_that_only_imports_the_module_of_another() {
+  let a_web = "[client]\nfiles = [\"apps/a-web/src/lib/apis/transport.ts\"]\nmodules = [\"@/lib/apis/transport\"]\nfactories = [\"createApiClient\"]\n";
+  let b_web = "[client]\nfiles = [\"apps/b-web/src/lib/apis/transport.ts\"]\nfactories = [\"createApiClient\"]\n";
+  let detector = DeclaredClientsDetector::new(&[family("a-web", a_web), family("b-web", b_web)]);
+  let source = "import { createApiClient } from '@/lib/apis/transport';\n\nexport const uploadClient = createApiClient({ baseUrl: '/upload' });\n";
+  let analyzed = analyze("web", "apps/b-web/src/lib/apis/upload.ts", source);
+  let (detection, diagnostics) = run(&detector, &analyzed);
+  assert_eq!(entity_attrs(&detection), Vec::new());
+  assert_eq!(diagnostics, Vec::new());
+}
+
+#[test]
+fn should_prefer_a_family_whose_files_match_over_one_without_files() {
+  let detector = DeclaredClientsDetector::new(&[
+    family("alpha-web", &web_family("apps/alpha/src/transport.ts")),
+    family("beta-web", &web_family("apps/beta/src/transport.ts")),
+    family("zz-broad", &broad_family()),
+  ]);
+  assert_eq!(libraries(&detector, "apps/alpha/src/transport.ts"), (vec!["alpha-web".to_owned()], Vec::new()));
+  assert_eq!(libraries(&detector, "apps/beta/src/transport.ts"), (vec!["beta-web".to_owned()], Vec::new()));
+  assert_eq!(libraries(&detector, "apps/gamma/src/transport.ts"), (vec!["zz-broad".to_owned()], Vec::new()));
+}
+
+#[test]
+fn should_report_a_tie_between_families_without_files() {
+  let detector = DeclaredClientsDetector::new(&[family("one-broad", &broad_family()), family("two-broad", &broad_family())]);
+  let (libraries, codes) = libraries(&detector, "apps/gamma/src/transport.ts");
+  assert_eq!(libraries, Vec::<String>::new());
+  assert_eq!(codes, vec!["client-definition-conflict"; 2]);
+}
+
+#[test]
+fn should_name_the_tied_families_of_a_conflict_diagnostic() {
+  let detector = DeclaredClientsDetector::new(&[family("one-broad", &broad_family()), family("two-broad", &broad_family())]);
+  let analyzed = analyze("web", "apps/gamma/src/transport.ts", WEB_TRANSPORT);
+  let (_, diagnostics) = run(&detector, &analyzed);
+  assert_eq!(atlas_detect::conflicting_families(&diagnostics[0]), vec!["one-broad", "two-broad"]);
 }

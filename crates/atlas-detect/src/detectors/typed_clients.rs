@@ -34,15 +34,38 @@ struct ClientBinding {
   extra: Attrs,
 }
 
-pub(super) fn shape_applies(facts: &FileFacts, shape: &ClientShape) -> bool {
-  facts.imports.iter().any(|import| match import {
+fn import_specifiers(facts: &FileFacts) -> impl Iterator<Item = &str> {
+  facts.imports.iter().filter_map(|import| match import {
     ImportFact::TsImport { specifier, .. }
     | ImportFact::TsRequire {
       specifier: ArgSummary::Str(specifier),
       ..
-    } => module_matches(shape, facts.file.path.as_str(), specifier) || imports_surface_factory(shape, specifier),
-    _ => false,
+    } => Some(specifier.as_str()),
+    _ => None,
   })
+}
+
+pub(super) fn shape_applies(facts: &FileFacts, shape: &ClientShape) -> bool {
+  import_specifiers(facts).any(|specifier| module_matches(shape, facts.file.path.as_str(), specifier) || imports_surface_factory(shape, specifier))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum DefinitionRank {
+  Unscoped,
+  Anchored,
+}
+
+pub(super) fn definition_rank(facts: &FileFacts, shape: &ClientShape) -> Option<DefinitionRank> {
+  if shape.files.is_empty() {
+    return Some(DefinitionRank::Unscoped);
+  }
+  let path = facts.file.path.as_str();
+  let stem = module_stem(path);
+  shape
+    .files
+    .iter()
+    .any(|glob| glob_matches(glob, path) || glob_matches(glob, stem))
+    .then_some(DefinitionRank::Anchored)
 }
 
 fn imports_surface_factory(shape: &ClientShape, specifier: &str) -> bool {

@@ -194,10 +194,16 @@ pub enum RouteFamilyState {
     server: Option<ServerMatches>,
     #[serde(skip_serializing_if = "Option::is_none")]
     client_calls: Option<u64>,
+    #[serde(skip_serializing_if = "is_zero")]
+    definition_conflicts: u64,
   },
   Undeclared {
     path: String,
   },
+}
+
+fn is_zero(count: &u64) -> bool {
+  *count == 0
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

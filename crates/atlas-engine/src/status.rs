@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use atlas_core::{EdgeKind, EntityKey, Freshness, Owner, ParseStatus, UnresolvedReason};
-use atlas_detect::DecoratorFamily;
+use atlas_core::{Diagnostic, EdgeKind, EntityKey, Freshness, Owner, ParseStatus, UnresolvedReason};
+use atlas_detect::{DecoratorFamily, conflicting_families};
 use atlas_scip::ScipFacts;
 use atlas_store::{FreshnessPolicy, InferredQuery, OwnedFacts};
 
@@ -57,6 +57,7 @@ struct RouteTally {
   controllers: BTreeMap<String, BTreeSet<(String, String)>>,
   routes: BTreeMap<String, u64>,
   client_calls: BTreeMap<String, u64>,
+  definition_conflicts: BTreeMap<String, u64>,
 }
 
 impl RouteTally {
@@ -68,6 +69,20 @@ impl RouteTally {
       *self.routes.entry(framework.to_owned()).or_default() += 1;
       if let Some(controller) = entity.attrs.get("controller").and_then(serde_json::Value::as_str) {
         self.controllers.entry(framework.to_owned()).or_default().insert((owner.to_owned(), controller.to_owned()));
+      }
+    }
+    for diagnostic in facts
+      .entities
+      .iter()
+      .filter_map(|entity| entity.attrs.get("detector_diagnostics"))
+      .filter_map(serde_json::Value::as_array)
+      .flatten()
+    {
+      let Ok(diagnostic) = serde_json::from_value::<Diagnostic>(diagnostic["diagnostic"].clone()) else {
+        continue;
+      };
+      for family in conflicting_families(&diagnostic) {
+        *self.definition_conflicts.entry(family.to_owned()).or_default() += 1;
       }
     }
     for edge in facts.edges.iter().filter(|edge| edge.kind == EdgeKind::MakesRequest) {
@@ -86,6 +101,7 @@ impl RouteTally {
         routes: self.routes.get(name).copied().unwrap_or(0),
       }),
       client_calls: family.has_client().then(|| self.client_calls.get(name).copied().unwrap_or(0)),
+      definition_conflicts: self.definition_conflicts.get(name).copied().unwrap_or(0),
     }
   }
 }

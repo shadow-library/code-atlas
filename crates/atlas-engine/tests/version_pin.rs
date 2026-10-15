@@ -15,7 +15,7 @@ const PINNED_STRUCTURE: (u32, &str, &str) = (
 );
 const PINNED_LINK: (u32, &str, &str) = (
   6,
-  "6becce671cadb5283ec4d222f2cf8efb2eddb8ffb5a38e81d3e37e488936ba64",
+  "c4a6988bbadc82e6df6f6a7f151864df87ec5b54868732227d92a227a9f7d72a",
   "e014f398d9ee04d49fab8317aadec31efc12806b53b9465f33aa1edefc680190",
 );
 
