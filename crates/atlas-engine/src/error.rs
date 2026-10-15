@@ -50,6 +50,8 @@ pub enum EngineError {
   ProjectConfigChanged,
   #[error("engine serves project {expected}, not {found}")]
   ProjectMismatch { expected: String, found: String },
+  #[error("{} has {available} bytes free, but copying the project database needs {needed}", .path.display())]
+  InsufficientSpace { path: PathBuf, needed: u64, available: u64 },
 }
 
 impl EngineError {

@@ -10,6 +10,7 @@ mod index;
 mod init;
 mod lsp_probe;
 mod mcp;
+mod overlays;
 mod project;
 mod query;
 mod scip;

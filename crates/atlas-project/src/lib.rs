@@ -8,6 +8,7 @@ mod globs;
 mod home;
 mod manifest;
 mod marker;
+mod overlay;
 mod registry;
 mod worktree;
 
@@ -15,7 +16,7 @@ pub use binding::*;
 pub use changes::*;
 pub use config::{
   AgentsSettings, ClaudeAgent, ClaudeHook, ClaudeScope, CodexAgent, ConfigEntry, ConfigEnv, GuidanceMode, KeyClass, McpFlags, McpSettings, Origin, ResolvedMcp, ToolsSetting,
-  UserConfig, resolve_mcp,
+  UserConfig, WorktreeMode, WorktreeSettings, resolve_mcp,
 };
 pub use discovery::*;
 pub use error::*;
@@ -23,5 +24,6 @@ pub use globs::PathGlobs;
 pub use home::*;
 pub use manifest::*;
 pub use marker::*;
+pub use overlay::*;
 pub use registry::*;
 pub use worktree::*;

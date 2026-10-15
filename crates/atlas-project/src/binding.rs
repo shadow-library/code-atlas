@@ -95,16 +95,40 @@ impl UnresolvedWorktree {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OverlayOf {
+  pub project: ProjectName,
+  pub overlay: ProjectName,
+  pub label: String,
+  pub worktree: PathBuf,
+  pub repos: Vec<RepoName>,
+}
+
+impl OverlayOf {
+  pub fn describe(&self) -> String {
+    let repos: Vec<&str> = self.repos.iter().map(RepoName::as_str).collect();
+    let noun = if repos.len() == 1 { "repo" } else { "repos" };
+    format!(
+      "worktree overlay {} of project {}: {noun} {} indexed from the git worktree at {}",
+      self.label,
+      self.project,
+      repos.join(", "),
+      self.worktree.display()
+    )
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Binding {
   Direct,
   Worktree(WorktreeOf),
   UnresolvedWorktree(UnresolvedWorktree),
+  Overlay(OverlayOf),
 }
 
 impl Binding {
   pub fn caveat(&self) -> Option<String> {
     match self {
-      Self::Direct => None,
+      Self::Direct | Self::Overlay(_) => None,
       Self::Worktree(worktree) => Some(worktree.caveat()),
       Self::UnresolvedWorktree(unresolved) => Some(unresolved.caveat()),
     }
@@ -112,7 +136,7 @@ impl Binding {
 
   pub fn edit_refusal(&self) -> Option<String> {
     match self {
-      Self::Direct => None,
+      Self::Direct | Self::Overlay(_) => None,
       Self::Worktree(worktree) => Some(worktree.edit_refusal()),
       Self::UnresolvedWorktree(unresolved) => Some(unresolved.edit_refusal()),
     }

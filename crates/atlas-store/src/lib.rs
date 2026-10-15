@@ -1,3 +1,4 @@
+mod backup;
 mod blobs;
 mod codec;
 mod digest;
@@ -15,6 +16,7 @@ mod stored;
 mod traverse;
 mod tx;
 
+pub use backup::{BackupReport, backup_database};
 pub use blobs::*;
 pub use error::*;
 pub use facts::*;

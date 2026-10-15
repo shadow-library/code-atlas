@@ -54,6 +54,12 @@ pub enum ProjectError {
   InvalidMarker { path: PathBuf, message: String },
   #[error("project marker {} names unknown project {project:?}", .path.display())]
   MarkerProjectNotFound { path: PathBuf, project: String },
+  #[error(
+    "{} is in the git worktree at {} of project {project:?}, and config.toml sets [worktrees] mode = \"off\", so Code Atlas does not serve it",
+    .cwd.display(),
+    .worktree.display()
+  )]
+  WorktreeIgnored { cwd: PathBuf, worktree: PathBuf, project: String },
 }
 
 impl ProjectError {

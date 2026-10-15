@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use atlas_ide::{
-  Completeness, DeclarationRequest, DiagnosticsRequest, DiscoveryLauncher, IdeMode, IdeOptions, IdeService, LineRange, Outline, OutlineRequest, ReadSource, References,
-  ReferencesRequest, ServerView, Severity, UnitCheck, UnitCheckState,
+  Completeness, DeclarationRequest, DiagnosticsRequest, DiscoveryLauncher, IdeMode, IdeOptions, IdeService, LineRange, Outline, OutlineRequest, OverlayEdits, ReadSource,
+  References, ReferencesRequest, ServerView, Severity, UnitCheck, UnitCheckState,
 };
 use atlas_project::Project;
 use atlas_query::{FindRequest, Freshness, HierarchyRequest, NameMatch, OutlineParse, RenderText, Response, Targeted};
@@ -25,7 +25,8 @@ impl OneShot {
   pub fn open(ctx: &Context) -> CliResult<Self> {
     let project = ctx.resolve()?;
     let engine = ctx.open_engine(&project)?;
-    let options = IdeOptions::for_project(&project, &ctx.home, IdeMode::OneShot);
+    let bound = ctx.bound()?;
+    let options = IdeOptions::for_project(&project, &bound.engine_home, IdeMode::OneShot).in_overlay(OverlayEdits::of(&bound.binding, bound.base_db.as_deref()));
     let ide = Arc::new(IdeService::new(engine, Arc::new(DiscoveryLauncher), options));
     interrupt::watch(Arc::clone(&ide))?;
     Ok(Self { ide, project })

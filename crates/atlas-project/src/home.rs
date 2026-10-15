@@ -13,6 +13,9 @@ const DETECTORS_DIR: &str = "detectors";
 const DB_FILE: &str = "atlas.db";
 const WIRING_FILE: &str = "wiring.json";
 const HOOK_STATE_DIR: &str = "hooks";
+const WORKTREES_FILE: &str = "worktrees.json";
+// A project name starts with a letter or digit, so no project data directory can be this one.
+const OVERLAYS_DIR: &str = "_worktrees";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AtlasHome {
@@ -80,6 +83,21 @@ impl AtlasHome {
     self.data_dir.join(HOOK_STATE_DIR)
   }
 
+  pub fn worktrees_path(&self) -> PathBuf {
+    self.data_dir.join(WORKTREES_FILE)
+  }
+
+  pub fn overlays_dir(&self) -> PathBuf {
+    self.data_dir.join(OVERLAYS_DIR)
+  }
+
+  pub fn overlay_home(&self) -> Self {
+    Self {
+      config_dir: self.config_dir.clone(),
+      data_dir: self.overlays_dir(),
+    }
+  }
+
   pub fn project_data_dir(&self, project: &ProjectName) -> PathBuf {
     self.data_dir.join(project.as_str())
   }
@@ -141,5 +159,16 @@ mod tests {
     assert_eq!(home.config_path(), Path::new("/iso/config/config.toml"));
     assert_eq!(home.wiring_path(), Path::new("/iso/data/wiring.json"));
     assert_eq!(home.hook_state_dir(), Path::new("/iso/data/hooks"));
+    assert_eq!(home.worktrees_path(), Path::new("/iso/data/worktrees.json"));
+  }
+
+  #[test]
+  fn should_keep_overlay_databases_apart_from_every_project_data_directory() {
+    let home = AtlasHome::rooted_at("/iso");
+    let overlay = ProjectName::new("acme.feature-0a1b2c3d").unwrap();
+
+    assert_eq!(home.overlay_home().db_path(&overlay), Path::new("/iso/data/_worktrees/acme.feature-0a1b2c3d/atlas.db"));
+    assert_eq!(home.overlay_home().config_dir(), home.config_dir());
+    assert!(ProjectName::new("_worktrees").is_err());
   }
 }

@@ -543,7 +543,10 @@ impl EditOutcome {
     }
     let width = self.files.iter().map(|file| file.label().len()).max().unwrap_or(0);
     for file in &self.files {
-      out.line(1, format!("{:width$}  {}", file.label(), file.edits));
+      match &file.outside_worktree {
+        Some(checkout) => out.line(1, format!("{:width$}  {}  (outside the worktree: {checkout})", file.label(), file.edits)),
+        None => out.line(1, format!("{:width$}  {}", file.label(), file.edits)),
+      }
       if let EditStatus::DryRun { .. } = self.status {
         for hunk in &file.hunks {
           for line in hunk.lines() {
@@ -688,6 +691,7 @@ mod tests {
       before: "a".to_owned(),
       after: "b".to_owned(),
       hunks: Vec::new(),
+      outside_worktree: None,
     }];
     outcome
   }

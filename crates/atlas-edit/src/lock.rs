@@ -1,4 +1,4 @@
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -15,6 +15,9 @@ pub struct EditLock {
 
 impl EditLock {
   pub fn open(path: &Path) -> EditResult<Self> {
+    if let Some(directory) = path.parent() {
+      fs::create_dir_all(directory).map_err(|source| EditError::io("create the edit lock directory", directory, source))?;
+    }
     let file = OpenOptions::new()
       .create(true)
       .truncate(false)

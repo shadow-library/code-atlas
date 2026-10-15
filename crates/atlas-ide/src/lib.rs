@@ -25,5 +25,5 @@ pub use outline::{ExactOutline, MAX_OUTLINE_DEPTH, Outline, OutlineRequest, Outl
 pub use references::{ExactReferences, ExtraReason, GraphExtra, References, ReferencesRequest, RepoGroup, SymbolGroup, TargetView};
 pub use render::{Completeness, EditView, ExactCertainty, ServerView, StatusAnswer, UnitView};
 pub use servers::{DiscoveryLauncher, IdeMode, IdeSettings, LaunchRequest, LaunchSpec, Launcher, TsServer, TsServerOrigin, UnitMode};
-pub use service::{IdeOptions, IdeService};
+pub use service::{IdeOptions, IdeService, OverlayEdits};
 pub use target::FileRef;

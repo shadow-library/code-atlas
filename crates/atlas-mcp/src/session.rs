@@ -1,9 +1,10 @@
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use atlas_engine::{Engine, WatchHandle};
-use atlas_ide::{DiscoveryLauncher, IdeMode, IdeOptions, IdeService};
-use atlas_project::{AtlasHome, Binding, Registry};
+use atlas_engine::{Engine, WatchHandle, bind_project, current_overlay};
+use atlas_ide::{DiscoveryLauncher, IdeMode, IdeOptions, IdeService, OverlayEdits};
+use atlas_project::{AtlasHome, Binding, OverlayLease, OverlayReport, Project, Registry};
 use atlas_query::QueryEngine;
 
 use crate::error::{McpError, ToolError};
@@ -13,10 +14,13 @@ const REGISTRY_RETRY_DELAY: Duration = Duration::from_millis(50);
 
 pub(crate) struct Session {
   home: AtlasHome,
+  cwd: PathBuf,
+  explicit: Option<String>,
   project: String,
   binding: Binding,
   ide: IdeService,
   refresh: Mutex<Refresh>,
+  _overlay: Option<OverlayLease>,
 }
 
 struct Refresh {
@@ -27,26 +31,33 @@ struct Refresh {
 impl Session {
   pub(crate) fn open(options: &ServeOptions) -> Result<Self, McpError> {
     let registry = Registry::load(&options.home)?;
-    let resolution = registry.resolve(&options.cwd, options.project.as_deref())?;
-    let project = resolution.project;
-    let engine = Arc::new(Engine::open(&project, &options.home, options.engine.clone())?);
+    let bound = bind_project(&options.home, &registry, &options.cwd, options.project.as_deref(), &options.engine.store)?;
+    let project = bound.project;
+    let engine = Arc::new(Engine::open(&project, &bound.engine_home, options.engine.clone())?);
     let watcher = if options.watch { start_watcher(&engine) } else { None };
     tracing::info!(project = %project.name, repos = project.repos.len(), watch = options.watch, "bound the MCP server to its project");
-    if let Some(caveat) = resolution.binding.caveat() {
+    if let Some(caveat) = bound.binding.caveat() {
       tracing::warn!(caveat = %caveat, "started outside the indexed checkout; answers carry a caveat and edits are refused");
     }
-    log_config_warnings(&registry, project.name.as_str());
-    for warning in &resolution.warnings {
+    if let Binding::Overlay(overlay) = &bound.binding {
+      tracing::info!(overlay = %overlay.describe(), "answering from the worktree's own index; edits write the worktree");
+    }
+    log_config_warnings(&registry, base_name(&bound.binding, &project));
+    for warning in &bound.warnings {
       tracing::warn!(warning = %warning, "ignored a configuration value");
     }
     let launcher = options.launcher.as_ref().map_or_else(|| Arc::new(DiscoveryLauncher) as _, |handle| Arc::clone(&handle.0));
-    let ide = IdeService::new(engine, launcher, IdeOptions::for_project(&project, &options.home, IdeMode::Warm));
+    let ide_options = IdeOptions::for_project(&project, &bound.engine_home, IdeMode::Warm).in_overlay(OverlayEdits::of(&bound.binding, bound.base_db.as_deref()));
+    let ide = IdeService::new(engine, launcher, ide_options);
     Ok(Self {
       home: options.home.clone(),
+      cwd: options.cwd.clone(),
+      explicit: options.project.clone(),
       project: project.name.to_string(),
-      binding: resolution.binding,
+      binding: bound.binding,
       ide,
       refresh: Mutex::new(Refresh { watching: options.watch, watcher }),
+      _overlay: bound.overlay,
     })
   }
 
@@ -70,6 +81,11 @@ impl Session {
     self.binding.caveat()
   }
 
+  pub(crate) fn overlay_report(&self) -> Option<(String, OverlayReport)> {
+    let Binding::Overlay(overlay) = &self.binding else { return None };
+    Some((overlay.project.to_string(), overlay.report(&self.home)))
+  }
+
   pub(crate) fn edit_refusal(&self) -> Option<String> {
     self.binding.edit_refusal()
   }
@@ -84,14 +100,14 @@ impl Session {
     }
     let mut refresh = self.refresh.lock().unwrap_or_else(PoisonError::into_inner);
     let registry = self.load_registry()?;
-    let latest = registry.project(&self.project).map_err(|_| ToolError::ProjectGone(self.project.clone()))?;
-    if *self.engine().project() == *latest {
+    let latest = self.latest_project(&registry)?;
+    if *self.engine().project() == latest {
       return Ok(());
     }
     tracing::info!(project = %self.project, repos = latest.repos.len(), "project definition changed; reloading the engine");
-    log_config_warnings(&registry, &self.project);
-    self.engine().reload_project(latest)?;
-    self.ide.reload(latest);
+    log_config_warnings(&registry, base_name(&self.binding, &latest));
+    self.engine().reload_project(&latest)?;
+    self.ide.reload(&latest);
     if refresh.watching {
       refresh.watcher = None;
       refresh.watcher = start_watcher(self.engine());
@@ -102,8 +118,18 @@ impl Session {
   // Concurrent calls compare without the refresh lock; a reload re-reads the registry under the lock so a call holding an older copy never reverts it.
   fn registry_matches(&self) -> Result<bool, ToolError> {
     let registry = self.load_registry()?;
-    let latest = registry.project(&self.project).map_err(|_| ToolError::ProjectGone(self.project.clone()))?;
-    Ok(*self.engine().project() == *latest)
+    Ok(*self.engine().project() == self.latest_project(&registry)?)
+  }
+
+  // An overlay is re-derived from the registry, never replaced by its base project, whose paths are the main checkout's.
+  fn latest_project(&self, registry: &Registry) -> Result<Project, ToolError> {
+    if !matches!(self.binding, Binding::Overlay(_)) {
+      return registry.project(&self.project).cloned().map_err(|_| ToolError::ProjectGone(self.project.clone()));
+    }
+    current_overlay(registry, &self.cwd, self.explicit.as_deref())?
+      .map(|plan| plan.project)
+      .filter(|latest| latest.name.as_str() == self.project)
+      .ok_or_else(|| ToolError::OverlayGone(self.project.clone()))
   }
 
   fn load_registry(&self) -> Result<Registry, ToolError> {
@@ -133,6 +159,13 @@ impl Session {
 fn shut_down_in_order(stop_language_servers: impl FnOnce(), persist_similarity: impl FnOnce()) {
   stop_language_servers();
   persist_similarity();
+}
+
+fn base_name<'a>(binding: &'a Binding, project: &'a Project) -> &'a str {
+  match binding {
+    Binding::Overlay(overlay) => overlay.project.as_str(),
+    _ => project.name.as_str(),
+  }
 }
 
 fn log_config_warnings(registry: &Registry, project: &str) {

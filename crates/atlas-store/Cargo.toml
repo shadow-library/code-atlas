@@ -10,7 +10,7 @@ workspace = true
 
 [dependencies]
 atlas-core.workspace = true
-rusqlite.workspace = true
+rusqlite = { workspace = true, features = ["backup"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

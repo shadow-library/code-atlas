@@ -1,6 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
 use std::time::{Duration, Instant};
 
@@ -8,7 +8,7 @@ use atlas_core::{RepoName, RunId};
 use atlas_engine::Engine;
 use atlas_lsp::protocol::ServerCapabilities;
 use atlas_lsp::{ChangeList, Lease, LspError, LspPool, RestartReason, ServerKind, SyncDemand, SyncLimits, UnitKey, UnitPhase, UnitScope, resident_kib};
-use atlas_project::{AtlasHome, Project};
+use atlas_project::{AtlasHome, Binding, Project};
 use atlas_query::{FindAnswer, FindRequest, Freshness, HierarchyAnswer, HierarchyRequest, QueryEngine, Response, Targeted};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -33,6 +33,23 @@ pub struct IdeOptions {
   pub sync: SyncLimits,
   pub plan_ttl: Duration,
   pub diagnostics_timeout: Duration,
+  pub overlay: Option<OverlayEdits>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OverlayEdits {
+  pub base_db: PathBuf,
+  pub repos: Vec<String>,
+}
+
+impl OverlayEdits {
+  pub fn of(binding: &Binding, base_db: Option<&Path>) -> Option<Self> {
+    let (Binding::Overlay(overlay), Some(base_db)) = (binding, base_db) else { return None };
+    Some(Self {
+      base_db: base_db.to_path_buf(),
+      repos: overlay.repos.iter().map(ToString::to_string).collect(),
+    })
+  }
 }
 
 impl IdeOptions {
@@ -48,7 +65,13 @@ impl IdeOptions {
       sync: SyncLimits::default(),
       plan_ttl: PLAN_TTL,
       diagnostics_timeout: PUSH_TIMEOUT,
+      overlay: None,
     }
+  }
+
+  pub fn in_overlay(mut self, overlay: Option<OverlayEdits>) -> Self {
+    self.overlay = overlay;
+    self
   }
 }
 
@@ -76,6 +99,7 @@ pub struct IdeService {
   pub(crate) edits: Mutex<()>,
   pub(crate) writes: WriteGate,
   pub(crate) plans: Mutex<PlanCache>,
+  pub(crate) overlay: Option<OverlayEdits>,
   diagnostics_timeout: Duration,
 }
 
@@ -226,6 +250,7 @@ impl IdeService {
       edits: Mutex::new(()),
       writes: WriteGate::new(),
       plans: Mutex::new(PlanCache::new(options.plan_ttl)),
+      overlay: options.overlay,
       diagnostics_timeout: options.diagnostics_timeout,
     }
   }

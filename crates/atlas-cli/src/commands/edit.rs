@@ -16,7 +16,7 @@ pub fn run(ctx: &Context, command: EditCommand) -> CliResult<Outcome> {
 }
 
 fn dispatch(ctx: &Context, command: EditCommand) -> CliResult<Outcome> {
-  if let Some(refusal) = ctx.resolution()?.binding.edit_refusal() {
+  if let Some(refusal) = ctx.bound()?.binding.edit_refusal() {
     return Err(CliError::EditOutsideIndexedCheckout(refusal));
   }
   match command {

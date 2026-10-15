@@ -100,6 +100,8 @@ pub struct StatusAnswer {
   pub budget_retries: Vec<BudgetRetryView>,
   #[serde(skip_serializing_if = "Vec::is_empty")]
   pub route_families: Vec<RouteFamilyStatus>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub settings_project: Option<String>,
 }
 
 fn now_ms() -> i64 {
@@ -180,6 +182,7 @@ impl QueryEngine {
         .collect(),
       budget_retries: status.budget_retries.iter().map(budget_retry).collect(),
       route_families: status.route_families,
+      settings_project: None,
     };
     Ok(Response { freshness, answer })
   }

@@ -56,7 +56,7 @@ pub fn run(ctx: &Context) -> CliResult<Outcome> {
     auto_scip: auto_scip_options(),
     ..EngineOptions::default()
   };
-  let engine = Arc::new(Engine::open(&project, &ctx.home, options)?);
+  let engine = Arc::new(Engine::open(&project, &ctx.engine_home()?, options)?);
   let report = engine.ensure_fresh()?;
   if !report.is_fresh() {
     tracing::warn!(project = %project.name, "the initial freshness check was degraded");
@@ -66,7 +66,7 @@ pub fn run(ctx: &Context) -> CliResult<Outcome> {
   note(format!("watching {} ({} repos); press Ctrl-C to stop", project.name, project.repos.len()));
   note(match project.settings.scip.enabled {
     true => format!("automatic SCIP runs after {}s without file changes", project.settings.scip.debounce_secs),
-    false => format!("automatic SCIP is off; enable it with `catl project config {} --scip on`", project.name),
+    false => format!("automatic SCIP is off; enable it with `catl project config {} --scip on`", ctx.settings_project(&project)?),
   });
   while let Wake::Tick = shutdown.wait() {
     if !config_changed(&engine.ensure_fresh()?) {
@@ -89,8 +89,7 @@ fn config_changed(report: &FreshnessReport) -> bool {
 }
 
 fn reload(ctx: &Context, engine: &Engine, project: &Project) -> CliResult<Project> {
-  let registry = ctx.registry()?;
-  let current = registry.project(project.name.as_str())?.clone();
+  let current = ctx.latest_project(project)?;
   engine.reload_project(&current)?;
   Ok(current)
 }

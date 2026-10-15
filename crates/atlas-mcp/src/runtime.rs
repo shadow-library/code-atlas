@@ -39,6 +39,10 @@ impl Server {
         tracing::info!(cwd = %cwd.display(), "no registered project contains the working directory; serving atlas_status only");
         Ok(Self::Unbound(UnboundServer::new(cwd)))
       }
+      Err(McpError::Project(ignored @ ProjectError::WorktreeIgnored { .. })) => {
+        tracing::info!(reason = %ignored, "worktrees are switched off; serving atlas_status only");
+        Ok(Self::Unbound(UnboundServer::explaining(&options.cwd, ignored.to_string())))
+      }
       opened => opened.map(Self::Bound),
     }
   }

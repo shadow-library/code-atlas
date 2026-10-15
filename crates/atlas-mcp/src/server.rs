@@ -470,7 +470,11 @@ impl AtlasServer {
         if args.since_run.is_some_and(|since_run| since_run < 0) {
           return Err(ToolError::invalid("since_run must not be negative"));
         }
-        let response = query(shared).status()?;
+        let mut response = query(shared).status()?;
+        let overlay = shared.session.overlay_report();
+        if let Some((base, _)) = &overlay {
+          response.answer.settings_project = Some(base.clone());
+        }
         let changes = args
           .since_run
           .map(|since_run| {
@@ -484,7 +488,11 @@ impl AtlasServer {
         let telemetry = shared.telemetry.snapshot();
         match format {
           Format::Text => {
-            let mut text = render::plain(&response, format)? + &render::answer_text(&servers);
+            let mut text = render::plain(&response, format)?;
+            if let Some((_, report)) = &overlay {
+              text.push_str(&format!("{}\n", report.line));
+            }
+            text.push_str(&render::answer_text(&servers));
             if let (Some(since_run), Some(changes)) = (args.since_run, &changes) {
               let current = changes.freshness.run.map_or_else(|| "none".to_owned(), |run| run.to_string());
               text.push_str(&format!(
@@ -503,6 +511,9 @@ impl AtlasServer {
             }
             if let Ok(value) = serde_json::to_value(&telemetry) {
               document["mcp_telemetry"] = value;
+            }
+            if let Some((_, report)) = overlay {
+              document["overlay"] = report.json;
             }
           }),
         }

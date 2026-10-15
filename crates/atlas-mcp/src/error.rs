@@ -35,6 +35,8 @@ pub(crate) enum ToolError {
   Engine(#[from] EngineError),
   #[error("project {0:?} is no longer in the registry; this server stays bound to it and cannot answer")]
   ProjectGone(String),
+  #[error("the worktree overlay {0} can no longer be derived from the registry (its project, repo or worktree changed); restart this MCP server")]
+  OverlayGone(String),
   #[error("internal error while running {tool}: {message}; the server is still running, retry or use another tool")]
   Panicked { tool: &'static str, message: String },
 }

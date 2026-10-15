@@ -1162,9 +1162,10 @@ fn shop_with_worktree(sandbox: &Sandbox) -> (PathBuf, PathBuf) {
 }
 
 #[test]
-fn should_refuse_an_edit_from_a_worktree_with_exit_5_and_write_nothing() {
+fn should_refuse_an_edit_from_a_worktree_in_main_mode_with_exit_5_and_write_nothing() {
   let sandbox = Sandbox::new();
   let (main, worktree) = shop_with_worktree(&sandbox);
+  sandbox.write_config("[worktrees]\nmode = \"main\"\n");
   let edit = ["edit", "replace", "src/lib.rs", "--pattern", "weight * 3", "--text", "weight * 4"];
 
   let refused = sandbox.run(&worktree.join("src"), &edit);
@@ -1207,7 +1208,8 @@ fn should_refuse_edits_from_a_worktree_of_a_repo_inside_a_registered_parent_fold
   let worktree = app.join(".worktrees/feature");
   assert_ok(&sandbox.run(&workspace, &["project", "create", "ws", "--repo", workspace.to_str().unwrap()]));
   let refusal = format!(
-    "error: refusing to edit from the git worktree at {}: project ws indexes the main checkout at {} (repo workspace), so the edit would write there, not into this worktree; nothing was written. Edit the worktree's files directly, or run the edit from {}\n",
+    "warning: no worktree overlay: no repo of project ws is registered inside the checkout {}, so the worktree cannot stand in for one; answering from the indexed checkout, and edits are refused here\nerror: refusing to edit from the git worktree at {}: project ws indexes the main checkout at {} (repo workspace), so the edit would write there, not into this worktree; nothing was written. Edit the worktree's files directly, or run the edit from {}\n",
+    app.display(),
     worktree.display(),
     app.display(),
     app.display()
@@ -1232,7 +1234,7 @@ fn should_refuse_edits_from_a_worktree_of_a_repo_inside_a_registered_parent_fold
   assert_eq!(fs::read_to_string(worktree.join("src/lib.rs")).unwrap(), SHOP_LIB);
   assert_ok(&query);
   assert!(
-    stderr(&query).starts_with(&format!("worktree caveat: answers describe the main checkout at {}", app.display())),
+    stderr(&query).contains(&format!("\nworktree caveat: answers describe the main checkout at {}", app.display())),
     "{}",
     stderr(&query)
   );
@@ -1260,11 +1262,12 @@ fn should_refuse_edits_from_a_worktree_whose_git_file_no_longer_resolves() {
 }
 
 #[test]
-fn should_refuse_edits_from_a_worktree_whose_commondir_file_is_missing() {
+fn should_refuse_edits_in_main_mode_from_a_worktree_whose_commondir_file_is_missing() {
   let sandbox = Sandbox::new();
   let (main, worktree) = shop_with_worktree(&sandbox);
   fs::remove_file(main.join(".git/worktrees/feature/commondir")).unwrap();
 
+  sandbox.write_config("[worktrees]\nmode = \"main\"\n");
   let refused = sandbox.run(&worktree, &["edit", "replace", "src/lib.rs", "--pattern", "weight * 3", "--text", "weight * 4"]);
 
   assert_eq!(code(&refused), 5, "{}", stderr(&refused));
@@ -1308,9 +1311,10 @@ fn should_connect_claude_from_a_worktree_into_the_worktree_and_leave_the_main_ch
 }
 
 #[test]
-fn should_print_the_worktree_caveat_with_answers_given_from_a_worktree() {
+fn should_print_the_worktree_caveat_with_answers_given_from_a_worktree_in_main_mode() {
   let sandbox = Sandbox::new();
   let (main, worktree) = shop_with_worktree(&sandbox);
+  sandbox.write_config("[worktrees]\nmode = \"main\"\n");
   let caveat = format!(
     "worktree caveat: answers describe the main checkout at {}, not the git worktree at {} (repo shop of project shop); edits are refused here\n",
     main.display(),
@@ -1331,6 +1335,239 @@ fn should_print_the_worktree_caveat_with_answers_given_from_a_worktree() {
   assert_eq!(stderr(&in_main), "");
   let body = |output: &Output| stdout(output).lines().skip(1).map(str::to_owned).collect::<Vec<_>>();
   assert_eq!(body(&in_main), body(&in_worktree));
+}
+
+#[test]
+fn should_answer_from_and_edit_the_worktree_through_its_overlay() {
+  let sandbox = Sandbox::new();
+  let (main, worktree) = shop_with_worktree(&sandbox);
+  assert_ok(&sandbox.run(&main, &["index"]));
+  let edited = SHOP_LIB.replace("weight * 3", "weight * 4");
+
+  let applied = sandbox.run(&worktree.join("src"), &["edit", "replace", "src/lib.rs", "--pattern", "weight * 3", "--text", "weight * 4"]);
+  let in_worktree = sandbox.run(&worktree, &["query", "read", "shipping_fee"]);
+  let in_main = sandbox.run(&main, &["query", "read", "shipping_fee"]);
+  let status = sandbox.run(&worktree, &["status"]);
+  let status_json = sandbox.run(&worktree, &["status", "--json"]);
+  let main_status = sandbox.run(&main, &["status"]);
+  let listed = sandbox.run(&main, &["project", "list"]);
+
+  assert_ok(&applied);
+  assert_eq!(stderr(&applied), "");
+  assert_eq!(fs::read_to_string(worktree.join("src/lib.rs")).unwrap(), edited);
+  assert_eq!(fs::read_to_string(main.join("src/lib.rs")).unwrap(), SHOP_LIB);
+  assert_ok(&in_worktree);
+  assert_eq!(stderr(&in_worktree), "");
+  assert!(stdout(&in_worktree).contains("weight * 4"), "{}", stdout(&in_worktree));
+  assert_ok(&in_main);
+  assert!(stdout(&in_main).contains("weight * 3"), "{}", stdout(&in_main));
+  assert_ok(&status);
+  assert!(
+    stdout(&status).contains(&format!(
+      "worktree overlay shop@feature of project shop: repo shop indexed from the git worktree at {}; seeded from project shop 0m ago; SCIP facts were copied then",
+      worktree.display()
+    )),
+    "{}",
+    stdout(&status)
+  );
+  assert_eq!(json(&status_json)["overlay"]["label"], "shop@feature");
+  assert_eq!(json(&status_json)["overlay"]["seed"]["source"], "base");
+  assert!(
+    stdout(&main_status).contains(&format!("worktree overlay shop@feature  {}  (ready, last used 0m ago)", worktree.display())),
+    "{}",
+    stdout(&main_status)
+  );
+  assert_eq!(
+    stdout(&listed),
+    format!("shop  shop\n  overlay shop@feature  {}  (ready, last used 0m ago)\n", worktree.display())
+  );
+}
+
+fn add_billing(sandbox: &Sandbox, main: &Path) -> PathBuf {
+  let billing = sandbox.work().join("billing");
+  fs::create_dir_all(billing.join("src")).unwrap();
+  fs::write(billing.join("Cargo.toml"), "[package]\nname = \"billing\"\nversion = \"0.1.0\"\nedition = \"2024\"\n").unwrap();
+  fs::write(billing.join("src/lib.rs"), "pub fn invoice() -> u32 {\n  1\n}\n").unwrap();
+  assert_ok(&sandbox.run(main, &["project", "add-repo", "shop", billing.to_str().unwrap(), "--name", "billing"]));
+  billing
+}
+
+#[test]
+fn should_mark_edited_files_outside_the_worktree_and_name_the_base_project_in_hints() {
+  let sandbox = Sandbox::new();
+  let (main, worktree) = shop_with_worktree(&sandbox);
+  let billing = add_billing(&sandbox, &main);
+  assert_ok(&sandbox.run(&main, &["index"]));
+
+  let edit = sandbox.run(&worktree, &["edit", "replace", "billing:src/lib.rs", "--pattern", "  1", "--text", "  2"]);
+  let inside = sandbox.run(
+    &worktree,
+    &["edit", "replace", "shop:src/lib.rs", "--pattern", "weight * 3", "--text", "weight * 4", "--json"],
+  );
+  let status = sandbox.run(&worktree, &["status"]);
+
+  assert_ok(&edit);
+  assert!(
+    stdout(&edit).contains(&format!("  billing:src/lib.rs  1  (outside the worktree: {})\n", billing.display())),
+    "{}",
+    stdout(&edit)
+  );
+  assert_ok(&inside);
+  assert_eq!(json(&inside)["answer"]["files"][0]["outside_worktree"], Value::Null);
+  assert_ok(&status);
+  assert!(
+    stdout(&status).contains("scip auto: off (enable with `catl project config shop --scip on`)"),
+    "{}",
+    stdout(&status)
+  );
+  assert!(
+    stdout(&status).contains("worktree overlay shop@feature of project shop: repo shop indexed from the git worktree"),
+    "{}",
+    stdout(&status)
+  );
+}
+
+#[test]
+fn should_edit_the_worktree_through_an_overlay_of_a_project_that_was_never_indexed() {
+  let sandbox = Sandbox::new();
+  let (main, worktree) = shop_with_worktree(&sandbox);
+  let base_data = sandbox.home.path().join("data/shop");
+
+  let edit = sandbox.run(&worktree, &["edit", "replace", "src/lib.rs", "--pattern", "weight * 3", "--text", "weight * 4"]);
+
+  assert_ok(&edit);
+  assert_eq!(fs::read_to_string(worktree.join("src/lib.rs")).unwrap(), SHOP_LIB.replace("weight * 3", "weight * 4"));
+  assert_eq!(fs::read_to_string(main.join("src/lib.rs")).unwrap(), SHOP_LIB);
+  let mut created: Vec<String> = fs::read_dir(&base_data)
+    .unwrap()
+    .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+    .collect();
+  created.sort();
+  assert_eq!(created, ["atlas.db.edit.lock"]);
+}
+
+#[test]
+fn should_make_overlay_edits_wait_for_the_project_edit_lock() {
+  let sandbox = Sandbox::new();
+  let (main, worktree) = shop_with_worktree(&sandbox);
+  assert_ok(&sandbox.run(&main, &["index"]));
+  assert_ok(&sandbox.run(&worktree, &["status"]));
+  let lock = fs::File::options()
+    .create(true)
+    .truncate(false)
+    .write(true)
+    .open(sandbox.home.path().join("data/shop/atlas.db.edit.lock"))
+    .unwrap();
+  lock.lock().unwrap();
+
+  let edited = std::thread::scope(|scope| {
+    let edit = scope.spawn(|| sandbox.run(&worktree, &["edit", "replace", "src/lib.rs", "--pattern", "weight * 3", "--text", "weight * 4"]));
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    let while_locked = fs::read_to_string(worktree.join("src/lib.rs")).unwrap();
+    lock.unlock().unwrap();
+    (while_locked, edit.join().unwrap())
+  });
+
+  assert_eq!(edited.0, SHOP_LIB);
+  assert_ok(&edited.1);
+  assert_eq!(fs::read_to_string(worktree.join("src/lib.rs")).unwrap(), SHOP_LIB.replace("weight * 3", "weight * 4"));
+}
+
+#[test]
+fn should_never_lose_a_successful_edit_when_the_project_and_an_overlay_edit_a_shared_repo_together() {
+  const FILES: usize = 12;
+  const ROUNDS: usize = 12;
+  let sandbox = Sandbox::new();
+  let (main, worktree) = shop_with_worktree(&sandbox);
+  let billing = sandbox.work().join("billing");
+  fs::create_dir_all(billing.join("src/race")).unwrap();
+  fs::write(billing.join("Cargo.toml"), "[package]\nname = \"billing\"\nversion = \"0.1.0\"\nedition = \"2024\"\n").unwrap();
+  let modules: String = (0..FILES).map(|index| format!("pub mod f{index};\n")).collect();
+  fs::write(billing.join("src/lib.rs"), "pub mod race;\n").unwrap();
+  fs::write(billing.join("src/race.rs"), modules).unwrap();
+  for index in 0..FILES {
+    fs::write(billing.join(format!("src/race/f{index}.rs")), format!("// o=0 b=0\npub fn f{index}() {{}}\n")).unwrap();
+  }
+  assert_ok(&sandbox.run(&main, &["project", "add-repo", "shop", billing.to_str().unwrap(), "--name", "billing"]));
+  assert_ok(&sandbox.run(&main, &["index"]));
+  assert_ok(&sandbox.run(&worktree, &["status"]));
+  let expected = FILES.to_string();
+  let writer = |tag: &str, cwd: &Path| -> Vec<i32> {
+    (1..=ROUNDS)
+      .map(|round| {
+        let pattern = format!("{tag}=([0-9_]+)");
+        let text = format!("{tag}=${{1}}_{round}");
+        let args = [
+          "edit",
+          "replace-in-files",
+          "--regex",
+          "--pattern",
+          &pattern,
+          "--text",
+          &text,
+          "--include",
+          "billing:src/race/**",
+          "--expected-count",
+          &expected,
+        ];
+        code(&sandbox.run(cwd, &args))
+      })
+      .collect()
+  };
+
+  let (overlay_codes, base_codes) = std::thread::scope(|scope| {
+    let overlay = scope.spawn(|| writer("o", &worktree));
+    let base = scope.spawn(|| writer("b", &main));
+    (overlay.join().unwrap(), base.join().unwrap())
+  });
+
+  let codes: Vec<i32> = overlay_codes.iter().chain(&base_codes).copied().collect();
+  assert!(codes.iter().all(|code| [0, 5, 6].contains(code)), "{overlay_codes:?} {base_codes:?}");
+  assert!(codes.contains(&0), "{overlay_codes:?} {base_codes:?}");
+  for index in 0..FILES {
+    let line = fs::read_to_string(billing.join(format!("src/race/f{index}.rs")))
+      .unwrap()
+      .lines()
+      .next()
+      .unwrap()
+      .to_owned();
+    for (tag, codes) in [("o", &overlay_codes), ("b", &base_codes)] {
+      let rounds: Vec<String> = line
+        .split(' ')
+        .find_map(|part| part.strip_prefix(&format!("{tag}=")))
+        .unwrap()
+        .split('_')
+        .skip(1)
+        .map(str::to_owned)
+        .collect();
+      let lost: Vec<usize> = (1..=ROUNDS).filter(|round| codes[round - 1] == 0 && !rounds.contains(&round.to_string())).collect();
+      assert_eq!(lost, Vec::<usize>::new(), "f{index}.rs lost successful {tag} rounds: {line} {codes:?}");
+    }
+  }
+}
+
+#[test]
+fn should_refuse_to_serve_a_worktree_when_worktrees_are_off() {
+  let sandbox = Sandbox::new();
+  let (main, worktree) = shop_with_worktree(&sandbox);
+  sandbox.write_config("[worktrees]\nmode = \"off\"\n");
+
+  let query = sandbox.run(&worktree, &["query", "symbol", "shipping_fee"]);
+  let edit = sandbox.run(&worktree, &["edit", "replace", "src/lib.rs", "--pattern", "weight * 3", "--text", "weight * 4"]);
+
+  assert_eq!(code(&query), 2, "{}", stderr(&query));
+  assert!(
+    stderr(&query).starts_with(&format!(
+      "error: {} is in the git worktree at {} of project \"shop\", and config.toml sets [worktrees] mode = \"off\", so Code Atlas does not serve it",
+      worktree.display(),
+      worktree.display()
+    )),
+    "{}",
+    stderr(&query)
+  );
+  assert_eq!(code(&edit), 2, "{}", stderr(&edit));
+  assert_eq!(fs::read_to_string(main.join("src/lib.rs")).unwrap(), SHOP_LIB);
+  assert_eq!(fs::read_to_string(worktree.join("src/lib.rs")).unwrap(), SHOP_LIB);
 }
 
 fn run_with_path(sandbox: &Sandbox, cwd: &Path, args: &[&str], path: &Path) -> Output {

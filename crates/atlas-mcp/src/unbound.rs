@@ -16,6 +16,7 @@ use crate::server::{compact_router, serve_until};
 #[derive(Clone)]
 pub struct UnboundServer {
   cwd: PathBuf,
+  reason: Option<String>,
   tool_router: ToolRouter<Self>,
 }
 
@@ -23,7 +24,15 @@ impl UnboundServer {
   pub fn new(cwd: impl Into<PathBuf>) -> Self {
     Self {
       cwd: cwd.into(),
+      reason: None,
       tool_router: compact_router(Self::tool_router()),
+    }
+  }
+
+  pub fn explaining(cwd: impl Into<PathBuf>, reason: String) -> Self {
+    Self {
+      reason: Some(reason),
+      ..Self::new(cwd)
     }
   }
 
@@ -36,6 +45,11 @@ impl UnboundServer {
   }
 
   fn explanation(&self) -> String {
+    if let Some(reason) = &self.reason {
+      return format!(
+        "no project is bound: {reason}. This server answers nothing but atlas_status; set [worktrees] mode to \"overlay\" or \"main\" in config.toml and restart it to serve this worktree."
+      );
+    }
     format!(
       "no project is bound: {} is not inside any registered Code Atlas project, so this server answers nothing but atlas_status. To index this repo, run `catl init -p <project>` in it (adds it to that project, creating the project if needed) or `catl project create <name> --repo <path>`, then restart this MCP server.",
       self.cwd.display()

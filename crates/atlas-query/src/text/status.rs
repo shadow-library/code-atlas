@@ -125,7 +125,7 @@ impl RenderText for StatusAnswer {
       Some(ScipState::Behind { files }) => out.line(0, format!("scip: behind on {files} files ({coverage})")),
       None => out.line(0, format!("scip: unknown ({coverage})")),
     }
-    render_auto_scip(&self.project, &self.scip_auto, out);
+    render_auto_scip(self.settings_project.as_deref().unwrap_or(&self.project), &self.scip_auto, out);
     for family in &self.route_families {
       render_route_family(family, out);
     }
@@ -244,6 +244,7 @@ mod tests {
       skipped_files,
       budget_retries: Vec::new(),
       route_families: Vec::new(),
+      settings_project: None,
     }
   }
 

@@ -19,7 +19,7 @@ pub fn run(ctx: &Context) -> CliResult<Outcome> {
   if !project.settings.scip.enabled {
     emit_line(format!(
       "automatic SCIP is off for this project; enable it with `catl project config {} --scip on`",
-      project.name
+      ctx.settings_project(&project)?
     ))?;
   }
   let mut degraded = !freshness.is_fresh();

@@ -106,6 +106,8 @@ pub enum CliError {
   FileNotIndexed { what: String },
   #[error("refusing to delete {}: it is outside the data directory", .0.display())]
   UnsafePurge(PathBuf),
+  #[error("the worktree overlay {0} no longer matches the registry; restart the command")]
+  OverlayGone(String),
 }
 
 impl CliError {

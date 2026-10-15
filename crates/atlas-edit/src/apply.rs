@@ -156,10 +156,25 @@ enum ResourceStep {
 }
 
 enum Undo {
-  Restore { target: ScopedPath, original: Vec<u8>, permissions: Permissions },
-  RemoveCreated { target: ScopedPath },
-  Unrename { from: ScopedPath, to: ScopedPath },
-  Recreate { target: ScopedPath, original: Vec<u8>, permissions: Permissions },
+  Restore {
+    target: ScopedPath,
+    original: Vec<u8>,
+    permissions: Permissions,
+    written: ContentHash,
+  },
+  RemoveCreated {
+    target: ScopedPath,
+    written: ContentHash,
+  },
+  Unrename {
+    from: ScopedPath,
+    to: ScopedPath,
+  },
+  Recreate {
+    target: ScopedPath,
+    original: Vec<u8>,
+    permissions: Permissions,
+  },
 }
 
 struct Transaction {
@@ -293,6 +308,7 @@ impl Step {
           target: step.target.clone(),
           original: step.original,
           permissions: step.permissions,
+          written: step.after,
         });
         Ok(AppliedChange::Modified {
           file: step.target.file,
@@ -304,19 +320,28 @@ impl Step {
       Self::Resource(ResourceStep::Create { target, after, temp }) => {
         if let Err(failure) = move_no_clobber(&temp, &target.absolute) {
           if failure.destination_left {
-            journal.push(Undo::RemoveCreated { target: target.clone() });
+            journal.push(Undo::RemoveCreated {
+              target: target.clone(),
+              written: after,
+            });
           }
           return Err(create_error(&target, failure.error));
         }
         keep(temp);
-        journal.push(Undo::RemoveCreated { target: target.clone() });
+        journal.push(Undo::RemoveCreated {
+          target: target.clone(),
+          written: after,
+        });
         Ok(AppliedChange::Created { file: target.file, after })
       }
       Self::Resource(ResourceStep::Rename { from, to, expected }) => {
         verify_unchanged(&from, expected)?;
         if let Err(failure) = move_no_clobber(&from.absolute, &to.absolute) {
           if failure.destination_left {
-            journal.push(Undo::RemoveCreated { target: to.clone() });
+            journal.push(Undo::RemoveCreated {
+              target: to.clone(),
+              written: expected,
+            });
           }
           return Err(create_error(&to, failure.error));
         }
@@ -354,18 +379,27 @@ impl Step {
 impl Undo {
   fn label(&self) -> String {
     match self {
-      Self::Restore { target, .. } | Self::RemoveCreated { target } | Self::Recreate { target, .. } => target.file.to_string(),
+      Self::Restore { target, .. } | Self::RemoveCreated { target, .. } | Self::Recreate { target, .. } => target.file.to_string(),
       Self::Unrename { from, to } => format!("{} -> {}", from.file, to.file),
     }
   }
 
   fn run(&self, prefix: &str) -> EditResult<()> {
     match self {
-      Self::Restore { target, original, permissions } => {
+      Self::Restore {
+        target,
+        original,
+        permissions,
+        written,
+      } => {
         let temp = write_temp(&target.absolute, original, Some(permissions), prefix)?;
+        ensure_still_written(target, *written)?;
         temp.persist(&target.absolute).map_err(|error| EditError::io("restore", &target.absolute, error.error))
       }
-      Self::RemoveCreated { target } => fs::remove_file(&target.absolute).map_err(|error| EditError::io("remove created file", &target.absolute, error)),
+      Self::RemoveCreated { target, written } => {
+        ensure_still_written(target, *written)?;
+        fs::remove_file(&target.absolute).map_err(|error| EditError::io("remove created file", &target.absolute, error))
+      }
       Self::Unrename { from, to } => move_no_clobber(&to.absolute, &from.absolute).map_err(|failure| EditError::io("restore renamed file", &from.absolute, failure.error)),
       Self::Recreate { target, original, permissions } => {
         let temp = write_temp(&target.absolute, original, Some(permissions), prefix)?;
@@ -375,6 +409,27 @@ impl Undo {
       }
     }
   }
+}
+
+// Another writer may have committed over this edit's write since; undoing it then would silently discard their change.
+fn ensure_still_written(target: &ScopedPath, written: ContentHash) -> EditResult<()> {
+  let current = match fs::read(&target.absolute) {
+    Ok(current) => current,
+    Err(error) if error.kind() == ErrorKind::NotFound => return Err(changed_since_written(target)),
+    Err(error) => return Err(EditError::io("read", &target.absolute, error)),
+  };
+  match ContentHash::of(&current) == written {
+    true => Ok(()),
+    false => Err(changed_since_written(target)),
+  }
+}
+
+fn changed_since_written(target: &ScopedPath) -> EditError {
+  EditError::io(
+    "leave",
+    &target.absolute,
+    io::Error::other("another writer changed it after this edit wrote it, so it was not rolled back"),
+  )
 }
 
 fn rollback(journal: Vec<Undo>, cause: EditError, faults: &dyn Faults, prefix: &str) -> EditError {

@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use atlas_core::Language;
-use atlas_project::Project;
+use atlas_project::{Binding, Project};
 use atlas_query::{
   ApiRequest, ChangesRequest, ContextRequest, ExplainRequest, ImpactRequest, PatternsRequest, QueryEngine, ReadRequest, RenderText, Response, SearchRequest, SimilarRequest,
   SymbolRequest, TargetFilter, Targeted, TestsForRequest, TraversalKind, TraverseRequest, UnusedRequest, render_json, render_text,
@@ -13,14 +13,34 @@ use crate::cli::{
   ApiArgs, ChangesArgs, CodeLanguage, ContextArgs, ExplainArgs, ImpactArgs, PatternsArgs, QueryCommand, ReadArgs, SearchArgs, SimilarArgs, StatusArgs, SymbolArgs,
   TargetFilterArgs, TestsForArgs, TraverseArgs, UnusedArgs,
 };
-use crate::commands::read_input;
+use crate::commands::{overlays, read_input};
 use crate::context::Context;
 use crate::error::{CliError, CliResult};
 use crate::output::{Outcome, emit};
 
 pub fn status(ctx: &Context, args: StatusArgs) -> CliResult<Outcome> {
-  let (query, _) = open(ctx)?;
-  finish(query.status()?, args.json)
+  let (query, project) = open(ctx)?;
+  let mut response = query.status()?;
+  let binding = &ctx.bound()?.binding;
+  if let Binding::Overlay(overlay) = binding {
+    response.answer.settings_project = Some(overlay.project.to_string());
+  }
+  let overlays = overlays::report(&ctx.home, binding, project.name.as_str());
+  let mut text = render(&response, args.json)?;
+  match (args.json, overlays.json) {
+    (true, Some((key, value))) => {
+      let mut document: serde_json::Value = serde_json::from_str(&text)?;
+      document[key] = value;
+      text = serde_json::to_string_pretty(&document)? + "\n";
+    }
+    (true, None) => {}
+    (false, _) => overlays.lines.iter().for_each(|line| {
+      text.push_str(line);
+      text.push('\n');
+    }),
+  }
+  emit(&text)?;
+  Ok(Outcome::degraded_if(response.freshness.is_degraded()))
 }
 
 pub fn run(ctx: &Context, command: QueryCommand) -> CliResult<Outcome> {

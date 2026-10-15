@@ -223,6 +223,7 @@ dependencies = [
  "protobuf",
  "rayon",
  "rusqlite",
+ "rustix",
  "scip",
  "serde",
  "serde_json",

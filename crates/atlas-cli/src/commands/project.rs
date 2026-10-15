@@ -6,6 +6,7 @@ use atlas_core::Language;
 use atlas_project::{LspUnit, Origin, Project, ProjectSettings, Registry, RepoConfig, RepoFilters, RepoSpec, SettingsUpdate};
 
 use crate::cli::{AddRepoArgs, ConfigArgs, CreateArgs, DeleteArgs, JsonFlag, LspUnitArg, ProjectCommand, RemoveRepoArgs, RenameRepoArgs, SetRepoArgs, ShowArgs, Toggle};
+use crate::commands::overlays;
 use crate::confirm::confirm;
 use crate::context::Context;
 use crate::error::{CliError, CliResult};
@@ -192,6 +193,9 @@ fn list(ctx: &Context, args: JsonFlag) -> CliResult<Outcome> {
   for project in registry.list() {
     let repos: Vec<&str> = project.repos.iter().map(|repo| repo.name.as_str()).collect();
     emit_line(format!("{}  {}", project.name, repos.join(", ")))?;
+    for listing in overlays::listings(&ctx.home, project.name.as_str()) {
+      emit_line(format!("  overlay {}", overlays::listing_line(&listing)))?;
+    }
   }
   Ok(Outcome::Complete)
 }

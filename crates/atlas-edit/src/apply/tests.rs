@@ -187,6 +187,61 @@ fn should_roll_back_when_a_file_changes_between_prepare_and_commit() {
 }
 
 #[test]
+fn should_leave_a_file_another_writer_changed_after_this_edit_wrote_it_and_report_a_partial_application() {
+  let repo = Repo::new();
+  let plan = three_files_and_resources(&repo);
+  let path = repo.root.join("a.ts");
+  let faults = Injected {
+    fail_commit: Some(2),
+    on_commit: Some(Box::new(move |step| {
+      if step == 2 {
+        fs::write(&path, "other writer").unwrap();
+      }
+    })),
+    ..Injected::default()
+  };
+
+  let error = apply_with(&plan, &repo.scope(), &repo.options(), &faults).unwrap_err();
+
+  let EditError::PartiallyApplied { applied, failed, .. } = error else {
+    panic!("expected PartiallyApplied, got {error:?}")
+  };
+  assert_eq!(applied, ["api:a.ts"]);
+  assert_eq!(
+    failed,
+    [format!(
+      "api:a.ts: leave {}: another writer changed it after this edit wrote it, so it was not rolled back",
+      repo.root.join("a.ts").display()
+    )]
+  );
+  assert_eq!(
+    ["a.ts", "b.ts", "c.ts"].map(|path| repo.read(path)),
+    [Some("other writer".to_owned()), Some("b".to_owned()), Some("c".to_owned())]
+  );
+}
+
+#[test]
+fn should_not_remove_a_created_file_another_writer_replaced_during_rollback() {
+  let repo = Repo::new();
+  let plan = three_files_and_resources(&repo);
+  let path = repo.root.join("d.ts");
+  let faults = Injected {
+    fail_commit: Some(4),
+    on_commit: Some(Box::new(move |step| {
+      if step == 4 {
+        fs::write(&path, "other writer").unwrap();
+      }
+    })),
+    ..Injected::default()
+  };
+
+  let error = apply_with(&plan, &repo.scope(), &repo.options(), &faults).unwrap_err();
+
+  assert!(matches!(&error, EditError::PartiallyApplied { applied, .. } if applied == &["api:d.ts"]), "{error:?}");
+  assert_eq!(["a.ts", "d.ts"].map(|path| repo.read(path)), [Some("a".to_owned()), Some("other writer".to_owned())]);
+}
+
+#[test]
 fn should_serialize_concurrent_applies_with_the_edit_lock() {
   let repo = Repo::new();
   let original = repo.write("a.ts", "a");
@@ -238,7 +293,10 @@ fn should_roll_back_a_partially_moved_rename_through_the_journal() {
   let from = repo.scope().locate(&target("e.ts")).unwrap();
   let to = repo.scope().resolve(&repo.root.join("f.ts")).unwrap();
   fs::hard_link(&from.absolute, &to.absolute).unwrap();
-  let journal = vec![Undo::RemoveCreated { target: to }];
+  let journal = vec![Undo::RemoveCreated {
+    target: to,
+    written: ContentHash::of(b"e"),
+  }];
   let cause = EditError::Stale {
     paths: vec!["api:e.ts".to_owned()],
   };
@@ -254,6 +312,7 @@ fn should_roll_back_a_partially_moved_rename_through_the_journal() {
   assert!(matches!(&partial, EditError::PartiallyApplied { applied, .. } if applied == &["api:f.ts"]), "{partial:?}");
   let journal = vec![Undo::RemoveCreated {
     target: repo.scope().resolve(&repo.root.join("f.ts")).unwrap(),
+    written: ContentHash::of(b"e"),
   }];
   let restored = rollback(journal, EditError::Stale { paths: Vec::new() }, &Injected::default(), ".atlas-edit.test.");
   assert!(matches!(restored, EditError::RolledBack { .. }));

@@ -131,7 +131,7 @@ struct Writer {
   lock: WriterLock,
 }
 
-enum WriterLock {
+pub(crate) enum WriterLock {
   File { kind: StoreLock, path: PathBuf, lock: fd_lock::RwLock<File> },
   InProcess,
 }
@@ -339,7 +339,7 @@ impl Store {
   }
 }
 
-fn lock_path_for(path: &Path, suffix: &str) -> PathBuf {
+pub(crate) fn lock_path_for(path: &Path, suffix: &str) -> PathBuf {
   let mut name = OsString::from(path.as_os_str());
   name.push(suffix);
   PathBuf::from(name)
@@ -432,7 +432,7 @@ where
 }
 
 impl WriterLock {
-  fn open(kind: StoreLock, path: PathBuf) -> StoreResult<Self> {
+  pub(crate) fn open(kind: StoreLock, path: PathBuf) -> StoreResult<Self> {
     let file = OpenOptions::new()
       .create(true)
       .truncate(false)
@@ -459,7 +459,7 @@ impl WriterLock {
     }
   }
 
-  fn hold<R>(&mut self, timeout: Duration, f: impl FnOnce() -> R) -> StoreResult<R> {
+  pub(crate) fn hold<R>(&mut self, timeout: Duration, f: impl FnOnce() -> R) -> StoreResult<R> {
     let (kind, path, lock) = match self {
       Self::InProcess => return Ok(f()),
       Self::File { kind, path, lock } => (*kind, path, lock),

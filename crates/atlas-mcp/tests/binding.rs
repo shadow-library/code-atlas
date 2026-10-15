@@ -5,6 +5,7 @@ use std::future::pending;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use atlas_engine::{Engine, EngineOptions};
 use atlas_mcp::{McpError, ServeOptions, Server};
 use atlas_project::{AtlasHome, ProjectError, Registry, RepoSpec};
 use common::text_of;
@@ -87,11 +88,17 @@ fn scratch() -> (TempDir, PathBuf, AtlasHome) {
   (dir, root, home)
 }
 
+fn write_config(home: &AtlasHome, text: &str) {
+  fs::create_dir_all(home.config_dir()).unwrap();
+  fs::write(home.config_path(), text).unwrap();
+}
+
 #[tokio::test]
-async fn should_answer_from_the_main_checkout_with_a_caveat_and_refuse_edits_in_a_worktree() {
+async fn should_answer_from_the_main_checkout_with_a_caveat_and_refuse_edits_in_a_worktree_in_main_mode() {
   let (_dir, root, home) = scratch();
   let (main, worktree) = shop_with_worktree(&root);
   Registry::load(&home).unwrap().create_project("shop", vec![RepoSpec::new(&main)]).unwrap();
+  write_config(&home, "[worktrees]\nmode = \"main\"\n");
   let server = Server::open(&ServeOptions::new(home, worktree.join("src"))).unwrap();
   let caveat = format!(
     "worktree caveat: answers describe the main checkout at {}, not the git worktree at {} (repo shop of project shop); edits are refused here",
@@ -193,6 +200,86 @@ async fn should_refuse_edits_from_a_worktree_whose_git_file_no_longer_resolves()
     text_of(&edit)
   );
   assert_eq!(fs::read_to_string(main.join("src/lib.rs")).unwrap(), LIB_RS);
+  running.stop().await;
+}
+
+#[tokio::test]
+async fn should_answer_from_the_worktree_and_keep_writing_into_it_through_an_overlay() {
+  let (_dir, root, home) = scratch();
+  let (main, worktree) = shop_with_worktree(&root);
+  let mut registry = Registry::load(&home).unwrap();
+  registry.create_project("shop", vec![RepoSpec::new(&main)]).unwrap();
+  let base = Engine::open(registry.project("shop").unwrap(), &home, EngineOptions::default()).unwrap();
+  assert!(base.ensure_fresh().unwrap().is_fresh());
+  drop(base);
+  fs::write(worktree.join("src/extra.rs"), "pub fn worktree_only() -> u8 {\n  7\n}\n").unwrap();
+  let running = Running::start(Server::open(&ServeOptions::new(home.clone(), worktree.join("src"))).unwrap()).await;
+
+  let search = running.call("atlas_search", json!({ "query": "worktree_only" })).await;
+  let edit = running
+    .call(
+      "atlas_edit",
+      json!({ "operation": "replace_content", "path": "src/lib.rs", "pattern": "weight * 3", "text": "weight * 4" }),
+    )
+    .await;
+  let mut settings = registry.project("shop").unwrap().settings.clone();
+  settings.max_file_bytes = 512 * 1024;
+  registry.set_settings("shop", settings).unwrap();
+  let after_reload = running
+    .call(
+      "atlas_edit",
+      json!({ "operation": "replace_content", "path": "src/lib.rs", "pattern": "weight * 4", "text": "weight * 5" }),
+    )
+    .await;
+  let search_again = running.call("atlas_search", json!({ "query": "worktree_only" })).await;
+  let status = running.call("atlas_status", json!({})).await;
+  let status_json: Value = serde_json::from_str(&text_of(&running.call("atlas_status", json!({ "format": "json" })).await)).unwrap();
+
+  assert!(text_of(&search).contains("worktree_only"), "{}", text_of(&search));
+  assert!(!text_of(&search).contains("caveat"), "{}", text_of(&search));
+  assert_ne!(edit.is_error, Some(true), "{}", text_of(&edit));
+  assert_ne!(after_reload.is_error, Some(true), "{}", text_of(&after_reload));
+  assert!(text_of(&search_again).contains("worktree_only"), "{}", text_of(&search_again));
+  assert!(
+    text_of(&status).contains(&format!(
+      "worktree overlay shop@feature of project shop: repo shop indexed from the git worktree at {}; seeded from project shop 0m ago; SCIP facts were copied then, and files changed in the worktree lag until `catl scip` runs here\n",
+      worktree.display()
+    )),
+    "{}",
+    text_of(&status)
+  );
+  assert!(text_of(&status).contains("enable with `catl project config shop --scip on`"), "{}", text_of(&status));
+  assert_eq!(
+    (status_json["overlay"]["label"].as_str(), status_json["overlay"]["project"].as_str()),
+    (Some("shop@feature"), Some("shop"))
+  );
+  assert_eq!(status_json["overlay"]["repos"], json!(["shop"]));
+  assert_eq!(status_json["answer"]["settings_project"], "shop");
+  assert_eq!(fs::read_to_string(worktree.join("src/lib.rs")).unwrap(), LIB_RS.replace("weight * 3", "weight * 5"));
+  assert_eq!(fs::read_to_string(main.join("src/lib.rs")).unwrap(), LIB_RS);
+  running.stop().await;
+}
+
+#[tokio::test]
+async fn should_serve_only_atlas_status_in_a_worktree_when_worktrees_are_off() {
+  let (_dir, root, home) = scratch();
+  let (main, worktree) = shop_with_worktree(&root);
+  Registry::load(&home).unwrap().create_project("shop", vec![RepoSpec::new(&main)]).unwrap();
+  write_config(&home, "[worktrees]\nmode = \"off\"\n");
+
+  let server = Server::open(&ServeOptions::new(home, &worktree)).unwrap();
+  assert!(matches!(server, Server::Unbound(_)));
+  let running = Running::start(server).await;
+  let status = running.call("atlas_status", json!({})).await;
+
+  assert_eq!(
+    text_of(&status),
+    format!(
+      "no project is bound: {} is in the git worktree at {} of project \"shop\", and config.toml sets [worktrees] mode = \"off\", so Code Atlas does not serve it. This server answers nothing but atlas_status; set [worktrees] mode to \"overlay\" or \"main\" in config.toml and restart it to serve this worktree.\n",
+      worktree.display(),
+      worktree.display()
+    )
+  );
   running.stop().await;
 }
 

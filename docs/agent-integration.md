@@ -200,7 +200,7 @@ Code Atlas answers questions about ONE indexed project (a group of repos) from a
 
 The eval's `standard` and `directed` preambles (`atlas-eval`) are versioned experimental conditions and are deliberately not rendered from this source; changing them is a new preamble version.
 
-The project must exist first (`project create`, or `init` inside a repo that should join an existing project). In a directory that no registered project contains the server still starts but serves only `atlas_status`, which explains how to register the repo. In a git worktree of a registered repo, worktrees are not indexed yet: answers describe the main checkout with a `worktree caveat:` line and `atlas_edit` refuses; start the agent session inside the worktree (see [operations](operations.md#worktrees)). `catl doctor` checks the registry, databases, locks, tool availability and a user-scope entry that still pins `--project`.
+The project must exist first (`project create`, or `init` inside a repo that should join an existing project). In a directory that no registered project contains the server still starts but serves only `atlas_status`, which explains how to register the repo. In a git worktree of a registered repo the server answers from a worktree overlay, an index of the worktree seeded from the project's, and `atlas_edit` writes the worktree; start the agent session inside the worktree (see [operations](operations.md#worktrees)). `catl doctor` checks the registry, databases, locks, tool availability and a user-scope entry that still pins `--project`.
 
 ## Other agents
 

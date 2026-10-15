@@ -649,6 +649,18 @@ impl Registry {
     ResolutionTrace { steps, outcome }
   }
 
+  pub(crate) fn project_on_paths(&self, base: &str, name: ProjectName, paths: &[(RepoName, PathBuf)]) -> Result<(Project, Vec<String>), ProjectError> {
+    let mut stored = self.stored[self.position(base)?].clone();
+    stored.project.name = name;
+    for repo in &mut stored.project.repos {
+      if let Some((_, path)) = paths.iter().find(|(name, _)| *name == repo.name) {
+        repo.path = path.clone();
+      }
+    }
+    let view = resolve_project(&stored, &self.registry_path, &self.config, &self.env);
+    Ok((view.project, view.warnings))
+  }
+
   fn is_repo_root(&self, directory: &Path) -> bool {
     self.stored.iter().flat_map(|stored| &stored.project.repos).any(|repo| repo.path == directory)
   }
@@ -755,6 +767,7 @@ fn binding_note(binding: &Binding) -> String {
     Binding::Direct => String::new(),
     Binding::Worktree(worktree) => format!(" through the git worktree at {} (repo {})", worktree.worktree.display(), worktree.repo),
     Binding::UnresolvedWorktree(unresolved) => format!(" through an unresolvable .git entry at {} (repo {})", unresolved.root.display(), unresolved.repo),
+    Binding::Overlay(overlay) => format!(" through the worktree overlay {} at {}", overlay.label, overlay.worktree.display()),
   }
 }
 

@@ -10,6 +10,7 @@ mod lineage;
 mod lock;
 mod manifests;
 mod options;
+mod overlay;
 mod owner;
 mod packages;
 mod passes;
@@ -33,6 +34,7 @@ pub use enrich::{
 };
 pub use error::{EngineError, EngineResult};
 pub use options::{EngineOptions, FaultInjection, IndexMode};
+pub use overlay::{BoundProject, bind_project, current_overlay, prepare_overlay, seed_overlay, seed_overlay_with};
 pub use passes::{PASS_LINEAGE, PASS_REPOS, PASS_STRUCTURE, PassContext, PassError, PassOutput, ProjectPass, STRUCTURE_VERSION};
 pub use report::*;
 pub use scip::{ScipIndexers, ScipPackageOutcome, ScipPackageReport, ScipReport, ScipUnit};

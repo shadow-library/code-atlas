@@ -173,6 +173,8 @@ pub struct ChangedFile {
   pub before: String,
   pub after: String,
   pub hunks: Vec<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub outside_worktree: Option<String>,
 }
 
 impl ChangedFile {
@@ -307,6 +309,7 @@ pub(crate) fn changed_files(plan: &EditPlan, originals: &BTreeMap<FileTarget, St
       before: edits.expected.to_string(),
       after: ContentHash::of(after.as_bytes()).to_string(),
       hunks,
+      outside_worktree: None,
     });
   }
   Ok(files)
@@ -343,6 +346,27 @@ pub(crate) fn merge_edits(plan: &mut EditPlan, file: FileEdits) {
 impl IdeService {
   pub fn edit(&self, request: &EditRequest) -> IdeResult<Response<EditOutcome>> {
     let _one_mutation = guard(&self.edits);
+    self.dispatch(request).map(|response| self.mark_outside_worktree(response))
+  }
+
+  pub fn apply_plan(&self, plan: IdePlan) -> IdeResult<Response<EditOutcome>> {
+    let _one_mutation = guard(&self.edits);
+    self.apply_planned(plan).map(|response| self.mark_outside_worktree(response))
+  }
+
+  fn mark_outside_worktree(&self, mut response: Response<EditOutcome>) -> Response<EditOutcome> {
+    let Some(overlay) = &self.overlay else { return response };
+    let project = self.query.engine().project();
+    for file in &mut response.answer.files {
+      if overlay.repos.contains(&file.repo) {
+        continue;
+      }
+      file.outside_worktree = project.repo(&file.repo).map(|repo| repo.path.display().to_string());
+    }
+    response
+  }
+
+  fn dispatch(&self, request: &EditRequest) -> IdeResult<Response<EditOutcome>> {
     let dry_run = request.dry_run;
     match &request.operation {
       EditOperation::Rename {
@@ -392,11 +416,6 @@ impl IdeService {
         }
       },
     }
-  }
-
-  pub fn apply_plan(&self, plan: IdePlan) -> IdeResult<Response<EditOutcome>> {
-    let _one_mutation = guard(&self.edits);
-    self.apply_planned(plan)
   }
 
   fn apply_planned(&self, plan: IdePlan) -> IdeResult<Response<EditOutcome>> {
@@ -533,7 +552,8 @@ impl IdeService {
       }
     }
     let targets: Vec<(RepoName, RelPath)> = file_targets(&plan.edits).into_iter().map(|file| (file.repo, file.path)).collect();
-    let options = ApplyOptions::new(edit_lock_path(&engine.db_path()));
+    let lock_db = self.overlay.as_ref().map_or_else(|| engine.db_path(), |overlay| overlay.base_db.clone());
+    let options = ApplyOptions::new(edit_lock_path(&lock_db));
     tracing::info!(plan = %plan.id, files = targets.len(), "applying an edit plan");
     let Some(_writing) = self.writes.enter() else { return Err(IdeError::Interrupted) };
     let (applied, report) = engine.write_then_refresh(&targets, || atlas_edit::apply(&plan.edits, &scope, &options))?;
