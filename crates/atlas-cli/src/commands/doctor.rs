@@ -102,10 +102,18 @@ pub fn run(ctx: &Context, args: DoctorArgs) -> CliResult<Outcome> {
 }
 
 fn user_config(ctx: &Context) -> Check {
-  match UserConfig::load(&ctx.home) {
-    Ok(config) if config.exists() => Check::new(Level::Ok, "config", format!("{} loaded", config.path().display())),
-    Ok(config) => Check::new(Level::Ok, "config", format!("{} absent; built-in defaults apply", config.path().display())),
-    Err(error) => Check::new(Level::Fail, "config", error.to_string()),
+  let config = match UserConfig::load(&ctx.home) {
+    Ok(config) => config,
+    Err(error) => return Check::new(Level::Fail, "config", error.to_string()),
+  };
+  let check = match config.exists() {
+    true => Check::new(Level::Ok, "config", format!("{} loaded", config.path().display())),
+    false => Check::new(Level::Ok, "config", format!("{} absent; built-in defaults apply", config.path().display())),
+  };
+  let families = config.route_families();
+  match families.is_empty() {
+    true => check,
+    false => check.with_lines(vec![format!("route families declared in {}: {}", ctx.home.detectors_dir().display(), families.join(", "))]),
   }
 }
 

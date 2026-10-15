@@ -4,6 +4,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use atlas_core::{Language, ProjectName, RepoName};
+use atlas_detect::{DecoratorFamily, check_family_name};
 use fd_lock::RwLock;
 use serde::{Deserialize, Serialize};
 
@@ -148,6 +149,36 @@ impl LspSettings {
   }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct DetectSettings {
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  pub route_families: Vec<String>,
+  #[serde(skip)]
+  pub families: Vec<DecoratorFamily>,
+}
+
+impl DetectSettings {
+  pub fn validate(&self) -> Result<(), String> {
+    self
+      .route_families
+      .iter()
+      .try_for_each(|name| check_family_name(name).map_err(|message| format!("detect.route_families: {message}")))
+  }
+
+  pub fn undeclared(&self) -> impl Iterator<Item = &str> {
+    self
+      .route_families
+      .iter()
+      .map(String::as_str)
+      .filter(|name| !self.families.iter().any(|family| family.name() == *name))
+  }
+
+  fn is_default(&self) -> bool {
+    self.route_families.is_empty() && self.families.is_empty()
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct ProjectSettings {
@@ -156,6 +187,8 @@ pub struct ProjectSettings {
   #[serde(skip_serializing_if = "LspSettings::is_default")]
   pub lsp: LspSettings,
   pub max_file_bytes: u64,
+  #[serde(skip_serializing_if = "DetectSettings::is_default")]
+  pub detect: DetectSettings,
 }
 
 impl LlmSettings {
@@ -189,7 +222,8 @@ fn is_variable_name(name: &str) -> bool {
 impl ProjectSettings {
   pub fn validate(&self) -> Result<(), String> {
     self.llm.validate()?;
-    self.lsp.validate()
+    self.lsp.validate()?;
+    self.detect.validate()
   }
 }
 
@@ -200,6 +234,7 @@ impl Default for ProjectSettings {
       scip: ScipSettings::default(),
       lsp: LspSettings::default(),
       max_file_bytes: 1024 * 1024,
+      detect: DetectSettings::default(),
     }
   }
 }
@@ -291,6 +326,8 @@ struct SettingsRecord {
   #[serde(skip_serializing_if = "LspSettings::is_default")]
   lsp: LspSettings,
   max_file_bytes: u64,
+  #[serde(skip_serializing_if = "DetectSettings::is_default")]
+  detect: DetectSettings,
   #[serde(skip_serializing_if = "BTreeSet::is_empty")]
   pinned: BTreeSet<String>,
 }
@@ -308,6 +345,7 @@ impl SettingsRecord {
       scip: settings.scip,
       lsp: settings.lsp,
       max_file_bytes: settings.max_file_bytes,
+      detect: settings.detect,
       pinned,
     }
   }
@@ -320,12 +358,19 @@ impl From<ProjectRecord> for StoredProject {
       scip,
       lsp,
       max_file_bytes,
+      detect,
       pinned,
     } = record.settings;
     Self {
       project: Project {
         name: record.name,
-        settings: ProjectSettings { llm, scip, lsp, max_file_bytes },
+        settings: ProjectSettings {
+          llm,
+          scip,
+          lsp,
+          max_file_bytes,
+          detect,
+        },
         repos: record.repos,
       },
       pinned,
@@ -389,6 +434,11 @@ impl Registry {
       explained: Vec::new(),
     };
     registry.adopt(stored);
+    let enabled = registry
+      .projects
+      .iter()
+      .flat_map(|project| project.settings.detect.route_families.iter().map(String::as_str));
+    registry.config.families().check_enabled(enabled)?;
     Ok(registry)
   }
 
@@ -797,7 +847,7 @@ struct Lookup {
 impl Lookup {
   fn warn_outside_repo_root(&mut self, marker: &Path, file: &RepoFile) {
     let mut warnings: Vec<String> = file.warnings.iter().map(|warning| format!("{}: {warning}", marker.display())).collect();
-    let configures = !file.include.is_empty() || !file.exclude.is_empty() || file.languages.is_some() || !file.settings.is_empty();
+    let configures = !file.include.is_empty() || !file.exclude.is_empty() || file.languages.is_some() || !file.route_families.is_empty() || !file.settings.is_empty();
     if configures {
       warnings.push(format!(
         "{}: only `project` is read here; settings and [index] keys apply only in the .code-atlas.toml at a registered repo root",
@@ -1170,6 +1220,7 @@ mod tests {
         ..LspSettings::default()
       },
       max_file_bytes: 42,
+      detect: DetectSettings::default(),
     };
     registry.set_settings("acme", settings.clone()).unwrap();
     let reloaded = sandbox.registry();
@@ -1720,6 +1771,92 @@ mod tests {
         "max_file_bytes differs between repo-0/.code-atlas.toml (10) and repo-1/.code-atlas.toml (20); both ignored",
         "repo-1/.code-atlas.toml: lsp.typescript_command ignored: a repository file may not name an executable",
       ]
+    );
+  }
+
+  const ACME_FAMILY: &str = "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"Api\"]\n[routes.methods]\nRead = \"GET\"\n";
+
+  fn write_family(sandbox: &Sandbox, name: &str, text: &str) {
+    let dir = sandbox.home.detectors_dir();
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join(format!("{name}.toml")), text).unwrap();
+  }
+
+  #[test]
+  fn should_enable_route_families_from_the_user_and_repo_layers_but_never_the_environment() {
+    let sandbox = Sandbox::new();
+    let one = sandbox.repo_dir("one");
+    let two = sandbox.repo_dir("two");
+    drop(registry_with(&sandbox, &[("acme", &[&one, &two])]));
+    write_family(&sandbox, "acme-http", ACME_FAMILY);
+    write_family(&sandbox, "acme-rpc", ACME_FAMILY);
+    write_config(&sandbox, "[defaults.detect]\nroute_families = [\"acme-rpc\"]\n");
+    fs::write(two.join(MARKER_FILE), "[detect]\nroute_families = [\"acme-http\", \"acme-htp\"]\n").unwrap();
+    let env = ConfigEnv::from_pairs([("CODE_ATLAS_DETECT_ROUTE_FAMILIES", "[\"acme-env\"]")]);
+
+    let registry = Registry::load_with(&sandbox.home, env).unwrap();
+    let detect = &registry.project("acme").unwrap().settings.detect;
+
+    assert_eq!(detect.route_families, ["acme-htp", "acme-http", "acme-rpc"]);
+    assert_eq!(detect.families.iter().map(DecoratorFamily::name).collect::<Vec<_>>(), ["acme-http", "acme-rpc"]);
+    assert_eq!(detect.undeclared().collect::<Vec<_>>(), ["acme-htp"]);
+    assert_eq!(origin_of(&registry, "acme", "detect.route_families"), ["config.toml", "repo-1/.code-atlas.toml"]);
+    assert_eq!(
+      registry.warnings(Some("acme")),
+      [
+        "env:CODE_ATLAS_DETECT_ROUTE_FAMILIES: detect.route_families ignored: it changes indexed facts, so only config.toml, projects.toml or a repository's .code-atlas.toml may set it".to_owned(),
+        format!("route family acme-htp ignored: {} does not exist", sandbox.home.detectors_dir().join("acme-htp.toml").display()),
+      ]
+    );
+    assert!(!fs::read_to_string(sandbox.home.registry_path()).unwrap().contains("detect"));
+  }
+
+  #[test]
+  fn should_store_project_route_families_in_the_registry_and_reread_them() {
+    let sandbox = Sandbox::new();
+    write_family(&sandbox, "acme-http", ACME_FAMILY);
+    let mut registry = sandbox.registry();
+    registry.create_project("acme", vec![]).unwrap();
+    let mut settings = ProjectSettings::default();
+    settings.detect.route_families = vec!["acme-http".to_owned()];
+    registry.set_settings("acme", settings).unwrap();
+
+    let stored = fs::read_to_string(sandbox.home.registry_path()).unwrap();
+    let reloaded = sandbox.registry();
+    let detect = &reloaded.project("acme").unwrap().settings.detect;
+
+    assert!(stored.contains("[project.settings.detect]\nroute_families = [\"acme-http\"]"), "{stored}");
+    assert_eq!(detect.families.iter().map(DecoratorFamily::name).collect::<Vec<_>>(), ["acme-http"]);
+    assert_eq!(origin_of(&reloaded, "acme", "detect.route_families"), ["projects.toml"]);
+    assert!(reloaded.warnings(Some("acme")).is_empty());
+  }
+
+  #[test]
+  fn should_refuse_to_load_only_when_a_project_enables_an_invalid_family() {
+    let sandbox = Sandbox::new();
+    let one = sandbox.repo_dir("one");
+    drop(registry_with(&sandbox, &[("acme", &[&one])]));
+    write_family(&sandbox, "acme-http", "packages = [\"@acme/http\"]\n");
+    write_family(&sandbox, "Acme", ACME_FAMILY);
+
+    let unused = Registry::load_with(&sandbox.home, ConfigEnv::default()).unwrap();
+    assert_eq!(
+      unused.warnings(Some("acme")),
+      [
+        "detectors/Acme.toml ignored: file name: a route family name is a lowercase letter followed by lowercase letters, digits, - or _ (at most 64 characters), got \"Acme\"",
+        "detectors/acme-http.toml ignored: controller: missing; name the controller decorators",
+      ]
+    );
+    fs::write(one.join(MARKER_FILE), "[detect]\nroute_families = [\"acme-http\"]\n").unwrap();
+
+    let error = Registry::load_with(&sandbox.home, ConfigEnv::default()).unwrap_err();
+
+    assert_eq!(
+      error.to_string(),
+      format!(
+        "invalid config file {}: controller: missing; name the controller decorators",
+        sandbox.home.detectors_dir().join("acme-http.toml").display()
+      )
     );
   }
 

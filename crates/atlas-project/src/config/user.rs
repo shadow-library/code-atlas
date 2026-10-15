@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use toml::Value;
 
+use super::families::FamilyCatalog;
 use super::keys::{Keyed, McpSettings, RESERVED_KEYS, as_words, flatten};
 use super::layers::{ConfigEntry, Origin};
 use crate::error::ProjectError;
@@ -21,17 +22,20 @@ pub struct UserConfig {
   pub(crate) default_exclude: Vec<String>,
   pub(crate) mcp: Vec<(String, Value)>,
   reserved: Vec<(String, Value)>,
+  families: FamilyCatalog,
   warnings: Vec<String>,
 }
 
 impl UserConfig {
   pub fn load(home: &AtlasHome) -> Result<Self, ProjectError> {
     let path = home.config_path();
-    match fs::read_to_string(&path) {
-      Ok(text) => Self::parse(path, &text),
-      Err(source) if source.kind() == io::ErrorKind::NotFound => Ok(Self::absent(path)),
-      Err(source) => Err(ProjectError::io("read", &path, source)),
-    }
+    let mut config = match fs::read_to_string(&path) {
+      Ok(text) => Self::parse(path, &text)?,
+      Err(source) if source.kind() == io::ErrorKind::NotFound => Self::absent(path),
+      Err(source) => return Err(ProjectError::io("read", &path, source)),
+    };
+    config.families = FamilyCatalog::load(&home.detectors_dir(), &mut config.warnings)?;
+    Ok(config)
   }
 
   pub fn path(&self) -> &Path {
@@ -44,6 +48,14 @@ impl UserConfig {
 
   pub fn warnings(&self) -> &[String] {
     &self.warnings
+  }
+
+  pub(crate) fn families(&self) -> &FamilyCatalog {
+    &self.families
+  }
+
+  pub fn route_families(&self) -> Vec<&str> {
+    self.families.names().collect()
   }
 
   pub(crate) fn origin(&self) -> Origin {
@@ -82,6 +94,7 @@ impl UserConfig {
       default_exclude: Vec::new(),
       mcp: Vec::new(),
       reserved: Vec::new(),
+      families: FamilyCatalog::default(),
       warnings: Vec::new(),
     }
   }

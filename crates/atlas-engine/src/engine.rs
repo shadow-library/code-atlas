@@ -54,6 +54,7 @@ enum Recovery {
 struct ProjectHandle {
   project: Arc<Project>,
   fingerprint: String,
+  toolchain: Arc<Toolchain>,
 }
 
 pub struct Engine {
@@ -61,7 +62,6 @@ pub struct Engine {
   pub(crate) home: AtlasHome,
   pub(crate) store: Store,
   pub(crate) options: EngineOptions,
-  pub(crate) toolchain: Toolchain,
   pub(crate) inner: Mutex<Inner>,
   barriers: SingleFlight<FreshnessReport>,
   scip_meta: Mutex<Option<DecodedScipMeta>>,
@@ -111,7 +111,7 @@ impl Engine {
     std::fs::create_dir_all(&data_dir).map_err(|source| EngineError::io(&data_dir, source))?;
     let db_path = home.db_path(&project.name);
     let store = Store::open_with(&db_path, options.store.clone())?;
-    let toolchain = Toolchain::new(&options.extra_detectors, options.parse_budget);
+    let toolchain = Arc::new(Toolchain::new(project, &options.extra_detectors, options.parse_budget));
     let fingerprint = project_fingerprint(project);
     adopt_project(&store, &fingerprint)?;
     let loaded = load_state(&store, project, &toolchain, &options)?;
@@ -124,10 +124,10 @@ impl Engine {
       project: RwLock::new(ProjectHandle {
         project: Arc::new(project.clone()),
         fingerprint,
+        toolchain,
       }),
       home: home.clone(),
       store,
-      toolchain,
       inner: Mutex::new(Inner {
         state,
         lock,
@@ -149,6 +149,10 @@ impl Engine {
     self.project.read().unwrap_or_else(PoisonError::into_inner).fingerprint.clone()
   }
 
+  pub(crate) fn toolchain(&self) -> Arc<Toolchain> {
+    Arc::clone(&self.project.read().unwrap_or_else(PoisonError::into_inner).toolchain)
+  }
+
   pub fn reload_project(&self, project: &Project) -> EngineResult<()> {
     let current = self.project();
     if project.name != current.name {
@@ -160,9 +164,14 @@ impl Engine {
     let mut inner = lock_inner(&self.inner);
     let fingerprint = project_fingerprint(project);
     adopt_project(&self.store, &fingerprint)?;
+    let toolchain = match project.settings.detect == current.settings.detect {
+      true => self.toolchain(),
+      false => Arc::new(Toolchain::new(project, &self.options.extra_detectors, self.options.parse_budget)),
+    };
     *self.project.write().unwrap_or_else(PoisonError::into_inner) = ProjectHandle {
       project: Arc::new(project.clone()),
       fingerprint,
+      toolchain,
     };
     let Inner { state, health, .. } = &mut *inner;
     *health = StateHealth::NeedsReload {
@@ -512,7 +521,7 @@ impl Engine {
       StateHealth::Synced => tracing::info!(ours = ?state.generation, recovery = ?recovery, "the index changed outside this engine; reloading state"),
     }
     let project = self.project();
-    let loaded = load_state(&self.store, &project, &self.toolchain, &self.options)?;
+    let loaded = load_state(&self.store, &project, &self.toolchain(), &self.options)?;
     *state = loaded.state;
     if recovery == Recovery::Crashed {
       recover_interrupted(&self.store, &project, state)?;
@@ -598,10 +607,11 @@ impl Engine {
 
   fn run(&self, state: &mut EngineState, scans: Vec<RepoScan>, mode: IndexMode, trigger: &str) -> EngineResult<RunSummary> {
     let project = self.project();
+    let toolchain = self.toolchain();
     let env = RunEnv {
       store: &self.store,
       project: &project,
-      toolchain: &self.toolchain,
+      toolchain: &toolchain,
       options: &self.options,
     };
     execute(&env, state, &self.similarity, scans, mode, trigger)

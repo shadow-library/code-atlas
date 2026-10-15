@@ -9,6 +9,7 @@ const APP_DIR: &str = "code-atlas";
 const HOME_OVERRIDE_VAR: &str = "CODE_ATLAS_HOME";
 const REGISTRY_FILE: &str = "projects.toml";
 const CONFIG_FILE: &str = "config.toml";
+const DETECTORS_DIR: &str = "detectors";
 const DB_FILE: &str = "atlas.db";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,6 +64,10 @@ impl AtlasHome {
 
   pub fn config_path(&self) -> PathBuf {
     self.config_dir.join(CONFIG_FILE)
+  }
+
+  pub fn detectors_dir(&self) -> PathBuf {
+    self.config_dir.join(DETECTORS_DIR)
   }
 
   pub fn project_data_dir(&self, project: &ProjectName) -> PathBuf {

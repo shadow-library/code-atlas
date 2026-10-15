@@ -9,9 +9,10 @@ use atlas_core::{
   AnalysisInput, ContentHash, DetectInput, Detection, Detector, Diagnostic, FileFacts, FileRef, Language, LanguageAnalyzer, LanguageFamily, PackageContext, ParseBudget,
   ParseStatus, Producer,
 };
-use atlas_detect::{DetectorRegistry, DiagnosingDetector};
+use atlas_detect::{DeclaredRoutesDetector, DetectorRegistry, DiagnosingDetector};
 use atlas_lang_rust::RustAnalyzer;
 use atlas_lang_ts::TsAnalyzer;
+use atlas_project::Project;
 
 use crate::artifact::{DetectorOutput, FileArtifact, FileKey};
 use crate::options::FaultInjection;
@@ -24,6 +25,7 @@ pub(crate) struct Toolchain {
   ts: TsAnalyzer,
   budget: ParseBudget,
   detectors: DetectorRegistry,
+  declared: DetectorRegistry,
   extra: DetectorRegistry,
   detector_producers: Vec<Producer>,
 }
@@ -41,20 +43,26 @@ pub(crate) enum AnalysisOutcome {
 }
 
 impl Toolchain {
-  pub fn new(extra: &[Arc<dyn DiagnosingDetector>], budget: ParseBudget) -> Self {
+  pub fn new(project: &Project, extra: &[Arc<dyn DiagnosingDetector>], budget: ParseBudget) -> Self {
     let detectors = DetectorRegistry::default();
+    let families = &project.settings.detect.families;
+    let declared = match families.is_empty() {
+      true => DetectorRegistry::new(Vec::new()),
+      false => DetectorRegistry::new(vec![Box::new(DeclaredRoutesDetector::new(families.clone()))]),
+    };
     let extra = DetectorRegistry::new(
       extra
         .iter()
         .map(|detector| Box::new(SharedDetector(Arc::clone(detector))) as Box<dyn DiagnosingDetector>)
         .collect(),
     );
-    let detector_producers = detectors.producers().into_iter().chain(extra.producers()).collect();
+    let detector_producers = detectors.producers().into_iter().chain(declared.producers()).chain(extra.producers()).collect();
     Self {
       rust: RustAnalyzer::new().with_parse_budget(budget),
       ts: TsAnalyzer::new().with_parse_budget(budget),
       budget,
       detectors,
+      declared,
       extra,
       detector_producers,
     }
@@ -140,6 +148,7 @@ impl Toolchain {
       .detectors
       .run_each(&detect)
       .into_iter()
+      .chain(self.declared.run_each(&detect))
       .chain(self.extra.run_each(&detect))
       .map(|run| DetectorOutput {
         detector: run.detector.to_owned(),

@@ -23,7 +23,8 @@ impl Engine {
   pub fn analyze_text(&self, language: Language, text: &str) -> EngineResult<FileFacts> {
     let unsupported = || EngineError::Core(CoreError::UnsupportedPath(language.to_string()));
     let path = buffer_path(language).ok_or_else(unsupported)?;
-    let analyzer = self.toolchain.analyzer(language).ok_or_else(unsupported)?;
+    let toolchain = self.toolchain();
+    let analyzer = toolchain.analyzer(language).ok_or_else(unsupported)?;
     let file = FileRef {
       repo: RepoName::new(BUFFER_REPO)?,
       path: RelPath::new(path)?,

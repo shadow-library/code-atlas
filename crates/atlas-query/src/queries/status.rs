@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use atlas_core::Owner;
-use atlas_engine::{AutoScipRun, AutoScipSetting, IndexStatus, PASS_LINEAGE, ScipBackoff};
+use atlas_engine::{AutoScipRun, AutoScipSetting, IndexStatus, PASS_LINEAGE, RouteFamilyStatus, ScipBackoff};
 use atlas_store::{IndexRun, RunStatus};
 use serde::Serialize;
 
@@ -98,6 +98,8 @@ pub struct StatusAnswer {
   pub skipped_total: u64,
   pub skipped_files: Vec<SkippedFileView>,
   pub budget_retries: Vec<BudgetRetryView>,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  pub route_families: Vec<RouteFamilyStatus>,
 }
 
 fn now_ms() -> i64 {
@@ -177,6 +179,7 @@ impl QueryEngine {
         })
         .collect(),
       budget_retries: status.budget_retries.iter().map(budget_retry).collect(),
+      route_families: status.route_families,
     };
     Ok(Response { freshness, answer })
   }

@@ -1740,3 +1740,58 @@ fn should_trace_the_project_resolution_and_flag_a_pinned_user_scope_server_in_do
     assert!(report.contains(&expected), "missing {expected:?} in {report}");
   }
 }
+
+const ACME_FAMILY: &str = "version = 1\npackages = [\"@acme/http\"]\n\n[controller]\ndecorators = [\"Api\"]\n\n[routes.methods]\nRead = \"GET\"\nWrite = \"POST\"\n";
+const ACME_CONTROLLER: &str = "import { Api, Read, Write } from '@acme/http';\n\n@Api('orders')\nexport class OrdersController {\n  @Read()\n  list() {\n    return [];\n  }\n\n  @Write()\n  create() {\n    return null;\n  }\n}\n";
+
+#[test]
+fn should_index_a_declared_route_family_and_report_each_enabled_family_in_status() {
+  let sandbox = Sandbox::new();
+  let repo = sandbox.work().join("orders");
+  fs::create_dir_all(repo.join("src")).unwrap();
+  fs::write(repo.join("package.json"), "{ \"name\": \"orders\", \"version\": \"1.0.0\" }\n").unwrap();
+  fs::write(repo.join("src/orders.controller.ts"), ACME_CONTROLLER).unwrap();
+  let detectors = sandbox.home.path().join("config/detectors");
+  fs::create_dir_all(&detectors).unwrap();
+  fs::write(detectors.join("acme-http.toml"), ACME_FAMILY).unwrap();
+  assert_ok(&sandbox.run(&repo, &["init"]));
+  let marker = fs::read_to_string(repo.join(".code-atlas.toml")).unwrap();
+  fs::write(
+    repo.join(".code-atlas.toml"),
+    format!("{marker}\n[detect]\nroute_families = [\"acme-http\", \"acme-rpc\"]\n"),
+  )
+  .unwrap();
+  let undeclared = sandbox.home.path().join("config/detectors/acme-rpc.toml");
+
+  let status = sandbox.run(&repo, &["status"]);
+  let api = sandbox.run(&repo, &["api"]);
+
+  assert_ok(&status);
+  assert!(stdout(&status).contains("route family acme-http: 1 controller, 2 routes\n"), "{}", stdout(&status));
+  assert!(
+    stdout(&status).contains(&format!(
+      "warning: route family acme-rpc is enabled but not declared: {} does not exist\n",
+      undeclared.display()
+    )),
+    "{}",
+    stdout(&status)
+  );
+  assert!(stderr(&status).contains("warning: route family acme-rpc ignored: "), "{}", stderr(&status));
+  assert_ok(&api);
+  assert!(stdout(&api).contains("GET /orders") && stdout(&api).contains("POST /orders"), "{}", stdout(&api));
+  let listed = json(&sandbox.run(&repo, &["status", "--json"]));
+  assert_eq!(
+    listed["answer"]["route_families"][0],
+    serde_json::json!({ "name": "acme-http", "state": "matched", "controllers": 1, "routes": 2 })
+  );
+
+  fs::write(detectors.join("acme-http.toml"), "packages = 1\n").unwrap();
+  let broken = sandbox.run(&repo, &["status"]);
+
+  assert_eq!(code(&broken), 2, "{}", stderr(&broken));
+  assert!(
+    stderr(&broken).contains("acme-http.toml: packages: expected an array of strings, got 1"),
+    "{}",
+    stderr(&broken)
+  );
+}

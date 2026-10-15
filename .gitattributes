@@ -1,3 +1,4 @@
 fixtures/** -text
 crates/*/tests/pin-corpus/** -text
 crates/*/tests/hangs/** -text
+crates/*/tests/family-corpus/** -text

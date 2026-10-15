@@ -1,0 +1,22 @@
+version = 1
+packages = ["@acme/http"]
+
+[controller]
+decorators = ["Api"]
+
+[routes.methods]
+Read = "GET"
+Write = "POST"
+Remove = "DELETE"
+
+[guards]
+decorators = ["Guarded"]
+
+[params]
+path = ["PathParam"]
+headers = ["Header"]
+body = ["Payload"]
+
+[global_prefix]
+factory = "AcmeServer.create"
+method = "setGlobalPrefix"

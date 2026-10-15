@@ -4,11 +4,14 @@ use std::path::Path;
 use toml::Value;
 
 use super::env::ConfigEnv;
+use super::families::FamilyCatalog;
 use super::keys::{Keyed, PROJECT_KEYS, find_spec};
 use super::layers::{ConfigEntry, Layered, Origin};
 use super::user::UserConfig;
 use crate::marker::{MARKER_FILE, RepoFile};
-use crate::registry::{Project, ProjectSettings, RepoConfig, StoredProject};
+use crate::registry::{DetectSettings, Project, ProjectSettings, RepoConfig, StoredProject};
+
+const ROUTE_FAMILIES_KEY: &str = "detect.route_families";
 
 pub(crate) struct ProjectView {
   pub(crate) project: Project,
@@ -65,6 +68,10 @@ pub(crate) fn resolve_project(stored: &StoredProject, registry_path: &Path, conf
     settings.apply(&entry.origin, entry.key, &entry.value);
   }
   let mut entries = settings.entries();
+  if let Some(entry) = entries.iter_mut().find(|entry| entry.key == ROUTE_FAMILIES_KEY) {
+    let enabling = enabling_repos(&stored.project.repos, &files);
+    *entry = enable_route_families(&mut settings.value.detect, entry, &enabling, config.families(), &mut warnings);
+  }
   let mut repos = Vec::with_capacity(files.len());
   for (repo, file) in stored.project.repos.iter().zip(&files) {
     let (effective, repo_entries) = effective_repo(repo, file.as_ref(), config, &registry);
@@ -80,6 +87,42 @@ pub(crate) fn resolve_project(stored: &StoredProject, registry_path: &Path, conf
     },
     entries,
     warnings,
+  }
+}
+
+fn enabling_repos<'f>(repos: &[RepoConfig], files: &'f [Option<RepoFile>]) -> Vec<(Origin, &'f [String])> {
+  repos
+    .iter()
+    .zip(files)
+    .filter_map(|(repo, file)| Some((repo_origin(repo), file.as_ref()?.route_families.as_slice())))
+    .filter(|(_, names)| !names.is_empty())
+    .collect()
+}
+
+fn enable_route_families(detect: &mut DetectSettings, entry: &ConfigEntry, enabling: &[(Origin, &[String])], catalog: &FamilyCatalog, warnings: &mut Vec<String>) -> ConfigEntry {
+  let mut origins: Vec<Origin> = match detect.route_families.is_empty() {
+    true => Vec::new(),
+    false => entry.origins.clone(),
+  };
+  let mut names: Vec<String> = detect.route_families.clone();
+  for (origin, repo_names) in enabling {
+    names.extend(repo_names.iter().cloned());
+    origins.push(origin.clone());
+  }
+  names.sort();
+  names.dedup();
+  if origins.is_empty() {
+    origins.push(Origin::BuiltIn);
+  }
+  detect.families = names.iter().filter_map(|name| catalog.get(name)).cloned().collect();
+  detect.route_families = names;
+  for name in detect.undeclared() {
+    warnings.push(format!("route family {name} ignored: {} does not exist", catalog.path_of(name).display()));
+  }
+  ConfigEntry {
+    key: entry.key.clone(),
+    value: Some(Value::Array(detect.route_families.iter().cloned().map(Value::String).collect())),
+    origins,
   }
 }
 

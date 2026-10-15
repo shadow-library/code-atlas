@@ -1,4 +1,4 @@
-use atlas_engine::{AutoScipOutcome, AutoScipSetting};
+use atlas_engine::{AutoScipOutcome, AutoScipSetting, RouteFamilyState, RouteFamilyStatus};
 
 use crate::freshness::ScipState;
 use crate::queries::{AutoScipView, BudgetRetryView, ChangesAnswer, ReadAnswer, StatusAnswer};
@@ -50,6 +50,25 @@ fn render_auto_scip(project: &str, view: &AutoScipView, out: &mut TextOut) {
   }
 }
 
+fn counted(count: u64, noun: &str) -> String {
+  match count {
+    1 => format!("1 {noun}"),
+    _ => format!("{count} {noun}s"),
+  }
+}
+
+fn render_route_family(family: &RouteFamilyStatus, out: &mut TextOut) {
+  let name = &family.name;
+  match &family.state {
+    RouteFamilyState::Matched { controllers: 0, routes: 0 } => out.line(
+      0,
+      format!("warning: route family {name} matched no controllers or routes; check its packages and decorator names"),
+    ),
+    RouteFamilyState::Matched { controllers, routes } => out.line(0, format!("route family {name}: {}, {}", counted(*controllers, "controller"), counted(*routes, "route"))),
+    RouteFamilyState::Undeclared { path } => out.line(0, format!("warning: route family {name} is enabled but not declared: {path} does not exist")),
+  }
+}
+
 fn budget_retry_note(retry: &BudgetRetryView) -> String {
   match retry.retry_in_secs {
     Some(0) => format!(" (budget retry {} due now)", retry.attempts + 1),
@@ -85,6 +104,9 @@ impl RenderText for StatusAnswer {
       None => out.line(0, format!("scip: unknown ({coverage})")),
     }
     render_auto_scip(&self.project, &self.scip_auto, out);
+    for family in &self.route_families {
+      render_route_family(family, out);
+    }
     if self.skipped_total > 0 {
       let listed = self
         .skipped_files
@@ -199,6 +221,7 @@ mod tests {
       skipped_total,
       skipped_files,
       budget_retries: Vec::new(),
+      route_families: Vec::new(),
     }
   }
 
@@ -234,6 +257,39 @@ mod tests {
     assert!(many.contains("skipped 4 files: acme-api/big.ts (6.1 MB > max_file_bytes 1 MB), and 3 more\n"), "{many}");
     let none = render(&answer(Some(ScipState::Current), 0, Vec::new()));
     assert!(!none.contains("skipped"), "{none}");
+  }
+
+  #[test]
+  fn should_report_each_route_family_and_warn_about_silent_ones() {
+    let mut status = answer(Some(ScipState::Current), 0, Vec::new());
+    status.route_families = vec![
+      RouteFamilyStatus {
+        name: "acme-http".to_owned(),
+        state: RouteFamilyState::Matched { controllers: 2, routes: 7 },
+      },
+      RouteFamilyStatus {
+        name: "acme-rpc".to_owned(),
+        state: RouteFamilyState::Matched { controllers: 0, routes: 0 },
+      },
+      RouteFamilyStatus {
+        name: "acme-htp".to_owned(),
+        state: RouteFamilyState::Undeclared {
+          path: "/home/config/detectors/acme-htp.toml".to_owned(),
+        },
+      },
+    ];
+
+    let text = render(&status);
+
+    assert!(
+      text.contains(
+        "route family acme-http: 2 controllers, 7 routes\n\
+         warning: route family acme-rpc matched no controllers or routes; check its packages and decorator names\n\
+         warning: route family acme-htp is enabled but not declared: /home/config/detectors/acme-htp.toml does not exist\n"
+      ),
+      "{text}"
+    );
+    assert!(!render(&answer(Some(ScipState::Current), 0, Vec::new())).contains("route family"));
   }
 
   #[test]

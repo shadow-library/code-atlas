@@ -529,3 +529,37 @@ async fn should_keep_tool_schemas_within_the_budget() {
   }
   harness.stop().await.unwrap();
 }
+
+#[tokio::test]
+async fn should_rebuild_the_detectors_when_a_route_family_changes_while_running() {
+  let harness = start(&["acme-api"]).await;
+  let api = common::repo_path(harness.scratch.path(), "acme-api");
+  fs::write(
+    api.join("src/declared.controller.ts"),
+    "import { Api, Read } from '@acme/http';\n\n@Api('declared')\nexport class DeclaredController {\n  @Read()\n  list() {\n    return [];\n  }\n}\n",
+  )
+  .unwrap();
+  let family = "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"Api\"]\n[routes.methods]\nRead = \"GET\"\n";
+  fs::create_dir_all(harness.home.detectors_dir()).unwrap();
+  fs::write(harness.home.detectors_dir().join("acme-http.toml"), family).unwrap();
+  let mut registry = Registry::load(&harness.home).unwrap();
+  let mut settings = registry.stored_settings("acme").unwrap().clone();
+  settings.detect.route_families = vec!["acme-http".to_owned()];
+  registry.set_settings("acme", settings).unwrap();
+
+  let enabled = harness.text("atlas_status", json!({})).await;
+  let first = harness.text("atlas_api", json!({ "endpoint": "GET /declared" })).await;
+  fs::write(harness.home.detectors_dir().join("acme-http.toml"), family.replace("\"GET\"", "\"PUT\"")).unwrap();
+  let changed = harness.text("atlas_api", json!({ "endpoint": "PUT /declared" })).await;
+
+  assert!(
+    enabled.contains("route family acme-http: 1 controller, 1 route") && !enabled.contains("DEGRADED"),
+    "{enabled}"
+  );
+  assert!(first.contains("GET /declared") && !first.contains("DEGRADED"), "{first}");
+  assert!(
+    changed.contains("PUT /declared") && !changed.contains("GET /declared") && !changed.contains("DEGRADED"),
+    "{changed}"
+  );
+  harness.stop().await.unwrap();
+}

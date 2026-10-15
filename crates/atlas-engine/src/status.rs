@@ -1,13 +1,13 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use atlas_core::{Freshness, Owner, ParseStatus, UnresolvedReason};
+use atlas_core::{EntityKey, Freshness, Owner, ParseStatus, UnresolvedReason};
 use atlas_scip::ScipFacts;
 use atlas_store::{FreshnessPolicy, InferredQuery, OwnedFacts};
 
 use crate::engine::{Engine, lock_inner};
 use crate::error::EngineResult;
 use crate::passes::{PASS_LINEAGE, PASS_REPOS, PASS_STRUCTURE};
-use crate::report::{BudgetRetryStatus, FailedFile, IndexStatus, InferredCounts, LlmSpend, ScanKind, ScipCoverage, SkippedSummary};
+use crate::report::{BudgetRetryStatus, FailedFile, IndexStatus, InferredCounts, LlmSpend, RouteFamilyState, RouteFamilyStatus, ScanKind, ScipCoverage, SkippedSummary};
 
 const STATUS_RUNS: usize = 10;
 const SPEND_RUNS: usize = 1_000;
@@ -49,7 +49,51 @@ impl FactTally {
   }
 }
 
+#[derive(Default)]
+struct RouteTally {
+  controllers: BTreeMap<String, BTreeSet<(String, String)>>,
+  routes: BTreeMap<String, u64>,
+}
+
+impl RouteTally {
+  fn add(&mut self, owner: &str, facts: &OwnedFacts) {
+    for entity in facts.entities.iter().filter(|entity| matches!(entity.key, EntityKey::Endpoint { .. })) {
+      let Some(framework) = entity.attrs.get("framework").and_then(serde_json::Value::as_str) else {
+        continue;
+      };
+      *self.routes.entry(framework.to_owned()).or_default() += 1;
+      if let Some(controller) = entity.attrs.get("controller").and_then(serde_json::Value::as_str) {
+        self.controllers.entry(framework.to_owned()).or_default().insert((owner.to_owned(), controller.to_owned()));
+      }
+    }
+  }
+
+  fn matched(&self, family: &str) -> RouteFamilyState {
+    RouteFamilyState::Matched {
+      controllers: self.controllers.get(family).map_or(0, |controllers| controllers.len() as u64),
+      routes: self.routes.get(family).copied().unwrap_or(0),
+    }
+  }
+}
+
 impl Engine {
+  fn route_family_status(&self, tally: &RouteTally) -> Vec<RouteFamilyStatus> {
+    let detect = &self.project().settings.detect;
+    detect
+      .route_families
+      .iter()
+      .map(|name| RouteFamilyStatus {
+        name: name.clone(),
+        state: match detect.families.iter().any(|family| family.name() == name) {
+          true => tally.matched(name),
+          false => RouteFamilyState::Undeclared {
+            path: self.home.detectors_dir().join(format!("{name}.toml")).display().to_string(),
+          },
+        },
+      })
+      .collect()
+  }
+
   pub fn status(&self) -> EngineResult<IndexStatus> {
     let (scip_meta, header, dangling, missing, skipped, budget_retries) = {
       let inner = lock_inner(&self.inner);
@@ -96,6 +140,7 @@ impl Engine {
       let mut files_by_parse_status: BTreeMap<String, u64> = BTreeMap::new();
       let mut failed_files = Vec::new();
       let mut tally = FactTally::default();
+      let mut routes = RouteTally::default();
       let mut scip = ScipCoverage {
         last_run_ms: scip_meta.last_run_ms,
         lag: Some(header.scip),
@@ -108,7 +153,9 @@ impl Engine {
             repo: record.repo.clone(),
             path: record.path.clone(),
           };
-          tally.add(&tx.owned_facts(&owner)?);
+          let facts = tx.owned_facts(&owner)?;
+          tally.add(&facts);
+          routes.add(&format!("{}:{}", record.repo, record.path), &facts);
           let Some(language) = record.language else { continue };
           *files_by_language.entry(language.as_str().to_owned()).or_default() += 1;
           *files_by_parse_status.entry(parse_label(&record.parse_status).to_owned()).or_default() += 1;
@@ -167,6 +214,7 @@ impl Engine {
         repos_missing: missing,
         skipped,
         budget_retries,
+        route_families: self.route_family_status(&routes),
       })
     })
   }

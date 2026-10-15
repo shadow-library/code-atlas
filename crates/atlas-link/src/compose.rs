@@ -11,11 +11,46 @@ use crate::route::{RouteSegment, parse_route};
 
 const MOUNTS_KIND: &str = "mounts";
 const GLOBAL_PREFIX_KIND: &str = "http_global_prefix";
+const FAMILY_PREFIX_KIND: &str = "http_family_prefix";
+const NEST_FRAMEWORK: &str = "nestjs";
+
 const MAX_MOUNT_DEPTH: usize = 6;
-const NEST_PREFIX_CONFIDENCE: f32 = 0.85;
-const NEST_AMBIGUOUS_PREFIX_CONFIDENCE: f32 = 0.5;
+const GLOBAL_PREFIX_CONFIDENCE: f32 = 0.85;
+const AMBIGUOUS_GLOBAL_PREFIX_CONFIDENCE: f32 = 0.5;
 const DYNAMIC_ROUTE_CONFIDENCE: f32 = 0.4;
 const UNMOUNTED_RULES: [&str; 2] = ["express-router-unmounted", "axum-router-parameter"];
+
+type GlobalPrefixes = BTreeMap<(RepoName, String), Vec<Prefix>>;
+
+#[derive(Debug, Clone)]
+struct Prefix {
+  value: String,
+  entity: Entity,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PrefixSource {
+  Nest,
+  DeclaredFamily,
+}
+
+impl PrefixSource {
+  fn rule(self, candidates: usize) -> (f32, &'static str) {
+    match (self, candidates) {
+      (Self::Nest, 1) => (GLOBAL_PREFIX_CONFIDENCE, "nest-global-prefix"),
+      (Self::Nest, _) => (AMBIGUOUS_GLOBAL_PREFIX_CONFIDENCE, "nest-global-prefix-ambiguous"),
+      (Self::DeclaredFamily, 1) => (GLOBAL_PREFIX_CONFIDENCE, "declared-global-prefix"),
+      (Self::DeclaredFamily, _) => (AMBIGUOUS_GLOBAL_PREFIX_CONFIDENCE, "declared-global-prefix-ambiguous"),
+    }
+  }
+
+  fn note(self, prefix: &str) -> String {
+    match self {
+      Self::Nest => format!("setGlobalPrefix({prefix})"),
+      Self::DeclaredFamily => format!("global prefix {prefix}"),
+    }
+  }
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct Route {
@@ -90,22 +125,28 @@ fn route_of(entity: &Entity, guard_source: EntityId) -> Option<Route> {
   })
 }
 
-fn global_prefixes(facts: &Facts<'_, '_>) -> LinkResult<BTreeMap<RepoName, Vec<Entity>>> {
-  let mut prefixes: BTreeMap<RepoName, Vec<Entity>> = BTreeMap::new();
+fn global_prefixes(facts: &Facts<'_, '_>) -> LinkResult<GlobalPrefixes> {
+  let mut prefixes = GlobalPrefixes::new();
   for entity in facts.entities(&EntityKind::custom(GLOBAL_PREFIX_KIND)?)? {
     let Some(repo) = entity.repo.clone() else { continue };
-    if entity.name == "/" {
-      continue;
-    }
-    prefixes.entry(repo).or_default().push(entity);
+    let value = entity.name.clone();
+    prefixes.entry((repo, NEST_FRAMEWORK.to_owned())).or_default().push(Prefix { value, entity });
   }
+  for entity in facts.entities(&EntityKind::custom(FAMILY_PREFIX_KIND)?)? {
+    let Some(repo) = entity.repo.clone() else { continue };
+    let Some((family, value)) = entity.name.split_once(':') else { continue };
+    let (family, value) = (family.to_owned(), value.to_owned());
+    prefixes.entry((repo, family)).or_default().push(Prefix { value, entity });
+  }
+  prefixes.values_mut().for_each(|candidates| candidates.retain(|prefix| prefix.value != "/"));
   Ok(prefixes)
 }
 
-fn chains_for(facts: &Facts<'_, '_>, mounts: &EdgeKind, prefixes: &BTreeMap<RepoName, Vec<Entity>>, endpoint: &Entity) -> LinkResult<Vec<Chain>> {
+fn chains_for(facts: &Facts<'_, '_>, mounts: &EdgeKind, prefixes: &GlobalPrefixes, endpoint: &Entity) -> LinkResult<Vec<Chain>> {
   let Some(repo) = &endpoint.repo else { return Ok(Vec::new()) };
+  let prefixes_of = |framework: &str| prefixes.get(&(repo.clone(), framework.to_owned())).map(Vec::as_slice).unwrap_or_default();
   match attr_str(&endpoint.attrs, "framework") {
-    Some("nestjs") => nest_chains(facts, prefixes.get(repo).map(Vec::as_slice).unwrap_or_default()),
+    Some(NEST_FRAMEWORK) => prefix_chains(facts, prefixes_of(NEST_FRAMEWORK), PrefixSource::Nest),
     Some("express") => match (attr_str(&endpoint.attrs, "route_scope"), attr_str(&endpoint.attrs, "router"), &endpoint.path) {
       (Some("router_relative"), Some(router), Some(path)) => match router_symbol(facts, repo, path, router)? {
         Some(router) => express_chains(facts, mounts, &router, &mut BTreeSet::new()),
@@ -117,22 +158,20 @@ fn chains_for(facts: &Facts<'_, '_>, mounts: &EdgeKind, prefixes: &BTreeMap<Repo
       Some(function) => axum_chains(facts, mounts, &function, &mut BTreeSet::new()),
       None => Ok(Vec::new()),
     },
-    _ => Ok(Vec::new()),
+    Some(family) => prefix_chains(facts, prefixes_of(family), PrefixSource::DeclaredFamily),
+    None => Ok(Vec::new()),
   }
 }
 
-fn nest_chains(facts: &Facts<'_, '_>, prefixes: &[Entity]) -> LinkResult<Vec<Chain>> {
-  let (confidence, rule) = match prefixes.len() {
-    1 => (NEST_PREFIX_CONFIDENCE, "nest-global-prefix"),
-    _ => (NEST_AMBIGUOUS_PREFIX_CONFIDENCE, "nest-global-prefix-ambiguous"),
-  };
+fn prefix_chains(facts: &Facts<'_, '_>, prefixes: &[Prefix], source: PrefixSource) -> LinkResult<Vec<Chain>> {
+  let (confidence, rule) = source.rule(prefixes.len());
   let mut chains = Vec::new();
   for prefix in prefixes {
     chains.push(Chain {
-      prefix: prefix.name.clone(),
+      prefix: prefix.value.clone(),
       confidence,
       rule,
-      evidence: entity_evidence(facts, prefix, Some(format!("setGlobalPrefix({})", prefix.name)))?.into_iter().collect(),
+      evidence: entity_evidence(facts, &prefix.entity, Some(source.note(&prefix.value)))?.into_iter().collect(),
     });
   }
   Ok(chains)

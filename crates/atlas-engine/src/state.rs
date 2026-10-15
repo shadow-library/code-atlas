@@ -98,12 +98,22 @@ impl ScipMeta {
 pub(crate) fn project_fingerprint(project: &Project) -> String {
   let mut repos: Vec<&RepoConfig> = project.repos.iter().collect();
   repos.sort_by(|left, right| left.name.cmp(&right.name));
-  let identity = serde_json::json!({
+  let mut identity = serde_json::json!({
     "name": project.name.as_str(),
     "repos": repos,
     "max_file_bytes": project.settings.max_file_bytes,
     "store_schema": atlas_store::SCHEMA_VERSION,
   });
+  let detect = &project.settings.detect;
+  if !detect.route_families.is_empty()
+    && let Some(fields) = identity.as_object_mut()
+  {
+    fields.insert("route_families".to_owned(), serde_json::json!(detect.route_families));
+    fields.insert(
+      "route_family_definitions".to_owned(),
+      serde_json::json!(atlas_detect::families_digest(&detect.families).to_string()),
+    );
+  }
   blake3::hash(identity.to_string().as_bytes()).to_hex().to_string()
 }
 

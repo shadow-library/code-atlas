@@ -26,9 +26,10 @@ The repository's `.cargo/config.toml` sets `LIBSQLITE3_FLAGS="-USQLITE_ENABLE_ME
 |---|---|
 | Global defaults | `<config dir>/config.toml` (optional; see [Configuration layers](#configuration-layers)) |
 | Registry | `<config dir>/projects.toml` (locked by `projects.toml.lock` while written) |
+| Route families | `<config dir>/detectors/<name>.toml` (optional; see [Route families](#route-families)) |
 | Project database | `<data dir>/<project>/atlas.db` (plus `-wal`, `-shm`, `atlas.db.index.lock`) |
 | SCIP cache | `<data dir>/<project>/scip-cache/` |
-| Repo marker and repo layer | `.code-atlas.toml` in a repo (`project = "<name>"` pin, optional `[index]` keys), pin written by `init` |
+| Repo marker and repo layer | `.code-atlas.toml` in a repo (`project = "<name>"` pin, optional `[index]` and `[detect]` keys), pin written by `init` |
 | Bench corpora | `<data dir>/bench-corpora/` |
 
 The command is `catl`. The home directories, `CODE_ATLAS_HOME`, the `.code-atlas.toml` marker and the MCP server name keep the project name `code-atlas`.
@@ -142,8 +143,8 @@ Every setting resolves through these layers, later ones winning:
 
 Two rules cut across the order:
 
-- **Fact keys** change what is indexed: `max_file_bytes` and each repo's `include`, `exclude` and `languages`. They stop at the repo layer and enter the project fingerprint, so changing them makes every engine re-adopt the project and re-index what changed. Environment variables and flags never change them (`CODE_ATLAS_MAX_FILE_BYTES` is ignored with a warning), so two processes with different environments cannot write different facts into one database.
-- **A repository file is data only.** `.code-atlas.toml` may set `project`, `[index] include`, `exclude`, `languages` (for its own repo) and `max_file_bytes` (for the whole project, applied only when every repo that sets it agrees). Executables (`lsp.typescript_command`, `agents.binary`), credential settings (`llm.api_key_env`, `llm.openai_base_url`) and machine settings (`lsp.*`, `scip.*`, `llm.*`, `mcp.*`) are ignored there with a warning, because cloning a repository must never run its command or redirect a key.
+- **Fact keys** change what is indexed: `max_file_bytes`, `detect.route_families` (with the definitions of the families it names) and each repo's `include`, `exclude` and `languages`. They stop at the repo layer and enter the project fingerprint, so changing them makes every engine re-adopt the project and re-index what changed. Environment variables and flags never change them (`CODE_ATLAS_MAX_FILE_BYTES` is ignored with a warning), so two processes with different environments cannot write different facts into one database.
+- **A repository file is data only.** `.code-atlas.toml` may set `project`, `[index] include`, `exclude`, `languages` (for its own repo), `[detect] route_families` (added to the project's list) and `max_file_bytes` (for the whole project, applied only when every repo that sets it agrees). It can only name a route family; the definition always comes from the user's config directory. Executables (`lsp.typescript_command`, `agents.binary`), credential settings (`llm.api_key_env`, `llm.openai_base_url`) and machine settings (`lsp.*`, `scip.*`, `llm.*`, `mcp.*`) are ignored there with a warning, because cloning a repository must never run its command or redirect a key.
 
 List values combine instead of replacing: a repo's effective `exclude` is its `projects.toml` globs, then `[defaults] exclude`, then the repo file's `[index] exclude`; `include` likewise without the defaults. A repo file's `languages` replaces the registry's.
 
@@ -204,6 +205,72 @@ config.toml + app/.code-atlas.toml  repo.app.exclude = ["**/*.gen.ts", "legacy/*
 **Writes keep comments.** `project` commands edit `projects.toml` in place: comments, key order, CRLF line endings and untouched projects are kept, and only changed values are rewritten. `init` adds or changes the `project` key of an existing `.code-atlas.toml` and keeps the rest of it. Each edited text is parsed back and compared with the intended content; if they differ, the file is written as a fresh serialisation without comments and a warning is logged.
 
 **Reloading.** The CLI reads every layer on each command. The MCP server re-reads the project layers before each tool call and reloads when the effective project changed, so an edited `config.toml [defaults]`, registry or repo file applies at the next call; `watch` reloads when another process has re-adopted the project. `[mcp]` keys and `CODE_ATLAS_MCP_*` are read once when `catl mcp` starts; restart the server to change them.
+
+## Route families
+
+A route family describes a decorator-based HTTP framework that Code Atlas does not compile in (only NestJS is built in). Declare it once per user in `<config dir>/detectors/<name>.toml` (under `CODE_ATLAS_HOME/config` when that is set) and enable it where it is used. The file name is the family name: a lowercase letter followed by lowercase letters, digits, `-` or `_`; the names of built-in frameworks (`nestjs`, `express`, `fastify`, `koa`, `axum`, `actix`, `rocket`) are refused. Matching is described in [languages and frameworks](languages-and-frameworks.md#declared-route-families).
+
+```toml
+# ~/.config/code-atlas/detectors/acme-http.toml  (an invented framework)
+version = 1                          # optional; only 1 is understood
+packages = ["@acme/http"]            # decorators count only when imported from these
+
+[controller]
+decorators = ["Api"]                 # class decorators that make a controller
+path = { argument = 0, key = "path" }  # default: argument 0, or its `path` key when it is an object literal
+
+[routes]
+path = { argument = 0, key = "path" }  # same default as the controller
+
+[routes.methods]                     # method decorator = HTTP method (GET POST PUT PATCH DELETE HEAD OPTIONS TRACE CONNECT ANY)
+Read = "GET"
+Write = "POST"
+Remove = "DELETE"
+
+[guards]
+decorators = ["Guarded"]             # each argument becomes a requires_guard edge
+
+[params]                             # optional; recorded as endpoint attrs
+path = ["PathParam"]                 # -> params
+headers = ["Header"]                 # -> headers
+body = ["Payload"]                   # -> body_type (the parameter's declared type)
+
+[global_prefix]                      # optional
+factory = "AcmeServer.create"        # const app = await AcmeServer.create(...)
+method = "setGlobalPrefix"           # app.setGlobalPrefix('v2')
+```
+
+`packages`, `[controller] decorators` and `[routes.methods]` are required. Each decorator name has one role. Unknown keys are ignored with a warning (`detectors/acme-http.toml: unknown key client ignored`), so a file written for a newer `catl` still loads. Invalid files:
+
+- a file whose name is not a family name (`Acme Http.toml`) is skipped with a warning;
+- an invalid value, a missing required key or broken syntax in a family that no project enables is skipped with a warning naming the file and the key;
+- the same in a family that some project enables is an error naming the file and the key (`invalid config file .../detectors/acme-http.toml: routes.methods.Read: expected an HTTP method ...`, exit 2). It stops every command, including a running MCP server's next call, until the file is fixed or the family is no longer enabled.
+
+`packages` holds import specifiers compared as written:
+
+- A decorator counts only when it is imported from a listed specifier exactly. A file importing `@acme/http/testing` is examined when `@acme/http` is listed, but its decorators count only if `@acme/http/testing` is listed too.
+- Decorators re-exported through a barrel inside the repository (`import { Api } from './http'`) do not match; list the barrel's specifier if every file writes it the same way.
+- A relative specifier in `packages` is matched literally, so it only matches files that spell the import the same way.
+
+Enable a family with the fact key `detect.route_families`:
+
+- for every project: `config.toml` `[defaults.detect] route_families = ["acme-http"]`;
+- for one project: `projects.toml` `[project.settings.detect] route_families = ["acme-http"]` (edit the file; `project config` has no flag for it);
+- from a repository: `.code-atlas.toml` `[detect] route_families = ["acme-http"]`, which adds to the project's list.
+
+The effective list is the project value plus every repo file's list; it applies to all repos of the project, which is harmless because matching is anchored on imports of the family's packages. Environment variables cannot set it (`CODE_ATLAS_DETECT_ROUTE_FAMILIES` is ignored with a warning). An enabled name without a file is ignored with a warning and reported by `status`. `catl config show --origin` lists `detect.route_families` with every layer that contributed; `doctor` lists the declared families.
+
+The enabled names and the definitions they resolve to enter the project fingerprint and the version of the `http-endpoints-declared` detector. Editing a family file, or enabling or disabling one, therefore re-analyses every file of the project on the next query (once), and a long-lived MCP server reloads at its next call instead of re-analysing files back and forth with a CLI that reads the new definition. `catl watch` does not re-read family files on its own: it picks up an edit only after another process (any `catl` command or the MCP server) has re-adopted the project; restart it otherwise. Projects that enable no family keep their fingerprint and detector list unchanged.
+
+A family's global prefix is stored as `other:http_family_prefix:<repo>:<family>:<prefix>`, separate from the NestJS `other:http_global_prefix:<repo>:<prefix>`, so a NestJS app and a family app in one repo with the same prefix value keep one prefix each.
+
+`status` prints `route family acme-http: 3 controllers, 12 routes` for each enabled family (controllers that expose at least one route), and a warning for a family that matched nothing or has no file:
+
+```
+route family acme-http: 3 controllers, 12 routes
+warning: route family acme-rpc matched no controllers or routes; check its packages and decorator names
+warning: route family acme-htp is enabled but not declared: /home/me/.config/code-atlas/detectors/acme-htp.toml does not exist
+```
 
 ## Project config
 

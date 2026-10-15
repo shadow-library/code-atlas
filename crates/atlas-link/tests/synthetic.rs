@@ -391,3 +391,119 @@ fn should_not_derive_auth_usage_from_rust_items_inside_a_cfg_test_module_of_any_
 
   assert_eq!(users, vec!["production_probe".to_owned()]);
 }
+
+const MIXED_API: &[(&str, &str)] = &[
+  ("mixed-api/package.json", r#"{ "name": "mixed-api", "version": "1.0.0" }"#),
+  (
+    "mixed-api/src/main.ts",
+    r#"import { AcmeServer } from '@acme/http';
+
+class AppModule {}
+
+async function boot(): Promise<void> {
+  const app = await AcmeServer.create(AppModule);
+  app.setGlobalPrefix('api');
+}
+
+boot();
+"#,
+  ),
+  (
+    "mixed-api/src/nest-main.ts",
+    r#"import { NestFactory } from '@nestjs/core';
+
+class NestModule {}
+
+async function bootstrap(): Promise<void> {
+  const app = await NestFactory.create(NestModule);
+  app.setGlobalPrefix('api');
+}
+
+bootstrap();
+"#,
+  ),
+  (
+    "mixed-api/src/orders.controller.ts",
+    r#"import { Api, Read } from '@acme/http';
+
+@Api('orders')
+export class OrdersController {
+  @Read(':id')
+  find() {
+    return null;
+  }
+}
+"#,
+  ),
+  (
+    "mixed-api/src/health.controller.ts",
+    r#"import { Controller, Get } from '@nestjs/common';
+
+@Controller('health')
+export class HealthController {
+  @Get()
+  check() {
+    return 'ok';
+  }
+}
+"#,
+  ),
+];
+
+#[test]
+fn should_compose_a_nest_prefix_and_a_family_prefix_of_the_same_value_each_onto_its_own_routes() {
+  let scratch = tempfile::tempdir().unwrap();
+  let source = scratch.path().join("source");
+  write_tree(&source, MIXED_API);
+  let family = "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"Api\"]\n[routes.methods]\nRead = \"GET\"\n[global_prefix]\nfactory = \"AcmeServer.create\"\nmethod = \"setGlobalPrefix\"\n";
+  let mut project = atlas_project::Project {
+    name: atlas_core::ProjectName::new("mixed").unwrap(),
+    settings: atlas_project::ProjectSettings::default(),
+    repos: vec![atlas_project::RepoConfig {
+      name: RepoName::new("mixed-api").unwrap(),
+      path: source.join("mixed-api"),
+      include: Vec::new(),
+      exclude: Vec::new(),
+      languages: None,
+    }],
+  };
+  project.settings.detect.route_families = vec!["acme-http".to_owned()];
+  project.settings.detect.families = vec![atlas_detect::DecoratorFamily::parse("acme-http", family).unwrap().family];
+  let engine = atlas_engine::Engine::open(
+    &project,
+    &atlas_project::AtlasHome::rooted_at(scratch.path().join("home")),
+    atlas_engine::EngineOptions::default(),
+  )
+  .unwrap();
+  assert!(engine.ensure_fresh().unwrap().is_fresh());
+
+  let mut composed: Vec<(String, String, String)> = pass_facts(&engine)
+    .entities
+    .iter()
+    .filter(|entity| entity.kind == EntityKind::ApiEndpoint && entity.attrs.contains_key("composed_from"))
+    .map(|entity| {
+      (
+        entity.key.to_string(),
+        entity.attrs["composed_from"].as_str().unwrap().to_owned(),
+        entity.attrs["rule"].as_str().unwrap().to_owned(),
+      )
+    })
+    .collect();
+  composed.sort();
+
+  assert_eq!(
+    composed,
+    [
+      (
+        "endpoint:mixed-api:GET /api/health".to_owned(),
+        "endpoint:mixed-api:GET /health".to_owned(),
+        "nest-global-prefix".to_owned()
+      ),
+      (
+        "endpoint:mixed-api:GET /api/orders/{id}".to_owned(),
+        "endpoint:mixed-api:GET /orders/{id}".to_owned(),
+        "declared-global-prefix".to_owned()
+      ),
+    ]
+  );
+}

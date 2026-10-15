@@ -175,6 +175,7 @@ dependencies = [
  "atlas-lang-ts",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
  "toml",
  "tracing",
 ]
@@ -310,6 +311,7 @@ name = "atlas-link"
 version = "0.1.0"
 dependencies = [
  "atlas-core",
+ "atlas-detect",
  "atlas-engine",
  "atlas-project",
  "atlas-store",
@@ -362,6 +364,7 @@ name = "atlas-project"
 version = "0.1.0"
 dependencies = [
  "atlas-core",
+ "atlas-detect",
  "blake3",
  "fd-lock",
  "ignore",

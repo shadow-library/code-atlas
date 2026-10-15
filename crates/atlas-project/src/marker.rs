@@ -3,6 +3,7 @@ use std::io;
 use std::path::Path;
 
 use atlas_core::Language;
+use atlas_detect::check_family_name;
 use toml::Value;
 
 use crate::config::{as_words, flatten};
@@ -18,6 +19,7 @@ pub struct RepoFile {
   pub include: Vec<String>,
   pub exclude: Vec<String>,
   pub languages: Option<Vec<Language>>,
+  pub route_families: Vec<String>,
   pub warnings: Vec<String>,
   pub(crate) settings: Vec<(String, Value)>,
 }
@@ -45,6 +47,8 @@ impl RepoFile {
         ("project", other) => return Err(invalid(format!("`project` must be a string, got {other}"))),
         ("index", Value::Table(index)) => file.read_index(index),
         ("index", _) => file.warnings.push("index ignored: it must be a table".to_owned()),
+        ("detect", Value::Table(detect)) => file.read_detect(detect),
+        ("detect", _) => file.warnings.push("detect ignored: it must be a table".to_owned()),
         (_, Value::Table(section)) => file.settings.extend(flatten(&name, &section)),
         (_, other) => file.settings.push((name, other)),
       }
@@ -72,6 +76,24 @@ impl RepoFile {
       }
     }
   }
+
+  fn read_detect(&mut self, detect: toml::Table) {
+    for (name, value) in detect {
+      let outcome = match name.as_str() {
+        "route_families" => family_names(&value).map(|names| self.route_families = names),
+        _ => Err("unknown key".to_owned()),
+      };
+      if let Err(message) = outcome {
+        self.warnings.push(format!("detect.{name} ignored: {message}"));
+      }
+    }
+  }
+}
+
+fn family_names(value: &Value) -> Result<Vec<String>, String> {
+  let names = as_words(value)?;
+  names.iter().try_for_each(|name| check_family_name(name))?;
+  Ok(names)
 }
 
 fn globs(value: &Value) -> Result<Vec<String>, String> {
@@ -113,7 +135,7 @@ mod tests {
   #[test]
   fn should_read_the_pin_and_index_keys_and_warn_on_everything_unknown() {
     let file = parse(
-      "project = \"acme\"\nfuture = true\n[index]\nexclude = [\"legacy/**\"]\ninclude = [\"src/**\"]\nlanguages = [\"rust\"]\nshape = 1\n[[detect.routes]]\npack = \"x\"\n[lsp]\nmax_servers = 4\n",
+      "project = \"acme\"\nfuture = true\n[index]\nexclude = [\"legacy/**\"]\ninclude = [\"src/**\"]\nlanguages = [\"rust\"]\nshape = 1\n[detect]\nroute_families = [\"acme-http\"]\n[[detect.routes]]\npack = \"x\"\n[lsp]\nmax_servers = 4\n",
     );
 
     assert_eq!(file.project.as_deref(), Some("acme"));
@@ -121,9 +143,10 @@ mod tests {
       (file.include, file.exclude, file.languages),
       (vec!["src/**".to_owned()], vec!["legacy/**".to_owned()], Some(vec![Language::Rust]))
     );
-    assert_eq!(file.warnings, ["index.shape ignored: unknown key"]);
+    assert_eq!(file.route_families, ["acme-http"]);
+    assert_eq!(file.warnings, ["detect.routes ignored: unknown key", "index.shape ignored: unknown key"]);
     let keys: Vec<&str> = file.settings.iter().map(|(key, _)| key.as_str()).collect();
-    assert_eq!(keys, ["detect.routes", "future", "lsp.max_servers"]);
+    assert_eq!(keys, ["future", "lsp.max_servers"]);
   }
 
   #[test]
@@ -138,6 +161,17 @@ mod tests {
       file.warnings[2],
       "index.languages ignored: expected language names such as [\"rust\", \"typescript\"], got [\"cobol\"]"
     );
+  }
+
+  #[test]
+  fn should_warn_and_drop_malformed_route_family_lists() {
+    let file = parse("[detect]\nroute_families = [\"Acme Http\"]\n");
+    assert!(file.route_families.is_empty());
+    assert_eq!(
+      file.warnings,
+      ["detect.route_families ignored: a route family name is a lowercase letter followed by lowercase letters, digits, - or _ (at most 64 characters), got \"Acme Http\""]
+    );
+    assert_eq!(parse("detect = 1\n").warnings, ["detect ignored: it must be a table"]);
   }
 
   #[test]

@@ -15,8 +15,8 @@ const PINNED_STRUCTURE: (u32, &str, &str) = (
 );
 const PINNED_LINK: (u32, &str, &str) = (
   2,
-  "1f8804d14cd8cbca2d92375fa2f980073bca0ff8973b1288a67cf17e4cdf3801",
-  "1d2146cb0db58075b6fade03c2ac72939bb4a26db99289dbc907291cbe72fb22",
+  "9aa32f3ac8ef24db202a445436e72175853b7fe24a242a1cd21ced0f353e6186",
+  "8658847d920c60071aaafbf9f0df7eccd02bbff3385c434bdbfaa417bbaf9b02",
 );
 
 #[derive(Default)]
@@ -71,6 +71,24 @@ fn link_corpus_project(tree: &Path) -> Project {
   project("link-corpus", repos)
 }
 
+fn link_family_project(tree: &Path) -> Project {
+  let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/pin-corpus/link-family");
+  let repos = walk_dirs(&root)
+    .into_iter()
+    .map(|source| {
+      let name = source.file_name().unwrap().to_string_lossy().into_owned();
+      let target = tree.join("link-family").join(&name);
+      copy_dir(&source, &target);
+      repo_config(&name, &target)
+    })
+    .collect();
+  let definition = fs::read_to_string(root.join("acme-http.toml")).unwrap();
+  let mut project = project("link-family", repos);
+  project.settings.detect.route_families = vec!["acme-http".to_owned()];
+  project.settings.detect.families = vec![atlas_detect::DecoratorFamily::parse("acme-http", &definition).unwrap().family];
+  project
+}
+
 fn canonical_owner(facts: &atlas_store::OwnedFacts) -> Vec<u8> {
   let mut lines: Vec<String> = facts.entities.iter().map(|entity| serde_json::to_string(entity).unwrap()).collect();
   lines.extend(facts.edges.iter().map(|edge| serde_json::to_string(edge).unwrap()));
@@ -84,6 +102,7 @@ fn pass_digests(scratch: &Path) -> (PassDigests, PassDigests) {
   let tree = scratch.join("tree");
   let mut projects: Vec<(Project, bool)> = fixture_projects(&tree).into_iter().map(|project| (project, true)).collect();
   projects.push((link_corpus_project(&tree), false));
+  projects.push((link_family_project(&tree), false));
   for (index, (project, with_structure)) in projects.iter().enumerate() {
     let engine = open(project, &scratch.join(format!("home-{index}")));
     assert!(fresh(&engine).is_fresh());
@@ -145,4 +164,36 @@ fn should_derive_auth_usage_in_the_link_pin_corpus_from_production_code_only() {
     })
     .unwrap();
   assert_eq!(users, vec!["loadMe".to_owned(), "load_order".to_owned()]);
+}
+
+#[test]
+fn should_compose_nest_and_declared_family_prefixes_of_one_repo_in_the_link_pin_corpus() {
+  let scratch = tempfile::tempdir().unwrap();
+  let engine = open(&link_family_project(scratch.path()), &scratch.path().join("home"));
+  assert!(fresh(&engine).is_fresh());
+  let owner = Owner::Project {
+    pass: atlas_link::PASS_NAME.to_owned(),
+  };
+  let links = engine
+    .store()
+    .read(|tx| -> Result<Vec<String>, atlas_store::StoreError> {
+      let mut links = Vec::new();
+      for edge in tx.owned_facts(&owner)?.edges.iter().filter(|edge| edge.kind == EdgeKind::CallsEndpoint) {
+        let (Some(from), Some(to)) = (tx.entity(edge.from)?, tx.entity(edge.to)?) else {
+          continue;
+        };
+        links.push(format!("{} -> {}", from.name, to.key));
+      }
+      links.sort();
+      Ok(links)
+    })
+    .unwrap();
+  assert_eq!(
+    links,
+    [
+      "checkHealth -> endpoint:family-api:GET /api/health",
+      "createOrder -> endpoint:family-api:POST /api/orders",
+      "loadOrder -> endpoint:family-api:GET /api/orders/{id}",
+    ]
+  );
 }

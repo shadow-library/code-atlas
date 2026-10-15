@@ -186,6 +186,20 @@ pub struct LlmSpend {
   pub cost_estimate_usd: f64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum RouteFamilyState {
+  Matched { controllers: u64, routes: u64 },
+  Undeclared { path: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RouteFamilyStatus {
+  pub name: String,
+  #[serde(flatten)]
+  pub state: RouteFamilyState,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct IndexStatus {
   pub runs: Vec<IndexRun>,
@@ -201,4 +215,5 @@ pub struct IndexStatus {
   pub repos_missing: Vec<FailedFile>,
   pub skipped: SkippedSummary,
   pub budget_retries: Vec<BudgetRetryStatus>,
+  pub route_families: Vec<RouteFamilyStatus>,
 }

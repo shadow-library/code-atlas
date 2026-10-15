@@ -34,7 +34,7 @@ const fn key(name: &'static str, class: KeyClass, kind: ValueKind) -> KeySpec {
   KeySpec { name, class, kind }
 }
 
-pub(crate) const PROJECT_KEYS: [KeySpec; 17] = [
+pub(crate) const PROJECT_KEYS: [KeySpec; 18] = [
   key("max_file_bytes", KeyClass::Fact, ValueKind::Number),
   key("llm.enabled", KeyClass::Runtime, ValueKind::Flag),
   key("llm.provider", KeyClass::Runtime, ValueKind::Text),
@@ -52,6 +52,7 @@ pub(crate) const PROJECT_KEYS: [KeySpec; 17] = [
   key("lsp.ready_timeout_secs", KeyClass::Runtime, ValueKind::Number),
   key("lsp.check_timeout_secs", KeyClass::Runtime, ValueKind::Number),
   key("lsp.exclude", KeyClass::Runtime, ValueKind::List),
+  key("detect.route_families", KeyClass::Fact, ValueKind::List),
 ];
 
 pub(crate) const MCP_KEYS: [KeySpec; 4] = [
@@ -189,6 +190,7 @@ impl Keyed for ProjectSettings {
     let text = |value: &Option<String>| value.clone().map(Value::String);
     match key {
       "max_file_bytes" => Some(number(self.max_file_bytes)),
+      "detect.route_families" => Some(words(&self.detect.route_families)),
       "llm.enabled" => Some(Value::Boolean(self.llm.enabled)),
       "llm.provider" => text(&self.llm.provider),
       "llm.model" => text(&self.llm.model),
@@ -218,6 +220,7 @@ impl Keyed for ProjectSettings {
   fn set(&mut self, key: &str, value: &Value) -> Result<(), String> {
     match key {
       "max_file_bytes" => self.max_file_bytes = as_number(value)?,
+      "detect.route_families" => self.detect.route_families = as_words(value)?,
       "llm.enabled" => self.llm.enabled = as_flag(value)?,
       "llm.provider" => self.llm.provider = Some(as_text(value)?),
       "llm.model" => self.llm.model = Some(as_text(value)?),
