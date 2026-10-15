@@ -282,9 +282,9 @@ fn should_list_the_candidates_of_an_ambiguous_known_item_without_seeding_them() 
   assert_eq!(
     rows,
     [
-      ("known helper candidate helper function web:src/a.ts:1", OmissionReason::AmbiguousKnown),
-      ("known helper candidate helper function web:src/b.ts:1", OmissionReason::AmbiguousKnown),
       ("known helper: 2 candidates, none held; pass a key or a path", OmissionReason::AmbiguousKnown),
+      ("known helper: candidate helper function web:src/a.ts:1", OmissionReason::AmbiguousKnown),
+      ("known helper: candidate helper function web:src/b.ts:1", OmissionReason::AmbiguousKnown),
     ]
   );
 }

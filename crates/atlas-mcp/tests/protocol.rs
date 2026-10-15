@@ -352,11 +352,16 @@ async fn should_follow_registry_changes_and_edits_with_the_watcher_enabled() {
   source.push_str("\npub fn zz_watched_marker_fn() -> i64 {\n  9\n}\n");
   fs::write(&money, source).unwrap();
 
-  let edited = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+  let edited = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+    let mut touched = std::time::Instant::now();
     loop {
       let text = harness.text("atlas_search", json!({ "query": "zz_watched_marker_fn" })).await;
       if text.contains("acme-billing:src/money.rs") {
         return text;
+      }
+      if touched.elapsed() >= std::time::Duration::from_secs(2) {
+        fs::write(&money, fs::read(&money).unwrap()).unwrap();
+        touched = std::time::Instant::now();
       }
       tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }

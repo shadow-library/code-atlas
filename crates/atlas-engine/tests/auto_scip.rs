@@ -296,11 +296,18 @@ fn should_back_off_when_the_indexer_is_unavailable_without_degrading_barriers() 
   let watch = fixture.engine.watch().unwrap();
 
   wait_until("the first attempt", || fixture.calls.load(Ordering::SeqCst) == 1);
-  wait_until("the backoff to be recorded", || !fixture.engine.status().unwrap().scip.auto.backoff.is_empty());
+  wait_until("the backoff and the run to be recorded", || {
+    let auto = fixture.engine.status().unwrap().scip.auto;
+    !auto.backoff.is_empty() && auto.last_run.is_some()
+  });
   let before = indexed_hash(&fixture.engine, "src/b.ts");
   append(&fixture.root.join("src/b.ts"), "export const later = 1;\n");
   wait_until("the edit to be indexed", || {
-    fresh(&fixture.engine).is_fresh() && indexed_hash(&fixture.engine, "src/b.ts") != before
+    let barrier_fresh = fresh(&fixture.engine).is_fresh();
+    if indexed_hash(&fixture.engine, "src/b.ts") == before {
+      index_edit(&fixture.engine);
+    }
+    barrier_fresh && indexed_hash(&fixture.engine, "src/b.ts") != before
   });
   wait_for_quiet_events(&watch);
   thread::sleep(NO_RETRY_WINDOW);

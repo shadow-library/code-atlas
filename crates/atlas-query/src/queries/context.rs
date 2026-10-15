@@ -1239,7 +1239,7 @@ fn ambiguous_known(graph: &Graph<'_, '_>, index: &SimilarityIndex, task: &str, s
   for entity in ranked.iter().take(OMITTED_CANDIDATES_SHOWN) {
     let entry = EntityRef::of(entity);
     pack.omitted.push(OmittedItem {
-      label: format!("known {spec} candidate {}", crate::text::entity_line(&entry)),
+      label: format!("known {spec}: candidate {}", crate::text::entity_line(&entry)),
       entity: Some(entry),
       reason: OmissionReason::AmbiguousKnown,
     });

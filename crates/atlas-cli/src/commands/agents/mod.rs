@@ -123,16 +123,46 @@ fn scope_of(scope: AgentScope) -> Scope {
   }
 }
 
+const SANDBOX_VARS: [&str; 3] = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", HOME_VAR];
+
 fn refuse_unsandboxed_test() -> CliResult<()> {
-  let set = |name: &str| std::env::var_os(name).is_some_and(|value| !value.is_empty());
-  if !set("CARGO_MANIFEST_DIR") {
+  if std::env::var_os("CARGO_MANIFEST_DIR").is_none_or(|value| value.is_empty()) {
     return Ok(());
   }
-  let missing: Vec<&str> = ["CLAUDE_CONFIG_DIR", "CODEX_HOME"].into_iter().filter(|name| !set(name)).collect();
-  match missing.is_empty() {
+  let temp = fs::canonicalize(std::env::temp_dir()).unwrap_or_else(|_| std::env::temp_dir());
+  let unsafe_vars = unsandboxed_vars(|name| std::env::var_os(name), &temp);
+  match unsafe_vars.is_empty() {
     true => Ok(()),
-    false => Err(CliError::UnsandboxedAgentWiring { missing: missing.join(", ") }),
+    false => Err(CliError::UnsandboxedAgentWiring {
+      variables: unsafe_vars.join(", "),
+    }),
   }
+}
+
+fn unsandboxed_vars(get: impl Fn(&str) -> Option<OsString>, temp: &Path) -> Vec<&'static str> {
+  SANDBOX_VARS
+    .into_iter()
+    .filter(|name| !get(name).filter(|value| !value.is_empty()).is_some_and(|value| is_under(Path::new(&value), temp)))
+    .collect()
+}
+
+fn is_under(path: &Path, root: &Path) -> bool {
+  if !path.is_absolute() || path.components().any(|component| component == std::path::Component::ParentDir) {
+    return false;
+  }
+  let mut existing = path;
+  let mut rest = PathBuf::new();
+  let canonical = loop {
+    if let Ok(found) = fs::canonicalize(existing) {
+      break found;
+    }
+    let (Some(parent), Some(name)) = (existing.parent(), existing.file_name()) else {
+      return false;
+    };
+    rest = Path::new(name).join(&rest);
+    existing = parent;
+  };
+  canonical.join(rest).starts_with(root)
 }
 
 fn sync(ctx: &Context, request: SyncRequest) -> CliResult<Outcome> {
@@ -898,4 +928,53 @@ fn unsync(ctx: &Context, args: AgentsUnsyncArgs) -> CliResult<Outcome> {
     }
     execute(manifest, steps, &Notes::default(), args.dry_run, args.yes)
   })
+}
+
+#[cfg(test)]
+mod tests {
+  use std::collections::HashMap;
+
+  use super::*;
+
+  fn vars(entries: &[(&str, &Path)]) -> impl Fn(&str) -> Option<OsString> + use<> {
+    let map: HashMap<String, OsString> = entries.iter().map(|(name, path)| ((*name).to_owned(), path.as_os_str().to_owned())).collect();
+    move |name| map.get(name).cloned()
+  }
+
+  #[test]
+  fn should_accept_variables_that_lie_under_the_temporary_directory_even_when_not_created_yet() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(temp.path()).unwrap();
+    let claude = root.join("claude");
+    fs::create_dir(&claude).unwrap();
+    let codex = root.join("codex/not/yet");
+    let get = vars(&[("CLAUDE_CONFIG_DIR", &claude), ("CODEX_HOME", &codex), (HOME_VAR, temp.path())]);
+
+    assert!(unsandboxed_vars(get, &root).is_empty());
+  }
+
+  #[test]
+  fn should_flag_missing_empty_outside_relative_and_escaping_variables() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(temp.path()).unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let escaping = root.join("a/../../elsewhere");
+    let get = vars(&[("CLAUDE_CONFIG_DIR", outside.path()), ("CODEX_HOME", Path::new("relative/dir")), (HOME_VAR, &escaping)]);
+    let empty = vars(&[("CLAUDE_CONFIG_DIR", Path::new(""))]);
+
+    assert_eq!(unsandboxed_vars(get, &root), ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "CODE_ATLAS_HOME"]);
+    assert_eq!(unsandboxed_vars(empty, &root), ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "CODE_ATLAS_HOME"]);
+  }
+
+  #[test]
+  fn should_follow_symlinks_out_of_the_temporary_directory() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(temp.path()).unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let link = root.join("link");
+    std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+    let get = vars(&[("CLAUDE_CONFIG_DIR", &link), ("CODEX_HOME", &root), (HOME_VAR, &root)]);
+
+    assert_eq!(unsandboxed_vars(get, &root), ["CLAUDE_CONFIG_DIR"]);
+  }
 }

@@ -1895,3 +1895,27 @@ fn should_index_a_declared_route_family_and_report_each_enabled_family_in_status
     stderr(&broken)
   );
 }
+
+#[test]
+fn should_not_echo_the_source_line_of_a_malformed_config_or_registry_file() {
+  const FAKE_KEY: &str = "sk-ant-api03-FAKEKEYFAKEKEYFAKEKEY";
+  let sandbox = Sandbox::new();
+  let work = sandbox.work();
+  let config = sandbox.home.path().join("config");
+  fs::create_dir_all(&config).unwrap();
+  for (file, text, expected) in [
+    ("config.toml", format!("[defaults]\n\nsemantic_api_key_env = {FAKE_KEY}\n"), "config.toml"),
+    ("projects.toml", format!("[[project]]\nname = \"acme\"\napi_key_env = {FAKE_KEY}\n"), "projects.toml"),
+  ] {
+    let path = config.join(file);
+    fs::write(&path, text).unwrap();
+
+    let output = sandbox.run(&work, &["status"]);
+
+    let combined = format!("{}{}", stdout(&output), stderr(&output));
+    assert!(!combined.contains(FAKE_KEY), "{file}: {combined}");
+    assert!(!combined.contains("FAKEKEY"), "{file}: {combined}");
+    assert!(combined.contains(expected) && combined.contains("line 3, column"), "{file}: {combined}");
+    fs::remove_file(&path).unwrap();
+  }
+}

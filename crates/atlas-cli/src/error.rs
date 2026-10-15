@@ -71,9 +71,9 @@ pub enum CliError {
   #[error("{target}: {detail}")]
   WiringNotVisible { target: String, detail: String },
   #[error(
-    "refusing to change agent configuration from a Cargo build or test (CARGO_MANIFEST_DIR is set) while {missing} is unset, because it would change the real user configuration"
+    "refusing to change agent configuration from a Cargo build or test (CARGO_MANIFEST_DIR is set) because it would change the real user configuration; unset or outside the temporary directory: {variables}"
   )]
-  UnsandboxedAgentWiring { missing: String },
+  UnsandboxedAgentWiring { variables: String },
   #[error("{} pins project {existing:?}, not {requested:?}", .path.display())]
   MarkerConflict { path: PathBuf, existing: String, requested: String },
   #[error("cannot derive a project name from {}", .0.display())]
@@ -173,7 +173,7 @@ impl CliError {
       Self::Ide(error) => ide_hint(error),
       Self::EditRefused(error) => error.hint(),
       Self::InvalidPlan { .. } => Some("make a plan with `catl edit <operation> --dry-run --plan-out plan.json`"),
-      Self::UnsandboxedAgentWiring { .. } => Some("point CLAUDE_CONFIG_DIR and CODEX_HOME at a temporary directory"),
+      Self::UnsandboxedAgentWiring { .. } => Some("point CLAUDE_CONFIG_DIR, CODEX_HOME and CODE_ATLAS_HOME at a temporary directory"),
       Self::WiringRefused { .. } => Some("each refused entry above says why and which flag overrides it; `catl agents status` lists drift"),
       Self::InvalidManifest { .. } => Some("fix or move the file; `catl agents status` and `unsync` rely on it to know what they wrote"),
       _ => None,

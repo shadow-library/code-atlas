@@ -39,7 +39,7 @@ impl RepoFile {
 
   pub fn parse(path: &Path, text: &str) -> Result<Self, ProjectError> {
     let invalid = |message: String| ProjectError::InvalidMarker { path: path.to_owned(), message };
-    let table: toml::Table = toml::from_str(text).map_err(|error| invalid(error.to_string()))?;
+    let table: toml::Table = toml::from_str(text).map_err(|error| invalid(atlas_detect::toml_error_summary(text, &error)))?;
     let mut file = Self::default();
     for (name, value) in table {
       match (name.as_str(), value) {
@@ -109,9 +109,11 @@ pub fn write_marker_project(path: &Path, project: &str) -> Result<(), ProjectErr
     Err(source) if source.kind() == io::ErrorKind::NotFound => String::new(),
     Err(source) => return Err(ProjectError::io("read", path, source)),
   };
-  let mut intended: toml::Table = toml::from_str(&text).map_err(|error: toml::de::Error| invalid(error.to_string()))?;
+  let mut intended: toml::Table = toml::from_str(&text).map_err(|error: toml::de::Error| invalid(atlas_detect::toml_error_summary(&text, &error)))?;
   intended.insert("project".to_owned(), Value::String(project.to_owned()));
-  let mut document: toml_edit::DocumentMut = text.parse().map_err(|error: toml_edit::TomlError| invalid(error.to_string()))?;
+  let mut document: toml_edit::DocumentMut = text
+    .parse()
+    .map_err(|error: toml_edit::TomlError| invalid(atlas_detect::describe_toml_error(&text, error.message(), error.span())))?;
   document["project"] = toml_edit::value(project);
   let edited = document.to_string();
   let rendered = match toml::from_str::<toml::Table>(&edited) {
@@ -214,6 +216,19 @@ mod tests {
     assert_eq!(
       fs::read_to_string(&path).unwrap(),
       "project = \"acme\"\r\n# team settings\r\n[index]\r\nexclude = [\"legacy/**\"]\r\n"
+    );
+  }
+
+  #[test]
+  fn should_not_echo_the_source_line_of_a_malformed_marker() {
+    let error = RepoFile::parse(Path::new("/r/.code-atlas.toml"), "project = \"acme\"\napi_key_env = sk-FAKEKEY123\n")
+      .unwrap_err()
+      .to_string();
+
+    assert!(!error.contains("FAKEKEY"), "{error}");
+    assert_eq!(
+      error,
+      "invalid project marker /r/.code-atlas.toml: line 2, column 15: string values must be quoted, expected literal string"
     );
   }
 }

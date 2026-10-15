@@ -517,7 +517,11 @@ fn should_fail_loudly_and_record_nothing_when_claude_reports_success_without_reg
 fn should_refuse_to_wire_agents_from_a_cargo_test_without_a_sandboxed_claude_or_codex_home() {
   let sandbox = Sandbox::new();
   let work = sandbox.path("work");
-  for (missing, args) in [("CLAUDE_CONFIG_DIR", &["agents", "sync"][..]), ("CODEX_HOME", &["agents", "unsync"][..])] {
+  for (missing, args) in [
+    ("CLAUDE_CONFIG_DIR", &["agents", "sync"][..]),
+    ("CODEX_HOME", &["agents", "unsync"][..]),
+    ("CODE_ATLAS_HOME", &["agents", "sync"][..]),
+  ] {
     let output = sandbox
       .command(&work, args)
       .env("CARGO_MANIFEST_DIR", env!("CARGO_MANIFEST_DIR"))
@@ -529,11 +533,29 @@ fn should_refuse_to_wire_agents_from_a_cargo_test_without_a_sandboxed_claude_or_
     assert_eq!(code(&output), 2, "{}", stderr(&output));
     assert!(
       stderr(&output).contains(&format!(
-        "refusing to change agent configuration from a Cargo build or test (CARGO_MANIFEST_DIR is set) while {missing} is unset"
+        "refusing to change agent configuration from a Cargo build or test (CARGO_MANIFEST_DIR is set) because it would change the real user configuration; unset or outside the temporary directory: {missing}"
       )),
       "{}",
       stderr(&output)
     );
   }
   assert!(sandbox.claude_calls().is_empty());
+}
+
+#[test]
+fn should_refuse_to_wire_agents_from_a_cargo_test_when_a_home_lies_outside_the_temporary_directory() {
+  let sandbox = Sandbox::new();
+  let work = sandbox.path("work");
+  let output = sandbox
+    .command(&work, &["agents", "sync"])
+    .env("CARGO_MANIFEST_DIR", env!("CARGO_MANIFEST_DIR"))
+    .env("CODEX_HOME", "/nonexistent-codex-home")
+    .stdin(Stdio::null())
+    .output()
+    .unwrap();
+
+  assert_eq!(code(&output), 2, "{}", stderr(&output));
+  assert!(stderr(&output).contains("unset or outside the temporary directory: CODEX_HOME"), "{}", stderr(&output));
+  assert!(sandbox.claude_calls().is_empty());
+  assert!(!Path::new("/nonexistent-codex-home").exists());
 }

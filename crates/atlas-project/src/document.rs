@@ -10,7 +10,7 @@ pub(crate) fn merge_or_fresh(previous: &str, fresh: &str, unchanged: impl Fn(usi
       fresh.to_owned()
     }
     Err(error) => {
-      tracing::warn!(error = %error, "could not edit the file in place; wrote a fresh serialisation without its comments");
+      tracing::warn!(error = %atlas_detect::describe_toml_error(previous, error.message(), error.span()), "could not edit the file in place; wrote a fresh serialisation without its comments");
       fresh.to_owned()
     }
   };

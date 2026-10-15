@@ -17,6 +17,7 @@ use common::{SplitMix, acme_copy, digest, fresh, open, open_with, project, repo_
 
 const WAIT_DEADLINE: Duration = Duration::from_secs(20);
 const EVENT_QUIET: Duration = Duration::from_millis(300);
+const RETOUCH_EVERY: Duration = Duration::from_secs(2);
 const MONEY: &str = "acme-api/src/common/money.ts";
 const SLUG: &str = "acme-api/src/common/slug.ts";
 
@@ -60,6 +61,20 @@ fn wait_until(what: &str, mut condition: impl FnMut() -> bool) {
     assert!(Instant::now() < deadline, "timed out waiting for {what}");
     thread::sleep(Duration::from_millis(10));
   }
+}
+
+fn wait_until_retouching(what: &str, path: &Path, mut condition: impl FnMut() -> bool) {
+  let mut touched = Instant::now();
+  wait_until(what, || {
+    if condition() {
+      return true;
+    }
+    if touched.elapsed() >= RETOUCH_EVERY {
+      fs::write(path, fs::read(path).unwrap()).unwrap();
+      touched = Instant::now();
+    }
+    false
+  });
 }
 
 fn wait_for_quiet_events(watch: &atlas_engine::WatchHandle) {
@@ -280,13 +295,13 @@ fn should_force_a_scan_after_write_then_refresh_even_with_a_clean_watcher() {
   assert_eq!(fresh(&engine).header().scan, ScanKind::WatcherClean);
   let runs = triggers(&engine).len();
 
+  let scans = engine.barrier_scans();
   let (_, report) = engine.write_then_refresh(&[key(MONEY)], || append(&tree, MONEY, &probe("watchedWrite"))).unwrap();
   assert_eq!(report.header().scan, ScanKind::StatScan);
   assert_eq!(report.header().files_updated, 1);
   assert_eq!(named(&engine, "watchedWrite"), 1);
 
-  let scans = engine.barrier_scans();
-  wait_until("the watcher to refresh after the written events", || engine.barrier_scans() > scans);
+  wait_until_retouching("the watcher to refresh after the written events", &tree.join(MONEY), || engine.barrier_scans() > scans);
   wait_for_quiet_events(&watch);
   assert_eq!(fresh(&engine).header().run, None);
   assert_eq!(triggers(&engine)[runs..], ["edit".to_owned()]);

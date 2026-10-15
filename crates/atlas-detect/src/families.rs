@@ -134,7 +134,7 @@ impl DecoratorFamily {
 
   pub fn parse(name: &str, text: &str) -> Result<ParsedFamily, FamilyError> {
     check_family_name(name).map_err(|message| FamilyError::new("name", message))?;
-    let table: toml::Table = toml::from_str(text).map_err(|error| FamilyError::new("syntax", error.to_string().trim_end().to_owned()))?;
+    let table: toml::Table = toml::from_str(text).map_err(|error| FamilyError::new("syntax", crate::toml_error_summary(text, &error)))?;
     let mut reader = Reader::default();
     let family = reader.family(name, &table)?;
     Ok(ParsedFamily {
@@ -572,5 +572,14 @@ mod tests {
     other.routes[0].method = HttpMethod::Put;
     assert_eq!(families_digest(std::slice::from_ref(&one)), families_digest(std::slice::from_ref(&one)));
     assert_ne!(families_digest(std::slice::from_ref(&one)), families_digest(&[other]));
+  }
+
+  #[test]
+  fn should_not_echo_the_source_line_of_a_malformed_family_file() {
+    let error = DecoratorFamily::parse("acme-http", "version = 1\ncontroller = sk-FAKEKEY123\n").unwrap_err();
+
+    assert_eq!(error.key, "syntax");
+    assert!(!error.message.contains("FAKEKEY"), "{}", error.message);
+    assert!(error.message.starts_with("line 2, column 14: "), "{}", error.message);
   }
 }

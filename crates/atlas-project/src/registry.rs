@@ -872,7 +872,7 @@ fn read_projects(path: &Path, text: Option<&str>) -> Result<Vec<StoredProject>, 
   let Some(text) = text else { return Ok(Vec::new()) };
   let file: RegistryFile = toml::from_str(text).map_err(|error| ProjectError::RegistryParse {
     path: path.to_owned(),
-    message: error.to_string(),
+    message: atlas_detect::toml_error_summary(text, &error),
   })?;
   let projects: Vec<StoredProject> = file.projects.into_iter().map(StoredProject::from).collect();
   validate_loaded(path, &projects)?;

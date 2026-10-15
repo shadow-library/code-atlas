@@ -101,7 +101,7 @@ impl UserConfig {
 
   fn parse(path: PathBuf, text: &str) -> Result<Self, ProjectError> {
     let invalid = |message: String| ProjectError::ConfigParse { path: path.clone(), message };
-    let table: toml::Table = toml::from_str(text).map_err(|error| invalid(error.to_string()))?;
+    let table: toml::Table = toml::from_str(text).map_err(|error| invalid(atlas_detect::toml_error_summary(text, &error)))?;
     let mut config = Self {
       present: true,
       ..Self::absent(path.clone())
