@@ -1,3 +1,5 @@
+mod seed;
+
 use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
@@ -15,6 +17,7 @@ use crate::output::{Outcome, emit_line};
 const MAX_INPUT_BYTES: u64 = 4 * 1024 * 1024;
 const PRE_TOOL_USE: &str = "PreToolUse";
 const REMINDED_DIR: &str = "reminded";
+const SEEDED_DIR: &str = "seeded";
 const MARKER_LIFETIME: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 const SEARCH_PROGRAMS: [&str; 6] = ["grep", "egrep", "fgrep", "rg", "ag", "ack"];
 
@@ -34,6 +37,9 @@ pub fn run(ctx: &Context, hook: HookName) -> CliResult<Outcome> {
       |cwd| in_project(ctx, cwd),
       |session| first_in_session(&ctx.home.hook_state_dir().join(REMINDED_DIR), session),
     ),
+    HookName::Seed => seed::seed(&ctx.home, ctx.project.as_deref(), &event, |session| {
+      first_in_session(&ctx.home.hook_state_dir().join(SEEDED_DIR), session)
+    }),
   };
   if let Some(answer) = answer {
     emit_line(answer.to_string())?;

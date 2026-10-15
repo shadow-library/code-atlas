@@ -855,6 +855,8 @@ pub enum AgentsCommand {
   Status(AgentsStatusArgs),
   #[command(about = "Remove exactly what agents sync recorded")]
   Unsync(AgentsUnsyncArgs),
+  #[command(about = "Print the Claude Code hook groups agents sync would write, by event; writes nothing")]
+  Hooks(AgentsHooksArgs),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -903,6 +905,16 @@ pub struct AgentsStatusArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct AgentsHooksArgs {
+  #[arg(long, value_name = "COMMAND", help = "catl command the hooks run; defaults to [agents] binary")]
+  pub binary: Option<String>,
+  #[arg(long, value_name = "DIR", help = "CODE_ATLAS_HOME the hooks run with; defaults to the CODE_ATLAS_HOME of this shell")]
+  pub home: Option<PathBuf>,
+  #[arg(long, help = "Print the hooks object of a Claude Code settings file as JSON")]
+  pub json: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct AgentsUnsyncArgs {
   #[arg(long = "agent", value_enum)]
   pub agents: Vec<AgentName>,
@@ -921,6 +933,7 @@ pub struct AgentsUnsyncArgs {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum HookName {
   Remind,
+  Seed,
 }
 
 #[derive(Debug, Args)]

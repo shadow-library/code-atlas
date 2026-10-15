@@ -24,7 +24,7 @@ fn place(item: &ContextItem) -> String {
   }
 }
 
-fn header(item: &ContextItem) -> String {
+pub fn context_item_line(item: &ContextItem) -> String {
   let flag = if item.uncertain { " UNCERTAIN" } else { "" };
   let edit = if item.read_directly { " (named in the task: read the file directly)" } else { "" };
   format!("{}{flag}{edit}  why: {}", place(item), item.why)
@@ -48,11 +48,11 @@ fn section(out: &mut TextOut, title: &str, items: &[ContextItem], summaries: &[S
 }
 
 fn mention(out: &mut TextOut, item: &ContextItem) {
-  out.line(1, header(item));
+  out.line(1, context_item_line(item));
 }
 
 fn skim(out: &mut TextOut, item: &ContextItem) {
-  out.line(1, header(item));
+  out.line(1, context_item_line(item));
   if let Some(signature) = &item.signature {
     out.line(2, format!("sig {signature}"));
   }
@@ -73,7 +73,7 @@ impl RenderText for ContextAnswer {
     let summaries = &self.summaries;
     section(out, "MUST READ", &self.must_read, summaries, |out, item| match &item.body {
       Some(body) => {
-        out.line(1, header(item));
+        out.line(1, context_item_line(item));
         snippet(out, 2, body);
         for member in &item.skeleton {
           out.line(3, member);
@@ -86,7 +86,7 @@ impl RenderText for ContextAnswer {
     section(out, "REUSE CANDIDATES", &self.reuse, summaries, mention);
     section(out, "IMPACT", &self.impact, summaries, mention);
     section(out, "TESTS", &self.tests, summaries, |out, item| {
-      out.line(1, header(item));
+      out.line(1, context_item_line(item));
       if let Some(run) = &item.run {
         out.line(2, format!("run: {run}"));
       }

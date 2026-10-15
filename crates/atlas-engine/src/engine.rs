@@ -13,7 +13,7 @@ use crate::analyze::Toolchain;
 use crate::error::{EngineError, EngineResult};
 use crate::flight::SingleFlight;
 use crate::lock::{Contention, IndexLock};
-use crate::options::{EngineOptions, IndexMode};
+use crate::options::{BarrierMode, EngineOptions, IndexMode};
 use crate::passes::is_reserved_pass_name;
 use crate::report::{FailedFile, FreshnessHeader, FreshnessReport, RunOutcomeKind, RunSummary, ScanKind, ScipLag, SkippedSummary};
 use crate::run::{RunEnv, execute, key_label};
@@ -32,6 +32,7 @@ const WRITE_TRIGGER: &str = "edit";
 const FORCE_REHASH_MTIME_NS: i64 = i64::MIN;
 pub(crate) const PROJECT_CHANGED: &str = "project configuration changed; reopen the engine";
 const BARRIER_SKIPPED: &str = "the freshness barrier was skipped (benchmark only); the answer may be stale";
+pub const REFRESH_DEFERRED: &str = "refresh left to another caller, the index may be stale";
 
 pub(crate) struct Inner {
   pub state: EngineState,
@@ -99,6 +100,12 @@ enum Refreshed {
 enum Plan {
   Clean(Vec<RepoScan>),
   Run(Vec<RepoScan>),
+}
+
+enum Held {
+  Ran(RunSummary),
+  Clean,
+  Deferred(String),
 }
 
 impl Engine {
@@ -211,6 +218,16 @@ impl Engine {
     state.similarity_persisted = Some(generation);
     tracing::debug!(generation = generation.0, bytes = bytes.len(), "persisted the similarity index");
     Ok(true)
+  }
+
+  pub fn persisted_generation(&self) -> EngineResult<Option<RunId>> {
+    self
+      .store
+      .read(|tx| -> EngineResult<Option<RunId>> { Ok(EngineMeta::read(tx)?.and_then(|meta| meta.generation).map(RunId)) })
+  }
+
+  pub fn index_run_in_progress(&self) -> EngineResult<bool> {
+    self.store.read(|tx| -> EngineResult<bool> { Ok(tx.blob(DIRTY_BLOB)?.is_some()) })
   }
 
   pub fn ensure_fresh(&self) -> EngineResult<FreshnessReport> {
@@ -353,38 +370,94 @@ impl Engine {
         self.watch.finish_scan(token);
         return Ok(self.settled(&inner.state, None, 0, started, ScanKind::StatScan, failures));
       }
-      (false, Plan::Run(scans)) => Some(scans),
+      (false, Plan::Run(scans)) => match self.refresh_refusal(&inner.state, &scans) {
+        Some(reason) => {
+          self.watch.abort_scan(token);
+          return Ok(self.deferred(&inner.state, started, reason));
+        }
+        None => Some(scans),
+      },
       (true, _) => None,
     };
     let timeout = self.options.store.lock_timeout;
     self.options.fault_injection.pause_before_index_lock();
     let Inner { state, lock, health } = inner;
-    let outcome = lock.hold(timeout, |contention| -> EngineResult<Option<RunSummary>> {
+    let outcome = lock.hold(timeout, |contention| -> EngineResult<Held> {
       let reloaded = self.sync_holding_lock(state, health)?;
       let scans = match (contention, scans, reloaded) {
         (Contention::Uncontended, Some(scans), false) => scans,
         _ => match self.plan(state) {
           Plan::Clean(scans) => {
             self.settle_clean(state, &scans)?;
-            return Ok(None);
+            return Ok(Held::Clean);
           }
-          Plan::Run(scans) => scans,
+          Plan::Run(scans) => match self.refresh_refusal(state, &scans) {
+            Some(reason) => return Ok(Held::Deferred(reason)),
+            None => scans,
+          },
         },
       };
-      self.run(state, scans, IndexMode::Incremental, "barrier").map(Some)
+      self.run(state, scans, IndexMode::Incremental, "barrier").map(Held::Ran)
     });
-    let summary = match outcome {
-      Ok(Ok(summary)) => summary,
+    let held = match outcome {
+      Ok(Ok(held)) => held,
       Ok(Err(error)) | Err(error) => {
         self.watch.abort_scan(token);
         return Err(error);
       }
     };
-    self.watch.finish_scan(token);
-    Ok(match summary {
-      Some(summary) => self.summarized(&inner.state, summary, started),
-      None => self.settled(&inner.state, None, 0, started, ScanKind::StatScan, Vec::new()),
+    match held {
+      Held::Deferred(reason) => {
+        self.watch.abort_scan(token);
+        Ok(self.deferred(&inner.state, started, reason))
+      }
+      Held::Ran(summary) => {
+        self.watch.finish_scan(token);
+        Ok(self.summarized(&inner.state, summary, started))
+      }
+      Held::Clean => {
+        self.watch.finish_scan(token);
+        Ok(self.settled(&inner.state, None, 0, started, ScanKind::StatScan, Vec::new()))
+      }
+    }
+  }
+
+  fn refresh_refusal(&self, state: &EngineState, scans: &[RepoScan]) -> Option<String> {
+    if self.options.barrier == BarrierMode::Refresh {
+      return None;
+    }
+    if state.generation.is_none() {
+      return Some("the project has never been indexed".to_owned());
+    }
+    if !state.pending.is_empty() {
+      return Some("the index has pending work (re-analysis, a full re-resolve, a purge or a pass re-run)".to_owned());
+    }
+    if state.has_due_budget_retry(now_ms()) {
+      return Some("a file that overran its parse budget is due for a retry".to_owned());
+    }
+    let mut changed = 0;
+    for scan in scans {
+      match &scan.outcome {
+        ScanOutcome::Scanned(scanned) => {
+          let changes = &scanned.changes;
+          changed += changes.added.len() + changes.modified.len() + changes.deleted.len();
+        }
+        ScanOutcome::Missing { .. } if state.repos.get(&scan.repo).is_some_and(|repo| scan.needs_run(repo)) => {
+          return Some(format!("repository {} is unavailable", scan.repo));
+        }
+        ScanOutcome::Missing { .. } => {}
+      }
+    }
+    Some(match changed {
+      0 => "the working tree changed since the last index run".to_owned(),
+      1 => "1 file changed since the last index run".to_owned(),
+      changed => format!("{changed} files changed since the last index run"),
     })
+  }
+
+  fn deferred(&self, state: &EngineState, started: Instant, reason: String) -> FreshnessReport {
+    tracing::debug!(reason = %reason, "freshness barrier deferred the refresh");
+    self.degraded(state, None, 0, started, ScanKind::StatScan, Vec::new(), format!("{REFRESH_DEFERRED}: {reason}"))
   }
 
   fn summarized(&self, state: &EngineState, summary: RunSummary, started: Instant) -> FreshnessReport {

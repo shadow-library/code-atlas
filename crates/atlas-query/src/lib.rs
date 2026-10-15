@@ -16,4 +16,4 @@ pub use model::*;
 pub use policy::Policy;
 pub use queries::*;
 pub use target::{TargetFilter, TargetSpec};
-pub use text::{RenderText, TextOut, render_json, render_text};
+pub use text::{RenderText, TextOut, context_item_line, render_json, render_text};

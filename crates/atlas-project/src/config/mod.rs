@@ -1,14 +1,16 @@
 mod agents;
 mod env;
 mod families;
+mod hooks;
 mod keys;
 mod layers;
 mod project;
 mod user;
 mod worktrees;
 
-pub use agents::{AgentsSettings, ClaudeAgent, ClaudeHook, ClaudeScope, CodexAgent, GuidanceMode};
+pub use agents::{AgentsSettings, ClaudeAgent, ClaudeHook, ClaudeScope, CodexAgent, GuidanceMode, HooksSource};
 pub use env::ConfigEnv;
+pub use hooks::HookSettings;
 pub use keys::{KeyClass, McpSettings, ToolsSetting};
 pub use layers::{ConfigEntry, McpFlags, Origin, ResolvedMcp, resolve_mcp};
 pub use user::UserConfig;

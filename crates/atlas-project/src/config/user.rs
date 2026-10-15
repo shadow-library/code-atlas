@@ -120,11 +120,11 @@ impl UserConfig {
           let known = config.known("", flatten("mcp", mcp), |key| McpSettings::KEYS.iter().any(|spec| spec.name == key));
           config.mcp = validated::<McpSettings>(known, "").map_err(invalid)?;
         }
-        ("agents" | "worktrees", Value::Table(section)) => {
+        ("agents" | "worktrees" | "hooks", Value::Table(section)) => {
           let known = config.known("", flatten(name, section), |key| RESERVED_KEYS.iter().any(|reserved| reserved.spec.name == key));
           config.reserved.extend(validated_reserved(known).map_err(invalid)?);
         }
-        ("defaults" | "mcp" | "agents" | "worktrees", _) => return Err(invalid(format!("{name} must be a table"))),
+        ("defaults" | "mcp" | "agents" | "worktrees" | "hooks", _) => return Err(invalid(format!("{name} must be a table"))),
         (other, _) => config.warnings.push(format!("config.toml: unknown key {other} ignored")),
       }
     }

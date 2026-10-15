@@ -18,6 +18,13 @@ pub enum IndexMode {
   Full,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum BarrierMode {
+  #[default]
+  Refresh,
+  CheckOnly,
+}
+
 type FaultPredicate = dyn Fn(&RepoName, &RelPath) -> bool + Send + Sync;
 
 #[derive(Clone, Default)]
@@ -90,6 +97,7 @@ pub struct EngineOptions {
   pub auto_scip: AutoScipOptions,
   pub parse_budget: ParseBudget,
   pub budget_retry_backoff: Vec<Duration>,
+  pub barrier: BarrierMode,
   #[doc(hidden)]
   pub extra_detectors: Vec<Arc<dyn DiagnosingDetector>>,
   #[doc(hidden)]
@@ -111,6 +119,7 @@ impl Default for EngineOptions {
       auto_scip: AutoScipOptions::default(),
       parse_budget: ParseBudget::default(),
       budget_retry_backoff: vec![Duration::from_secs(60), Duration::from_secs(600), Duration::from_secs(3_600)],
+      barrier: BarrierMode::Refresh,
       extra_detectors: Vec::new(),
       fault_injection: FaultInjection::default(),
     }
@@ -132,6 +141,7 @@ impl fmt::Debug for EngineOptions {
       .field("auto_scip", &self.auto_scip)
       .field("parse_budget", &self.parse_budget)
       .field("budget_retry_backoff", &self.budget_retry_backoff)
+      .field("barrier", &self.barrier)
       .field("extra_detectors", &self.extra_detectors.len())
       .field("fault_injection", &self.fault_injection)
       .finish()

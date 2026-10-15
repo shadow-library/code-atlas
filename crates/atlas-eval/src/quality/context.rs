@@ -278,6 +278,8 @@ mod tests {
       body: None,
       read_directly: false,
       run: None,
+      named: false,
+      search_terms: Vec::new(),
     }
   }
 

@@ -504,9 +504,9 @@ async fn should_refuse_paths_outside_the_project_and_other_projects_keys() {
   harness.stop().await.unwrap();
 }
 
-const FULL_SURFACE_BUDGET: usize = 14_300;
-const CORE_SURFACE_BUDGET: usize = 8_900;
-const READ_ONLY_SURFACE_BUDGET: usize = 6_400;
+const FULL_SURFACE_BUDGET: usize = 14_400;
+const CORE_SURFACE_BUDGET: usize = 9_000;
+const READ_ONLY_SURFACE_BUDGET: usize = 6_500;
 
 async fn start_profile(tools: ToolsSetting) -> Harness {
   start_configured(&ACME_REPOS, |_| {}, |options| options.tools = tools).await

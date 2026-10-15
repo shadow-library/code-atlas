@@ -31,6 +31,8 @@ pub(crate) struct KeySpec {
   pub(crate) kind: ValueKind,
 }
 
+pub(crate) const SEED_BUDGET_RANGE: std::ops::RangeInclusive<u64> = 200..=2_000;
+
 const fn key(name: &'static str, class: KeyClass, kind: ValueKind) -> KeySpec {
   KeySpec { name, class, kind }
 }
@@ -82,7 +84,7 @@ const fn reserved(name: &'static str, class: KeyClass, kind: ValueKind, validate
   }
 }
 
-pub(crate) const RESERVED_KEYS: [ReservedKey; 8] = [
+pub(crate) const RESERVED_KEYS: [ReservedKey; 9] = [
   reserved("agents.binary", KeyClass::Executable, ValueKind::Text, check_binary),
   reserved("agents.guidance", KeyClass::Runtime, ValueKind::Text, |value| {
     choice(value, &["none", "auto", "local", "tracked"])
@@ -95,6 +97,7 @@ pub(crate) const RESERVED_KEYS: [ReservedKey; 8] = [
   reserved("agents.codex.enabled", KeyClass::Runtime, ValueKind::Flag, |value| as_flag(value).map(drop)),
   reserved("worktrees.mode", KeyClass::Runtime, ValueKind::Text, |value| choice(value, &["overlay", "main", "off"])),
   reserved("worktrees.gc_after_days", KeyClass::Runtime, ValueKind::Number, |value| as_positive(value).map(drop)),
+  reserved("hooks.seed_budget", KeyClass::Runtime, ValueKind::Number, check_seed_budget),
 ];
 
 pub(crate) fn find_spec(name: &str) -> Option<KeySpec> {
@@ -417,7 +420,7 @@ fn choice(value: &Value, options: &[&str]) -> Result<(), String> {
   }
 }
 
-const CLAUDE_HOOKS: [&str; 2] = ["auto-approve", "remind"];
+const CLAUDE_HOOKS: [&str; 3] = ["auto-approve", "remind", "seed"];
 
 fn check_hooks(value: &Value) -> Result<(), String> {
   let hooks = as_words(value)?;
@@ -427,6 +430,14 @@ fn check_hooks(value: &Value) -> Result<(), String> {
   match hooks.iter().enumerate().any(|(index, hook)| hooks[..index].contains(hook)) {
     true => Err("each hook may be listed once".to_owned()),
     false => Ok(()),
+  }
+}
+
+fn check_seed_budget(value: &Value) -> Result<(), String> {
+  let budget = as_number(value)?;
+  match SEED_BUDGET_RANGE.contains(&budget) {
+    true => Ok(()),
+    false => Err(format!("expected {} to {} tokens", SEED_BUDGET_RANGE.start(), SEED_BUDGET_RANGE.end())),
   }
 }
 
@@ -588,8 +599,11 @@ mod tests {
     assert_eq!(check("agents.claude.hooks", hooks(&[])), Ok(()));
     assert_eq!(
       check("agents.claude.hooks", hooks(&["activate"])),
-      Err("expected hooks from auto-approve, remind".to_owned())
+      Err("expected hooks from auto-approve, remind, seed".to_owned())
     );
     assert_eq!(check("agents.claude.hooks", hooks(&["remind", "remind"])), Err("each hook may be listed once".to_owned()));
+    assert_eq!(check("hooks.seed_budget", Value::Integer(1_200)), Ok(()));
+    assert_eq!(check("hooks.seed_budget", Value::Integer(100)), Err("expected 200 to 2000 tokens".to_owned()));
+    assert_eq!(check("hooks.seed_budget", Value::Integer(2_001)), Err("expected 200 to 2000 tokens".to_owned()));
   }
 }

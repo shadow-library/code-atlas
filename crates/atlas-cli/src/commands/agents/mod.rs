@@ -12,15 +12,15 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use atlas_mcp::guidance::{SERVER_NAME, ToolProfile, repo_block};
-use atlas_project::{AgentsSettings, Binding, ClaudeHook, ClaudeScope, ConfigEnv, GuidanceMode, McpFlags, ProjectError, Registry, Resolution, resolve_mcp};
+use atlas_project::{AgentsSettings, Binding, ClaudeHook, ClaudeScope, ConfigEnv, GuidanceMode, HooksSource, McpFlags, ProjectError, Registry, Resolution, resolve_mcp};
 use serde_json::{Value, json};
 
-use self::claude::{HOME_VAR, RegistrationScope};
+use self::claude::{HOME_VAR, HookEvent, RegistrationScope};
 use self::guidance::ExcludeLocation;
 use self::manifest::{Agent, Manifest, Record, Scope};
 use self::plan::{Bookkeeping, Change, Desired, Flags, Owner, Redo, Step, decide_removal, decide_write};
 use self::target::{Content, Current, Effect, Target};
-use crate::cli::{AgentName, AgentScope, AgentsCommand, AgentsStatusArgs, AgentsSyncArgs, AgentsUnsyncArgs, ConnectCommand, ConnectScope};
+use crate::cli::{AgentName, AgentScope, AgentsCommand, AgentsHooksArgs, AgentsStatusArgs, AgentsSyncArgs, AgentsUnsyncArgs, ConnectCommand, ConnectScope};
 use crate::commands::mcp::tool_profile;
 use crate::confirm::confirm;
 use crate::context::Context;
@@ -31,6 +31,7 @@ use crate::output::{Outcome, emit, emit_json, emit_line, note};
 pub(crate) use self::claude::claude_config_path;
 
 const DEFAULT_COMMAND: &str = "catl";
+const DEFAULT_SEED_NOTE: &str = "new: the seed hook is on by default; it adds a short Code Atlas context pack to each prompt you submit in a registered project (UserPromptSubmit). To turn it off, set [agents.claude] hooks = [\"auto-approve\"] in config.toml and rerun `catl agents sync`";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Style {
@@ -69,6 +70,7 @@ pub fn run(ctx: &Context, command: AgentsCommand) -> CliResult<Outcome> {
     AgentsCommand::Sync(args) => sync(ctx, args.into()),
     AgentsCommand::Status(args) => status(ctx, args),
     AgentsCommand::Unsync(args) => unsync(ctx, args),
+    AgentsCommand::Hooks(args) => hooks(ctx, args),
   }
 }
 
@@ -219,11 +221,15 @@ fn sync(ctx: &Context, request: SyncRequest) -> CliResult<Outcome> {
       .into_iter()
       .map(|item| {
         let recorded = manifest.find(&item.target);
-        decide_write(item, recorded, request.flags)
+        let file_created_by_sync = manifest.records.iter().any(|record| record.created_file && record.target.file() == item.target.file());
+        decide_write(item, recorded, file_created_by_sync, request.flags)
       })
       .collect();
     steps.extend(stale.iter().map(|record| decide_removal(record, request.flags)));
     steps.extend(orphan_excludes(&manifest.records, &needed, &desired_targets).map(|record| decide_removal(record, request.flags)));
+    if settings.claude.hooks_source == HooksSource::BuiltIn && steps.iter().any(creates_seed_hook) {
+      notes.push(DEFAULT_SEED_NOTE.to_owned());
+    }
     let user_scope_sync = request.style == Style::Sync && agents.contains(&Agent::Claude) && scope == Scope::User;
     if user_scope_sync {
       steps.extend(migrations(manifest, request.flags, &mut notes));
@@ -241,6 +247,17 @@ fn sync(ctx: &Context, request: SyncRequest) -> CliResult<Outcome> {
     }
     execute(manifest, steps, &notes, request.dry_run, request.yes)
   })
+}
+
+fn creates_seed_hook(step: &Step) -> bool {
+  step.change == Change::Created
+    && matches!(
+      step.target,
+      Target::Hooks {
+        event: HookEvent::UserPromptSubmit,
+        ..
+      }
+    )
 }
 
 fn effective_guidance(mode: GuidanceMode) -> GuidanceMode {
@@ -402,8 +419,9 @@ fn claude_wiring(
     if settings.claude.hooks.contains(&ClaudeHook::AutoApprove) {
       contents.push((Target::Permissions { path: path.clone() }, Content::Entries(claude::permission_rules(profile))));
     }
-    if settings.claude.hooks.contains(&ClaudeHook::Remind) {
-      contents.push((Target::Hooks { path }, Content::Entries(claude::hook_groups(&settings.binary, home))));
+    for event in hook_events(settings) {
+      let target = Target::Hooks { path: path.clone(), event };
+      contents.push((target, Content::Entries(claude::hook_groups(event, &settings.binary, home))));
     }
     contents
   };
@@ -468,6 +486,37 @@ fn claude_wiring(
     }
   }
   Ok(())
+}
+
+fn hook_events(settings: &AgentsSettings) -> Vec<HookEvent> {
+  [(ClaudeHook::Remind, HookEvent::PreToolUse), (ClaudeHook::Seed, HookEvent::UserPromptSubmit)]
+    .into_iter()
+    .filter(|(hook, _)| settings.claude.hooks.contains(hook))
+    .map(|(_, event)| event)
+    .collect()
+}
+
+fn hooks(ctx: &Context, args: AgentsHooksArgs) -> CliResult<Outcome> {
+  let settings = ctx.registry()?.user_config().agents();
+  let binary = args.binary.unwrap_or_else(|| settings.binary.clone());
+  let home = args.home.map(OsString::from).or_else(|| std::env::var_os(HOME_VAR).filter(|value| !value.is_empty()));
+  let groups: serde_json::Map<String, Value> = hook_events(&settings)
+    .into_iter()
+    .map(|event| (event.name().to_owned(), Value::Array(claude::hook_groups(event, &binary, home.as_deref()))))
+    .collect();
+  if args.json {
+    emit_json(&Value::Object(groups))?;
+    return Ok(Outcome::Complete);
+  }
+  if groups.is_empty() {
+    note("no hook is enabled in config.toml [agents.claude] hooks");
+  }
+  for (event, entries) in &groups {
+    for command in entries.as_array().into_iter().flatten().filter_map(|group| group["hooks"][0]["command"].as_str()) {
+      emit_line(format!("{event}: {command}"))?;
+    }
+  }
+  Ok(Outcome::Complete)
 }
 
 fn connect_wiring(scope: Scope, home: Option<&OsString>, repos: &[RepoRoot], notes: &mut Notes, items: &mut Vec<Desired>) -> CliResult<()> {
@@ -593,7 +642,7 @@ fn guidance_wiring(agent: Agent, scope: Scope, wiring: &Wiring<'_>, repo: &RepoR
 fn is_local_file(target: &Target) -> bool {
   match target {
     Target::Guidance { path } => guidance::is_local_file(path),
-    Target::Hooks { path } | Target::Permissions { path } => claude::is_local_settings(path),
+    Target::Hooks { path, .. } | Target::Permissions { path } => claude::is_local_settings(path),
     _ => false,
   }
 }

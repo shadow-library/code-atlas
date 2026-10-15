@@ -20,6 +20,8 @@ use crate::error::QueryResult;
 use crate::freshness::{Freshness, FreshnessState, ScipState};
 use crate::model::{Caveat, EntityRef, Hop, Listing, MacroGapScope, Response, Targeted};
 
+pub use context::context_item_line;
+
 const FAILED_FILES_SHOWN: usize = 10;
 
 pub trait RenderText {

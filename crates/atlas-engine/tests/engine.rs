@@ -8,7 +8,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use atlas_core::{Certainty, Confidence, ContentHash, EdgeKind, Entity, EntityKind, Evidence, Freshness, Owner, ParseBudget, Producer, RelPath, RepoName, Span};
-use atlas_engine::{Engine, EngineOptions, FailedFile, FaultInjection, FreshnessReport, IndexMode, ScanKind, ScipLag};
+use atlas_engine::{BarrierMode, Engine, EngineOptions, FailedFile, FaultInjection, FreshnessReport, IndexMode, REFRESH_DEFERRED, ScanKind, ScipLag};
 use atlas_project::Project;
 use atlas_store::{EdgeFilter, EntityFilter, FreshnessPolicy, InferredQuery, NewInferredFact, RunStatus};
 use common::edits::replace_word;
@@ -530,6 +530,56 @@ fn should_wait_for_another_process_holding_the_index_lock_and_reuse_its_work() {
   assert_eq!(after.header().last_run, report.header().run);
   assert_eq!(single(&first, "crossProcess", "acme-sdk", EntityKind::Function).name, "crossProcess");
   assert_eq!(first.similarity().len(), second.similarity().len());
+}
+
+fn deferred_reason(report: &FreshnessReport) -> Option<&str> {
+  match report {
+    FreshnessReport::Degraded { reason, failed_files, .. } if failed_files.is_empty() => reason.strip_prefix(&format!("{REFRESH_DEFERRED}: ")),
+    _ => None,
+  }
+}
+
+#[test]
+fn should_never_run_an_index_in_check_only_mode_and_answer_fresh_only_from_a_clean_tree() {
+  let scratch = tempfile::tempdir().unwrap();
+  let tree = scratch.path().join("tree");
+  let project = acme_copy(&tree);
+  let home = scratch.path().join("home");
+  let check_only = EngineOptions {
+    barrier: BarrierMode::CheckOnly,
+    ..EngineOptions::default()
+  };
+
+  let never_indexed = open_with(&project, &home, check_only.clone());
+  let report = never_indexed.ensure_fresh().unwrap();
+  assert_eq!(deferred_reason(&report), Some("the project has never been indexed"), "{report:?}");
+  assert_eq!((report.header().run, report.header().last_run), (None, None));
+  assert_eq!(run_count(&never_indexed), 0);
+  drop(never_indexed);
+
+  let refreshing = open(&project, &home);
+  fresh(&refreshing);
+  let indexed = run_count(&refreshing);
+  let engine = open_with(&project, &home, check_only);
+  let clean = engine.ensure_fresh().unwrap();
+  assert!(clean.is_fresh(), "{clean:?}");
+  assert_eq!(
+    (engine.index_run_in_progress().unwrap(), engine.persisted_generation().unwrap()),
+    (false, clean.header().last_run)
+  );
+  assert_eq!((clean.header().run, clean.header().last_run.is_some()), (None, true));
+
+  append(&tree.join("acme-sdk/src/money.ts"), "\nexport function first() {\n  return 1;\n}\n");
+  let report = engine.ensure_fresh().unwrap();
+  assert_eq!(deferred_reason(&report), Some("1 file changed since the last index run"), "{report:?}");
+  assert_eq!(run_count(&engine), indexed);
+  assert!(named(&engine, "first", "acme-sdk").is_empty());
+
+  fresh(&refreshing);
+  let caught_up = engine.ensure_fresh().unwrap();
+  assert!(caught_up.is_fresh(), "{caught_up:?}");
+  assert_eq!((caught_up.header().run, run_count(&engine)), (None, indexed + 1));
+  assert_eq!(single(&engine, "first", "acme-sdk", EntityKind::Function).name, "first");
 }
 
 struct Retouch(Instant);

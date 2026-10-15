@@ -6,15 +6,20 @@ use atlas_mcp::guidance::SERVER_NAME;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::claude::{self, RegistrationScope};
+use super::claude::{self, HookEvent, RegistrationScope};
 use super::{codex, guidance};
 use crate::json_edit::{JsonEditError, remove_member, upsert_server};
 
 const SERVERS_KEY: &str = "mcpServers";
-const HOOKS: Slot = Slot {
+const REMIND_HOOKS: Slot = Slot {
   outer: "hooks",
   inner: "PreToolUse",
-  ours: claude::is_our_hook_group,
+  ours: claude::is_our_remind_group,
+};
+const SEED_HOOKS: Slot = Slot {
+  outer: "hooks",
+  inner: "UserPromptSubmit",
+  ours: claude::is_our_seed_group,
 };
 const PERMISSIONS: Slot = Slot {
   outer: "permissions",
@@ -42,6 +47,8 @@ pub(super) enum Target {
   },
   Hooks {
     path: PathBuf,
+    #[serde(default, skip_serializing_if = "HookEvent::is_pre_tool_use")]
+    event: HookEvent,
   },
   Permissions {
     path: PathBuf,
@@ -103,8 +110,7 @@ impl Target {
       Self::Registration { config, cwd: None, .. } => format!("{}#{SERVERS_KEY}.{SERVER_NAME}", config.display()),
       Self::Registration { config, cwd: Some(cwd), .. } => format!("{}#projects[{}].{SERVERS_KEY}.{SERVER_NAME}", config.display(), cwd.display()),
       Self::McpJson { path } => format!("{}#{SERVERS_KEY}.{SERVER_NAME}", path.display()),
-      Self::Hooks { path } => format!("{}#{}.{}", path.display(), HOOKS.outer, HOOKS.inner),
-      Self::Permissions { path } => format!("{}#{}.{}", path.display(), PERMISSIONS.outer, PERMISSIONS.inner),
+      Self::Hooks { path, .. } | Self::Permissions { path } => format!("{}#{}.{}", path.display(), self.slot().outer, self.slot().inner),
       Self::Codex { path } => format!("{}#mcp_servers.{SERVER_NAME}", path.display()),
       Self::Guidance { path } => path.display().to_string(),
       Self::Exclude { path, line } => format!("{} ({line})", path.display()),
@@ -114,7 +120,7 @@ impl Target {
   pub(super) fn file(&self) -> &Path {
     match self {
       Self::Registration { config, .. } => config,
-      Self::McpJson { path } | Self::Hooks { path } | Self::Permissions { path } | Self::Codex { path } | Self::Guidance { path } | Self::Exclude { path, .. } => path,
+      Self::McpJson { path } | Self::Hooks { path, .. } | Self::Permissions { path } | Self::Codex { path } | Self::Guidance { path } | Self::Exclude { path, .. } => path,
     }
   }
 
@@ -282,7 +288,11 @@ impl Target {
   fn slot(&self) -> &'static Slot {
     match self {
       Self::Permissions { .. } => &PERMISSIONS,
-      _ => &HOOKS,
+      Self::Hooks {
+        event: HookEvent::UserPromptSubmit,
+        ..
+      } => &SEED_HOOKS,
+      _ => &REMIND_HOOKS,
     }
   }
 
@@ -423,8 +433,11 @@ mod tests {
   fn should_keep_other_hooks_and_delete_only_a_file_it_created_once_hollow() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("settings.json");
-    let target = Target::Hooks { path: path.clone() };
-    let ours = claude::hook_groups("catl", None);
+    let target = Target::Hooks {
+      path: path.clone(),
+      event: HookEvent::PreToolUse,
+    };
+    let ours = claude::hook_groups(HookEvent::PreToolUse, "catl", None);
     let foreign = json!({"matcher": "Bash", "hooks": [{"type": "command", "command": "lint"}]});
     fs::write(
       &path,
@@ -450,10 +463,75 @@ mod tests {
     assert_eq!(document, json!({"model": "x", "hooks": {"PreToolUse": [foreign]}}));
 
     fs::write(&path, "{\n  \"hooks\": {\n    \"PreToolUse\": []\n  }\n}\n").unwrap();
-    let created = target.write(&Content::Entries(claude::hook_groups("catl", None))).unwrap();
+    let created = target.write(&Content::Entries(claude::hook_groups(HookEvent::PreToolUse, "catl", None))).unwrap();
     let Effect::Write { after, .. } = created else { panic!("expected a write") };
     fs::write(&path, &after).unwrap();
     assert!(matches!(target.remove(true).unwrap(), Some(Effect::Delete { .. })));
+  }
+
+  #[test]
+  fn should_own_the_seed_group_apart_from_the_remind_group_and_foreign_prompt_hooks() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    let remind = Target::Hooks {
+      path: path.clone(),
+      event: HookEvent::PreToolUse,
+    };
+    let seed = Target::Hooks {
+      path: path.clone(),
+      event: HookEvent::UserPromptSubmit,
+    };
+    let foreign = json!({"hooks": [{"type": "command", "command": "log-prompt"}]});
+    fs::write(&path, serde_json::to_string_pretty(&json!({"hooks": {"UserPromptSubmit": [foreign.clone()]}})).unwrap()).unwrap();
+    for target in [&remind, &seed] {
+      let event = if *target == seed { HookEvent::UserPromptSubmit } else { HookEvent::PreToolUse };
+      let Effect::Write { after, .. } = target.write(&Content::Entries(claude::hook_groups(event, "catl", None))).unwrap() else {
+        panic!("expected a write")
+      };
+      fs::write(&path, &after).unwrap();
+    }
+    let seed_groups = claude::hook_groups(HookEvent::UserPromptSubmit, "catl", None);
+    assert_eq!(
+      seed.current(),
+      Current::Present {
+        hash: seed.hash(&Content::Entries(seed_groups.clone())),
+        legacy: false
+      }
+    );
+    assert_eq!(seed.label(), format!("{}#hooks.UserPromptSubmit", path.display()));
+    assert_eq!(remind.label(), format!("{}#hooks.PreToolUse", path.display()));
+
+    let Some(Effect::Write { after, .. }) = seed.remove(false).unwrap() else {
+      panic!("expected a write")
+    };
+    let document: Value = serde_json::from_str(&after).unwrap();
+    assert_eq!(
+      document,
+      json!({"hooks": {"UserPromptSubmit": [foreign], "PreToolUse": claude::hook_groups(HookEvent::PreToolUse, "catl", None)}})
+    );
+  }
+
+  #[test]
+  fn should_read_a_hooks_record_without_an_event_as_the_remind_group_and_write_it_back_unchanged() {
+    let path = PathBuf::from("/c/settings.json");
+    let recorded = json!({"kind": "hooks", "path": "/c/settings.json"});
+    let target: Target = serde_json::from_value(recorded.clone()).unwrap();
+    assert_eq!(
+      target,
+      Target::Hooks {
+        path: path.clone(),
+        event: HookEvent::PreToolUse
+      }
+    );
+    assert_eq!(serde_json::to_value(&target).unwrap(), recorded);
+    let seed = Target::Hooks {
+      path,
+      event: HookEvent::UserPromptSubmit,
+    };
+    assert_eq!(
+      serde_json::to_value(&seed).unwrap(),
+      json!({"kind": "hooks", "path": "/c/settings.json", "event": "UserPromptSubmit"})
+    );
   }
 
   #[test]

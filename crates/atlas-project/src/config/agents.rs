@@ -24,6 +24,7 @@ pub enum ClaudeScope {
 pub enum ClaudeHook {
   AutoApprove,
   Remind,
+  Seed,
 }
 
 impl ClaudeHook {
@@ -31,6 +32,7 @@ impl ClaudeHook {
     match self {
       Self::AutoApprove => "auto-approve",
       Self::Remind => "remind",
+      Self::Seed => "seed",
     }
   }
 
@@ -38,9 +40,16 @@ impl ClaudeHook {
     match name {
       "auto-approve" => Some(Self::AutoApprove),
       "remind" => Some(Self::Remind),
+      "seed" => Some(Self::Seed),
       _ => None,
     }
   }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HooksSource {
+  BuiltIn,
+  ConfigFile,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +57,7 @@ pub struct ClaudeAgent {
   pub enabled: bool,
   pub scope: ClaudeScope,
   pub hooks: Vec<ClaudeHook>,
+  pub hooks_source: HooksSource,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,7 +81,8 @@ impl Default for AgentsSettings {
       claude: ClaudeAgent {
         enabled: true,
         scope: ClaudeScope::User,
-        hooks: vec![ClaudeHook::AutoApprove],
+        hooks: vec![ClaudeHook::AutoApprove, ClaudeHook::Seed],
+        hooks_source: HooksSource::BuiltIn,
       },
       codex: CodexAgent { enabled: true },
     }
@@ -108,6 +119,7 @@ impl AgentsSettings {
         hooks.sort();
         hooks.dedup();
         self.claude.hooks = hooks;
+        self.claude.hooks_source = HooksSource::ConfigFile;
       }
       _ => {}
     }
@@ -130,15 +142,15 @@ mod tests {
   }
 
   #[test]
-  fn should_default_to_a_user_scope_claude_with_auto_approve_and_codex_enabled() {
+  fn should_default_to_a_user_scope_claude_with_auto_approve_seeding_and_codex_enabled() {
     assert_eq!(agents(""), AgentsSettings::default());
-    assert_eq!(AgentsSettings::default().claude.hooks, [ClaudeHook::AutoApprove]);
+    assert_eq!(AgentsSettings::default().claude.hooks, [ClaudeHook::AutoApprove, ClaudeHook::Seed]);
   }
 
   #[test]
   fn should_read_every_agents_key_from_config_toml() {
     let settings = agents(
-      "[agents]\nbinary = \"/opt/bin/catl\"\nguidance = \"local\"\n[agents.claude]\nenabled = true\nscope = \"local\"\nhooks = [\"remind\", \"auto-approve\"]\n[agents.codex]\nenabled = false\n",
+      "[agents]\nbinary = \"/opt/bin/catl\"\nguidance = \"local\"\n[agents.claude]\nenabled = true\nscope = \"local\"\nhooks = [\"seed\", \"remind\", \"auto-approve\"]\n[agents.codex]\nenabled = false\n",
     );
     assert_eq!(
       settings,
@@ -148,7 +160,8 @@ mod tests {
         claude: ClaudeAgent {
           enabled: true,
           scope: ClaudeScope::Local,
-          hooks: vec![ClaudeHook::AutoApprove, ClaudeHook::Remind],
+          hooks: vec![ClaudeHook::AutoApprove, ClaudeHook::Remind, ClaudeHook::Seed],
+          hooks_source: HooksSource::ConfigFile,
         },
         codex: CodexAgent { enabled: false },
       }

@@ -36,33 +36,74 @@ impl BoundProject {
   }
 }
 
+pub enum ExistingBinding {
+  Bound(Box<BoundProject>),
+  OverlayNotSeeded { label: String },
+}
+
+enum Route {
+  Direct(Resolution),
+  Registered(Resolution),
+  Overlay(Box<OverlayPlan>, Resolution),
+  FallBack(Resolution, String),
+}
+
 pub fn bind_project(home: &AtlasHome, registry: &Registry, cwd: &Path, explicit: Option<&str>, store: &StoreOptions) -> Result<BoundProject, ProjectError> {
+  Ok(match route(registry, cwd, explicit)? {
+    Route::Direct(resolution) => {
+      collect_stale_overlays(home, registry);
+      BoundProject::on_registered(resolution, home)
+    }
+    Route::Registered(resolution) => BoundProject::on_registered(resolution, home),
+    Route::Overlay(plan, resolution) => match prepare_overlay(home, registry, &plan, store) {
+      Ok(lease) => on_overlay(&plan, resolution.warnings, lease, home.db_path(&plan.base)),
+      Err(error) => fall_back(resolution, home, format!("could not prepare the worktree overlay {}: {error}", plan.label)),
+    },
+    Route::FallBack(resolution, warning) => fall_back(resolution, home, warning),
+  })
+}
+
+pub fn bind_existing_project(home: &AtlasHome, registry: &Registry, cwd: &Path, explicit: Option<&str>, store: &StoreOptions) -> Result<ExistingBinding, ProjectError> {
+  Ok(ExistingBinding::Bound(Box::new(match route(registry, cwd, explicit)? {
+    Route::Direct(resolution) | Route::Registered(resolution) => BoundProject::on_registered(resolution, home),
+    Route::Overlay(plan, resolution) => {
+      let overlays = Overlays::new(home);
+      if !overlays.db_path(&plan.project.name).is_file() {
+        return Ok(ExistingBinding::OverlayNotSeeded { label: plan.label.clone() });
+      }
+      let refuse_to_seed = |_: &Path| Err::<SeedSummary, String>(format!("the worktree overlay {} is not seeded", plan.label));
+      match overlays.acquire(&plan, store.lock_timeout, refuse_to_seed) {
+        Ok(lease) => on_overlay(&plan, resolution.warnings, lease, home.db_path(&plan.base)),
+        Err(error) => fall_back(resolution, home, format!("could not use the worktree overlay {}: {error}", plan.label)),
+      }
+    }
+    Route::FallBack(resolution, warning) => fall_back(resolution, home, warning),
+  })))
+}
+
+fn route(registry: &Registry, cwd: &Path, explicit: Option<&str>) -> Result<Route, ProjectError> {
   let resolution = registry.resolve(cwd, explicit)?;
   let mode = registry.user_config().worktrees().mode;
   let worktree = match &resolution.binding {
-    Binding::Direct | Binding::Overlay(_) => {
-      collect_stale_overlays(home, registry);
-      return Ok(BoundProject::on_registered(resolution, home));
-    }
+    Binding::Direct | Binding::Overlay(_) => return Ok(Route::Direct(resolution)),
     Binding::UnresolvedWorktree(unresolved) => (unresolved.root.clone(), None),
     Binding::Worktree(worktree) => (worktree.worktree.clone(), Some(worktree.clone())),
   };
-  match (mode, worktree) {
-    (WorktreeMode::Off, (root, _)) => Err(ProjectError::WorktreeIgnored {
-      cwd: cwd.to_path_buf(),
-      worktree: root,
-      project: resolution.project.name.to_string(),
-    }),
-    (WorktreeMode::Main, _) | (WorktreeMode::Overlay, (_, None)) => Ok(BoundProject::on_registered(resolution, home)),
-    (WorktreeMode::Overlay, (_, Some(worktree))) => Ok(match registry.derive_overlay(&worktree) {
-      Ok(OverlayDerivation::Eligible(plan)) => match prepare_overlay(home, registry, &plan, store) {
-        Ok(lease) => on_overlay(&plan, resolution.warnings, lease, home.db_path(&plan.base)),
-        Err(error) => fall_back(resolution, home, format!("could not prepare the worktree overlay {}: {error}", plan.label)),
-      },
-      Ok(OverlayDerivation::Ineligible { reason }) => fall_back(resolution, home, format!("no worktree overlay: {reason}")),
-      Err(error) => fall_back(resolution, home, format!("no worktree overlay: {error}")),
-    }),
-  }
+  Ok(match (mode, worktree) {
+    (WorktreeMode::Off, (root, _)) => {
+      return Err(ProjectError::WorktreeIgnored {
+        cwd: cwd.to_path_buf(),
+        worktree: root,
+        project: resolution.project.name.to_string(),
+      });
+    }
+    (WorktreeMode::Main, _) | (WorktreeMode::Overlay, (_, None)) => Route::Registered(resolution),
+    (WorktreeMode::Overlay, (_, Some(worktree))) => match registry.derive_overlay(&worktree) {
+      Ok(OverlayDerivation::Eligible(plan)) => Route::Overlay(plan, resolution),
+      Ok(OverlayDerivation::Ineligible { reason }) => Route::FallBack(resolution, format!("no worktree overlay: {reason}")),
+      Err(error) => Route::FallBack(resolution, format!("no worktree overlay: {error}")),
+    },
+  })
 }
 
 pub fn current_overlay(registry: &Registry, cwd: &Path, explicit: Option<&str>) -> Result<Option<OverlayPlan>, ProjectError> {

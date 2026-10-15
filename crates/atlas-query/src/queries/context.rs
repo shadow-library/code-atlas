@@ -190,6 +190,10 @@ pub struct ContextItem {
   pub body: Option<Snippet>,
   pub read_directly: bool,
   pub run: Option<String>,
+  #[serde(skip)]
+  pub named: bool,
+  #[serde(skip)]
+  pub search_terms: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -1010,6 +1014,8 @@ fn select_tests(owners: Vec<(bool, f64, Vec<TestItem>)>, spans: &BTreeMap<String
       body: None,
       read_directly: false,
       run: test.run.clone(),
+      named: false,
+      search_terms: Vec::new(),
       score,
       entity: test.test,
     })
@@ -1071,6 +1077,11 @@ fn item_of(item: &Ranked) -> ContextItem {
     run: match item.node.role {
       Role::Test => run_hint(entity),
       _ => None,
+    },
+    named: item.node.named,
+    search_terms: match item.node.basis {
+      Basis::SearchHit => item.node.terms.clone(),
+      Basis::Relation => Vec::new(),
     },
   }
 }

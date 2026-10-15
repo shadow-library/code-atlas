@@ -124,7 +124,7 @@ impl Step {
   }
 }
 
-pub(super) fn decide_write(desired: Desired, recorded: Option<&Record>, flags: Flags) -> Step {
+pub(super) fn decide_write(desired: Desired, recorded: Option<&Record>, file_created_by_sync: bool, flags: Flags) -> Step {
   let Desired { owner, target, content, guard } = desired;
   let hash = target.hash(&content);
   let current = target.current();
@@ -136,7 +136,7 @@ pub(super) fn decide_write(desired: Desired, recorded: Option<&Record>, flags: F
     hash: hash.clone(),
     created_file,
   };
-  let previously_created = recorded.is_some_and(|record| record.created_file);
+  let previously_created = file_created_by_sync || recorded.is_some_and(|record| record.created_file);
   if matches!(&current, Current::Present { hash: present, .. } if *present == hash) {
     let bookkeeping = match recorded.is_some() || target.adopts_identical() {
       true => Bookkeeping::Put(record(previously_created)),
@@ -280,13 +280,13 @@ mod tests {
       path: dir.path().join(".mcp.json"),
     };
 
-    let created = decide_write(desired(&target, "catl"), None, Flags::default());
+    let created = decide_write(desired(&target, "catl"), None, false, Flags::default());
     assert_eq!((created.change, created.confirm.clone()), (Change::Created, None));
     let record = applied(&created);
     assert!(record.created_file);
-    let again = decide_write(desired(&target, "catl"), Some(&record), Flags::default());
+    let again = decide_write(desired(&target, "catl"), Some(&record), false, Flags::default());
     assert_eq!((again.change, again.effect.clone()), (Change::Unchanged, None));
-    let updated = decide_write(desired(&target, "catl-next"), Some(&record), Flags::default());
+    let updated = decide_write(desired(&target, "catl-next"), Some(&record), false, Flags::default());
     assert_eq!((updated.change, updated.confirm.clone()), (Change::Updated, None));
   }
 
@@ -295,13 +295,13 @@ mod tests {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".mcp.json");
     let target = Target::McpJson { path: path.clone() };
-    let record = applied(&decide_write(desired(&target, "catl"), None, Flags::default()));
+    let record = applied(&decide_write(desired(&target, "catl"), None, false, Flags::default()));
     fs::write(&path, "{\"mcpServers\": {\"code-atlas\": {\"command\": \"catl\", \"args\": [\"mcp\"]}}}").unwrap();
 
-    let refused = decide_write(desired(&target, "catl"), Some(&record), Flags::default());
+    let refused = decide_write(desired(&target, "catl"), Some(&record), false, Flags::default());
     assert_eq!(refused.change, Change::Refused);
     assert_eq!(refused.reason.as_deref(), Some("was changed since the last sync; pass --force to overwrite it"));
-    let forced = decide_write(desired(&target, "catl"), Some(&record), Flags { force: true, migrate: false });
+    let forced = decide_write(desired(&target, "catl"), Some(&record), false, Flags { force: true, migrate: false });
     assert_eq!(forced.change, Change::Updated);
     assert_eq!(forced.confirm.as_deref(), Some("overwrite what was changed since the last sync"));
     assert_eq!(decide_removal(&record, Flags::default()).change, Change::Refused);
@@ -318,13 +318,19 @@ mod tests {
       "{\"mcpServers\": {\"code-atlas\": {\"command\": \"/bin/catl\", \"args\": [\"mcp\", \"--project\", \"acme\"]}}}",
     )
     .unwrap();
-    assert_eq!(decide_write(desired(&target, "catl"), None, Flags::default()).change, Change::Refused);
-    let migrated = decide_write(desired(&target, "catl"), None, Flags { force: false, migrate: true });
+    assert_eq!(decide_write(desired(&target, "catl"), None, false, Flags::default()).change, Change::Refused);
+    let migrated = decide_write(desired(&target, "catl"), None, false, Flags { force: false, migrate: true });
     assert_eq!(migrated.confirm.as_deref(), Some("replace an entry written by an older catl"));
 
     fs::write(&path, "{\"mcpServers\": {\"code-atlas\": {\"command\": \"catl\", \"args\": [\"serve\"]}}}").unwrap();
-    assert_eq!(decide_write(desired(&target, "catl"), None, Flags { force: false, migrate: true }).change, Change::Refused);
-    assert_eq!(decide_write(desired(&target, "catl"), None, Flags { force: true, migrate: false }).change, Change::Updated);
+    assert_eq!(
+      decide_write(desired(&target, "catl"), None, false, Flags { force: false, migrate: true }).change,
+      Change::Refused
+    );
+    assert_eq!(
+      decide_write(desired(&target, "catl"), None, false, Flags { force: true, migrate: false }).change,
+      Change::Updated
+    );
   }
 
   #[test]
@@ -332,7 +338,7 @@ mod tests {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".mcp.json");
     let target = Target::McpJson { path: path.clone() };
-    let record = applied(&decide_write(desired(&target, "catl"), None, Flags::default()));
+    let record = applied(&decide_write(desired(&target, "catl"), None, false, Flags::default()));
 
     let removal = decide_removal(&record, Flags::default());
     assert!(matches!(removal.effect, Some(Effect::Delete { .. })), "{removal:?}");

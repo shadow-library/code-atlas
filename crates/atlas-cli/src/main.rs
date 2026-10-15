@@ -27,7 +27,12 @@ fn main() -> ExitCode {
   };
   if matches!(cli.command, Command::Hook(_)) {
     panic::set_hook(Box::new(|_| {}));
-    let _ = panic::catch_unwind(AssertUnwindSafe(|| commands::run(cli.project, cli.command)));
+    let _ = panic::catch_unwind(AssertUnwindSafe(|| {
+      if cli.log_level.is_some() || std::env::var_os("RUST_LOG").is_some() {
+        let _ = logging::init(cli.log_level.as_deref(), cli.log_format);
+      }
+      commands::run(cli.project, cli.command)
+    }));
     return ExitCode::SUCCESS;
   }
   let result = logging::init(cli.log_level.as_deref(), cli.log_format).and_then(|()| commands::run(cli.project, cli.command));

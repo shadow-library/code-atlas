@@ -46,9 +46,9 @@ What a profile costs, measured on the acme fixture with `atlas-eval agent surfac
 
 | Profile | `instructions` | `tools/list` | total | about tokens |
 |---|---:|---:|---:|---:|
-| `full` | 1,405 | 12,838 | 14,243 | 3,560 |
-| `core` | 1,304 | 7,525 | 8,829 | 2,210 |
-| `read-only` | 1,144 | 5,203 | 6,347 | 1,590 |
+| `full` | 1,541 | 12,838 | 14,379 | 3,590 |
+| `core` | 1,440 | 7,525 | 8,965 | 2,240 |
+| `read-only` | 1,280 | 5,203 | 6,483 | 1,620 |
 
 With Claude Code's tool search on, tool schemas are loaded only when searched, so a profile mainly shortens the instructions and the deferred tool names; it matters most for clients that load every tool upfront.
 
@@ -121,6 +121,7 @@ catl agents sync --agent claude --scope local --repo ../api --repo ../web
 catl agents sync --dry-run               # show the diffs, write nothing
 catl agents status                       # what was written and whether it changed since (exit 3 on drift)
 catl agents unsync                       # remove exactly what was recorded
+catl agents hooks --json                 # the hook groups sync would write, by event; writes nothing
 catl connect claude [--scope project|user] [-y]   # the earlier per-repo command, unchanged (below)
 ```
 
@@ -141,18 +142,18 @@ catl connect claude [--scope project|user] [-y]   # the earlier per-repo command
 - **Tests cannot reach your configuration.** When `CARGO_MANIFEST_DIR` is set (inside `cargo test` or `cargo run`), `sync`, `unsync` and `connect` refuse (exit 2) unless `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are set as well.
 - **Codex** is wired when `$CODEX_HOME` (or `~/.codex`) exists and `[agents.codex] enabled` is true, and skipped with a note otherwise; `--agent codex` without it exits 2. Verified against the Codex MCP documentation (2026-10): a stdio server is a `[mcp_servers.<name>]` table with `command`, `args`, `env` (plus optional `cwd`, timeouts and tool lists, which `sync` leaves alone), the user file is `~/.codex/config.toml` and `CODEX_HOME` moves it. The documentation does not say which directory Codex starts a server in; the entry sets no `cwd`, so the project is resolved from Codex's working directory. If yours starts servers elsewhere, add `"--project", "<name>"` by hand (then `status` reports it as changed).
 
-**What it records.** `<data dir>/wiring.json` lists every entry `sync` wrote: agent, scope, repo, where (`~/.claude.json` registration, `.mcp.json` member, settings file permission rules and hooks, Codex table, guidance file, git exclude line) and a BLAKE3 hash of the part it owns. Only that part is compared, so other servers, hooks or settings in the same file never count as a change. With that record:
+**What it records.** `<data dir>/wiring.json` lists every entry `sync` wrote: agent, scope, repo, where (`~/.claude.json` registration, `.mcp.json` member, settings file permission rules and hooks, Codex table, guidance file, git exclude line) and a BLAKE3 hash of the part it owns. The file is version 2 since the `seed` hook (a hooks record now names its event); this `catl` still reads version 1 and writes version 2 on its next change, and an older `catl` refuses version 2 rather than misread it. Only that part is compared, so other servers, hooks or settings in the same file never count as a change. With that record:
 
 - `sync` changes its own unchanged entries without asking, leaves identical ones alone, and refuses (exit 2, nothing written) to overwrite an entry that was changed or removed since it wrote it, or one it did not write, unless `--force`. Adding to a file that already existed asks first (`--yes` skips the question). A failure midway leaves the record matching what was applied, so a rerun picks up where it stopped.
-- `sync` also removes what it recorded earlier for the same agent, scope and repos and no longer wants (a hook turned off, guidance switched to `none`, a tracked block `connect` wrote once guidance is `local`).
+- `sync` also removes what it recorded earlier for the same agent, scope and repos and no longer wants (a hook turned off, guidance switched to `none`, a tracked block `connect` wrote once guidance is `local`), and adds what it wants and did not record yet: rerunning `sync` after an upgrade that added the `seed` hook writes its `UserPromptSubmit` group next to the recorded `PreToolUse` and permission entries and leaves those and every foreign hook alone. A fragment added to a settings file that `sync` created counts as part of that file, so `unsync` still deletes the file once nothing else is left in it.
 - `status` lists each recorded entry as `ok`, `changed`, `removed` or `unreadable`.
 - `unsync [--agent A] [--scope S] [--repo PATH] [--dry-run] [--force]` removes exactly the recorded entries, refuses changed ones without `--force`, and deletes a file only if `sync` created it and nothing else is left in it.
 
 **Migrating from older wiring.** Entries from an older `catl` have an absolute command or a fixed `--project` (the last connected repo then won everywhere). `sync --migrate` replaces them after showing the diff; with user scope it also offers to remove such local-scope entries in `~/.claude.json`, which would otherwise win over the user-scope server in those repos. Without `--migrate` `sync` refuses to replace them and lists them. A `.mcp.json` with a `code-atlas` server also wins over the user scope; `sync` says so but leaves the committed file alone.
 
-### Permission rules and the remind hook (Claude Code)
+### Permission rules and hooks (Claude Code)
 
-`[agents.claude] hooks` (default `["auto-approve"]`; `[]` writes neither) goes into the settings file of the scope: `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`) for user scope, `.claude/settings.local.json` for local and project scope. Project scope never writes the committed `.claude/settings.json`, because entries there would apply to every teammate. A local settings file is excluded from git like local guidance. Other rules and hooks in the file are kept.
+`[agents.claude] hooks` (default `["auto-approve", "seed"]`; `[]` writes none) goes into the settings file of the scope: `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`) for user scope, `.claude/settings.local.json` for local and project scope. Project scope never writes the committed `.claude/settings.json`, because entries there would apply to every teammate. A local settings file is excluded from git like local guidance. Other rules and hooks in the file are kept.
 
 - `auto-approve` is not a hook: it writes the read-only tools of the configured [profile](#tool-profiles) (all 14 with `full`) as exact `permissions.allow` rules (`"mcp__code-atlas__atlas_api"`, ..., `"mcp__code-atlas__atlas_unused"`), never `atlas_edit`. Claude Code then skips the prompt for them without running any process, so a missing or mismatched `catl` cannot block a tool call. Claude Code still applies your deny and ask rules. Every rule naming the `code-atlas` server (`mcp__code-atlas`, `mcp__code-atlas__*`) counts as the fragment `sync` owns, so a rule you add or remove there shows as drift, and `sync` rewrites the list when the tool set changes.
 - `remind` is a `PreToolUse` hook on `Grep|Glob|Bash`:
@@ -163,9 +164,65 @@ catl connect claude [--scope project|user] [-y]   # the earlier per-repo command
 
   (`CODE_ATLAS_HOME=...` only when it is set while syncing.) It answers a `Grep` or `Glob` call, or a `Bash` command that runs `grep`, `rg`, `ag`, `ack` or `git grep`, in a directory of a registered project with `{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"..."}}`: a note that `atlas_search`, `atlas_symbol` or `atlas_context` may answer faster. It makes no permission decision, so the tool runs as usual, and it fires at most once per `session_id` (state in `<data dir>/hooks/reminded/`, entries older than 7 days are dropped).
 
+- `seed` is a `UserPromptSubmit` hook (that event takes no matcher), on by default:
+
+  ```json
+  { "hooks": [{ "type": "command", "command": "CODE_ATLAS_HOME=/iso catl hook seed || true", "timeout": 10 }] }
+  ```
+
+  It hands the agent the graph's answer before it starts searching: from the full prompt it builds a context pack and adds a short list from it as `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"..."}}`, which Claude Code puts next to the prompt. When `seed` comes from the built-in default rather than your own `[agents.claude] hooks` list, the `sync` that first writes it says so. To turn it off, set `[agents.claude] hooks = ["auto-approve"]` (or your list without `"seed"`) and rerun `agents sync`, which removes the group it wrote. The context reads:
+
+  ```text
+  Code Atlas seed: a short ranked list of the indexed code most relevant to this prompt, from an index that is up to date with the working tree. Read what it names before searching; [heuristic n], [inferred n] and UNCERTAIN mark leads to verify in the source.
+  Read first:
+  - parse_order function shop:src/lib.rs:5-7  why: named in task as parse_order
+  - Order struct shop:src/lib.rs:1-3  why: instantiated by parse_order [resolved]
+  - total_cents function shop:src/lib.rs:9-11  why: called by parse_order [resolved]
+  More from the code-atlas MCP server: atlas_context (a fuller pack with bodies), atlas_symbol (definitions, references and source), atlas_impact (what a change affects).
+  ```
+
+  The pack is the one `atlas_context` builds for the prompt with its default budget (6,000 tokens). The seed lists its MUST READ (`Read first:`), SKIM (`Also relevant:`) and TESTS (`Tests:`) items in rank order, each with its `repo:path:line-range` and why it is there, the way `atlas_context` prints them but without bodies. The list stops at `[hooks] seed_budget` tokens (default 1,200, 200 to 2,000, characters / 4, never more than 9,000 characters, under Claude Code's 10,000-character cap). The bodies of MUST READ items are still read, because their size decides which items are MUST READ; skipping them would make the seed differ from the pack `atlas_context` returns. The last line names only the tools of the configured [profile](#tool-profiles) (resolved from `config.toml`, like `sync`), and is left out when the profile has none of them.
+
+  On a probe on this repository (11 code and 12 chatter prompts from the review, 10 written beforehand for this check, each sent as the first prompt of a session and as a follow-up, 54 cases), it seeded 10 of the 27 code cases and none of the 27 chatter cases: every plain-English follow-up stays silent by design, and the plain first prompts about features this repository does not have (`migrate session storage to redis`) found nothing related.
+
+  The hook has no side effects on the index: it never runs an index, never creates a database, and never prepares or collects a worktree overlay. It prints nothing when:
+
+  - the event is not `UserPromptSubmit` or lacks `prompt` or an absolute `cwd`, or the input is not JSON;
+  - the prompt fails the prompt rule, or is a plain-English follow-up. Lines that are paste markers (`<pasted_content id="…">`, `</pasted_content id="…">`) are dropped first, and a prompt needs at least 16 characters. A **code prompt** has a code-like token: a backtick span, `snake_case`, `camelCase`, `a.b` with parts of two or more characters, `a::b`, `a->b`, a call `name(`, or a path (`a/b/c`, `src/x.rs`); it may seed on any turn. A **plain-English prompt** has none but at least 3 distinct content words (3 or more letters, identifiers split at `_` and case changes, not on a list of about 100 function and chatter words such as `the`, `you`, `thanks`, `please`, `continue`, `commit`, `push`, `next`, `step`); it seeds only when it is the first prompt of its session to qualify. The session is the event's `session_id`, recorded as a marker in `<data dir>/hooks/seeded/` the way `remind` records its own (entries older than 7 days are dropped); an event without one counts as a follow-up. So in an ongoing session `that worked, nice job. anything else left to do?` never seeds, while `why does total_cents round down?` does;
+  - the working directory is in no registered project, or is answered from another checkout (a git worktree without an overlay, which `status` marks with a worktree caveat), or its worktree overlay has not been seeded yet (any CLI command or the MCP server started in the worktree seeds it);
+  - the project has never been indexed;
+  - the index is not up to date with the working tree. The engine is opened with `BarrierMode::CheckOnly`: its barrier stat-scans the repos and answers only when no index run is needed; a changed, added or deleted file, pending work (re-analysis after a configuration or version change, crash recovery, a due parse-budget retry) or a missing repo makes it report the index as not fresh without running anything. With the MCP server's watcher running (`agents sync` always writes `catl mcp --watch`), edits are indexed within about a second, so the next prompt usually finds a clean tree; without it, the next CLI command or MCP call indexes them;
+  - the index changed while the pack was built: the query re-read a source file that changed since indexing (a note on the answer), or the last finished index run is no longer the one the barrier saw;
+  - an index run started while the pack was built (the `engine:dirty` marker is present when the answer is ready);
+  - the pack is empty, or unrelated: no MUST READ or SKIM item is named in the prompt, and none of the top 3 of them is a search hit on at least 2 distinct content words of the prompt. On this repository, `hmm, try a different approach then` finds `HelloFile::Different` on the single word `different` and stays silent. An earlier version gated on the top PageRank score (at least 0.08); it was dropped, because scores are not calibrated across prompts (the top score of chatter prompts ranged 0.07 to 0.18 here and of code prompts 0.05 to 0.19), so it silenced nothing on a real repository;
+  - the time limit passes, or anything fails or panics.
+
+  **Time limit.** The hook answers within 3 s or prints nothing, far under the 10 s `timeout` it is written with (Claude Code's default for this event is 30 s; a timed-out hook's output is discarded and the prompt goes ahead). Binding, opening the engine, the barrier and the query run on a worker thread; the hook waits for it until the limit and then exits, so the prompt is never held longer. Waits for the index lock (when another process's index run is in flight) and SQLite's busy timeout are capped at the time left minus 250 ms, so such a wait ends with a logged reason before the limit. Because the hook never runs an index, an exit at the limit leaves nothing half-written.
+
+  **Scaling.** Most of the time goes into loading the engine state when the engine opens, which grows with the number of files: about 0.45 s at 900 files and 1.2 s at 6,200 files (release build), so a project of more than roughly 15,000 to 20,000 files cannot seed within 3 s and the hook stays silent there ("the time limit passed" in its log). A missing or outdated similarity index is rebuilt at open, which adds to that once after an upgrade. A seed that does not come is expected behaviour, not an error: the agent still has the MCP tools.
+
+  The hook never logs or stores the prompt: with `--log-level` or `RUST_LOG` set it logs one line per prompt with the prompt's length in characters, the elapsed milliseconds and the outcome (`seeded the prompt` with the context size, or `no seed` with the reason); without either it writes nothing to stderr.
+
+  Measured with a release build (2026-10, Apple silicon; medians of 10 runs, or of 5 on the large corpus):
+
+  | Case | Hook wall time | Outcome |
+  |---|---:|---|
+  | code-atlas repository, 886 files, clean tree | 0.52–0.57 s (0.44 s of it loading the engine state) | seeded |
+  | fresh clone of a 100,000-line invented corpus (`atlas-bench gen --loc 100000 --repos 2`, 573 files), before `catl index` | 4 ms | silent: never indexed |
+  | the same, right after `catl index`, prompt naming a symbol | 0.17–0.18 s | seeded |
+  | the same, prompt naming no existing symbol (`fix parseAccount so renderLedger shows the refunded total`) | 0.15 s | seeded: its top items are search hits on `render` and `ledger` |
+  | the same, 1 file changed | 0.20 s | silent: not fresh, no run |
+  | 1,000,000-line TypeScript corpus (`--lang ts --loc 1000000 --repos 2`, 6,202 files), clean tree | 1.3 s | seeded |
+  | the same, 10 or 50 files changed | 1.3–1.4 s | silent: not fresh, no run, no dirty marker; the next `catl status` indexes them |
+  | the same, `package.json` changed (pending re-resolve of every file) | 1.4 s | silent: pending work |
+  | the same with `catl watch` running, 10 files changed, prompt at once / 1 s / 2 s later | 3.0 s / 1.9 s / 1.35 s | silent at the limit (waited for the watcher's run, then reloaded) / seeded / seeded |
+
+
+  `catl agents hooks [--binary CMD] [--home DIR] [--json]` prints the groups `sync` would write for the hooks enabled in `config.toml`, keyed by event (`{"PreToolUse": [...], "UserPromptSubmit": [...]}`), so a harness can merge them into its own settings file; it writes nothing.
+
 **Exit status.** Claude Code treats a hook that exits 2 as a block. `catl hook ...` exits 0 whatever happens inside it: an unknown hook name or flag, input that is not the expected JSON, an unreadable home or registry, an error while answering or a panic all end with exit 0 and no output. Only a `catl` that cannot run at all (missing from `PATH`, killed) fails, and the written command ends in `|| true` so the shell turns that into exit 0 too. An older `catl` that predates `catl hook` is covered by that `|| true` as well, not by `catl` itself: it rejects the unknown subcommand with a usage error (exit 2).
 
-Contract verified against the Claude Code hooks reference (code.claude.com/docs/en/hooks, 2026-10) and permissions reference (code.claude.com/docs/en/permissions): input fields `session_id`, `cwd`, `hook_event_name`, `tool_name`, `tool_input`; `additionalContext` is added next to the tool result and leaves the permission flow unchanged; exit 0 with JSON is the structured answer and exit 2 blocks the call; `mcp__<server>__<tool>` names one MCP tool in a permission rule.
+Contract verified against the Claude Code hooks reference (code.claude.com/docs/en/hooks, 2026-10) and permissions reference (code.claude.com/docs/en/permissions): input fields `session_id`, `cwd`, `hook_event_name`, `tool_name`, `tool_input`; `additionalContext` is added next to the tool result and leaves the permission flow unchanged; exit 0 with JSON is the structured answer and exit 2 blocks the call; `mcp__<server>__<tool>` names one MCP tool in a permission rule. For `UserPromptSubmit`: the input adds `prompt` (pasted text expanded in place); the event takes no matcher (one given is ignored); `hookSpecificOutput.additionalContext` is added to Claude's context next to the prompt, capped at 10,000 characters (longer output is saved to a file and replaced by a preview); exit 2 blocks the prompt; the default command timeout is 30 s and a timed-out hook's output is discarded while the prompt still reaches Claude. The hook also runs for turns Claude Code starts itself (scheduled tasks, `/loop`, a background subagent reporting back), which the same rules cover.
 
 ### Guidance
 
@@ -187,7 +244,7 @@ The block is a rendering of the server instructions for the configured [profile]
 This repo is indexed by Code Atlas (project `<project>`), served by the `code-atlas` MCP server. Prefer it to grep when a question spans files or repos.
 
 Code Atlas answers questions about ONE indexed project (a group of repos) from a knowledge graph kept up to date with the working tree.
-1. Start a task with atlas_context: a ranked pack of the code to read.
+1. Start a task with atlas_context: a ranked pack of the code to read. A Code Atlas seed in your context is a short list from that pack: read what it names first, and call atlas_context for bodies and more.
 2. Before writing new code, run atlas_search and atlas_similar to find code to reuse.
 3. Before changing shared code, run atlas_impact on it; use atlas_tests_for to pick tests.
 4. Read only the code the results list (atlas_symbol mode=source only for code you will not edit yourself; read files you will edit with your own tool). To rename or rewrite a symbol use atlas_edit (exact across files), not find-and-replace; after it changes a file, re-read that file before editing it yourself.

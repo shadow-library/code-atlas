@@ -125,7 +125,10 @@ type Rule = &'static [&'static [Clause]];
 const INTRO: &str = "Code Atlas answers questions about ONE indexed project (a group of repos) from a knowledge graph kept up to date with the working tree.";
 
 const RULES: [Rule; 8] = [
-  &[&[clause(&["atlas_context"], "Start a task with atlas_context: a ranked pack of the code to read.")]],
+  &[&[clause(
+    &["atlas_context"],
+    "Start a task with atlas_context: a ranked pack of the code to read. A Code Atlas seed in your context is a short list from that pack: read what it names first, and call atlas_context for bodies and more.",
+  )]],
   &[&[
     clause(
       &["atlas_search", "atlas_similar"],
@@ -174,6 +177,23 @@ const RULES: [Rule; 8] = [
 ];
 
 pub const REMINDER: &str = "This repository is indexed by Code Atlas (the code-atlas MCP server). atlas_search finds where a name, text or structure lives across every repo of the project, atlas_symbol answers definitions and references, and atlas_context ranks the code to read for a task; one of them may answer this faster and more completely than a text search. This reminder appears once per session.";
+
+pub const SEED_INTRO: &str = "Code Atlas seed: a short ranked list of the indexed code most relevant to this prompt, from an index that is up to date with the working tree. Read what it names before searching; [heuristic n], [inferred n] and UNCERTAIN mark leads to verify in the source.";
+
+const SEED_TOOLS: [(&str, &str); 3] = [
+  ("atlas_context", "a fuller pack with bodies"),
+  ("atlas_symbol", "definitions, references and source"),
+  ("atlas_impact", "what a change affects"),
+];
+
+pub fn seed_footer(profile: &ToolProfile) -> Option<String> {
+  let offered: Vec<String> = SEED_TOOLS
+    .iter()
+    .filter(|(tool, _)| profile.contains(tool))
+    .map(|(tool, offers)| format!("{tool} ({offers})"))
+    .collect();
+  (!offered.is_empty()).then(|| format!("More from the {SERVER_NAME} MCP server: {}.", offered.join(", ")))
+}
 
 pub fn instructions(profile: &ToolProfile) -> String {
   let mut text = INTRO.to_owned();
@@ -301,6 +321,22 @@ mod tests {
       "{custom}"
     );
     assert!(custom.ends_with("\n5. After editing, re-query; there is no reindex tool."), "{custom}");
+  }
+
+  #[test]
+  fn should_offer_in_the_seed_footer_only_tools_of_the_profile() {
+    assert_eq!(
+      seed_footer(&ToolProfile::full()).as_deref(),
+      Some(
+        "More from the code-atlas MCP server: atlas_context (a fuller pack with bodies), atlas_symbol (definitions, references and source), atlas_impact (what a change affects)."
+      )
+    );
+    assert_eq!(
+      seed_footer(&profile(ToolsSetting::Only(vec!["atlas_impact".to_owned(), "atlas_status".to_owned()]))).as_deref(),
+      Some("More from the code-atlas MCP server: atlas_impact (what a change affects).")
+    );
+    assert_eq!(seed_footer(&profile(ToolsSetting::Only(vec!["atlas_status".to_owned()]))), None);
+    assert!(named_tools(SEED_INTRO).is_empty());
   }
 
   #[test]

@@ -17,8 +17,36 @@ const LOCAL_SETTINGS_FILE: &str = "settings.local.json";
 const HOOK_TIMEOUT_SECS: u64 = 10;
 const SEARCH_TOOLS_MATCHER: &str = "Grep|Glob|Bash";
 const REMIND_SUFFIX: &str = "hook remind";
+const SEED_SUFFIX: &str = "hook seed";
 const NEVER_FAIL: &str = " || true";
 pub(super) const HOME_VAR: &str = "CODE_ATLAS_HOME";
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub(crate) enum HookEvent {
+  #[default]
+  PreToolUse,
+  UserPromptSubmit,
+}
+
+impl HookEvent {
+  pub(super) fn name(self) -> &'static str {
+    match self {
+      Self::PreToolUse => "PreToolUse",
+      Self::UserPromptSubmit => "UserPromptSubmit",
+    }
+  }
+
+  pub(super) fn is_pre_tool_use(&self) -> bool {
+    *self == Self::PreToolUse
+  }
+
+  fn suffix(self) -> &'static str {
+    match self {
+      Self::PreToolUse => REMIND_SUFFIX,
+      Self::UserPromptSubmit => SEED_SUFFIX,
+    }
+  }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -68,19 +96,31 @@ pub(super) fn server_entry(command: &str, home: Option<&OsStr>) -> Value {
   entry
 }
 
-pub(super) fn hook_groups(binary: &str, home: Option<&OsStr>) -> Vec<Value> {
+pub(super) fn hook_groups(event: HookEvent, binary: &str, home: Option<&OsStr>) -> Vec<Value> {
   let environment = home.map(|home| format!("{HOME_VAR}={} ", shell_word(&home.to_string_lossy()))).unwrap_or_default();
-  let command = format!("{environment}{} {REMIND_SUFFIX}{NEVER_FAIL}", shell_word(binary));
-  vec![json!({ "matcher": SEARCH_TOOLS_MATCHER, "hooks": [{ "type": "command", "command": command, "timeout": HOOK_TIMEOUT_SECS }] })]
+  let command = format!("{environment}{} {}{NEVER_FAIL}", shell_word(binary), event.suffix());
+  let hooks = json!([{ "type": "command", "command": command, "timeout": HOOK_TIMEOUT_SECS }]);
+  match event {
+    HookEvent::PreToolUse => vec![json!({ "matcher": SEARCH_TOOLS_MATCHER, "hooks": hooks })],
+    HookEvent::UserPromptSubmit => vec![json!({ "hooks": hooks })],
+  }
 }
 
-pub(super) fn is_our_hook_group(group: &Value) -> bool {
+pub(super) fn is_our_remind_group(group: &Value) -> bool {
+  is_our_hook_group(HookEvent::PreToolUse, group)
+}
+
+pub(super) fn is_our_seed_group(group: &Value) -> bool {
+  is_our_hook_group(HookEvent::UserPromptSubmit, group)
+}
+
+fn is_our_hook_group(event: HookEvent, group: &Value) -> bool {
   let Some([hook]) = group.get("hooks").and_then(Value::as_array).map(Vec::as_slice) else {
     return false;
   };
   let Some(command) = hook.get("command").and_then(Value::as_str) else { return false };
   let command = command.strip_suffix(NEVER_FAIL).unwrap_or(command);
-  let Some(invocation) = command.strip_suffix(REMIND_SUFFIX).map(str::trim_end) else {
+  let Some(invocation) = command.strip_suffix(event.suffix()).map(str::trim_end) else {
     return false;
   };
   let program = match invocation.strip_suffix('\'') {
@@ -202,25 +242,39 @@ mod tests {
 
   #[test]
   fn should_render_a_remind_hook_that_can_never_fail_and_carries_the_atlas_home() {
-    let groups = hook_groups("/opt/my tools/catl", Some(OsStr::new("/iso home")));
+    let groups = hook_groups(HookEvent::PreToolUse, "/opt/my tools/catl", Some(OsStr::new("/iso home")));
     assert_eq!(
       groups,
       [json!({"matcher": "Grep|Glob|Bash", "hooks": [{"type": "command", "command": "CODE_ATLAS_HOME='/iso home' '/opt/my tools/catl' hook remind || true", "timeout": 10}]})]
     );
-    assert_eq!(hook_groups("catl", None)[0]["hooks"][0]["command"], "catl hook remind || true");
-    assert!(groups.iter().chain(&hook_groups("catl", None)).all(is_our_hook_group));
+    assert_eq!(hook_groups(HookEvent::PreToolUse, "catl", None)[0]["hooks"][0]["command"], "catl hook remind || true");
+    assert!(groups.iter().chain(&hook_groups(HookEvent::PreToolUse, "catl", None)).all(is_our_remind_group));
+  }
+
+  #[test]
+  fn should_render_a_seed_hook_without_a_matcher_that_can_never_fail() {
+    let groups = hook_groups(HookEvent::UserPromptSubmit, "catl", Some(OsStr::new("/iso")));
+    assert_eq!(
+      groups,
+      [json!({"hooks": [{"type": "command", "command": "CODE_ATLAS_HOME=/iso catl hook seed || true", "timeout": 10}]})]
+    );
+    assert!(groups.iter().all(is_our_seed_group));
+    assert!(!groups.iter().any(is_our_remind_group));
+    assert!(!hook_groups(HookEvent::PreToolUse, "catl", None).iter().any(is_our_seed_group));
   }
 
   #[test]
   fn should_recognise_only_catl_remind_groups_as_ours() {
     let group = |command: &str| json!({"matcher": "Bash", "hooks": [{"type": "command", "command": command}]});
-    assert!(is_our_hook_group(&group("catl hook remind")));
-    assert!(is_our_hook_group(&group("CODE_ATLAS_HOME=/x /usr/local/bin/catl hook remind || true")));
-    assert!(!is_our_hook_group(&group("serena-hooks remind --client=claude-code")));
-    assert!(!is_our_hook_group(&group("catl hook activate || true")));
-    assert!(!is_our_hook_group(
+    assert!(is_our_remind_group(&group("catl hook remind")));
+    assert!(is_our_remind_group(&group("CODE_ATLAS_HOME=/x /usr/local/bin/catl hook remind || true")));
+    assert!(!is_our_remind_group(&group("serena-hooks remind --client=claude-code")));
+    assert!(!is_our_remind_group(&group("catl hook activate || true")));
+    assert!(!is_our_remind_group(
       &json!({"matcher": "Bash", "hooks": [{"command": "catl hook remind"}, {"command": "lint"}]})
     ));
+    assert!(is_our_seed_group(&json!({"hooks": [{"type": "command", "command": "/opt/catl hook seed || true"}]})));
+    assert!(!is_our_seed_group(&json!({"hooks": [{"type": "command", "command": "my-seeder hook seed"}]})));
   }
 
   #[test]

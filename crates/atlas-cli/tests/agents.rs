@@ -3,6 +3,7 @@ use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::time::{Duration, Instant};
 
 use atlas_test_lsp::hermetic::hermetic_catl;
 use serde_json::{Value, json};
@@ -449,14 +450,14 @@ fn should_record_only_what_was_applied_when_a_sync_fails_midway_and_converge_on_
 
   assert_eq!(code(&failed), 1, "{}", stderr(&failed));
   let recorded: Vec<String> = sandbox.wiring().iter().map(|entry| entry["target"]["kind"].as_str().unwrap().to_owned()).collect();
-  assert_eq!(recorded, ["registration", "permissions"]);
+  assert_eq!(recorded, ["registration", "permissions", "hooks"]);
   assert_eq!(fs::read_to_string(sandbox.path("atlas/codex/config.toml")).unwrap(), CODEX_CONFIG);
 
   let rerun = sandbox.run(&work, &["agents", "sync", "--yes"]);
   assert_ok(&rerun);
-  assert_eq!(stdout(&rerun).matches(": unchanged").count(), 2, "{}", stdout(&rerun));
+  assert_eq!(stdout(&rerun).matches(": unchanged").count(), 3, "{}", stdout(&rerun));
   assert!(stdout(&rerun).contains("#mcp_servers.code-atlas: created"), "{}", stdout(&rerun));
-  assert_eq!(sandbox.wiring().len(), 3);
+  assert_eq!(sandbox.wiring().len(), 4);
 }
 
 #[test]
@@ -558,4 +559,327 @@ fn should_refuse_to_wire_agents_from_a_cargo_test_when_a_home_lies_outside_the_t
   assert!(stderr(&output).contains("unset or outside the temporary directory: CODEX_HOME"), "{}", stderr(&output));
   assert!(sandbox.claude_calls().is_empty());
   assert!(!Path::new("/nonexistent-codex-home").exists());
+}
+
+const ORDERS_RS: &str = "pub struct Order {\n  pub cents: i64,\n}\n\npub fn parse_order(text: &str) -> Order {\n  Order { cents: total_cents(text) }\n}\n\nfn total_cents(text: &str) -> i64 {\n  text.len() as i64 * 100\n}\n";
+const SEED_PROMPT: &str = "why does parse_order round the quokka total down?";
+
+fn prompt_event(prompt: &str, cwd: &Path) -> String {
+  json!({
+    "session_id": "session-seed",
+    "transcript_path": "/tmp/t.jsonl",
+    "cwd": cwd,
+    "permission_mode": "default",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": prompt
+  })
+  .to_string()
+}
+
+impl Sandbox {
+  fn orders_repo(&self, name: &str) -> PathBuf {
+    let repo = self.repo(name);
+    fs::write(repo.join("src/lib.rs"), ORDERS_RS).unwrap();
+    repo
+  }
+
+  fn seed(&self, cwd: &Path, args: &[&str], input: &str) -> (Output, Duration) {
+    let mut arguments = args.to_vec();
+    arguments.extend(["hook", "seed"]);
+    let started = Instant::now();
+    let mut child = self
+      .command(cwd, &arguments)
+      .stdin(Stdio::piped())
+      .stdout(Stdio::piped())
+      .stderr(Stdio::piped())
+      .spawn()
+      .unwrap();
+    child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+    let output = child.wait_with_output().unwrap();
+    (output, started.elapsed())
+  }
+}
+
+#[test]
+fn should_seed_a_prompt_from_a_fresh_index_with_the_ranked_code_and_never_log_the_prompt() {
+  let sandbox = Sandbox::new();
+  let repo = sandbox.orders_repo("shop");
+  assert_ok(&sandbox.run(&repo, &["index"]));
+
+  let (output, _) = sandbox.seed(&repo.join("src"), &["--log-level", "trace"], &prompt_event(SEED_PROMPT, &repo.join("src")));
+
+  assert_ok(&output);
+  let answer: Value = serde_json::from_str(&stdout(&output)).unwrap();
+  let context = answer["hookSpecificOutput"]["additionalContext"].as_str().unwrap().to_owned();
+  assert_eq!(answer, json!({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": context}}));
+  let footer = atlas_mcp::guidance::seed_footer(&atlas_mcp::guidance::ToolProfile::full()).unwrap();
+  assert_eq!(
+    context,
+    format!(
+      "{}\nRead first:\n- parse_order function shop:src/lib.rs:5-7  why: named in task as parse_order\n- Order struct shop:src/lib.rs:1-3  why: instantiated by parse_order [resolved]\n- total_cents function shop:src/lib.rs:9-11  why: called by parse_order [resolved]\n{footer}",
+      atlas_mcp::guidance::SEED_INTRO
+    )
+  );
+  let log = stderr(&output);
+  assert!(log.contains("seeded the prompt") && log.contains(&format!("prompt_chars={}", SEED_PROMPT.len())), "{log}");
+  assert!(!log.contains("quokka") && !log.contains("round the"), "the prompt leaked into the log:\n{log}");
+}
+
+#[test]
+fn should_seed_nothing_and_exit_0_for_any_event_it_cannot_answer_from_a_fresh_index() {
+  let sandbox = Sandbox::new();
+  let indexed = sandbox.orders_repo("shop");
+  assert_ok(&sandbox.run(&indexed, &["index"]));
+  let unindexed = sandbox.orders_repo("fresh");
+  let outside = sandbox.path("work");
+  let event = prompt_event(SEED_PROMPT, &indexed);
+  let without = |field: &str| {
+    let mut value: Value = serde_json::from_str(&event).unwrap();
+    value.as_object_mut().unwrap().remove(field);
+    value.to_string()
+  };
+
+  let not_a_prompt = "no seed: not a UserPromptSubmit event with a prompt and an absolute cwd";
+  let no_code = "no seed: the prompt is too short or has no code-like content";
+  let silent = [
+    ("{\"hook_event_name\": \"UserPromptSubmit\"".to_owned(), &indexed, "the hook input is not JSON"),
+    (event.replace("UserPromptSubmit", "PreToolUse"), &indexed, not_a_prompt),
+    (without("prompt"), &indexed, not_a_prompt),
+    (without("cwd"), &indexed, not_a_prompt),
+    (prompt_event(SEED_PROMPT, Path::new("shop/src")), &indexed, not_a_prompt),
+    (prompt_event("fix it quokka", &indexed), &indexed, no_code),
+    (prompt_event("looks good quokka, thanks! now run the tests", &indexed), &indexed, no_code),
+    (prompt_event(SEED_PROMPT, &outside), &outside, "reason=no project: "),
+    (prompt_event(SEED_PROMPT, &unindexed), &unindexed, "reason=the project has never been indexed"),
+    (
+      prompt_event("rename the quokka WombatRegistry::flush_all helper", &indexed),
+      &indexed,
+      "reason=the pack is empty",
+    ),
+  ];
+  for (input, cwd, reason) in silent {
+    let (quiet, _) = sandbox.seed(cwd, &[], &input);
+    assert_eq!((code(&quiet), stdout(&quiet), stderr(&quiet)), (0, String::new(), String::new()), "{reason}");
+    let (logged, _) = sandbox.seed(cwd, &["--log-level", "debug"], &input);
+    assert_eq!((code(&logged), stdout(&logged)), (0, String::new()), "{reason}");
+    assert!(stderr(&logged).contains(reason) && !stderr(&logged).contains("quokka"), "{reason}:\n{}", stderr(&logged));
+  }
+  let unindexed_db = sandbox.path("atlas/data/fresh");
+  assert!(!unindexed_db.exists(), "a hook must never create or index a database: {}", unindexed_db.display());
+}
+
+fn session_event(prompt: &str, cwd: &Path, session: Option<&str>) -> String {
+  let mut event: Value = serde_json::from_str(&prompt_event(prompt, cwd)).unwrap();
+  match session {
+    Some(session) => event["session_id"] = json!(session),
+    None => drop(event.as_object_mut().unwrap().remove("session_id")),
+  }
+  event.to_string()
+}
+
+#[test]
+fn should_seed_plain_english_only_for_the_first_prompt_of_a_session_and_code_prompts_on_any_turn() {
+  let sandbox = Sandbox::new();
+  let repo = sandbox.orders_repo("shop");
+  assert_ok(&sandbox.run(&repo, &["index"]));
+  let plain = "the order total cents are rounded wrong";
+  let seeded = |output: &Output| stdout(output).contains("total_cents function shop:src/lib.rs:9-11");
+
+  let (first, _) = sandbox.seed(&repo, &[], &session_event(plain, &repo, Some("session-1")));
+  let (again, _) = sandbox.seed(&repo, &["--log-level", "debug"], &session_event(plain, &repo, Some("session-1")));
+  let (code_later, _) = sandbox.seed(&repo, &[], &session_event("why does total_cents round down?", &repo, Some("session-1")));
+  let (other_session, _) = sandbox.seed(&repo, &[], &session_event(plain, &repo, Some("session-2")));
+  let (no_session, _) = sandbox.seed(&repo, &[], &session_event(plain, &repo, None));
+  let (unrelated, _) = sandbox.seed(
+    &repo,
+    &["--log-level", "info"],
+    &session_event("try a different approach for the order report", &repo, Some("session-3")),
+  );
+
+  assert!(seeded(&first), "{}", stdout(&first));
+  assert_eq!(stdout(&again), "");
+  assert!(
+    stderr(&again).contains("no seed: a plain-English prompt after the first of its session"),
+    "{}",
+    stderr(&again)
+  );
+  assert!(seeded(&code_later), "{}", stdout(&code_later));
+  assert!(seeded(&other_session), "{}", stdout(&other_session));
+  assert_eq!(stdout(&no_session), "");
+  assert_eq!(stdout(&unrelated), "");
+  assert!(
+    stderr(&unrelated).contains("reason=no item is named in the prompt and none of the top 3 matches 2 of its words"),
+    "{}",
+    stderr(&unrelated)
+  );
+  assert_eq!(fs::read_dir(sandbox.path("atlas/data/hooks/seeded")).unwrap().count(), 3);
+}
+
+fn index_runs(sandbox: &Sandbox) -> i64 {
+  let db = rusqlite::Connection::open(sandbox.path("atlas/data/shop/atlas.db")).unwrap();
+  db.query_row("SELECT count(*) FROM index_runs", [], |row| row.get(0)).unwrap()
+}
+
+#[test]
+fn should_never_refresh_the_index_itself_and_seed_again_once_another_caller_has() {
+  let sandbox = Sandbox::new();
+  let repo = sandbox.orders_repo("shop");
+  assert_ok(&sandbox.run(&repo, &["index"]));
+  let runs = index_runs(&sandbox);
+  fs::write(repo.join("src/lib.rs"), format!("{ORDERS_RS}\npub fn refund_order() {{}}\n")).unwrap();
+  let prompt = prompt_event("why does refund_order skip parse_order?", &repo);
+
+  let (stale, elapsed) = sandbox.seed(&repo, &["--log-level", "info"], &prompt);
+
+  assert_eq!((code(&stale), stdout(&stale)), (0, String::new()));
+  assert!(
+    stderr(&stale).contains("reason=the index is not fresh: refresh left to another caller, the index may be stale: 1 file changed since the last index run"),
+    "{}",
+    stderr(&stale)
+  );
+  assert!(elapsed < Duration::from_secs(3), "{elapsed:?}");
+  assert_eq!(index_runs(&sandbox), runs);
+  assert_ok(&sandbox.run(&repo, &["status"]));
+  let (fresh, _) = sandbox.seed(&repo, &[], &prompt);
+  assert!(stdout(&fresh).contains("refund_order function shop:src/lib.rs:13"), "{}", stdout(&fresh));
+}
+
+#[test]
+fn should_seed_nothing_within_the_time_limit_while_another_index_run_holds_the_lock() {
+  let sandbox = Sandbox::new();
+  let repo = sandbox.orders_repo("shop");
+  assert_ok(&sandbox.run(&repo, &["index"]));
+  let db_path = sandbox.path("atlas/data/shop/atlas.db");
+  let db = rusqlite::Connection::open(&db_path).unwrap();
+  db.execute(
+    "INSERT INTO derived_blobs (name, version, bytes, updated_run) VALUES ('engine:dirty', 1, x'0900000000000000', NULL)",
+    [],
+  )
+  .unwrap();
+  let mut lock = fd_lock::RwLock::new(
+    fs::OpenOptions::new()
+      .read(true)
+      .write(true)
+      .open(sandbox.path("atlas/data/shop/atlas.db.index.lock"))
+      .unwrap(),
+  );
+  let guard = lock.write().unwrap();
+
+  let (output, elapsed) = sandbox.seed(&repo, &["--log-level", "info"], &prompt_event(SEED_PROMPT, &repo));
+  drop(guard);
+
+  assert_eq!((code(&output), stdout(&output)), (0, String::new()));
+  assert!(stderr(&output).contains("waiting for the index lock"), "{}", stderr(&output));
+  assert!(elapsed >= Duration::from_millis(2_500) && elapsed < Duration::from_secs(10), "{elapsed:?}");
+  db.execute("DELETE FROM derived_blobs WHERE name = 'engine:dirty'", []).unwrap();
+  let (seeded, _) = sandbox.seed(&repo, &[], &prompt_event(SEED_PROMPT, &repo));
+  assert!(stdout(&seeded).contains("parse_order function"), "{}", stdout(&seeded));
+}
+
+fn hook_kinds(sandbox: &Sandbox) -> Vec<String> {
+  sandbox
+    .wiring()
+    .iter()
+    .map(|entry| format!("{} {}", entry["target"]["kind"].as_str().unwrap(), entry["target"]["event"].as_str().unwrap_or("-")))
+    .collect()
+}
+
+#[test]
+fn should_add_the_seed_group_to_an_earlier_sync_keep_foreign_prompt_hooks_and_remove_only_its_own() {
+  let sandbox = Sandbox::new();
+  let work = sandbox.path("work");
+  let foreign_prompt = json!({"hooks": [{"type": "command", "command": "log-prompt"}]});
+  let mut settings: Value = serde_json::from_str(FOREIGN_HOOK).unwrap();
+  settings["hooks"]["UserPromptSubmit"] = json!([foreign_prompt.clone()]);
+  fs::write(sandbox.path("atlas/claude/settings.json"), settings.to_string()).unwrap();
+  sandbox.config("[agents.claude]\nhooks = [\"auto-approve\", \"remind\"]\n");
+  assert_ok(&sandbox.run(&work, &["agents", "sync", "--agent", "claude", "--yes"]));
+  assert_eq!(hook_kinds(&sandbox), ["registration -", "permissions -", "hooks -"]);
+
+  sandbox.config("[agents.claude]\nhooks = [\"auto-approve\", \"remind\", \"seed\"]\n");
+  let unconfirmed = sandbox.run(&work, &["agents", "sync", "--agent", "claude"]);
+  assert_eq!(code(&unconfirmed), 2, "{}", stderr(&unconfirmed));
+  let migrated = sandbox.run(&work, &["agents", "sync", "--agent", "claude", "--yes"]);
+  assert_ok(&migrated);
+  assert_eq!(stdout(&migrated).matches(": unchanged").count(), 3, "{}", stdout(&migrated));
+  assert!(stdout(&migrated).contains("settings.json#hooks.UserPromptSubmit: created"), "{}", stdout(&migrated));
+  assert!(!stderr(&migrated).contains("seed hook is on by default"), "{}", stderr(&migrated));
+  assert_eq!(sandbox.json("atlas/data/wiring.json")["version"], 2);
+  assert_eq!(hook_kinds(&sandbox), ["registration -", "permissions -", "hooks -", "hooks UserPromptSubmit"]);
+  let home = sandbox.path("atlas");
+  let seed = format!("CODE_ATLAS_HOME={} catl hook seed || true", home.display());
+  let written = sandbox.json("atlas/claude/settings.json");
+  assert_eq!(
+    written["hooks"]["UserPromptSubmit"],
+    json!([foreign_prompt.clone(), {"hooks": [{"type": "command", "command": seed, "timeout": 10}]}])
+  );
+  assert_eq!(
+    written["hooks"]["PreToolUse"][0],
+    json!({"matcher": "Bash", "hooks": [{"type": "command", "command": "lint-bash"}]})
+  );
+  let printed = sandbox.run(&work, &["agents", "hooks", "--json"]);
+  assert_ok(&printed);
+  assert_eq!(
+    serde_json::from_str::<Value>(&stdout(&printed)).unwrap(),
+    json!({"PreToolUse": [written["hooks"]["PreToolUse"][1].clone()], "UserPromptSubmit": [written["hooks"]["UserPromptSubmit"][1].clone()]})
+  );
+  let status = sandbox.run(&work, &["agents", "status"]);
+  assert_ok(&status);
+  assert!(stdout(&status).contains("settings.json#hooks.UserPromptSubmit: ok\n"), "{}", stdout(&status));
+
+  let mut edited = sandbox.json("atlas/claude/settings.json");
+  edited["hooks"]["UserPromptSubmit"][1]["hooks"][0]["timeout"] = json!(30);
+  fs::write(sandbox.path("atlas/claude/settings.json"), edited.to_string()).unwrap();
+  let drift = sandbox.run(&work, &["agents", "status"]);
+  assert_eq!(code(&drift), 3);
+  assert!(stdout(&drift).contains("settings.json#hooks.UserPromptSubmit: changed"), "{}", stdout(&drift));
+  fs::write(sandbox.path("atlas/claude/settings.json"), written.to_string()).unwrap();
+
+  sandbox.config("[agents.claude]\nhooks = [\"auto-approve\", \"remind\"]\n");
+  let turned_off = sandbox.run(&work, &["agents", "sync", "--agent", "claude", "--yes"]);
+  assert_ok(&turned_off);
+  assert!(stdout(&turned_off).contains("settings.json#hooks.UserPromptSubmit: removed"), "{}", stdout(&turned_off));
+  assert_eq!(sandbox.json("atlas/claude/settings.json")["hooks"]["UserPromptSubmit"], json!([foreign_prompt.clone()]));
+  assert_eq!(hook_kinds(&sandbox), ["registration -", "permissions -", "hooks -"]);
+
+  assert_ok(&sandbox.run(&work, &["agents", "unsync", "--yes"]));
+  assert_eq!(sandbox.json("atlas/claude/settings.json"), settings);
+}
+
+#[test]
+fn should_refuse_a_seed_group_it_did_not_write_and_delete_a_local_settings_file_it_created_once_hollow() {
+  let sandbox = Sandbox::new();
+  let repo = sandbox.git_repo("solo");
+  sandbox.config("[agents.claude]\nscope = \"local\"\nhooks = [\"auto-approve\"]\n");
+  assert_ok(&sandbox.run(&repo, &["agents", "sync", "--agent", "claude"]));
+  sandbox.config("[agents.claude]\nscope = \"local\"\n");
+  let defaulted = sandbox.run(&repo, &["agents", "sync", "--agent", "claude", "--yes"]);
+  assert_ok(&defaulted);
+  assert!(
+    stderr(&defaulted).contains("new: the seed hook is on by default; it adds a short Code Atlas context pack to each prompt you submit in a registered project (UserPromptSubmit). To turn it off, set [agents.claude] hooks = [\"auto-approve\"] in config.toml and rerun `catl agents sync`"),
+    "{}",
+    stderr(&defaulted)
+  );
+  let again = sandbox.run(&repo, &["agents", "sync", "--agent", "claude", "--yes"]);
+  assert!(!stderr(&again).contains("seed hook is on by default"), "{}", stderr(&again));
+  let local = repo.join(".claude/settings.local.json");
+  assert_eq!(
+    read_json(&local)["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"],
+    json!(format!("CODE_ATLAS_HOME={} catl hook seed || true", sandbox.path("atlas").display()))
+  );
+  assert_ok(&sandbox.run(&repo, &["agents", "unsync", "--yes"]));
+  assert!(!local.exists(), "{}", fs::read_to_string(&local).unwrap_or_default());
+
+  let other = sandbox.git_repo("other");
+  let hand_written = json!({"hooks": {"UserPromptSubmit": [{"hooks": [{"type": "command", "command": "catl hook seed"}]}]}});
+  fs::create_dir_all(other.join(".claude")).unwrap();
+  fs::write(other.join(".claude/settings.local.json"), hand_written.to_string()).unwrap();
+  let refused = sandbox.run(&other, &["agents", "sync", "--agent", "claude", "--yes"]);
+  assert_eq!(code(&refused), 2, "{}", stderr(&refused));
+  assert!(
+    stdout(&refused).contains("#hooks.UserPromptSubmit: refused: holds an entry that catl agents sync did not write; pass --force to replace it"),
+    "{}",
+    stdout(&refused)
+  );
+  assert_eq!(read_json(&other.join(".claude/settings.local.json")), hand_written);
 }

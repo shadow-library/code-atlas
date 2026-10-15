@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use super::target::Target;
 use crate::error::{CliError, CliResult};
 
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
+const READABLE: [u32; 2] = [1, VERSION];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -94,8 +95,8 @@ impl Manifest {
       message,
     };
     let document: Document = serde_json::from_str(&text).map_err(|error| invalid(error.to_string()))?;
-    if document.version != VERSION {
-      return Err(invalid(format!("unsupported version {}; this catl reads version {VERSION}", document.version)));
+    if !READABLE.contains(&document.version) {
+      return Err(invalid(format!("unsupported version {}; this catl reads versions 1 and {VERSION}", document.version)));
     }
     Ok(document.entries)
   }
@@ -174,7 +175,7 @@ mod tests {
       }]
     );
     let text = fs::read_to_string(&path).unwrap();
-    assert!(text.starts_with("{\n  \"version\": 1,\n  \"entries\": [\n"), "{text}");
+    assert!(text.starts_with("{\n  \"version\": 2,\n  \"entries\": [\n"), "{text}");
     assert!(text.contains("\"kind\": \"guidance\""), "{text}");
   }
 
@@ -182,11 +183,25 @@ mod tests {
   fn should_refuse_a_manifest_it_cannot_read_instead_of_starting_over() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("wiring.json");
-    fs::write(&path, "{\"version\": 2, \"entries\": []}").unwrap();
+    fs::write(&path, "{\"version\": 3, \"entries\": []}").unwrap();
     let error = Manifest::locked(path.clone(), |_| Ok(())).unwrap_err();
     assert_eq!(
       error.to_string(),
-      format!("invalid wiring manifest {}: unsupported version 2; this catl reads version 1", path.display())
+      format!("invalid wiring manifest {}: unsupported version 3; this catl reads versions 1 and 2", path.display())
     );
+  }
+
+  #[test]
+  fn should_read_a_version_1_manifest_and_save_it_as_version_2() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("wiring.json");
+    let remind = "{\"agent\": \"claude\", \"scope\": \"user\", \"target\": {\"kind\": \"hooks\", \"path\": \"/c/settings.json\"}, \"hash\": \"blake3:00\"}";
+    fs::write(&path, format!("{{\"version\": 1, \"entries\": [{remind}]}}")).unwrap();
+
+    Manifest::locked(path.clone(), |manifest| manifest.put(record("/r/CLAUDE.local.md"))).unwrap();
+
+    let document: serde_json::Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(document["version"], 2);
+    assert_eq!(document["entries"][0], serde_json::from_str::<serde_json::Value>(remind).unwrap());
   }
 }

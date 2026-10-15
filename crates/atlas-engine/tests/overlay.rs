@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 use atlas_core::{Owner, ProjectName, RelPath, RepoName};
-use atlas_engine::{BoundProject, Engine, EngineError, EngineOptions, bind_project, seed_overlay_with};
+use atlas_engine::{BoundProject, Engine, EngineError, EngineOptions, ExistingBinding, bind_existing_project, bind_project, seed_overlay_with};
 use atlas_project::{AtlasHome, Binding, ConfigEnv, Overlays, ProjectError, Registry, RepoSpec, SeedSource};
 use atlas_store::StoreOptions;
 use common::*;
@@ -376,4 +376,33 @@ fn should_follow_the_configured_worktree_mode() {
   assert_eq!(Overlays::new(&sandbox.home).list().unwrap(), []);
   let in_main = bind_project(&sandbox.home, &sandbox.registry(), &sandbox.main, None, &StoreOptions::default()).unwrap();
   assert_eq!(in_main.binding, Binding::Direct);
+}
+
+#[test]
+fn should_bind_only_an_existing_overlay_without_seeding_one_or_collecting_others() {
+  let sandbox = Sandbox::new();
+  assert!(fresh(&sandbox.base()).is_fresh());
+  let worktree = sandbox.worktree("feature");
+  let existing = |cwd: &Path| bind_existing_project(&sandbox.home, &sandbox.registry(), cwd, None, &StoreOptions::default()).unwrap();
+
+  let ExistingBinding::OverlayNotSeeded { label } = existing(&worktree) else {
+    panic!("an overlay that was never seeded must not be bound")
+  };
+  assert!(label.starts_with("acme@"), "{label}");
+  assert!(!sandbox.home.overlays_dir().exists());
+  assert!(!sandbox.home.worktrees_path().exists());
+  let ExistingBinding::Bound(in_main) = existing(&sandbox.main) else {
+    panic!("the main checkout binds directly")
+  };
+  assert_eq!(in_main.binding, Binding::Direct);
+
+  let (seeded, _engine) = sandbox.overlay(&worktree);
+  let ExistingBinding::Bound(bound) = existing(&worktree) else {
+    panic!("a seeded overlay binds")
+  };
+  assert_eq!(
+    (bound.project.name.clone(), bound.engine_home.clone()),
+    (seeded.project.name.clone(), seeded.engine_home.clone())
+  );
+  assert!(bound.overlay.as_ref().is_some_and(|lease| lease.seeded.is_none()));
 }
