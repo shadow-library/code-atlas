@@ -26,6 +26,8 @@ pub enum RetrievalError {
   Project(#[from] atlas_project::ProjectError),
   #[error("invalid {}: {reason}", path.display())]
   InvalidQueries { path: PathBuf, reason: String },
+  #[error("--atlas-config needs a catl binary to validate it: none in target/release, target/debug or PATH; pass --atlas-bin")]
+  NoAtlasBin,
   #[error("{failed} of {total} tasks could not be scored; see {}", report.display())]
   TasksFailed { failed: usize, total: usize, report: PathBuf },
 }

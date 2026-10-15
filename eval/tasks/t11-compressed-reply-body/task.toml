@@ -1,0 +1,45 @@
+id = "t11-compressed-reply-body"
+title = "Planted bug: compressed replies lose raw and text bodies in a decorator framework's router"
+repo = { fixture = "acme" }
+base_commit = "e5209b4c5c99df0e0e5cdab2bd885b0821b91927"
+base_patch = "base.patch"
+strip = ["acme-api", "acme-billing", "acme-sdk", "acme-web"]
+prompt = """
+`GET /feeds/sitemap` returns an empty body when the client sends `Accept-Encoding: gzip`. \
+Without the header the sitemap XML comes back as expected, and our JSON endpoints still decode fine under compression.
+
+Search crawlers fetch the sitemap with compression enabled, so none of our pages get indexed. \
+Please fix it so that no endpoint loses its body when the reply is compressed: raw XML and plain text replies must arrive intact \
+under every encoding we negotiate, with the same `Content-Type` as without compression, and replies that are not compressed must not change.
+
+The portal app lives in `corvid/apps/portal` and uses the HTTP framework package `@corvid/http` in `corvid/packages/http`. \
+Add or update tests for the new behaviour.
+
+Environment note: dependencies are already installed; run the tests with `bun test` from the `corvid` directory.
+"""
+category = ["planted-bug", "serving-path"]
+timeout_minutes = 20
+max_turns = 60
+atlas_repos = ["corvid"]
+atlas_config = "atlas-config"
+
+[validation]
+hidden_tests = ["hidden/corvid/packages/http/test/compressed-reply.test.ts"]
+commands = ["cd corvid && bun test packages/http/test/compressed-reply.test.ts"]
+
+[ground_truth]
+relevant_files = [
+  "corvid/packages/http/src/module/http-router.ts",
+  "corvid/packages/http/src/module/http-reply.ts",
+  "corvid/packages/http/src/compression/content-encoding.ts",
+  "corvid/apps/portal/src/feeds/feed.controller.ts",
+]
+must_change = ["corvid/packages/http/src/module/http-router.ts"]
+must_consider = [
+  "corvid/packages/http/src/module/http-reply.ts",
+  "corvid/packages/http/src/server.options.ts",
+  "corvid/packages/http/src/decorators/route.decorator.ts",
+  "corvid/packages/http/src/module/http-server.ts",
+]
+reuse_targets = []
+forbidden_duplicates = []

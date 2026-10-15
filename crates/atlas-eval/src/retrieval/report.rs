@@ -10,6 +10,7 @@ use super::lines::{LineChannel, LineGoldSummary, LineScores};
 use super::phrases::Phrase;
 use super::queries::{Provenance, QueryVariant, VariantQuery};
 use super::score::{BudgetYield, ChannelValues, F_BETA, FileScore, MetricMean, RenameSiteScore, ReuseScore, YIELD_BUDGETS, mean_of};
+use crate::agent::AtlasConfigRecord;
 use crate::quality::SetOverlap;
 
 pub const DEV_SET_CAVEAT: &str = "Dev set, same authors: the tasks, their ground truth and Code Atlas were written by the same people, and the tasks were \
@@ -18,6 +19,8 @@ performs on unseen code.";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RetrievalSettings {
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub atlas_config: Option<AtlasConfigRecord>,
   pub context_budget: usize,
   pub search_limit: usize,
   pub max_code_spans: usize,
@@ -592,6 +595,9 @@ fn render_settings(out: &mut String, report: &RetrievalReport) {
   ];
   for (key, value) in rows {
     let _ = writeln!(out, "| {key} | {value} |");
+  }
+  if let Some(config) = &settings.atlas_config {
+    let _ = writeln!(out, "| atlas configuration | {} (blake3 {}) |", config.files.join(", "), config.blake3);
   }
   let _ = writeln!(out);
 }
@@ -1251,6 +1257,7 @@ mod tests {
 
   fn settings() -> RetrievalSettings {
     RetrievalSettings {
+      atlas_config: None,
       context_budget: 6000,
       search_limit: 10,
       max_code_spans: 8,
@@ -1468,6 +1475,23 @@ Runs that sent no `atlas_context` call: `b1/t1.atlas.r1`.\n"
       "{markdown}"
     );
     assert!(markdown.contains("- F0.5 = 1.25 x hits / (0.25 x gold + retrieved), which equals"), "{markdown}");
+  }
+
+  #[test]
+  fn should_name_the_seeded_atlas_configuration_in_the_settings() {
+    let mut configured = settings();
+    configured.atlas_config = Some(AtlasConfigRecord {
+      blake3: "d1".to_owned(),
+      files: vec!["config.toml".to_owned(), "detectors/corvid-http.toml".to_owned()],
+      keys: vec!["defaults.detect.route_families".to_owned()],
+    });
+
+    let markdown = render_markdown(&RetrievalReport::new(None, configured, Vec::new()));
+
+    assert!(
+      markdown.contains("| impact group limit (visible) | 15 |\n| atlas configuration | config.toml, detectors/corvid-http.toml (blake3 d1) |\n"),
+      "{markdown}"
+    );
   }
 
   #[test]

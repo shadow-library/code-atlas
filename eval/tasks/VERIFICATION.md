@@ -172,6 +172,17 @@ In the tables below, `$V` stands for `./node_modules/.bin/vitest run --project m
 | reference | hidden test | exit 0, 6 passed |
 | reference | regression | exit 0, 624 passed / 2 skipped (1.6 s); tsc exit 0 (6.7 s) |
 
+## Invented task: acme fixture @ e5209b4c5c99df0e0e5cdab2bd885b0821b91927
+
+`t11-compressed-reply-body` archives `fixtures/acme` at the smoke task's commit, applies `base.patch` (which adds the whole `corvid/` workspace, the planted bug included), strips the four acme repos and runs the hidden test with Bun 1.3.14; it has no setup and no regression command. Checked on 2026-10-15 with `atlas-eval agent run --base-only --tasks <copy> --task <id>` (no session), once on the task and once on a copy whose `base.patch` already holds the reference fix.
+
+### t11-compressed-reply-body (planted bug, serving path)
+| tree | command | result |
+|---|---|---|
+| base | `cd corvid && bun test packages/http/test/compressed-reply.test.ts` | **exit 1**, 4 failed / 5 passed (0.1 s). The failing tests are the raw and string bodies under `gzip` and `br`; JSON bodies, the two uncompressed replies and the empty reply pass. |
+| reference | hidden test | exit 0, 9 passed |
+| `toReply` fix instead (text replies become buffers) | hidden test | **exit 1**, 2 failed / 7 passed: the uncompressed raw and string replies no longer match what the handler produced. Checked with Bun directly on a scratch copy, not through the harness. |
+
 ## Dry-run of the full suite
 
 `atlas-eval agent run --dry-run --runs-per-condition 2 --model claude-sonnet-5-5` (2026-10-04, seed 1, parallel 2):

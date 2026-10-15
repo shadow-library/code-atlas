@@ -37,6 +37,7 @@ max_turns = 120
 atlas_repos = ["acme-api", "acme-sdk"]   # optional: tree subdirectories registered as Code Atlas repos (default: the tree root)
 base_patch = "base.patch"            # optional, relative to the task dir: applied with `git apply` before the base commit
 prompt_leak = "guided"               # optional: handed | guided | open, the class `agent leak-audit` computes; a differing value fails the audit
+atlas_config = "atlas-config"        # optional, relative to the task dir: the --atlas-config directory the task needs; `retrieval` and `agent run` warn when a run seeds none or another one
 strip = ["acme-e2e", "docs/postmortem.md"]            # optional: files or directories removed from the tree in both conditions
 drop_instruction_sections = ["AGENTS.md#Code search"] # optional: `<file>#<heading>`, a Markdown section removed from that file in both conditions
 setup = ["bun install --frozen-lockfile"]   # optional: run with `sh -c` at the tree root before the base commit; each must exit 0
@@ -79,7 +80,7 @@ atlas-eval agent probe --out <dir> [--model …]
 atlas-eval agent headroom --runs eval/runs/<batch>... [--out eval/reports/<date>/headroom]         # recorded sessions only
 atlas-eval agent noise --runs eval/runs/<batch>... [--ab-report eval/reports/<date>/agent.json...] \
   [--out eval/reports/<date>/noise-floor]                                                         # recorded runs only
-atlas-eval retrieval [--task t00-smoke] [--out eval/reports/<date>/retrieval]   # deterministic, no sessions
+atlas-eval retrieval [--task t00-smoke] [--atlas-config <dir> [--atlas-bin …]] [--out eval/reports/<date>/retrieval]   # deterministic, no sessions
 ```
 
 `atlas-eval retrieval` reuses the task specs, tree materialisation and clone cache, indexes each base tree in process and scores what `context`, `search` and `similar` return against the task's ground truth. It never runs a session. Every task is queried four ways: with the whole prompt (`full`), with the `task` text agents really sent to `atlas_context` (`agent`), with those calls as sent, seeds included (`agent-seeded`), and with the first sentence of the prompt (`first-line`). Method, metrics and limits: `docs/evaluation/methodology.md` (Retrieval eval).

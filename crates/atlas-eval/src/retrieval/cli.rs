@@ -4,8 +4,8 @@ use clap::Args;
 
 use super::error::{RetrievalError, RetrievalResult};
 use super::report::{TaskOutcome, write_report};
-use super::run::{RetrievalOptions, run_retrieval};
-use crate::agent::{EvalHome, task_report_base, today_utc};
+use super::run::{RetrievalOptions, SeededConfig, run_retrieval};
+use crate::agent::{AtlasConfig, EvalHome, locate_atlas_bin, task_report_base, today_utc};
 
 #[derive(Debug, Clone, Args)]
 pub struct RetrievalArgs {
@@ -30,6 +30,14 @@ pub struct RetrievalArgs {
   pub cache_dir: Option<PathBuf>,
   #[arg(long, help = "Directory for the per-task scratch trees and indexes (default: the system temp dir)")]
   pub work_dir: Option<PathBuf>,
+  #[arg(
+    long,
+    value_name = "DIR",
+    help = "Seed every task's Code Atlas home with DIR/config.toml and DIR/detectors/*.toml, as `agent run --atlas-config` does (refused when DIR is missing or the configuration does not load)"
+  )]
+  pub atlas_config: Option<PathBuf>,
+  #[arg(long, help = "catl binary that validates --atlas-config (default: target/release, then target/debug, then PATH)")]
+  pub atlas_bin: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +60,11 @@ pub fn execute_retrieval(args: &RetrievalArgs, repo_root: &Path) -> RetrievalRes
     only: args.only.clone(),
     cache_dir,
     work_dir,
+    atlas_config: args
+      .atlas_config
+      .as_deref()
+      .map(|dir| seeded_config(dir, args.atlas_bin.as_deref(), repo_root))
+      .transpose()?,
   };
   let report = run_retrieval(&options)?;
   let (markdown, json) = write_report(&report, &base)?;
@@ -64,4 +77,10 @@ pub fn execute_retrieval(args: &RetrievalArgs, repo_root: &Path) -> RetrievalRes
     });
   }
   Ok(RetrievalOutcome { markdown, json })
+}
+
+fn seeded_config(dir: &Path, atlas_bin: Option<&Path>, repo_root: &Path) -> RetrievalResult<SeededConfig> {
+  let config = AtlasConfig::load(dir)?;
+  let atlas_bin = locate_atlas_bin(atlas_bin, repo_root).ok_or(RetrievalError::NoAtlasBin)?;
+  Ok(SeededConfig { config, atlas_bin })
 }

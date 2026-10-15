@@ -13,8 +13,10 @@ use crate::policy::{Policy, hedge};
 use crate::queries::common::{file_entity, first_line, is_test};
 use crate::queries::reuse::access;
 use crate::queries::search::{lexical_hits, query_words, unstemmed};
-use crate::queries::tests_for::{TestItem, direct_tests, run_hint};
+use crate::queries::tests_for::{TestItem, direct_tests, is_mock_edge, run_hint};
 use crate::target::{Resolution, TargetFilter, resolve};
+
+mod serving;
 
 const DEFAULT_BUDGET: usize = 6_000;
 const DEFAULT_FLOOR: f32 = 0.3;
@@ -67,6 +69,13 @@ const UNCERTAIN_SHOWN: usize = 10;
 const PATTERN_ANCHORS: usize = 3;
 const PATTERN_SIBLINGS: usize = 2;
 const REGISTRY_MIN_SIBLINGS: usize = 2;
+const HUB_FAN_IN: usize = 4;
+const HUB_USERS_COUNTED: usize = 256;
+const USERS_EXAMINED: usize = 1_024;
+const BEHAVIOUR_CALLERS: usize = 4;
+const BEHAVIOUR_HITS: usize = 2;
+const SIBLING_ROUTE_WEIGHT: f64 = 0.5;
+const SIBLING_ROUTES: usize = 5;
 const PLATFORM_TYPES: [&str; 20] = [
   "Response", "Request", "Headers", "Error", "Date", "Map", "Set", "Promise", "URL", "Record", "Array", "Object", "JSON", "String", "Vec", "Option", "Result", "Box", "Arc",
   "HashMap",
@@ -316,6 +325,7 @@ struct Node {
   seed: bool,
   near_named: bool,
   reuse: Option<String>,
+  hub_factor: f64,
 }
 
 struct Held {
@@ -473,6 +483,7 @@ impl Pack {
       seed: true,
       near_named: named,
       reuse: None,
+      hub_factor: 1.0,
     });
   }
 
@@ -508,6 +519,7 @@ impl Pack {
         node.named |= incoming.named;
         node.seed |= incoming.seed;
         node.near_named |= incoming.near_named;
+        node.hub_factor = node.hub_factor.max(incoming.hub_factor);
         if node.reuse.is_none() {
           node.reuse = incoming.reuse;
         }
@@ -519,6 +531,17 @@ impl Pack {
         self.nodes.insert(incoming.entity.id, incoming);
       }
     }
+  }
+
+  fn expand_callee(&mut self, graph: &Graph<'_, '_>, from: &Node, to: Entity, edge: &Edge, hub: f64) -> QueryResult<()> {
+    let id = to.id;
+    let before = self.nodes.get(&id).map(|node| node.hub_factor);
+    self.expand_to(graph, from, to, edge, 0.5, Role::Code)?;
+    let reached = from.hub_factor * hub;
+    if let Some(node) = self.nodes.get_mut(&id) {
+      node.hub_factor = before.map_or(reached, |before| before.max(reached));
+    }
+    Ok(())
   }
 
   fn expand_to(&mut self, graph: &Graph<'_, '_>, from: &Node, to: Entity, edge: &Edge, factor: f64, role: Role) -> QueryResult<()> {
@@ -546,6 +569,7 @@ impl Pack {
       seed: false,
       near_named: from.named,
       reuse: None,
+      hub_factor: from.hub_factor,
     });
     Ok(())
   }
@@ -577,6 +601,7 @@ impl Pack {
       seed: false,
       near_named: from.named,
       reuse: (role == Role::Reuse).then(|| why.clone()),
+      hub_factor: from.hub_factor,
       why,
     });
   }
@@ -1508,10 +1533,12 @@ struct RouteMention {
 }
 
 fn route_mentions(task: &str) -> Vec<RouteMention> {
-  let words: Vec<&str> = task.split_whitespace().collect();
+  let words: Vec<&str> = task
+    .split_whitespace()
+    .map(|word| word.trim_matches(|c: char| matches!(c, ',' | ';' | '.' | ')' | '(' | '`' | '"' | '\'')))
+    .collect();
   let mut mentions = Vec::new();
   for (index, word) in words.iter().enumerate() {
-    let word = word.trim_matches(|c: char| matches!(c, ',' | ';' | '.' | ')' | '(' | '`' | '"' | '\''));
     if !word.starts_with('/') || word.len() < 2 {
       continue;
     }
@@ -1554,18 +1581,36 @@ fn route_seeds(graph: &Graph<'_, '_>, task: &str, pack: &mut Pack) -> QueryResul
   for mention in &mentions {
     let wanted = route_shape(&mention.route);
     let resource = first_static(&wanted).map(str::to_owned);
+    let mut named: Option<Node> = None;
+    let mut siblings = 0;
+    for endpoint in &endpoints {
+      let EntityKey::Endpoint { method, route, .. } = &endpoint.key else { continue };
+      if route_shape(route) == wanted && mention.method.is_some_and(|wanted| wanted == *method) {
+        pack.seed(endpoint.clone(), 1.0, format!("the endpoint {method} {route} named in the task"), true);
+        named = named.or_else(|| pack.nodes.get(&endpoint.id).cloned());
+      }
+    }
     for endpoint in &endpoints {
       let EntityKey::Endpoint { method, route, .. } = &endpoint.key else { continue };
       let shape = route_shape(route);
       let same_method = mention.method.is_some_and(|wanted| wanted == *method);
-      if shape == wanted && same_method {
-        pack.seed(endpoint.clone(), 1.0, format!("the endpoint {method} {route} named in the task"), true);
-      } else if shape == wanted {
-        pack.seed(endpoint.clone(), 0.9, format!("same route as {} (another method)", mention.route), false);
-      } else if resource.is_some() && first_static(&shape) == resource.as_deref() {
-        pack.seed(endpoint.clone(), 0.6, format!("same resource as {}", mention.route), false);
-      } else if same_method && same_skeleton(&shape, &wanted) {
-        pack.seed(endpoint.clone(), 0.6, format!("pattern exemplar: {method} on a route shaped like {}", mention.route), false);
+      let sibling = match (shape == wanted, same_method) {
+        (true, true) => continue,
+        (true, false) => {
+          pack.seed(endpoint.clone(), 0.9, format!("same route as {} (another method)", mention.route), false);
+          continue;
+        }
+        (false, _) if resource.is_some() && first_static(&shape) == resource.as_deref() => format!("same resource as {}", mention.route),
+        (false, true) if same_skeleton(&shape, &wanted) => format!("pattern exemplar: {method} on a route shaped like {}", mention.route),
+        (false, _) => continue,
+      };
+      match &named {
+        Some(_) if siblings >= SIBLING_ROUTES => {}
+        Some(named) => {
+          siblings += 1;
+          pack.mention(named, endpoint.clone(), SIBLING_ROUTE_WEIGHT, Role::Pattern, sibling, false);
+        }
+        None => pack.seed(endpoint.clone(), 0.6, sibling, false),
       }
     }
     let Some(resource) = resource else { continue };
@@ -1597,6 +1642,7 @@ fn route_seeds(graph: &Graph<'_, '_>, task: &str, pack: &mut Pack) -> QueryResul
           seed: false,
           near_named: false,
           reuse: None,
+          hub_factor: 1.0,
         });
       }
     }
@@ -1620,6 +1666,9 @@ fn auth_seeds(graph: &Graph<'_, '_>, task: &str, pack: &mut Pack) -> QueryResult
 }
 
 fn expand(graph: &Graph<'_, '_>, index: &SimilarityIndex, pack: &mut Pack, depth: u32) -> QueryResult<()> {
+  if depth > 0 {
+    behaviour_sites(graph, pack)?;
+  }
   let mut expanded: BTreeSet<EntityId> = BTreeSet::new();
   for round in 0..depth {
     loop {
@@ -1657,6 +1706,36 @@ fn expand(graph: &Graph<'_, '_>, index: &SimilarityIndex, pack: &mut Pack, depth
   }
 }
 
+fn behaviour_sites(graph: &Graph<'_, '_>, pack: &mut Pack) -> QueryResult<()> {
+  use crate::policy::Direction::Reverse;
+  let hits: Vec<Node> = pack
+    .nodes
+    .values()
+    .filter(|node| node.seed && node.basis == Basis::SearchHit && node.weight >= EXPAND_THRESHOLD)
+    .filter(|node| matches!(node.entity.kind, EntityKind::Function | EntityKind::Method))
+    .cloned()
+    .collect();
+  let mut sites: BTreeMap<EntityId, Vec<(Node, Edge, Entity)>> = BTreeMap::new();
+  for hit in hits {
+    if production_users(graph, hit.entity.id, &[EdgeKind::Calls], BEHAVIOUR_CALLERS + 1)? > BEHAVIOUR_CALLERS {
+      continue;
+    }
+    let callers: Vec<(Edge, Entity)> = neighbours(graph, pack, hit.entity.id, Reverse, &[EdgeKind::Calls])?
+      .into_iter()
+      .filter(|(edge, caller)| edge.certainty.is_authoritative() && caller.kind.is_code_symbol() && !is_test(caller) && !is_test_support(caller))
+      .collect();
+    for (edge, caller) in callers {
+      sites.entry(caller.id).or_default().push((hit.clone(), edge, caller));
+    }
+  }
+  for (_, applied) in sites.into_iter().filter(|(_, applied)| applied.len() >= BEHAVIOUR_HITS) {
+    for (hit, edge, caller) in applied {
+      pack.expand_to(graph, &hit, caller, &edge, 0.5, Role::Code)?;
+    }
+  }
+  Ok(())
+}
+
 fn expand_structure(graph: &Graph<'_, '_>, pack: &mut Pack, node: &Node) -> QueryResult<()> {
   use crate::policy::Direction::Reverse;
   let id = node.entity.id;
@@ -1667,7 +1746,12 @@ fn expand_structure(graph: &Graph<'_, '_>, pack: &mut Pack, node: &Node) -> Quer
   }
   if node.entity.kind == EntityKind::ApiEndpoint {
     for (edge, handler) in neighbours(graph, pack, id, Reverse, &[EdgeKind::ExposesEndpoint])? {
+      let handler_id = handler.id;
       pack.implemented_by(graph, node, handler, &edge, 0.9)?;
+      let handler = pack.nodes.get(&handler_id).filter(|_| node.named || node.near_named).cloned();
+      if let Some(handler) = handler {
+        serving::serving_path(graph, pack, &handler, &edge)?;
+      }
     }
     for (edge, guard) in neighbours(graph, pack, id, crate::policy::Direction::Forward, &[EdgeKind::RequiresGuard])? {
       pack.implemented_by(graph, node, guard, &edge, 0.6)?;
@@ -1712,7 +1796,8 @@ fn expand_node(graph: &Graph<'_, '_>, index: &SimilarityIndex, pack: &mut Pack, 
     }
   }
   for (edge, callee) in neighbours(graph, pack, id, Forward, &[EdgeKind::Calls, EdgeKind::Instantiates])? {
-    pack.expand_to(graph, &node, callee, &edge, 0.5, Role::Code)?;
+    let hub = hub_factor(graph, callee.id)?;
+    pack.expand_callee(graph, &node, callee, &edge, hub)?;
   }
   if node.round == 0 && node.named {
     for (edge, caller) in neighbours(graph, pack, id, Reverse, &[EdgeKind::Calls, EdgeKind::Instantiates, EdgeKind::References])? {
@@ -1780,6 +1865,36 @@ fn expand_node(graph: &Graph<'_, '_>, index: &SimilarityIndex, pack: &mut Pack, 
     }
   }
   Ok(())
+}
+
+fn hub_factor(graph: &Graph<'_, '_>, id: EntityId) -> QueryResult<f64> {
+  let users = production_users(graph, id, &[EdgeKind::Calls, EdgeKind::Instantiates, EdgeKind::References], HUB_USERS_COUNTED)?;
+  Ok(match users <= HUB_FAN_IN {
+    true => 1.0,
+    false => (HUB_FAN_IN as f64 / users as f64).sqrt(),
+  })
+}
+
+fn production_users(graph: &Graph<'_, '_>, id: EntityId, kinds: &[EdgeKind], cap: usize) -> QueryResult<usize> {
+  let mut users: BTreeSet<EntityId> = BTreeSet::new();
+  let mut examined: BTreeSet<EntityId> = BTreeSet::new();
+  for link in graph.links_in(id, kinds)? {
+    if users.len() >= cap {
+      break;
+    }
+    if users.contains(&link.from) {
+      continue;
+    }
+    if examined.insert(link.from) && examined.len() > USERS_EXAMINED {
+      return Ok(cap);
+    }
+    let Some(user) = graph.entity(link.from)? else { continue };
+    if is_test(&user) || is_test_support(&user) || graph.edge(link.id)?.is_some_and(|edge| is_mock_edge(&edge)) {
+      continue;
+    }
+    users.insert(link.from);
+  }
+  Ok(users.len())
 }
 
 fn name_suffix(name: &str) -> Option<&str> {
@@ -1963,7 +2078,7 @@ fn rank(pack: &mut Pack) -> Vec<Ranked> {
   let mut ranked: Vec<Ranked> = std::mem::take(&mut pack.nodes)
     .into_values()
     .map(|node| {
-      let score = position.get(&node.entity.id).map_or(0.0, |&index| scores[index]);
+      let score = position.get(&node.entity.id).map_or(0.0, |&index| scores[index]) * node.hub_factor;
       Ranked {
         score: (score * 1_000_000.0).round() / 1_000_000.0,
         node,
@@ -1999,6 +2114,7 @@ mod tests {
       seed: basis == Basis::SearchHit,
       near_named: false,
       reuse: None,
+      hub_factor: 1.0,
     }
   }
 

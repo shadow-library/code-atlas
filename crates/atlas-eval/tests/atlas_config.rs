@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
-use atlas_eval::agent::{AgentError, AtlasConfig};
+use atlas_eval::agent::{AgentError, AtlasConfig, atlas_config_mismatch, load_tasks};
 use atlas_test_lsp::hermetic::{catl_binary as catl, hermetic_catl};
 
 fn write(path: &Path, content: &str) {
@@ -82,6 +82,59 @@ fn should_refuse_a_configuration_that_stops_the_mcp_server_from_starting() {
   let error = AtlasConfig::load(source.path()).unwrap().validate(catl(), scratch.path(), TIMEOUT).unwrap_err();
   assert!(
     matches!(&error, AgentError::AtlasConfigRejected { reason, .. } if reason.contains("FAIL") && reason.contains("atlas_bogus")),
+    "{error}"
+  );
+}
+
+fn task_declaring_config(family: &str) -> (tempfile::TempDir, atlas_eval::agent::LoadedTask) {
+  let tasks = tempfile::tempdir().unwrap();
+  let task = tasks.path().join("t90-configured");
+  write(
+    &task.join("task.toml"),
+    "id = \"t90-configured\"\ntitle = \"t\"\nrepo = { fixture = \"acme\" }\nbase_commit = \"e5209b4c5c99df0e0e5cdab2bd885b0821b91927\"\nprompt = \"p\"\ntimeout_minutes = 1\nmax_turns = 1\natlas_config = \"atlas-config\"\n",
+  );
+  write(&task.join("atlas-config/config.toml"), "[defaults.detect]\nroute_families = [\"acme-http\"]\n");
+  write(&task.join("atlas-config/detectors/acme-http.toml"), family);
+  let loaded = load_tasks(tasks.path(), &[]).unwrap().remove(0);
+  (tasks, loaded)
+}
+
+#[test]
+fn should_warn_when_a_run_seeds_no_configuration_or_another_one_than_the_task_declares() {
+  let (tasks, task) = task_declaring_config(VALID_FAMILY);
+  let declared = tasks.path().join("t90-configured/atlas-config");
+  let other = config_dir("version = 1\n[client]\nfiles = [\"lib/*.ts\"]\nmodules = [\"@acme/other\"]\n");
+
+  let missing = atlas_config_mismatch(&task, None).unwrap();
+  let same = atlas_config_mismatch(&task, Some(&AtlasConfig::load(&declared).unwrap())).unwrap();
+  let differing = atlas_config_mismatch(&task, Some(&AtlasConfig::load(other.path()).unwrap())).unwrap();
+
+  assert_eq!(
+    missing,
+    Some(format!(
+      "task t90-configured declares the Code Atlas configuration {}, but this run seeds none; pass --atlas-config {}",
+      declared.display(),
+      declared.display()
+    ))
+  );
+  assert_eq!(same, None);
+  assert!(differing.unwrap().starts_with("task t90-configured declares the Code Atlas configuration "));
+}
+
+#[test]
+fn should_refuse_a_task_configuration_outside_its_directory() {
+  let tasks = tempfile::tempdir().unwrap();
+  write(
+    &tasks.path().join("t91-escape/task.toml"),
+    "id = \"t91-escape\"\ntitle = \"t\"\nrepo = { fixture = \"acme\" }\nbase_commit = \"e5209b4c5c99df0e0e5cdab2bd885b0821b91927\"\nprompt = \"p\"\ntimeout_minutes = 1\nmax_turns = 1\natlas_config = \"../config\"\n",
+  );
+
+  let error = load_tasks(tasks.path(), &[]).unwrap_err();
+
+  assert!(
+    error
+      .to_string()
+      .contains("atlas_config `../config` must be a relative path inside the task directory, outside hidden/"),
     "{error}"
   );
 }

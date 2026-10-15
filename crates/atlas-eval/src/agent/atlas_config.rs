@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use super::atlas_cli::AtlasCli;
 use super::error::{AgentError, AgentResult};
 use super::process::ProcessExit;
+use super::spec::LoadedTask;
 
 const CONFIG_FILE: &str = "config.toml";
 const DETECTORS_DIR: &str = "detectors";
@@ -176,6 +177,27 @@ impl AtlasConfig {
     }
     Err(rejected(problems.join("; ")))
   }
+}
+
+pub fn atlas_config_mismatch(task: &LoadedTask, used: Option<&AtlasConfig>) -> AgentResult<Option<String>> {
+  let Some(dir) = task.atlas_config_dir() else { return Ok(None) };
+  let wanted = AtlasConfig::load(&dir)?;
+  Ok(match used {
+    Some(used) if used.digest() == wanted.digest() => None,
+    Some(used) => Some(format!(
+      "task {} declares the Code Atlas configuration {} (blake3 {}), but this run uses blake3 {}",
+      task.spec.id,
+      dir.display(),
+      wanted.digest(),
+      used.digest()
+    )),
+    None => Some(format!(
+      "task {} declares the Code Atlas configuration {}, but this run seeds none; pass --atlas-config {}",
+      task.spec.id,
+      dir.display(),
+      dir.display()
+    )),
+  })
 }
 
 fn key_paths(bytes: &[u8]) -> Result<Vec<String>, String> {

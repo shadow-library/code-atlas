@@ -1,0 +1,10 @@
+version = 1
+packages = ["@corvid/http"]
+
+[controller]
+decorators = ["Controller"]
+
+[routes.methods]
+Get = "GET"
+Post = "POST"
+Delete = "DELETE"

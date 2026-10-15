@@ -1,21 +1,28 @@
 use std::path::{Path, PathBuf};
 
+use atlas_eval::agent::AtlasConfig;
 use atlas_eval::retrieval::{
   GoldFile, LineGoldSummary, NO_RECORDED_QUERY, Phrase, PhraseSource, Provenance, QueryScore, QueryVariant, RetrievalArgs, RetrievalError, RetrievalOptions, RetrievalReport,
-  TaskOutcome, TaskRetrieval, VariantOutcome, VariantQuery, execute_retrieval, render_markdown, run_retrieval,
+  SeededConfig, TaskOutcome, TaskRetrieval, VariantOutcome, VariantQuery, execute_retrieval, render_markdown, run_retrieval,
 };
+use atlas_test_lsp::hermetic::catl_binary;
 
 fn workspace_root() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap()
 }
 
 fn run_task(work: &tempfile::TempDir, tasks_dir: PathBuf, id: &str) -> RetrievalReport {
+  run_configured(work, tasks_dir, id, None)
+}
+
+fn run_configured(work: &tempfile::TempDir, tasks_dir: PathBuf, id: &str, atlas_config: Option<SeededConfig>) -> RetrievalReport {
   let options = RetrievalOptions {
     tasks_dir,
     repo_root: workspace_root(),
     only: vec![id.to_owned()],
     cache_dir: work.path().join("cache"),
     work_dir: work.path().join("work"),
+    atlas_config,
   };
   run_retrieval(&options).unwrap()
 }
@@ -290,6 +297,8 @@ fn should_write_the_report_and_fail_when_a_task_cannot_be_scored() {
     out: Some(work.path().join("out/retrieval")),
     cache_dir: Some(work.path().join("cache")),
     work_dir: Some(work.path().join("work")),
+    atlas_config: None,
+    atlas_bin: None,
   };
   let error = execute_retrieval(&args, &repo_root).unwrap_err();
   let RetrievalError::TasksFailed { failed, total, report } = error else {
@@ -303,4 +312,24 @@ fn should_write_the_report_and_fail_when_a_task_cannot_be_scored() {
     "{markdown}"
   );
   assert_eq!(std::fs::read_dir(work.path().join("work")).unwrap().count(), 0);
+}
+
+#[test]
+fn should_put_the_router_of_the_invented_framework_in_must_read_from_the_first_line_with_its_route_family() {
+  let work = tempfile::tempdir().unwrap();
+  let tasks = workspace_root().join("eval/tasks");
+  let config = SeededConfig {
+    config: AtlasConfig::load(&tasks.join("t11-compressed-reply-body/atlas-config")).unwrap(),
+    atlas_bin: catl_binary().to_owned(),
+  };
+
+  let report = run_configured(&work, tasks, "t11-compressed-reply-body", Some(config));
+
+  let seeded = report.settings.atlas_config.as_ref().unwrap();
+  assert_eq!(seeded.files, ["config.toml", "detectors/corvid-http.toml"]);
+  let task = scored(&report);
+  assert_eq!(task.index.degraded, None);
+  let first_line = only_query(task, QueryVariant::FirstLine);
+  assert_eq!(first_line.must_change.expected, ["corvid/packages/http/src/module/http-router.ts"]);
+  assert_eq!(first_line.must_change.channels.must_read.recall, Some(1.0));
 }

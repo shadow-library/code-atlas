@@ -239,6 +239,23 @@ fn first_number(object: &serde_json::Map<String, Value>, fields: &[&str]) -> Opt
   fields.iter().find_map(|field| object.get(*field).and_then(Value::as_f64))
 }
 
+pub fn locate_atlas_bin(explicit: Option<&Path>, repo_root: &Path) -> Option<PathBuf> {
+  if let Some(path) = explicit {
+    return Some(path.to_owned());
+  }
+  let built = ["release", "debug"]
+    .iter()
+    .map(|profile| repo_root.join("target").join(profile).join("catl"))
+    .find(|path| path.is_file());
+  built.or_else(|| {
+    std::env::var_os("PATH")
+      .map(|paths| std::env::split_paths(&paths).map(|dir| dir.join("catl")).collect::<Vec<_>>())
+      .unwrap_or_default()
+      .into_iter()
+      .find(|path| path.is_file())
+  })
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

@@ -1,0 +1,550 @@
+diff --git a/corvid/apps/portal/package.json b/corvid/apps/portal/package.json
+new file mode 100644
+index 0000000..9c3307f
+--- /dev/null
++++ b/corvid/apps/portal/package.json
+@@ -0,0 +1,7 @@
++{
++  "name": "corvid-portal",
++  "private": true,
++  "dependencies": {
++    "@corvid/http": "workspace:*"
++  }
++}
+diff --git a/corvid/apps/portal/src/feeds/feed.controller.ts b/corvid/apps/portal/src/feeds/feed.controller.ts
+new file mode 100644
+index 0000000..5fea93d
+--- /dev/null
++++ b/corvid/apps/portal/src/feeds/feed.controller.ts
+@@ -0,0 +1,19 @@
++import { Controller, Get, type HttpRequest, Post, RawResponse } from '@corvid/http';
++
++import { FeedService } from './feed.service';
++
++@Controller('feeds')
++export class FeedController {
++  private readonly feeds = new FeedService();
++
++  @Get('sitemap')
++  sitemap(): RawResponse {
++    return new RawResponse('application/xml', this.feeds.sitemapXml());
++  }
++
++  @Post('ping')
++  ping(request: HttpRequest) {
++    const { url } = request.body as { url: string };
++    return { queued: this.feeds.queue(url) };
++  }
++}
+diff --git a/corvid/apps/portal/src/feeds/feed.service.ts b/corvid/apps/portal/src/feeds/feed.service.ts
+new file mode 100644
+index 0000000..939becb
+--- /dev/null
++++ b/corvid/apps/portal/src/feeds/feed.service.ts
+@@ -0,0 +1,19 @@
++const PAGES = ['https://portal.corvid.example/', 'https://portal.corvid.example/users'];
++
++export class FeedService {
++  private readonly pending: string[] = [];
++
++  sitemapXml(): string {
++    return [
++      '<?xml version="1.0" encoding="UTF-8"?>',
++      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
++      ...PAGES.map(page => `  <url><loc>${page}</loc></url>`),
++      '</urlset>',
++    ].join('\n');
++  }
++
++  queue(url: string): number {
++    this.pending.push(url);
++    return this.pending.length;
++  }
++}
+diff --git a/corvid/apps/portal/src/health/health.controller.ts b/corvid/apps/portal/src/health/health.controller.ts
+new file mode 100644
+index 0000000..658cae2
+--- /dev/null
++++ b/corvid/apps/portal/src/health/health.controller.ts
+@@ -0,0 +1,14 @@
++import { Controller, Get, type HttpRequest } from '@corvid/http';
++
++@Controller('health')
++export class HealthController {
++  @Get('live')
++  live(request: HttpRequest) {
++    return { live: true, via: request.headers['x-forwarded-for']?.split(',')[0]?.trim() ?? 'direct' };
++  }
++
++  @Get('ready')
++  ready(request: HttpRequest) {
++    return { ready: true, agent: request.headers['user-agent'] ?? null, encoding: request.headers['accept-encoding'] ?? null };
++  }
++}
+diff --git a/corvid/apps/portal/src/main.ts b/corvid/apps/portal/src/main.ts
+new file mode 100644
+index 0000000..10de610
+--- /dev/null
++++ b/corvid/apps/portal/src/main.ts
+@@ -0,0 +1,14 @@
++import { HttpServer } from '@corvid/http';
++
++import { FeedController } from './feeds/feed.controller';
++import { HealthController } from './health/health.controller';
++import { ProfileController } from './profile/profile.controller';
++import { UsersController } from './users/users.controller';
++
++export const server = HttpServer.create({
++  port: 8080,
++  controllers: [ProfileController, HealthController, FeedController, UsersController],
++  compression: { threshold: 0, encodings: ['br', 'gzip'] },
++});
++
++if (process.env.PORTAL_LISTEN === '1') server.listen();
+diff --git a/corvid/apps/portal/src/profile/profile.controller.ts b/corvid/apps/portal/src/profile/profile.controller.ts
+new file mode 100644
+index 0000000..f361ce6
+--- /dev/null
++++ b/corvid/apps/portal/src/profile/profile.controller.ts
+@@ -0,0 +1,24 @@
++import { Controller, Get, type HttpRequest, Post } from '@corvid/http';
++
++import { ProfileStore } from './profile.store';
++
++@Controller('profile')
++export class ProfileController {
++  private readonly profiles = new ProfileStore();
++
++  @Post('rename')
++  rename(request: HttpRequest) {
++    const { name } = request.body as { name: string };
++    return { name: this.profiles.rename(request.headers['x-user'] ?? '', name) };
++  }
++
++  @Post('reset')
++  reset(request: HttpRequest) {
++    this.profiles.reset(request.headers['x-user'] ?? '');
++  }
++
++  @Get('current')
++  current(request: HttpRequest) {
++    return { name: this.profiles.find(request.headers['x-user'] ?? '') ?? null };
++  }
++}
+diff --git a/corvid/apps/portal/src/profile/profile.store.ts b/corvid/apps/portal/src/profile/profile.store.ts
+new file mode 100644
+index 0000000..076ce7f
+--- /dev/null
++++ b/corvid/apps/portal/src/profile/profile.store.ts
+@@ -0,0 +1,16 @@
++export class ProfileStore {
++  private readonly names = new Map<string, string>();
++
++  rename(user: string, name: string): string {
++    this.names.set(user, name);
++    return name;
++  }
++
++  find(user: string): string | undefined {
++    return this.names.get(user);
++  }
++
++  reset(user: string): void {
++    this.names.delete(user);
++  }
++}
+diff --git a/corvid/apps/portal/src/users/users.controller.ts b/corvid/apps/portal/src/users/users.controller.ts
+new file mode 100644
+index 0000000..2e7d219
+--- /dev/null
++++ b/corvid/apps/portal/src/users/users.controller.ts
+@@ -0,0 +1,23 @@
++import { Controller, Delete, Get, type HttpRequest } from '@corvid/http';
++
++import { UsersService } from './users.service';
++
++@Controller('users')
++export class UsersController {
++  private readonly users = new UsersService();
++
++  @Get()
++  list() {
++    return this.users.list();
++  }
++
++  @Get(':id')
++  findOne(request: HttpRequest) {
++    return this.users.find(request.url.split('/').pop() ?? '');
++  }
++
++  @Delete(':id')
++  remove(request: HttpRequest) {
++    this.users.remove(request.url.split('/').pop() ?? '');
++  }
++}
+diff --git a/corvid/apps/portal/src/users/users.service.ts b/corvid/apps/portal/src/users/users.service.ts
+new file mode 100644
+index 0000000..4804f9b
+--- /dev/null
++++ b/corvid/apps/portal/src/users/users.service.ts
+@@ -0,0 +1,20 @@
++export interface User {
++  id: string;
++  name: string;
++}
++
++export class UsersService {
++  private readonly users = new Map<string, User>([['1', { id: '1', name: 'Ada' }]]);
++
++  list(): User[] {
++    return [...this.users.values()];
++  }
++
++  find(id: string): User | null {
++    return this.users.get(id) ?? null;
++  }
++
++  remove(id: string): void {
++    this.users.delete(id);
++  }
++}
+diff --git a/corvid/package.json b/corvid/package.json
+new file mode 100644
+index 0000000..9302779
+--- /dev/null
++++ b/corvid/package.json
+@@ -0,0 +1,5 @@
++{
++  "name": "corvid",
++  "private": true,
++  "workspaces": ["packages/*", "apps/*"]
++}
+diff --git a/corvid/packages/http/package.json b/corvid/packages/http/package.json
+new file mode 100644
+index 0000000..1f195cc
+--- /dev/null
++++ b/corvid/packages/http/package.json
+@@ -0,0 +1,5 @@
++{
++  "name": "@corvid/http",
++  "version": "1.4.0",
++  "main": "src/index.ts"
++}
+diff --git a/corvid/packages/http/src/client/http-client.ts b/corvid/packages/http/src/client/http-client.ts
+new file mode 100644
+index 0000000..5a2a09e
+--- /dev/null
++++ b/corvid/packages/http/src/client/http-client.ts
+@@ -0,0 +1,19 @@
++export interface HttpClientOptions {
++  baseUrl: string;
++  acceptEncoding?: string;
++  timeoutMs?: number;
++}
++
++export class HttpClient {
++  constructor(private readonly options: HttpClientOptions) {}
++
++  async get<T>(path: string): Promise<T> {
++    const headers = { 'accept-encoding': this.options.acceptEncoding ?? '*' };
++    const response = await fetch(`${this.options.baseUrl}${path}`, { headers, signal: AbortSignal.timeout(this.options.timeoutMs ?? 5000) });
++    return (await response.json()) as T;
++  }
++
++  encodingOf(response: Response): string {
++    return response.headers.get('content-encoding') ?? 'none';
++  }
++}
+diff --git a/corvid/packages/http/src/compression/content-encoding.ts b/corvid/packages/http/src/compression/content-encoding.ts
+new file mode 100644
+index 0000000..746b637
+--- /dev/null
++++ b/corvid/packages/http/src/compression/content-encoding.ts
+@@ -0,0 +1,20 @@
++import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib';
++
++export type ContentEncoding = 'br' | 'gzip' | 'deflate';
++
++export function negotiateEncoding(acceptEncoding: string | undefined, allowed: ContentEncoding[]): ContentEncoding | undefined {
++  if (!acceptEncoding) return undefined;
++  const offered = acceptEncoding.split(',').map(token => token.split(';')[0].trim().toLowerCase());
++  return allowed.find(encoding => offered.includes(encoding) || offered.includes('*'));
++}
++
++export function encodeBody(body: Buffer, encoding: ContentEncoding): Buffer {
++  switch (encoding) {
++    case 'br':
++      return brotliCompressSync(body);
++    case 'gzip':
++      return gzipSync(body);
++    case 'deflate':
++      return deflateSync(body);
++  }
++}
+diff --git a/corvid/packages/http/src/constants.ts b/corvid/packages/http/src/constants.ts
+new file mode 100644
+index 0000000..f5a53b5
+--- /dev/null
++++ b/corvid/packages/http/src/constants.ts
+@@ -0,0 +1,2 @@
++export const CONTROLLER_METADATA = 'corvid:controller';
++export const ROUTE_METADATA = 'corvid:routes';
+diff --git a/corvid/packages/http/src/decorators/controller.decorator.ts b/corvid/packages/http/src/decorators/controller.decorator.ts
+new file mode 100644
+index 0000000..da17e37
+--- /dev/null
++++ b/corvid/packages/http/src/decorators/controller.decorator.ts
+@@ -0,0 +1,10 @@
++import { CONTROLLER_METADATA } from '../constants';
++import { defineMetadata } from '../store';
++
++export interface ControllerMetadata {
++  prefix: string;
++}
++
++export function Controller(prefix = ''): ClassDecorator {
++  return target => defineMetadata(CONTROLLER_METADATA, { prefix }, target);
++}
+diff --git a/corvid/packages/http/src/decorators/route.decorator.ts b/corvid/packages/http/src/decorators/route.decorator.ts
+new file mode 100644
+index 0000000..b6e59c6
+--- /dev/null
++++ b/corvid/packages/http/src/decorators/route.decorator.ts
+@@ -0,0 +1,29 @@
++import { ROUTE_METADATA } from '../constants';
++import { defineMetadata, getMetadata } from '../store';
++
++export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
++
++export interface RouteMetadata {
++  method: HttpMethod;
++  path: string;
++  handler: string | symbol;
++}
++
++export function Route(method: HttpMethod, path = ''): MethodDecorator {
++  return (target, handler) => {
++    const routes = getMetadata<RouteMetadata[]>(ROUTE_METADATA, target.constructor) ?? [];
++    defineMetadata(ROUTE_METADATA, [...routes, { method, path, handler }], target.constructor);
++  };
++}
++
++export function Get(path = ''): MethodDecorator {
++  return Route('GET', path);
++}
++
++export function Post(path = ''): MethodDecorator {
++  return Route('POST', path);
++}
++
++export function Delete(path = ''): MethodDecorator {
++  return Route('DELETE', path);
++}
+diff --git a/corvid/packages/http/src/index.ts b/corvid/packages/http/src/index.ts
+new file mode 100644
+index 0000000..6157c5e
+--- /dev/null
++++ b/corvid/packages/http/src/index.ts
+@@ -0,0 +1,10 @@
++export * from './constants';
++export * from './store';
++export * from './decorators/controller.decorator';
++export * from './decorators/route.decorator';
++export * from './server.options';
++export * from './compression/content-encoding';
++export * from './module/http-reply';
++export * from './module/http-router';
++export * from './module/http-server';
++export * from './client/http-client';
+diff --git a/corvid/packages/http/src/module/http-reply.ts b/corvid/packages/http/src/module/http-reply.ts
+new file mode 100644
+index 0000000..1c849b0
+--- /dev/null
++++ b/corvid/packages/http/src/module/http-reply.ts
+@@ -0,0 +1,27 @@
++export interface HttpRequest {
++  method: string;
++  url: string;
++  headers: Record<string, string | undefined>;
++  body?: unknown;
++}
++
++export interface HttpReply {
++  status: number;
++  headers: Record<string, string>;
++  body?: Buffer;
++  text?: string;
++}
++
++export class RawResponse {
++  constructor(
++    readonly contentType: string,
++    readonly text: string,
++  ) {}
++}
++
++export function toReply(result: unknown): HttpReply {
++  if (result instanceof RawResponse) return { status: 200, headers: { 'content-type': result.contentType }, text: result.text };
++  if (typeof result === 'string') return { status: 200, headers: { 'content-type': 'text/plain; charset=utf-8' }, text: result };
++  if (result === undefined) return { status: 204, headers: {} };
++  return { status: 200, headers: { 'content-type': 'application/json' }, body: Buffer.from(JSON.stringify(result)) };
++}
+diff --git a/corvid/packages/http/src/module/http-router.ts b/corvid/packages/http/src/module/http-router.ts
+new file mode 100644
+index 0000000..0c39b7c
+--- /dev/null
++++ b/corvid/packages/http/src/module/http-router.ts
+@@ -0,0 +1,59 @@
++import { encodeBody, negotiateEncoding } from '../compression/content-encoding';
++import { CONTROLLER_METADATA, ROUTE_METADATA } from '../constants';
++import { type ControllerMetadata } from '../decorators/controller.decorator';
++import { type RouteMetadata } from '../decorators/route.decorator';
++import { type ServerOptions } from '../server.options';
++import { getMetadata } from '../store';
++import { type HttpReply, type HttpRequest, toReply } from './http-reply';
++
++type Handler = (request: HttpRequest) => unknown;
++
++interface RegisteredRoute {
++  method: string;
++  path: string;
++  handle: (request: HttpRequest) => Promise<HttpReply>;
++}
++
++const NOT_FOUND: HttpReply = { status: 404, headers: { 'content-type': 'application/json' }, body: Buffer.from('{"message":"Not Found"}') };
++
++export class HttpRouter {
++  private readonly routes = new Map<string, RegisteredRoute>();
++
++  constructor(private readonly options: ServerOptions) {}
++
++  register(controller: object): void {
++    const type = controller.constructor;
++    const prefix = getMetadata<ControllerMetadata>(CONTROLLER_METADATA, type)?.prefix ?? '';
++    for (const route of getMetadata<RouteMetadata[]>(ROUTE_METADATA, type) ?? []) {
++      const path = joinPath(prefix, route.path);
++      const handler = (controller as Record<string | symbol, Handler>)[route.handler].bind(controller);
++      this.routes.set(`${route.method} ${path}`, { method: route.method, path, handle: request => this.reply(request, handler) });
++    }
++  }
++
++  dispatch(request: HttpRequest): Promise<HttpReply> {
++    const route = this.routes.get(`${request.method} ${request.url.split('?')[0]}`);
++    if (!route) return Promise.resolve(NOT_FOUND);
++    return route.handle(request);
++  }
++
++  private async reply(request: HttpRequest, handler: Handler): Promise<HttpReply> {
++    const reply = toReply(await handler(request));
++    return this.compress(request, reply);
++  }
++
++  private compress(request: HttpRequest, reply: HttpReply): HttpReply {
++    const options = this.options.compression;
++    if (!options || reply.status === 204) return reply;
++    const encoding = negotiateEncoding(request.headers['accept-encoding'], options.encodings ?? ['br', 'gzip']);
++    const body = reply.body ?? Buffer.alloc(0);
++    if (!encoding || body.length < (options.threshold ?? 0)) return reply;
++    const headers = { ...reply.headers, 'content-encoding': encoding, vary: 'accept-encoding' };
++    return { status: reply.status, headers, body: encodeBody(body, encoding) };
++  }
++}
++
++function joinPath(prefix: string, path: string): string {
++  const joined = [prefix, path].filter(Boolean).join('/');
++  return `/${joined}`.replace(/\/+/g, '/');
++}
+diff --git a/corvid/packages/http/src/module/http-server.ts b/corvid/packages/http/src/module/http-server.ts
+new file mode 100644
+index 0000000..3ad3e2f
+--- /dev/null
++++ b/corvid/packages/http/src/module/http-server.ts
+@@ -0,0 +1,34 @@
++import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
++
++import { type ServerOptions } from '../server.options';
++import { type HttpReply, type HttpRequest } from './http-reply';
++import { HttpRouter } from './http-router';
++
++export class HttpServer {
++  private readonly router: HttpRouter;
++
++  private constructor(private readonly options: ServerOptions) {
++    this.router = new HttpRouter(options);
++  }
++
++  static create(options: ServerOptions): HttpServer {
++    const server = new HttpServer(options);
++    for (const Type of options.controllers) server.router.register(new Type());
++    return server;
++  }
++
++  inject(request: HttpRequest): Promise<HttpReply> {
++    return this.router.dispatch(request);
++  }
++
++  listen(): Server {
++    return createServer((request, response) => void this.handle(request, response)).listen(this.options.port);
++  }
++
++  private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
++    const headers = Object.fromEntries(Object.entries(request.headers).map(([name, value]) => [name, Array.isArray(value) ? value.join(', ') : value]));
++    const reply = await this.router.dispatch({ method: request.method ?? 'GET', url: request.url ?? '/', headers });
++    response.writeHead(reply.status, reply.headers);
++    response.end(reply.body ?? reply.text);
++  }
++}
+diff --git a/corvid/packages/http/src/server.options.ts b/corvid/packages/http/src/server.options.ts
+new file mode 100644
+index 0000000..1ffdd2f
+--- /dev/null
++++ b/corvid/packages/http/src/server.options.ts
+@@ -0,0 +1,12 @@
++import { type ContentEncoding } from './compression/content-encoding';
++
++export interface CompressionOptions {
++  threshold?: number;
++  encodings?: ContentEncoding[];
++}
++
++export interface ServerOptions {
++  port: number;
++  controllers: Array<new () => object>;
++  compression?: CompressionOptions | false;
++}
+diff --git a/corvid/packages/http/src/store.ts b/corvid/packages/http/src/store.ts
+new file mode 100644
+index 0000000..e5b80c4
+--- /dev/null
++++ b/corvid/packages/http/src/store.ts
+@@ -0,0 +1,11 @@
++const store = new WeakMap<object, Map<string, unknown>>();
++
++export function defineMetadata(key: string, value: unknown, target: object): void {
++  const entries = store.get(target) ?? new Map<string, unknown>();
++  entries.set(key, value);
++  store.set(target, entries);
++}
++
++export function getMetadata<T>(key: string, target: object): T | undefined {
++  return store.get(target)?.get(key) as T | undefined;
++}
+diff --git a/corvid/tsconfig.json b/corvid/tsconfig.json
+new file mode 100644
+index 0000000..896df76
+--- /dev/null
++++ b/corvid/tsconfig.json
+@@ -0,0 +1,13 @@
++{
++  "compilerOptions": {
++    "target": "ES2022",
++    "module": "ESNext",
++    "moduleResolution": "Bundler",
++    "experimentalDecorators": true,
++    "strict": true,
++    "baseUrl": ".",
++    "paths": {
++      "@corvid/http": ["packages/http/src/index.ts"]
++    }
++  }
++}

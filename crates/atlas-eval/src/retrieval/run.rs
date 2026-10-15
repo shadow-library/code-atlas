@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use atlas_core::{Entity, EntityId, EntityKind, RelPath, RepoName};
 use atlas_engine::{Engine, EngineOptions, FreshnessReport};
@@ -24,7 +25,7 @@ use super::report::{
   VariantOutcome, VariantResult,
 };
 use super::score::{BaseFile, PackCost, Retrieved, YIELD_BUDGETS, budget_yield, score_files, score_rename_sites, score_reuse, tree_path};
-use crate::agent::{LoadedTask, RenameSpec, StripPlan, atlas_repos, load_tasks, materialize_task, resolve_source};
+use crate::agent::{AtlasConfig, LoadedTask, RenameSpec, StripPlan, atlas_config_mismatch, atlas_repos, load_tasks, materialize_task, resolve_source};
 use crate::quality::{DryRunError, DryRunRequest, RenameOptions, dry_run_rename, observe, overlap, rename_settings};
 
 pub const MAX_SIMILAR_SEEDS: usize = 5;
@@ -32,6 +33,8 @@ pub const BLAST_RADIUS_CATEGORY: &str = "blast-radius";
 const REFERENCE_PATCH: &str = "reference.patch";
 const PROJECT_NAME: &str = "retrieval";
 const SCRATCH_PREFIX: &str = "atlas-retrieval-";
+const CONFIG_PROBE_PREFIX: &str = "atlas-retrieval-config-";
+const CONFIG_PROBE_TIMEOUT: Duration = Duration::from_secs(120);
 static SCRATCH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 const SEED_KINDS: [EntityKind; 11] = [
   EntityKind::Function,
@@ -55,10 +58,18 @@ pub struct RetrievalOptions {
   pub only: Vec<String>,
   pub cache_dir: PathBuf,
   pub work_dir: PathBuf,
+  pub atlas_config: Option<SeededConfig>,
 }
 
-pub fn settings() -> RetrievalSettings {
+#[derive(Debug, Clone)]
+pub struct SeededConfig {
+  pub config: AtlasConfig,
+  pub atlas_bin: PathBuf,
+}
+
+pub fn settings(atlas_config: Option<&AtlasConfig>) -> RetrievalSettings {
   RetrievalSettings {
+    atlas_config: atlas_config.map(AtlasConfig::record),
     context_budget: ContextRequest::new("").budget,
     search_limit: SearchRequest::new("").limit,
     max_code_spans: MAX_CODE_SPANS,
@@ -71,8 +82,17 @@ pub fn settings() -> RetrievalSettings {
 
 pub fn run_retrieval(options: &RetrievalOptions) -> RetrievalResult<RetrievalReport> {
   let tasks = load_tasks(&options.tasks_dir, &options.only)?;
+  if let Some(seeded) = &options.atlas_config {
+    validate_config(seeded, &options.work_dir)?;
+  }
+  let used = options.atlas_config.as_ref().map(|seeded| &seeded.config);
   let mut entries = Vec::new();
   for task in &tasks {
+    match atlas_config_mismatch(task, used) {
+      Ok(None) => {}
+      Ok(Some(warning)) => tracing::warn!(task = %task.spec.id, %warning, "configuration differs from the one the task declares"),
+      Err(error) => tracing::warn!(task = %task.spec.id, %error, "cannot load the configuration the task declares"),
+    }
     tracing::info!(task = %task.spec.id, "evaluating retrieval");
     let outcome = match evaluate_task(task, options) {
       Ok(retrieval) => TaskOutcome::Scored(Box::new(retrieval)),
@@ -91,7 +111,16 @@ pub fn run_retrieval(options: &RetrievalOptions) -> RetrievalResult<RetrievalRep
       outcome,
     });
   }
-  Ok(RetrievalReport::new(product_revision(&options.repo_root), settings(), entries))
+  Ok(RetrievalReport::new(product_revision(&options.repo_root), settings(used), entries))
+}
+
+fn validate_config(seeded: &SeededConfig, work_dir: &Path) -> RetrievalResult<()> {
+  fs::create_dir_all(work_dir).map_err(|error| RetrievalError::io(work_dir, error))?;
+  let probe = tempfile::Builder::new()
+    .prefix(CONFIG_PROBE_PREFIX)
+    .tempdir_in(work_dir)
+    .map_err(|error| RetrievalError::io(work_dir, error))?;
+  Ok(seeded.config.validate(&seeded.atlas_bin, probe.path(), CONFIG_PROBE_TIMEOUT)?)
 }
 
 struct StageFailure {
@@ -152,13 +181,17 @@ fn evaluate_task(task: &LoadedTask, options: &RetrievalOptions) -> Result<TaskRe
   let tree = scratch.dir.join("tree");
   let source = resolve_source(task, &options.repo_root, None, &options.cache_dir).at("source")?;
   materialize_task(task, &source, &tree, &StripPlan::for_task(task, false)).at("materialize")?;
-  let indexed = index(task, &scratch.dir, &tree).at("index")?;
+  let indexed = index(task, &scratch.dir, &tree, options.atlas_config.as_ref().map(|seeded| &seeded.config)).at("index")?;
   let (index, files) = index_summary(&indexed).at("index")?;
   query_task(task, &indexed, index, &files, &recorded).at("query")
 }
 
-fn index(task: &LoadedTask, scratch: &Path, tree: &Path) -> RetrievalResult<Indexed> {
-  let home = AtlasHome::rooted_at(scratch.join("home"));
+fn index(task: &LoadedTask, scratch: &Path, tree: &Path, atlas_config: Option<&AtlasConfig>) -> RetrievalResult<Indexed> {
+  let root = scratch.join("home");
+  if let Some(atlas_config) = atlas_config {
+    atlas_config.apply(&root)?;
+  }
+  let home = AtlasHome::rooted_at(root);
   let mut registry = Registry::load(&home)?;
   let specs = atlas_repos(task, tree).into_iter().map(RepoSpec::new).collect();
   let project = registry.create_project(PROJECT_NAME, specs)?.clone();

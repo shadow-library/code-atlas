@@ -136,6 +136,8 @@ pub struct TaskSpec {
   pub strip: Vec<String>,
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub drop_instruction_sections: Vec<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub atlas_config: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,6 +154,10 @@ impl LoadedTask {
 
   pub fn base_patch_file(&self) -> Option<PathBuf> {
     self.spec.base_patch.as_ref().map(|patch| self.dir.join(patch))
+  }
+
+  pub fn atlas_config_dir(&self) -> Option<PathBuf> {
+    self.spec.atlas_config.as_ref().map(|dir| self.dir.join(dir))
   }
 }
 
@@ -249,6 +255,9 @@ fn validate(spec: &TaskSpec) -> Result<(), String> {
   }
   if let Some(patch) = spec.base_patch.as_deref().filter(|patch| !is_relative_inside(patch) || patch.starts_with("hidden/")) {
     return Err(format!("base patch `{patch}` must be a relative path inside the task directory, outside hidden/"));
+  }
+  if let Some(dir) = spec.atlas_config.as_deref().filter(|dir| !is_relative_inside(dir) || dir.starts_with("hidden/")) {
+    return Err(format!("atlas_config `{dir}` must be a relative path inside the task directory, outside hidden/"));
   }
   if spec.setup.iter().any(|command| command.trim().is_empty()) {
     return Err("setup commands must not be empty".to_owned());

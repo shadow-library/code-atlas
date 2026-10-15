@@ -261,23 +261,6 @@ fn repo_root(explicit: Option<&Path>) -> Result<PathBuf, AgentError> {
   Ok(PathBuf::from(String::from_utf8_lossy(&output.stdout).trim()))
 }
 
-fn locate_atlas_bin(explicit: Option<&Path>, repo_root: &Path) -> Option<PathBuf> {
-  if let Some(path) = explicit {
-    return Some(path.to_owned());
-  }
-  let built = ["release", "debug"]
-    .iter()
-    .map(|profile| repo_root.join("target").join(profile).join("catl"))
-    .find(|path| path.is_file());
-  built.or_else(|| {
-    std::env::var_os("PATH")
-      .map(|paths| std::env::split_paths(&paths).map(|dir| dir.join("catl")).collect::<Vec<_>>())
-      .unwrap_or_default()
-      .into_iter()
-      .find(|path| path.is_file())
-  })
-}
-
 fn source_note(task: &LoadedTask, repo_override: Option<&Path>) -> String {
   if let Some(path) = repo_override {
     return format!("{}: tree copied from --repo-override {} (not reproducible from a commit)", task.spec.id, path.display());
@@ -306,8 +289,17 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
   conditions.sort();
   conditions.dedup();
   let atlas_config = args.atlas_config.as_deref().map(agent::AtlasConfig::load).transpose()?;
+  if conditions.contains(&Condition::Atlas) {
+    for task in &tasks {
+      match agent::atlas_config_mismatch(task, atlas_config.as_ref()) {
+        Ok(None) => {}
+        Ok(Some(warning)) => tracing::warn!(task = %task.spec.id, %warning, "configuration differs from the one the task declares"),
+        Err(error) => tracing::warn!(task = %task.spec.id, %error, "cannot load the configuration the task declares"),
+      }
+    }
+  }
   let planned = planned_runs(args, &tasks, &conditions);
-  let atlas_bin = locate_atlas_bin(args.atlas_bin.as_deref(), &repo_root);
+  let atlas_bin = agent::locate_atlas_bin(args.atlas_bin.as_deref(), &repo_root);
   let judge_model = (args.judge == JudgeMode::Claude).then_some(args.claude.judge_model.as_str());
   if args.dry_run {
     let mut notes: Vec<String> = tasks.iter().map(|task| source_note(task, args.repo_override.as_deref())).collect();

@@ -1,0 +1,13 @@
+diff --git a/corvid/packages/http/src/module/http-router.ts b/corvid/packages/http/src/module/http-router.ts
+index 0c39b7c..a5c8d5a 100644
+--- a/corvid/packages/http/src/module/http-router.ts
++++ b/corvid/packages/http/src/module/http-router.ts
+@@ -46,7 +46,7 @@ export class HttpRouter {
+     const options = this.options.compression;
+     if (!options || reply.status === 204) return reply;
+     const encoding = negotiateEncoding(request.headers['accept-encoding'], options.encodings ?? ['br', 'gzip']);
+-    const body = reply.body ?? Buffer.alloc(0);
++    const body = reply.body ?? Buffer.from(reply.text ?? '', 'utf8');
+     if (!encoding || body.length < (options.threshold ?? 0)) return reply;
+     const headers = { ...reply.headers, 'content-encoding': encoding, vary: 'accept-encoding' };
+     return { status: reply.status, headers, body: encodeBody(body, encoding) };
