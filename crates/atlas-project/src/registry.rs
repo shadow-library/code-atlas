@@ -486,6 +486,7 @@ impl Registry {
     entries.extend(mcp.entries);
     entries.extend(self.config.reserved_entries());
     warnings.extend(mcp.warnings);
+    warnings.extend(mcp.errors);
     Ok(ConfigReport { entries, warnings })
   }
 

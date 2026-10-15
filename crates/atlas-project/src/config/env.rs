@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use toml::Value;
 
 use super::keys::{Keyed, MCP_KEYS, PROJECT_KEYS, env_var, parse_env_value};
-use super::layers::Origin;
+use super::layers::{FAIL_CLOSED_KEYS, Origin};
 
 const PREFIX: &str = "CODE_ATLAS_";
 const NOT_SETTINGS: [&str; 3] = ["CODE_ATLAS_HOME", "CODE_ATLAS_BIN", "CODE_ATLAS_BUILD_COMMIT"];
@@ -46,6 +46,13 @@ impl ConfigEnv {
       .collect()
   }
 
+  pub(crate) fn unparsable(&self, key: &str) -> Option<(Origin, String)> {
+    let spec = MCP_KEYS.iter().chain(PROJECT_KEYS.iter()).find(|spec| spec.name == key)?;
+    let var = env_var(spec.name);
+    let message = parse_env_value(spec.kind, self.vars.get(&var)?).err()?;
+    Some((Origin::Env { var }, message))
+  }
+
   pub(crate) fn warnings(&self) -> Vec<String> {
     self
       .vars
@@ -57,6 +64,9 @@ impl ConfigEnv {
         let origin = Origin::Env { var: var.clone() };
         if let Err(reason) = spec.class.admits(&origin) {
           return Some(format!("env:{var}: {} ignored: {reason}", spec.name));
+        }
+        if FAIL_CLOSED_KEYS.contains(&spec.name) {
+          return None;
         }
         parse_env_value(spec.kind, raw).err().map(|message| format!("env:{var}: {} ignored: {message}", spec.name))
       })

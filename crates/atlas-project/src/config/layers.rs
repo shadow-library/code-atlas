@@ -7,7 +7,7 @@ use serde::Serialize;
 use toml::Value;
 
 use super::env::ConfigEnv;
-use super::keys::{KeyClass, Keyed, McpSettings, find_spec};
+use super::keys::{KeyClass, Keyed, McpSettings, ToolsSetting, find_spec};
 use super::user::UserConfig;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -59,10 +59,13 @@ impl ConfigEntry {
   }
 }
 
+pub(crate) const FAIL_CLOSED_KEYS: [&str; 1] = ["mcp.tools"];
+
 pub(crate) struct Layered<T> {
   pub(crate) value: T,
   origins: BTreeMap<&'static str, Origin>,
   pub(crate) warnings: Vec<String>,
+  pub(crate) errors: Vec<String>,
 }
 
 impl<T: Keyed> Default for Layered<T> {
@@ -71,6 +74,7 @@ impl<T: Keyed> Default for Layered<T> {
       value: T::default(),
       origins: BTreeMap::new(),
       warnings: Vec::new(),
+      errors: Vec::new(),
     }
   }
 }
@@ -95,6 +99,7 @@ impl<T: Keyed> Layered<T> {
         self.value = candidate;
         self.origins.insert(spec.name, origin.clone());
       }
+      Err(message) if FAIL_CLOSED_KEYS.contains(&spec.name) => self.errors.push(format!("{origin}: {key}: {message}")),
       Err(message) => self.warnings.push(format!("{origin}: {key} ignored: {message}")),
     }
   }
@@ -111,9 +116,10 @@ impl<T: Keyed> Layered<T> {
   }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct McpFlags {
   pub watch: Option<bool>,
+  pub tools: Option<ToolsSetting>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -121,6 +127,18 @@ pub struct ResolvedMcp {
   pub settings: McpSettings,
   pub entries: Vec<ConfigEntry>,
   pub warnings: Vec<String>,
+  pub errors: Vec<String>,
+}
+
+impl ResolvedMcp {
+  pub fn origin(&self, key: &str) -> Origin {
+    self
+      .entries
+      .iter()
+      .find(|entry| entry.key == key)
+      .and_then(|entry| entry.origins.first().cloned())
+      .unwrap_or(Origin::BuiltIn)
+  }
 }
 
 pub fn resolve_mcp(config: &UserConfig, env: &ConfigEnv, flags: McpFlags) -> ResolvedMcp {
@@ -131,14 +149,23 @@ pub fn resolve_mcp(config: &UserConfig, env: &ConfigEnv, flags: McpFlags) -> Res
   for entry in env.entries::<McpSettings>() {
     layered.apply(&entry.origin, entry.key, &entry.value);
   }
+  for key in FAIL_CLOSED_KEYS {
+    if let Some((origin, message)) = env.unparsable(key) {
+      layered.errors.push(format!("{origin}: {key}: {message}"));
+    }
+  }
   if let Some(watch) = flags.watch {
     let flag = if watch { "--watch" } else { "--no-watch" };
     layered.apply(&Origin::Flag { flag: flag.to_owned() }, "mcp.watch", &Value::Boolean(watch));
+  }
+  if let Some(tools) = &flags.tools {
+    layered.apply(&Origin::Flag { flag: "--tools".to_owned() }, "mcp.tools", &tools.to_value());
   }
   ResolvedMcp {
     entries: layered.entries(),
     settings: layered.value,
     warnings: layered.warnings,
+    errors: layered.errors,
   }
 }
 
@@ -165,7 +192,14 @@ mod tests {
     let env = ConfigEnv::from_pairs([("CODE_ATLAS_MCP_WATCH", "true"), ("CODE_ATLAS_MCP_MAX_OUTPUT_BYTES", "7000")]);
 
     let without_flag = resolve_mcp(&config, &env, McpFlags::default());
-    let with_flag = resolve_mcp(&config, &env, McpFlags { watch: Some(false) });
+    let with_flag = resolve_mcp(
+      &config,
+      &env,
+      McpFlags {
+        watch: Some(false),
+        ..McpFlags::default()
+      },
+    );
 
     assert_eq!(
       (without_flag.settings.watch, without_flag.settings.max_output_bytes, without_flag.settings.max_body_lines),
@@ -182,6 +216,48 @@ mod tests {
       ]
     );
     assert!(!with_flag.settings.watch);
+  }
+
+  #[test]
+  fn should_fail_closed_on_an_invalid_tools_value_from_any_layer_instead_of_serving_more_tools() {
+    let (_dir, config) = user_config("[mcp]\ntools = \"core\"\n");
+    let typo = ConfigEnv::from_pairs([("CODE_ATLAS_MCP_TOOLS", "readonly")]);
+    let broken_list = ConfigEnv::from_pairs([("CODE_ATLAS_MCP_TOOLS", "[\"atlas_search\"")]);
+
+    let from_typo = resolve_mcp(&config, &typo, McpFlags::default());
+    let from_broken_list = resolve_mcp(&config, &broken_list, McpFlags::default());
+
+    assert_eq!(
+      from_typo.errors,
+      ["env:CODE_ATLAS_MCP_TOOLS: mcp.tools: expected \"core\", \"read-only\", \"full\" or an array of tool names, got \"readonly\""]
+    );
+    assert!(from_typo.warnings.is_empty(), "{:?}", from_typo.warnings);
+    assert_eq!(
+      from_broken_list.errors,
+      ["env:CODE_ATLAS_MCP_TOOLS: mcp.tools: expected a TOML array such as [\"a\", \"b\"], got \"[\\\"atlas_search\\\"\""]
+    );
+    assert!(resolve_mcp(&config, &ConfigEnv::default(), McpFlags::default()).errors.is_empty());
+  }
+
+  #[test]
+  fn should_let_the_tools_flag_win_over_env_and_config() {
+    let (_dir, config) = user_config("[mcp]\ntools = \"full\"\n");
+    let env = ConfigEnv::from_pairs([("CODE_ATLAS_MCP_TOOLS", "read-only")]);
+
+    let from_env = resolve_mcp(&config, &env, McpFlags::default());
+    let from_flag = resolve_mcp(
+      &config,
+      &env,
+      McpFlags {
+        tools: Some(ToolsSetting::Core),
+        ..McpFlags::default()
+      },
+    );
+
+    assert_eq!(from_env.settings.tools, ToolsSetting::ReadOnly);
+    assert_eq!(from_flag.settings.tools, ToolsSetting::Core);
+    assert_eq!(from_flag.origin("mcp.tools").to_string(), "flag:--tools");
+    assert_eq!(from_env.origin("mcp.tools").to_string(), "env:CODE_ATLAS_MCP_TOOLS");
   }
 
   #[test]

@@ -3,27 +3,10 @@ mod common;
 use std::fs;
 
 use atlas_core::Certainty;
-use atlas_project::{Registry, RepoSpec};
-use common::{ACME_REPOS, start, start_limited, start_watching, start_with, text_of};
+use atlas_mcp::guidance::{self, TOOLS, ToolProfile};
+use atlas_project::{Registry, RepoSpec, ToolsSetting};
+use common::{ACME_REPOS, Harness, start, start_configured, start_limited, start_watching, start_with, text_of};
 use serde_json::{Value, json};
-
-const TOOLS: [&str; 15] = [
-  "atlas_api",
-  "atlas_callees",
-  "atlas_callers",
-  "atlas_context",
-  "atlas_edit",
-  "atlas_explain",
-  "atlas_impact",
-  "atlas_overview",
-  "atlas_patterns",
-  "atlas_search",
-  "atlas_similar",
-  "atlas_status",
-  "atlas_symbol",
-  "atlas_tests_for",
-  "atlas_unused",
-];
 
 #[tokio::test]
 async fn should_advertise_the_workflow_instructions_after_initialize() {
@@ -95,8 +78,8 @@ async fn should_list_as_read_only_exactly_the_tools_the_auto_approve_hook_approv
     .map(|tool| tool.name.as_ref())
     .collect();
   read_only.sort_unstable();
-  assert_eq!(read_only, atlas_mcp::guidance::READ_ONLY_TOOLS);
-  assert!(tools.iter().any(|tool| tool.name == atlas_mcp::guidance::EDIT_TOOL));
+  assert_eq!(read_only, guidance::READ_ONLY_TOOLS);
+  assert!(tools.iter().any(|tool| tool.name == guidance::EDIT_TOOL));
   harness.stop().await.unwrap();
 }
 
@@ -133,11 +116,6 @@ async fn should_list_every_tool_with_a_schema_and_an_agent_facing_description() 
   assert_eq!(required("atlas_impact"), ["targets"]);
   assert_eq!(required("atlas_callers"), ["target"]);
   assert!(required("atlas_overview").is_empty());
-  for name in ["atlas_context", "atlas_callers", "atlas_callees", "atlas_impact", "atlas_tests_for", "atlas_api"] {
-    let description = tools.iter().find(|tool| tool.name == name).unwrap().description.clone().unwrap();
-    assert!(description.contains("[heuristic]/[inferred]"), "{name}: {description}");
-    assert!(description.contains("verify"), "{name}: {description}");
-  }
   harness.stop().await.unwrap();
 }
 
@@ -521,23 +499,86 @@ async fn should_refuse_paths_outside_the_project_and_other_projects_keys() {
   harness.stop().await.unwrap();
 }
 
-const PRE_EPIC_SCHEMA_BYTES: usize = 15_140;
+const FULL_SURFACE_BUDGET: usize = 14_300;
+const CORE_SURFACE_BUDGET: usize = 8_900;
+const READ_ONLY_SURFACE_BUDGET: usize = 6_400;
+
+async fn start_profile(tools: ToolsSetting) -> Harness {
+  start_configured(&ACME_REPOS, |_| {}, |options| options.tools = tools).await
+}
+
+async fn surface_bytes(harness: &Harness) -> (usize, usize) {
+  let tools = harness.client.list_all_tools().await.unwrap();
+  let listed = serde_json::to_string(&json!({ "tools": tools })).unwrap();
+  let instructions = harness.client.peer_info().unwrap().instructions.clone().unwrap();
+  (instructions.len(), listed.len())
+}
 
 #[tokio::test]
-async fn should_keep_tool_schemas_within_the_budget() {
+async fn should_keep_every_profile_within_its_byte_budget() {
+  for (setting, budget) in [
+    (ToolsSetting::Full, FULL_SURFACE_BUDGET),
+    (ToolsSetting::Core, CORE_SURFACE_BUDGET),
+    (ToolsSetting::ReadOnly, READ_ONLY_SURFACE_BUDGET),
+  ] {
+    let harness = start_profile(setting.clone()).await;
+    let (instructions, listed) = surface_bytes(&harness).await;
+    assert!(
+      instructions + listed <= budget,
+      "{setting:?}: instructions {instructions} + tools/list {listed} = {} bytes, over {budget}",
+      instructions + listed
+    );
+    harness.stop().await.unwrap();
+  }
+}
+
+#[tokio::test]
+async fn should_serve_only_the_tools_of_the_profile_with_instructions_rendered_for_it() {
+  let harness = start_profile(ToolsSetting::Core).await;
+  let core = ToolProfile::from_setting(&ToolsSetting::Core).unwrap();
+
+  let tools = harness.client.list_all_tools().await.unwrap();
+  let instructions = harness.client.peer_info().unwrap().instructions.clone().unwrap();
+  let hidden = harness.call("atlas_similar", json!({"target": "toCents"})).await;
+  let served = harness.call("atlas_search", json!({"query": "toCents"})).await;
+
+  let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
+  assert_eq!(names, guidance::CORE_TOOLS);
+  let read_only: Vec<&str> = tools
+    .iter()
+    .filter(|tool| tool.annotations.as_ref().and_then(|annotations| annotations.read_only_hint) == Some(true))
+    .map(|tool| tool.name.as_ref())
+    .collect();
+  assert_eq!(read_only, core.read_only_tools());
+  assert_eq!(instructions, guidance::instructions(&core));
+  assert_eq!(hidden.is_error, Some(true));
+  assert_eq!(text_of(&hidden), "atlas_similar is not in profile core; enable with [mcp] tools");
+  assert_ne!(served.is_error, Some(true), "{}", text_of(&served));
+  assert!(!harness.server.telemetry().tools.contains_key("atlas_similar"));
+  harness.stop().await.unwrap();
+}
+
+#[test]
+fn should_refuse_to_open_with_an_unknown_tool_in_the_list() {
+  let scratch = tempfile::tempdir().unwrap();
+  let home = atlas_project::AtlasHome::rooted_at(scratch.path().join("home"));
+  let options = atlas_mcp::ServeOptions::new(home, scratch.path()).with_tools(ToolsSetting::Only(vec!["atlas_changes".to_owned()]));
+
+  let error = atlas_mcp::Server::open(&options).err().unwrap();
+
+  assert!(
+    error
+      .to_string()
+      .starts_with("unknown tool \"atlas_changes\"; expected the profile core, read-only or full, or a list of tools from: atlas_api, "),
+    "{error}"
+  );
+}
+
+#[tokio::test]
+async fn should_keep_tool_schemas_free_of_schema_noise() {
   let harness = start(&ACME_REPOS).await;
 
   let tools = harness.client.list_all_tools().await.unwrap();
-  let listed = serde_json::to_string(&tools).unwrap();
-  let instructions = harness.client.peer_info().unwrap().instructions.clone().unwrap();
-
-  let total = listed.len() + instructions.len();
-  assert!(
-    total * 10 <= PRE_EPIC_SCHEMA_BYTES * 11,
-    "tools/list {} + instructions {} = {total} bytes, over 1.10 x {PRE_EPIC_SCHEMA_BYTES}",
-    listed.len(),
-    instructions.len()
-  );
   for tool in &tools {
     let schema = serde_json::to_string(&tool.input_schema).unwrap();
     for forbidden in ["$schema", "$ref", "$defs", "null"] {

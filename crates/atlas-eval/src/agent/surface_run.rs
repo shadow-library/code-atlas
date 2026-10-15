@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 
 use super::atlas_cli::{AtlasCli, isolated_command};
-use super::claude::{ClaudeConfig, EMPTY_MCP_CONFIG, SessionRequest, host_env, session_invocation};
+use super::claude::{ATLAS_SERVER_NAME, ClaudeConfig, EMPTY_MCP_CONFIG, SessionRequest, host_env, session_invocation};
 use super::error::{AgentError, AgentResult};
 use super::process::{ProcessExit, run_captured, run_streaming};
 use super::record::write_json;
@@ -34,11 +34,12 @@ pub struct SurfaceOptions {
   pub fixture: PathBuf,
   pub work_dir: PathBuf,
   pub sessions: bool,
+  pub tools: Option<String>,
 }
 
 pub fn run_surface(options: &SurfaceOptions) -> AgentResult<SurfaceReport> {
   let (cli, fixture) = prepare(options)?;
-  let (initialize, tools_list) = fetch_mcp_surface(&options.atlas_bin, cli.home(), PROJECT_NAME, &fixture)?;
+  let (initialize, tools_list) = fetch_mcp_surface(&options.atlas_bin, cli.home(), &mcp_arguments(options), &fixture)?;
   let bytes = measure_surface_bytes(&initialize, &tools_list);
   let claude_code_version = claude_version(&options.claude.binary);
   let tokens = match (options.sessions, &claude_code_version) {
@@ -52,6 +53,7 @@ pub fn run_surface(options: &SurfaceOptions) -> AgentResult<SurfaceReport> {
   };
   Ok(SurfaceReport {
     model: options.claude.model.clone(),
+    tools: options.tools.clone(),
     claude_code_version,
     atlas_version: cli.version(),
     bytes,
@@ -85,9 +87,17 @@ fn claude_version(binary: &Path) -> Option<String> {
   output.exit.succeeded().then(|| output.stdout.trim().to_owned())
 }
 
-pub fn fetch_mcp_surface(binary: &Path, home: &Path, project: &str, cwd: &Path) -> AgentResult<(Value, Value)> {
+fn mcp_arguments(options: &SurfaceOptions) -> Vec<String> {
+  let mut arguments = vec!["mcp".to_owned(), "--project".to_owned(), PROJECT_NAME.to_owned()];
+  if let Some(tools) = &options.tools {
+    arguments.extend(["--tools".to_owned(), tools.clone()]);
+  }
+  arguments
+}
+
+pub fn fetch_mcp_surface(binary: &Path, home: &Path, arguments: &[String], cwd: &Path) -> AgentResult<(Value, Value)> {
   let mut child = isolated_command(binary)
-    .args(["mcp", "--project", project])
+    .args(arguments)
     .current_dir(cwd)
     .env("CODE_ATLAS_HOME", home)
     .stdin(Stdio::piped())
@@ -212,7 +222,9 @@ fn workbench(options: &SurfaceOptions, cli: &AtlasCli) -> AgentResult<Workbench>
   let empty_config = options.work_dir.join("empty-mcp.json");
   fs::write(&empty_config, EMPTY_MCP_CONFIG).map_err(|error| AgentError::io(&empty_config, error))?;
   let atlas_config = options.work_dir.join("atlas-mcp.json");
-  write_json(&atlas_config, &cli.mcp_config(PROJECT_NAME))?;
+  let mut config = cli.mcp_config(PROJECT_NAME);
+  config["mcpServers"][ATLAS_SERVER_NAME]["args"] = Value::from(mcp_arguments(options));
+  write_json(&atlas_config, &config)?;
   Ok(Workbench {
     tree,
     sessions_dir,
@@ -337,6 +349,9 @@ pub fn extend_surface(options: &SurfaceOptions, mut report: SurfaceReport) -> Ag
   };
   if report.model != options.claude.model {
     return Err(invalid("the recorded report used another model"));
+  }
+  if report.tools != options.tools {
+    return Err(invalid("the recorded report used another tool profile"));
   }
   let version = claude_version(&options.claude.binary);
   if version != report.claude_code_version {

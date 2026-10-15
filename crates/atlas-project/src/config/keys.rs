@@ -126,6 +126,29 @@ pub enum ToolsSetting {
   Only(Vec<String>),
 }
 
+impl ToolsSetting {
+  pub fn to_value(&self) -> Value {
+    match self {
+      Self::Core => Value::String("core".to_owned()),
+      Self::ReadOnly => Value::String("read-only".to_owned()),
+      Self::Full => Value::String("full".to_owned()),
+      Self::Only(tools) => words(tools),
+    }
+  }
+}
+
+impl std::str::FromStr for ToolsSetting {
+  type Err = String;
+
+  fn from_str(text: &str) -> Result<Self, Self::Err> {
+    let value = match text {
+      "core" | "read-only" | "full" => Value::String(text.to_owned()),
+      list => Value::Array(list.split(',').map(|name| Value::String(name.trim().to_owned())).collect()),
+    };
+    as_tools(&value)
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpSettings {
   pub watch: bool,
@@ -156,12 +179,7 @@ impl Keyed for McpSettings {
   fn get(&self, key: &str) -> Option<Value> {
     match key {
       "mcp.watch" => Some(Value::Boolean(self.watch)),
-      "mcp.tools" => Some(match &self.tools {
-        ToolsSetting::Core => Value::String("core".to_owned()),
-        ToolsSetting::ReadOnly => Value::String("read-only".to_owned()),
-        ToolsSetting::Full => Value::String("full".to_owned()),
-        ToolsSetting::Only(tools) => words(tools),
-      }),
+      "mcp.tools" => Some(self.tools.to_value()),
       "mcp.max_output_bytes" => Some(number(self.max_output_bytes as u64)),
       "mcp.max_body_lines" => Some(number(self.max_body_lines as u64)),
       _ => None,
@@ -408,6 +426,21 @@ mod tests {
       target.set(spec.name, &value).unwrap();
       assert_eq!(target, McpSettings::default(), "{}", spec.name);
     }
+  }
+
+  #[test]
+  fn should_parse_a_tools_flag_as_a_profile_or_a_comma_separated_list() {
+    assert_eq!("core".parse::<ToolsSetting>(), Ok(ToolsSetting::Core));
+    assert_eq!("read-only".parse::<ToolsSetting>(), Ok(ToolsSetting::ReadOnly));
+    assert_eq!("full".parse::<ToolsSetting>(), Ok(ToolsSetting::Full));
+    assert_eq!(
+      "atlas_search, atlas_status".parse::<ToolsSetting>(),
+      Ok(ToolsSetting::Only(vec!["atlas_search".to_owned(), "atlas_status".to_owned()]))
+    );
+    assert_eq!(
+      "atlas_search,".parse::<ToolsSetting>(),
+      Err("a tool list must name at least one tool and no empty names".to_owned())
+    );
   }
 
   #[test]

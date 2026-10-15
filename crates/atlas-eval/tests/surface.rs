@@ -14,6 +14,7 @@ case "$1" in
   --version) echo "catl 0.0.0-fake"; exit 0 ;;
   project|index) exit 0 ;;
   mcp)
+    printf '%s\n' "$*" > "$(dirname "$0")/mcp-args"
     read -r line
     printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/message","params":{}}'
     printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"fake","version":"1"},"instructions":"Hello"}}'
@@ -78,6 +79,7 @@ fn options(root: &Path, claude: PathBuf, sessions: bool) -> SurfaceOptions {
     fixture,
     work_dir: root.join("work"),
     sessions,
+    tools: None,
   }
 }
 
@@ -136,6 +138,19 @@ fn should_mark_tokens_not_measured_without_a_claude_binary() {
       reason: "the claude binary is unavailable".to_owned()
     }
   );
+}
+
+#[test]
+fn should_start_the_server_with_the_requested_tool_profile_and_record_it() {
+  let root = tempfile::tempdir().unwrap();
+  let mut options = options(root.path(), root.path().join("missing-claude"), false);
+  options.tools = Some("core".to_owned());
+
+  let report = run_surface(&options).unwrap();
+
+  assert_eq!(fs::read_to_string(root.path().join("mcp-args")).unwrap(), "mcp --project surface --tools core\n");
+  assert_eq!(report.tools.as_deref(), Some("core"));
+  assert!(render_surface_markdown(&report).contains("\n- tools: core\n"));
 }
 
 fn extension_base(root: &Path, claude: &Path) -> atlas_eval::agent::SurfaceReport {

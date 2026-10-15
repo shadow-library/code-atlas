@@ -1,56 +1,36 @@
-macro_rules! certainty {
-  () => {
-    "Relations carry a certainty tag: [heuristic]/[inferred] ones are leads to verify in the source, not facts."
-  };
-}
-
 pub(crate) const CONTEXT: &str = concat!(
-  "START HERE for a task. Returns a ranked, budgeted pack of the code to read: full bodies for the top items, signatures for the next, one-liners for the rest, each with its line range and why it was included, plus what was omitted and why. ",
-  "Items marked \"named in the task: read the file directly\" show an outline and the lines around the key site instead of the body; for a rename or symbol rewrite use atlas_edit. ",
-  "Seeds are optional symbols or files to anchor on. Pass files or symbols you already read as known: they anchor the pack but are not listed again, so it shows what is missing. ",
-  certainty!()
+  "START HERE for a task: a ranked, budgeted pack of the code to read across repos (bodies, then signatures, then one-liners), each with its line range and reason, plus what was left out. ",
+  "Pass what you already read as known. Files named in the task get an outline and key lines, not a body. ",
+  "The pack is seeded from the task's words and can miss the file to change: search when it is not there."
 );
-pub(crate) const SEARCH: &str = "Find where a capability is implemented or whether similar code already exists (names, text and structure). Use before writing new code. Returns ranked hits by match strength; a hit is a candidate, not proof of equivalence.";
-pub(crate) const SYMBOL: &str = "Symbol lookup and IDE navigation. mode: info (default: definition, signature, docs, relation counts), find (name-path search like 'UsersService/findOne'), outline (a file's symbols from the index; source='lsp' for the exact language-server outline), source (code from disk), references | declaration | implementations (exact, from rust-analyzer or typescript-language-server), hierarchy (supertypes/subtypes from the graph), diagnostics (compiler errors for a file). Exact modes fail with an install hint when no server is available; for references, source='graph' returns tagged graph results instead.";
-pub(crate) const CALLERS: &str = concat!(
-  "Who calls this function or method, grouped by repo, up to depth hops (default 1). Misses dynamic or macro-generated calls; see the caveats. via_http includes HTTP callers from other repos. ",
-  certainty!()
+pub(crate) const SEARCH: &str = "Ranked search across every repo for where a capability, name or text lives (names, text and structure). Use instead of grep when you do not know the identifier, and before writing code to find something to reuse. Hits are candidates.";
+pub(crate) const SYMBOL: &str = concat!(
+  "One symbol or file. Use instead of grep or reading whole files for a definition, its references or a file's structure. ",
+  "mode: info (default: definition, signature, docs, relation counts), find (name-path search), outline (a file's symbols), source (code from disk), ",
+  "references | declaration | implementations (exact, from rust-analyzer or typescript-language-server; without one they fail with an install hint, and references source=graph answers from the index), ",
+  "hierarchy (supertypes and subtypes), diagnostics (compiler errors)."
 );
-pub(crate) const CALLEES: &str = concat!(
-  "What this function or method calls, grouped by repo, up to depth hops (default 1). Misses dynamic or macro-generated calls; see the caveats. via_http follows HTTP calls across repos. ",
-  certainty!()
-);
-pub(crate) const IMPACT: &str = concat!(
-  "Blast radius of changing one or more targets: direct and transitive dependents grouped by repo, endpoints, cross-repo consumers, tests and config, with the path explaining each. Use before changing shared code. Depth defaults to 3. ",
-  "Unresolved references can hide dependents; the caveats say where. ",
-  certainty!()
-);
-pub(crate) const TESTS_FOR: &str = concat!(
-  "Tests relevant to a target: direct, via the call graph, or via file coverage heuristics. When no test reaches a method, a separate hedged method-name fallback lists tests that call a method of that name on an untyped value; it is not proof of coverage. Use to choose which tests to run. ",
-  certainty!()
-);
-pub(crate) const API: &str = concat!(
-  "HTTP endpoints with handlers, consumers across repos and auth schemes supported vs used. Filter by repo or endpoint ('GET /users/{id}'). ",
-  certainty!()
-);
-pub(crate) const SIMILAR: &str = concat!(
-  "Near-duplicates and equivalents of a symbol (target), of a line range inside an indexed symbol (snippet, e.g. 'repo:src/money.ts:10-30') or of draft code you have not saved (code with language rust|ts|tsx|js), ",
-  "with consumers, tests and a likely shared home. Provide exactly one of target, snippet or code. Use before adding a helper. Matches are leads, not proof of equivalence."
-);
-pub(crate) const UNUSED: &str = "Candidate unused functions, endpoints, auth modes and events, plus test-only symbols (used only by tests), with evidence and caveats. These are candidates only: dynamic dispatch, reflection and external consumers can hide uses; verify before deleting.";
+pub(crate) const CALLERS: &str = "Who calls a function or method, grouped by repo, up to depth hops; via_http adds HTTP callers in other repos. Unlike grep it resolves imports and methods. Misses dynamic and macro-generated calls (see the caveats).";
+pub(crate) const CALLEES: &str =
+  "What a function or method calls, grouped by repo, up to depth hops; via_http follows HTTP calls into other repos. Misses dynamic and macro-generated calls (see the caveats).";
+pub(crate) const IMPACT: &str = "Blast radius of changing targets: dependents (direct and transitive, by repo), endpoints, cross-repo consumers, tests and config, each with the path that explains it. Use before changing shared code. Unresolved references can hide dependents (see the caveats).";
+pub(crate) const TESTS_FOR: &str = "Tests that reach a target: directly, through the call graph or by file-coverage heuristics. Use to choose tests to run. When none reaches a method, a labelled fallback lists tests calling a method of that name on an untyped value: not proof of coverage.";
+pub(crate) const API: &str = "HTTP endpoints with handlers, consumers in other repos and auth schemes supported vs used. Routes come only from NestJS, Express, axum and declared route families, so a missing route is not proof of absence.";
+pub(crate) const SIMILAR: &str = "Near-duplicates of a symbol (target), of a line range inside an indexed symbol (snippet) or of unsaved code (code + language), with consumers, tests and a likely shared home; give exactly one. Use before adding a helper. Matches are leads, not proof of equivalence.";
+pub(crate) const UNUSED: &str = "Candidate dead code: functions, endpoints, auth modes and events with no use found, plus symbols used only by tests. Dynamic dispatch, reflection and external consumers can hide uses: verify before deleting.";
 pub(crate) const PATTERNS: &str =
-  "How this codebase does something (e.g. 'error handling', 'pagination'): exemplar implementations ranked by prevalence. Use to match local conventions.";
+  "How this codebase usually does something (a topic such as error handling or pagination): exemplar implementations ranked by prevalence. Use to match local conventions.";
 pub(crate) const EXPLAIN: &str =
   "Provenance of a symbol or relation: certainty, evidence spans, producing run, staleness and history. Use to decide whether to trust a [heuristic]/[inferred] fact.";
 pub(crate) const OVERVIEW: &str = "Project map: repos, packages, applications, entrypoints, key modules and detected domains. Use to orient in an unfamiliar project.";
-pub(crate) const STATUS: &str = "Index health: freshness, parse failures, SCIP coverage, LLM status, language servers and this server's per-tool call telemetry. Use when answers look incomplete or stale. since_run also lists what the index changed in newer runs (files analysed, deleted, moved, renamed symbols); use it after editing.";
+pub(crate) const STATUS: &str = "Index health: freshness, parse failures, SCIP coverage, LLM status, language servers and per-tool call telemetry. Use when answers look incomplete or stale; after editing, since_run lists what the index changed.";
 
 pub(crate) const UNBOUND_INSTRUCTIONS: &str = "Code Atlas is not bound to a project here: the server started in a directory that no registered project contains, so it serves only atlas_status, which says how to register the repo. Use your own tools for this repo.";
 pub(crate) const UNBOUND_STATUS: &str = "Why Code Atlas answers nothing here (no registered project contains this directory) and how to register the repo.";
 
 pub(crate) fn edit() -> String {
   format!(
-    "Edit code safely. operation: rename (exact, every file the language server sees; sites it cannot see are listed to verify; apply refuses when sites the server should have renamed are unverified, set allow_unverified only after checking them), replace_body / insert_before / insert_after (a symbol's definition), safe_delete (refuses and lists references), replace_content (one file), replace_in_files, apply (a plan id). dry_run=true returns diffs and a plan id. Refuses if a file changed since planning. Re-read changed files before editing them with your own tool. {}. {}. {}.",
+    "Edit code exactly: rename across files through the language server (other sites are listed; apply refuses while sites it should have renamed are unverified, so set allow_unverified only after checking them), rewrite or insert around a symbol's definition, safe_delete (refuses while referenced), replace text in one file or many. dry_run=true returns diffs and a plan id for apply. Refuses if a file changed since planning. Re-read changed files before editing them with your own tool. {}. {}. {}.",
     atlas_ide::REPLACE_BODY_NOTE,
     atlas_ide::REGEX_NOTE,
     atlas_ide::REPLACE_IN_FILES_NOTE

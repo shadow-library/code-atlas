@@ -11,8 +11,8 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use atlas_mcp::guidance::{SERVER_NAME, repo_block};
-use atlas_project::{AgentsSettings, Binding, ClaudeHook, ClaudeScope, GuidanceMode, ProjectError, Registry, Resolution};
+use atlas_mcp::guidance::{SERVER_NAME, ToolProfile, repo_block};
+use atlas_project::{AgentsSettings, Binding, ClaudeHook, ClaudeScope, ConfigEnv, GuidanceMode, McpFlags, ProjectError, Registry, Resolution, resolve_mcp};
 use serde_json::{Value, json};
 
 use self::claude::{HOME_VAR, RegistrationScope};
@@ -21,6 +21,7 @@ use self::manifest::{Agent, Manifest, Record, Scope};
 use self::plan::{Bookkeeping, Change, Desired, Flags, Owner, Redo, Step, decide_removal, decide_write};
 use self::target::{Content, Current, Effect, Target};
 use crate::cli::{AgentName, AgentScope, AgentsCommand, AgentsStatusArgs, AgentsSyncArgs, AgentsUnsyncArgs, ConnectCommand, ConnectScope};
+use crate::commands::mcp::tool_profile;
 use crate::confirm::confirm;
 use crate::context::Context;
 use crate::diff::unified;
@@ -138,6 +139,7 @@ fn sync(ctx: &Context, request: SyncRequest) -> CliResult<Outcome> {
   refuse_unsandboxed_test()?;
   let registry = ctx.registry()?;
   let settings = registry.user_config().agents();
+  let profile = tool_profile(&resolve_mcp(registry.user_config(), &ConfigEnv::default(), McpFlags::default()))?;
   let mut notes = Notes::default();
   let agents = select_agents(&request.agents, &settings)?;
   let scope = request.scope.unwrap_or(match settings.claude.scope {
@@ -154,7 +156,14 @@ fn sync(ctx: &Context, request: SyncRequest) -> CliResult<Outcome> {
     Style::Connect => GuidanceMode::Tracked,
   };
   let repos = resolve_repos(ctx, &registry, &request.repos, repos_required, guidance != GuidanceMode::None, &mut notes)?;
-  let desired = desired_wiring(request.style, &agents, scope, &settings, guidance, &repos, &mut notes)?;
+  let wiring = Wiring {
+    style: request.style,
+    scope,
+    settings: &settings,
+    profile: &profile,
+    guidance,
+  };
+  let desired = desired_wiring(&wiring, &agents, &repos, &mut notes)?;
   Manifest::locked(ctx.home.wiring_path(), |manifest| {
     let selection: Vec<(Agent, Scope)> = agents.iter().map(|agent| (*agent, if *agent == Agent::Claude { scope } else { Scope::User })).collect();
     let repo_roots: Vec<&Path> = repos.iter().map(|repo| repo.root.as_path()).collect();
@@ -299,26 +308,27 @@ fn connection_root(path: &Path, resolution: &Resolution) -> CliResult<PathBuf> {
   Ok(repo.map_or(path, |repo| repo.path.clone()))
 }
 
-fn desired_wiring(
+struct Wiring<'a> {
   style: Style,
-  agents: &[Agent],
   scope: Scope,
-  settings: &AgentsSettings,
+  settings: &'a AgentsSettings,
+  profile: &'a ToolProfile,
   guidance: GuidanceMode,
-  repos: &[RepoRoot],
-  notes: &mut Notes,
-) -> CliResult<Vec<Desired>> {
+}
+
+fn desired_wiring(wiring: &Wiring<'_>, agents: &[Agent], repos: &[RepoRoot], notes: &mut Notes) -> CliResult<Vec<Desired>> {
   let home = std::env::var_os(HOME_VAR).filter(|value| !value.is_empty());
+  let scope = wiring.scope;
   let mut items: Vec<Desired> = Vec::new();
   for agent in agents {
     match agent {
-      Agent::Claude if style == Style::Connect => connect_wiring(scope, home.as_ref(), repos, notes, &mut items)?,
-      Agent::Claude => claude_wiring(scope, settings, home.as_ref(), repos, notes, &mut items)?,
-      Agent::Codex => codex_wiring(settings, home.as_ref(), notes, &mut items)?,
+      Agent::Claude if wiring.style == Style::Connect => connect_wiring(scope, home.as_ref(), repos, notes, &mut items)?,
+      Agent::Claude => claude_wiring(scope, wiring.settings, wiring.profile, home.as_ref(), repos, notes, &mut items)?,
+      Agent::Codex => codex_wiring(wiring.settings, home.as_ref(), notes, &mut items)?,
     }
     let owner_scope = if *agent == Agent::Claude { scope } else { Scope::User };
     for repo in repos {
-      guidance_wiring(*agent, owner_scope, guidance, repo, notes, &mut items);
+      guidance_wiring(*agent, owner_scope, wiring, repo, notes, &mut items);
     }
   }
   let mut excludes = Vec::new();
@@ -347,12 +357,20 @@ fn desired_wiring(
   Ok(items)
 }
 
-fn claude_wiring(scope: Scope, settings: &AgentsSettings, home: Option<&OsString>, repos: &[RepoRoot], notes: &mut Notes, items: &mut Vec<Desired>) -> CliResult<()> {
+fn claude_wiring(
+  scope: Scope,
+  settings: &AgentsSettings,
+  profile: &ToolProfile,
+  home: Option<&OsString>,
+  repos: &[RepoRoot],
+  notes: &mut Notes,
+  items: &mut Vec<Desired>,
+) -> CliResult<()> {
   let home = home.map(OsString::as_os_str);
   let settings_items = |path: PathBuf| {
     let mut contents = Vec::new();
     if settings.claude.hooks.contains(&ClaudeHook::AutoApprove) {
-      contents.push((Target::Permissions { path: path.clone() }, Content::Entries(claude::permission_rules())));
+      contents.push((Target::Permissions { path: path.clone() }, Content::Entries(claude::permission_rules(profile))));
     }
     if settings.claude.hooks.contains(&ClaudeHook::Remind) {
       contents.push((Target::Hooks { path }, Content::Entries(claude::hook_groups(&settings.binary, home))));
@@ -503,14 +521,14 @@ fn codex_wiring(settings: &AgentsSettings, home: Option<&OsString>, notes: &mut 
   Ok(())
 }
 
-fn guidance_wiring(agent: Agent, scope: Scope, mode: GuidanceMode, repo: &RepoRoot, notes: &mut Notes, items: &mut Vec<Desired>) {
+fn guidance_wiring(agent: Agent, scope: Scope, wiring: &Wiring<'_>, repo: &RepoRoot, notes: &mut Notes, items: &mut Vec<Desired>) {
   let owner = Owner {
     agent,
     scope,
     repo: Some(repo.root.clone()),
   };
-  let block = Content::Block(repo_block(&repo.project));
-  match (mode, agent) {
+  let block = Content::Block(repo_block(&repo.project, wiring.profile));
+  match (wiring.guidance, agent) {
     (GuidanceMode::None | GuidanceMode::Auto, _) => {}
     (GuidanceMode::Local, Agent::Codex) => notes.push("Codex has no git-excluded instruction file; guidance = \"local\" applies to Claude Code only".to_owned()),
     (GuidanceMode::Local, Agent::Claude) => {

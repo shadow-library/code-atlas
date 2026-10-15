@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use atlas_core::EntityKind;
+use atlas_project::ToolsSetting;
 use clap::{ArgGroup, Args, Parser, Subcommand, ValueEnum};
 
 const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (commit ", env!("CODE_ATLAS_BUILD_COMMIT"), ")");
@@ -288,6 +289,12 @@ pub struct McpArgs {
   pub watch: bool,
   #[arg(long, conflicts_with = "watch", help = "Do not watch, even when config.toml or CODE_ATLAS_MCP_WATCH turns watching on")]
   pub no_watch: bool,
+  #[arg(
+    long,
+    value_name = "PROFILE",
+    help = "Tools to serve: core, read-only, full or a comma-separated list of tool names (default: [mcp] tools in config.toml, else full)"
+  )]
+  pub tools: Option<ToolsSetting>,
 }
 
 #[derive(Debug, Subcommand)]

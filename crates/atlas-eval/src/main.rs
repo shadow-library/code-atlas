@@ -37,7 +37,7 @@ enum AgentCommand {
   #[command(about = "Run one tiny session with the baseline flags and record which isolation they achieve")]
   Probe(ProbeArgs),
   #[command(about = "Measure what the MCP tool surface costs per request: bytes of tools/list and instructions, and tokens in tiny sessions")]
-  Surface(SurfaceArgs),
+  Surface(Box<SurfaceArgs>),
   #[command(about = "From recorded sessions: the turn at which each session first sees, reads and edits the files its task must change")]
   Headroom(HeadroomArgs),
   #[command(about = "From recorded runs: how much every report metric differs between runs of the same condition, next to the A/B effects")]
@@ -203,6 +203,13 @@ struct SurfaceArgs {
   work_dir: Option<PathBuf>,
   #[arg(long)]
   no_sessions: bool,
+  #[arg(
+    long,
+    value_name = "PROFILE",
+    conflicts_with = "render_from",
+    help = "Pass --tools PROFILE to catl mcp (core, read-only, full or name,name)"
+  )]
+  tools: Option<String>,
 }
 
 fn main() -> ExitCode {
@@ -464,6 +471,7 @@ fn measure_surface(args: &SurfaceArgs, atlas_bin: &Path) -> Result<agent::Surfac
     fixture: repo_root.join("fixtures").join("acme"),
     work_dir: args.work_dir.clone().unwrap_or_else(|| scratch.path().to_owned()),
     sessions: !args.no_sessions,
+    tools: args.tools.clone(),
   };
   match &args.extend_from {
     Some(path) => agent::extend_surface(&options, agent::read_json(path)?),

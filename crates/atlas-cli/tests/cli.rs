@@ -1038,6 +1038,81 @@ fn should_serve_only_atlas_status_outside_every_project() {
   assert_only_json_rpc(&lines);
 }
 
+fn listed_tools(session: &mut McpSession) -> Vec<String> {
+  let tools = session.request(2, "tools/list", serde_json::json!({}));
+  tools["result"]["tools"]
+    .as_array()
+    .unwrap()
+    .iter()
+    .map(|tool| tool["name"].as_str().unwrap().to_owned())
+    .collect()
+}
+
+#[test]
+fn should_serve_the_configured_tool_profile_and_let_the_flag_override_it() {
+  let sandbox = Sandbox::new();
+  let root = sandbox.create_acme();
+  let api = root.join("acme-api");
+  sandbox.write_config("[mcp]\ntools = \"read-only\"\n");
+
+  let mut configured = McpSession::spawn(&sandbox, &api, &["mcp"]);
+  configured.handshake();
+  let instructions = configured.seen[0].clone();
+  assert_eq!(
+    listed_tools(&mut configured),
+    ["atlas_context", "atlas_impact", "atlas_search", "atlas_status", "atlas_symbol"]
+  );
+  assert!(!instructions.contains("atlas_edit") && !instructions.contains("atlas_similar"), "{instructions}");
+  let hidden = configured.request(3, "tools/call", serde_json::json!({"name": "atlas_edit", "arguments": {"operation": "apply"}}));
+  assert_eq!(hidden["result"]["isError"], true, "{hidden}");
+  assert_eq!(hidden["result"]["content"][0]["text"], "atlas_edit is not in profile read-only; enable with [mcp] tools");
+  drop(configured.stdin.take());
+  assert_eq!(configured.wait_for_exit().0, Some(0));
+
+  let mut flagged = McpSession::spawn(&sandbox, &api, &["mcp", "--tools", "atlas_callers,atlas_status"]);
+  flagged.handshake();
+  assert_eq!(listed_tools(&mut flagged), ["atlas_callers", "atlas_status"]);
+  drop(flagged.stdin.take());
+  assert_eq!(flagged.wait_for_exit().0, Some(0));
+
+  let doctor = stdout(&sandbox.run(&api, &["doctor"]));
+  assert!(
+    doctor.contains("ok    mcp tools: profile read-only: atlas_context, atlas_impact, atlas_search, atlas_status, atlas_symbol\n"),
+    "{doctor}"
+  );
+
+  let unknown = sandbox.run(&api, &["mcp", "--tools", "atlas_read"]);
+  assert_eq!(unknown.status.code(), Some(2));
+  assert!(
+    String::from_utf8_lossy(&unknown.stderr)
+      .contains("flag:--tools: mcp.tools: unknown tool \"atlas_read\"; expected the profile core, read-only or full, or a list of tools from: atlas_api, "),
+    "{}",
+    String::from_utf8_lossy(&unknown.stderr)
+  );
+}
+
+#[test]
+fn should_refuse_to_serve_mcp_when_an_environment_tool_profile_is_invalid_instead_of_serving_every_tool() {
+  let sandbox = Sandbox::new();
+  let root = sandbox.create_acme();
+  let api = root.join("acme-api");
+  sandbox.write_config("[mcp]\ntools = \"read-only\"\n");
+  let typo = [("CODE_ATLAS_MCP_TOOLS", "readonly")];
+  let expected = "env:CODE_ATLAS_MCP_TOOLS: mcp.tools: expected \"core\", \"read-only\", \"full\" or an array of tool names, got \"readonly\"";
+
+  let refused = sandbox.run_env(&api, &["mcp"], &typo);
+  let doctor = sandbox.run_env(&api, &["doctor"], &typo);
+
+  assert_eq!(refused.status.code(), Some(2));
+  assert!(String::from_utf8_lossy(&refused.stderr).contains(expected), "{}", String::from_utf8_lossy(&refused.stderr));
+  assert_ne!(doctor.status.code(), Some(0));
+  assert!(
+    stdout(&doctor).contains(&format!("FAIL  mcp tools: `catl mcp` refuses to start: {expected}\n")),
+    "{}",
+    stdout(&doctor)
+  );
+}
+
 #[test]
 fn should_fail_mcp_with_a_usage_exit_for_an_unknown_project_or_an_ambiguous_directory() {
   let sandbox = Sandbox::new();

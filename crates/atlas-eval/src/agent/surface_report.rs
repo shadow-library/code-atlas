@@ -9,6 +9,7 @@ pub fn render_surface_markdown(report: &SurfaceReport) -> String {
   let _ = writeln!(text, "- model: `{}`", report.model);
   let _ = writeln!(text, "- Claude Code: {}", report.claude_code_version.as_deref().unwrap_or("unknown"));
   let _ = writeln!(text, "- catl: {}", report.atlas_version.as_deref().unwrap_or("unknown"));
+  let _ = writeln!(text, "- tools: {}", report.tools.as_deref().unwrap_or("the server default (`[mcp] tools`, else full)"));
   let _ = writeln!(
     text,
     "- MCP server: {} {}\n",
@@ -231,6 +232,7 @@ mod tests {
   fn should_render_the_not_measured_reason_after_the_bytes_tables() {
     let report = SurfaceReport {
       model: "m".to_owned(),
+      tools: None,
       claude_code_version: None,
       atlas_version: Some("catl 1".to_owned()),
       bytes: SurfaceBytes {

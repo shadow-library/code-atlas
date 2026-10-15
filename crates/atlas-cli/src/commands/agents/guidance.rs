@@ -113,7 +113,7 @@ mod tests {
   use super::*;
 
   fn block(project: &str) -> String {
-    atlas_mcp::guidance::repo_block(project)
+    atlas_mcp::guidance::repo_block(project, &atlas_mcp::guidance::ToolProfile::full())
   }
 
   #[test]

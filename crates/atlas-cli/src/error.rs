@@ -259,6 +259,7 @@ impl From<McpError> for CliError {
     match error {
       McpError::Project(error) => Self::Project(error),
       McpError::Engine(error) => Self::Engine(error),
+      unknown @ McpError::UnknownTool { .. } => Self::InvalidSetting(unknown.to_string()),
       other => Self::Mcp(other),
     }
   }

@@ -98,9 +98,9 @@ Global flags: `-p, --project <NAME>`, `--log-level <FILTER>` (overrides `RUST_LO
 | `agents unsync [--agent A]... [--scope S] [--repo PATH]... [--dry-run] [--force] [-y]` | remove exactly what `agents sync` recorded |
 | `connect claude [--scope project\|user] [-y]` | the earlier per-repo wiring, unchanged: project scope (default) writes `.mcp.json` with `catl mcp --project <p> --watch`, user scope registers this binary's absolute path; both add the guidance block; recorded in `wiring.json` but no permission rules or hooks |
 | `hook remind` | answer a Claude Code `PreToolUse` hook from the JSON on stdin (written by `agents sync`); exits 0 whatever happens, including an unknown hook name |
-| `mcp [--watch]` | serve MCP on stdio for the project of `-p` or the working directory; where no project resolves it serves only `atlas_status`, which explains how to register the repo |
+| `mcp [--watch] [--tools PROFILE]` | serve MCP on stdio for the project of `-p` or the working directory; where no project resolves it serves only `atlas_status`, which explains how to register the repo. `--tools` (`core`, `read-only`, `full` or `name,name`) overrides `[mcp] tools`; see [tool profiles](agent-integration.md#tool-profiles) |
 | `debug run <ID>`, `debug explain-context <TASK>`, `debug dump-file <REPO:PATH>` | per-run phase timings and counts, context scoring, raw facts of a file |
-| `doctor [--lsp]` | check home, `config.toml`, registry, the project resolution trace, ignored configuration values, a user-scope Claude Code entry that still pins `--project`, repos, database integrity, index lock, `rust-analyzer`, `typescript-language-server` discovery (one line per candidate), TypeScript 7 repos, `npx`, `claude`, SQLite build; `--lsp` also starts each language server and reports its health (slow) |
+| `doctor [--lsp]` | check home, `config.toml`, registry, the project resolution trace, ignored configuration values, a user-scope Claude Code entry that still pins `--project`, repos, database integrity, index lock, `rust-analyzer`, `typescript-language-server` discovery (one line per candidate), TypeScript 7 repos, `npx`, `claude`, SQLite build, the `[mcp] tools` profile `catl mcp` would serve (FAIL when it would refuse to start); `--lsp` also starts each language server and reports its health (slow) |
 
 Every query accepts `--json`. Other flags are per command (`catl query <command> --help` is authoritative):
 
@@ -181,7 +181,7 @@ api_key_env = "LOCAL_LLM_KEY"                  # names the variable; never the k
 watch = true                       # what `catl mcp` does without --watch / --no-watch
 max_output_bytes = 100000
 max_body_lines = 400
-tools = "full"                     # stored and validated; not acted on yet
+tools = "full"                     # "full" | "core" | "read-only" | a list of tool names; what `catl mcp` serves without --tools
 
 [agents]                           # what `catl agents sync` writes
 binary = "catl"                    # command agents start; an absolute path only in this file
@@ -190,7 +190,7 @@ guidance = "auto"                  # "auto" | "none" | "local" (CLAUDE.local.md,
 [agents.claude]
 enabled = true
 scope = "user"                     # "user" | "local" | "project" (.mcp.json, committed)
-hooks = ["auto-approve"]           # "auto-approve": permissions.allow for the read-only tools; "remind": once-per-session nudge on grep; [] for none
+hooks = ["auto-approve"]           # "auto-approve": permissions.allow for the read-only tools of [mcp] tools; "remind": once-per-session nudge on grep; [] for none
 
 [agents.codex]
 enabled = true                     # only when $CODEX_HOME or ~/.codex exists

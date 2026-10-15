@@ -4,7 +4,7 @@ Code Atlas reaches agents two ways: an MCP stdio server (`catl mcp`) and the CLI
 
 ## MCP tools
 
-The server serves one project (`--project`, or inferred from the working directory), 15 tools, and runs the freshness barrier before every call. It is no longer read-only: `atlas_edit` writes files (tool annotation `destructive_hint = true`); the other 14 tools are annotated read-only. Every tool takes an optional `format`: `"text"` (default, compact) or `"json"`. Output is capped at 100,000 bytes (a truncation note says how to narrow the query) and bodies at 400 lines. Server-side call telemetry (calls, errors, latency, bytes, truncations) is part of `atlas_status`.
+The server serves one project (`--project`, or inferred from the working directory), the 15 tools below or a [profile](#tool-profiles) of them, and runs the freshness barrier before every call. It is no longer read-only: `atlas_edit` writes files (tool annotation `destructive_hint = true`); the other 14 tools are annotated read-only. Every tool takes an optional `format`: `"text"` (default, compact) or `"json"`. Output is capped at 100,000 bytes (a truncation note says how to narrow the query) and bodies at 400 lines. Server-side call telemetry (calls, errors, latency, bytes, truncations) is part of `atlas_status`.
 
 | Tool | Use it to | Arguments |
 |---|---|---|
@@ -28,6 +28,29 @@ Targets accepted everywhere: a name (`UsersService.findOne`), `[repo:]path[:line
 `atlas_context` states a line range on every item: the symbol span for MUST READ, SKIM and TESTS items (`path:31-35`), and for a one-line mention such as an IMPACT caller the line of the reference that put it in the pack (`path:303 (site)`). An item whose body is not shown (SKIM, and MUST READ items marked "named in the task: read the file directly") also shows up to 5 lines around its key site when the budget allows: the reference site, or the body line that matches the most task or search terms. The pack expands up to three graph hops (calls, references, members, implementations) from its seeds; the enclosing type of every code item, the handler and guards of an endpoint and the guards of an auth scheme come with it without counting as a hop. The CLI's `--depth` (0 to 3) narrows the expansion. `known` lists files or symbols the agent already holds: they seed the pack like `seeds` (a file seeds its top-level symbols), but nothing inside them is listed in MUST READ or SKIM; OMITTED says how many relevant items each one held back. A `known` entry that matches nothing (`[unknown known]`) or several entities (`[ambiguous known]`, with the candidates) is reported in OMITTED and seeds nothing.
 
 `atlas_read` and `atlas_changes` were removed in this release (16 tools to 15). Calling either returns an error naming the replacement (`atlas_symbol mode=source`, `atlas_status since_run`). `atlas_dependents` and `atlas_dependencies` exist in the CLI (`query dependents`, `query dependencies`) but are not exposed over MCP. The CLI has top-level shortcuts for `search`, `impact`, `context`, `callers`, `callees`, `symbol`, `api`, `explain`, `read` and `tests-for`, and its own `find`, `outline`, `refs`, `decl`, `impls`, `hierarchy`, `diagnostics`, `edit` and `lsp check` ([operations](operations.md#cli-reference)).
+
+### Tool profiles
+
+`[mcp] tools` in `config.toml` (or `CODE_ATLAS_MCP_TOOLS`, or `catl mcp --tools`, which wins) chooses which tools the server lists:
+
+| Profile | Tools |
+|---|---|
+| `full` (default) | all 15 |
+| `core` | `atlas_context`, `atlas_search`, `atlas_symbol`, `atlas_impact`, `atlas_edit`, `atlas_status` |
+| `read-only` | `core` without `atlas_edit` |
+| a list, e.g. `["atlas_search", "atlas_status"]` (`--tools atlas_search,atlas_status`) | exactly those |
+
+An invalid value from any layer (a typo such as `CODE_ATLAS_MCP_TOOLS=readonly`, an unknown tool name) never falls back to a wider set: `catl mcp` exits 2 naming the layer it came from (`flag:--tools`, `env:CODE_ATLAS_MCP_TOOLS`, `config.toml`), the profiles and the known tools, and `catl doctor` reports `FAIL  mcp tools`. A tool outside the profile is absent from `tools/list`; calling it anyway returns the tool error `<tool> is not in profile <profile>; enable with [mcp] tools`, and a removed tool whose replacement is outside the profile says so without naming it. The server instructions are rendered for the profile and name only its tools, as do the guidance block and the permission rules `agents sync` writes. `agents sync` reads the profile from `config.toml` only, not from `CODE_ATLAS_MCP_TOOLS` in the shell it runs in, because the agent starts the server with its own environment; rerun it after changing the profile (the server reads the setting at start, so the registered command does not change). No tool description names another tool, so a description is correct in every profile; the certainty tags and target syntax are explained once, in the instructions.
+
+What a profile costs, measured on the acme fixture with `atlas-eval agent surface --no-sessions --tools <profile>` (UTF-8 bytes of the `instructions` string and of the compact `tools/list` result; characters / 4 is a rough token estimate, not a tokenizer):
+
+| Profile | `instructions` | `tools/list` | total | about tokens |
+|---|---:|---:|---:|---:|
+| `full` | 1,405 | 12,838 | 14,243 | 3,560 |
+| `core` | 1,304 | 7,525 | 8,829 | 2,210 |
+| `read-only` | 1,144 | 5,203 | 6,347 | 1,590 |
+
+With Claude Code's tool search on, tool schemas are loaded only when searched, so a profile mainly shortens the instructions and the deferred tool names; it matters most for clients that load every tool upfront.
 
 ### `atlas_symbol` modes
 
@@ -131,7 +154,7 @@ catl connect claude [--scope project|user] [-y]   # the earlier per-repo command
 
 `[agents.claude] hooks` (default `["auto-approve"]`; `[]` writes neither) goes into the settings file of the scope: `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`) for user scope, `.claude/settings.local.json` for local and project scope. Project scope never writes the committed `.claude/settings.json`, because entries there would apply to every teammate. A local settings file is excluded from git like local guidance. Other rules and hooks in the file are kept.
 
-- `auto-approve` is not a hook: it writes the 14 read-only tools as exact `permissions.allow` rules (`"mcp__code-atlas__atlas_api"`, ..., `"mcp__code-atlas__atlas_unused"`), never `atlas_edit`. Claude Code then skips the prompt for them without running any process, so a missing or mismatched `catl` cannot block a tool call. Claude Code still applies your deny and ask rules. Every rule naming the `code-atlas` server (`mcp__code-atlas`, `mcp__code-atlas__*`) counts as the fragment `sync` owns, so a rule you add or remove there shows as drift, and `sync` rewrites the list when the tool set changes.
+- `auto-approve` is not a hook: it writes the read-only tools of the configured [profile](#tool-profiles) (all 14 with `full`) as exact `permissions.allow` rules (`"mcp__code-atlas__atlas_api"`, ..., `"mcp__code-atlas__atlas_unused"`), never `atlas_edit`. Claude Code then skips the prompt for them without running any process, so a missing or mismatched `catl` cannot block a tool call. Claude Code still applies your deny and ask rules. Every rule naming the `code-atlas` server (`mcp__code-atlas`, `mcp__code-atlas__*`) counts as the fragment `sync` owns, so a rule you add or remove there shows as drift, and `sync` rewrites the list when the tool set changes.
 - `remind` is a `PreToolUse` hook on `Grep|Glob|Bash`:
 
   ```json
@@ -155,7 +178,7 @@ Claude Code passes the server's `instructions` to the model, so a repo file repe
 | `local` | the block in `CLAUDE.local.md` at the repo root, excluded from git through `info/exclude` of the git common dir, so it works in worktrees and never shows in `git status`. Claude Code only; refused (unless `--force`) in a repo that has an `AGENTS.md` and no `CLAUDE.md`, because a `CLAUDE.local.md` makes Claude Code stop reading `AGENTS.md` by default |
 | `tracked` | the block in `CLAUDE.md` or `AGENTS.md` (the first that has it, else the first that exists, else a new `AGENTS.md`), which is usually committed |
 
-The block is a rendering of the server instructions, from one source (`crates/atlas-mcp/src/guidance.rs`); a test checks that this page shows exactly what it renders:
+The block is a rendering of the server instructions for the configured [profile](#tool-profiles), from one source (`crates/atlas-mcp/src/guidance.rs`); a test checks that this page shows exactly what it renders for `full` (`core` and `read-only` drop the rules and clauses about tools they do not serve):
 
 ```markdown
 <!-- code-atlas:begin -->
@@ -163,16 +186,15 @@ The block is a rendering of the server instructions, from one source (`crates/at
 
 This repo is indexed by Code Atlas (project `<project>`), served by the `code-atlas` MCP server. Prefer it to grep when a question spans files or repos.
 
-Code Atlas answers questions about ONE indexed project (a group of repos) from a knowledge graph; every call first brings the index up to date with the working tree.
-1. Start a task with atlas_context: a ranked, budgeted pack of code to read, with reasons and omissions.
-2. Before writing new code, run atlas_search and atlas_similar to find something to reuse.
+Code Atlas answers questions about ONE indexed project (a group of repos) from a knowledge graph kept up to date with the working tree.
+1. Start a task with atlas_context: a ranked pack of the code to read.
+2. Before writing new code, run atlas_search and atlas_similar to find code to reuse.
 3. Before changing shared code, run atlas_impact on it; use atlas_tests_for to pick tests.
 4. Read only the code the results list (atlas_symbol mode=source only for code you will not edit yourself; read files you will edit with your own tool). To rename or rewrite a symbol use atlas_edit (exact across files), not find-and-replace; after it changes a file, re-read that file before editing it yourself.
-5. Untagged entities and [resolved]/[syntactic]/[compiler]/[declared] relations are reliable but not exhaustive; always read the caveats. An empty result is not proof of absence (unresolved references, files that failed to parse, hidden low-confidence relations). [heuristic] and [inferred] relations are leads: verify them in the source before relying on them; entities carry the same tags. A tag after an entity name tags the entity; a tag in parentheses or in a `verb target [tag]` step tags the relation.
-6. An answer whose first line starts with DEGRADED came from an index that could not be fully refreshed: verify it against the files. Run atlas_explain on a relation that drives a decision to see its evidence.
-7. After editing, call atlas_status with since_run or re-query; freshness is automatic, there is no reindex tool.
-8. Targets: a name (UsersService.findOne), a [repo:]path[:line], 'GET /users/{id}' or a full key. If not found or ambiguous, use atlas_search.
-Add format "json" to any tool for structured output.
+5. Untagged entities and [resolved]/[syntactic]/[compiler]/[declared] relations are reliable but not exhaustive: read the caveats, and an empty result is not proof of absence. [heuristic] and [inferred] relations are leads: verify them in the source before relying on them. A tag after an entity name tags the entity; one in parentheses or in a `verb target [tag]` step tags the relation.
+6. An answer starting with DEGRADED came from an index that could not be fully refreshed: verify it against the files. atlas_explain shows the evidence of a relation.
+7. After editing, call atlas_status with since_run or re-query; there is no reindex tool.
+8. If a target is not found or is ambiguous, use atlas_search.
 <!-- code-atlas:end -->
 ```
 

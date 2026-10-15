@@ -22,7 +22,7 @@ use crate::arguments::{
 };
 use crate::descriptions as text;
 use crate::error::{McpError, ToolError};
-use crate::guidance;
+use crate::guidance::{self, ToolProfile};
 use crate::options::ServeOptions;
 use crate::render;
 use crate::session::Session;
@@ -34,6 +34,7 @@ pub(crate) struct Shared {
   pub(crate) session: Session,
   telemetry: Telemetry,
   before_query: Option<QueryHook>,
+  profile: ToolProfile,
   max_output_bytes: usize,
   max_body_lines: usize,
 }
@@ -55,15 +56,18 @@ impl AtlasServer {
   }
 
   fn build(options: &ServeOptions, before_query: Option<QueryHook>) -> Result<Self, McpError> {
+    let profile = ToolProfile::from_setting(&options.tools)?;
+    let tool_router = profile_router(compact_router(Self::tool_router()), &profile);
     Ok(Self {
       shared: Arc::new(Shared {
         session: Session::open(options)?,
         telemetry: Telemetry::new(),
         before_query,
+        profile,
         max_output_bytes: options.max_output_bytes,
         max_body_lines: options.max_body_lines,
       }),
-      tool_router: compact_router(Self::tool_router()),
+      tool_router,
     })
   }
 
@@ -163,6 +167,11 @@ pub(crate) fn compact_router<S>(mut router: ToolRouter<S>) -> ToolRouter<S> {
   router
 }
 
+fn profile_router(mut router: ToolRouter<AtlasServer>, profile: &ToolProfile) -> ToolRouter<AtlasServer> {
+  router.map.retain(|name, _| profile.contains(name));
+  router
+}
+
 fn compact_schema(schema: &rmcp::model::JsonObject) -> rmcp::model::JsonObject {
   use serde_json::Value;
   let mut schema = schema.clone();
@@ -203,11 +212,15 @@ fn compact_schema(schema: &rmcp::model::JsonObject) -> rmcp::model::JsonObject {
   schema
 }
 
-fn removed_tool_replacement(name: &str) -> Option<&'static str> {
-  match name {
-    "atlas_read" => Some("atlas_read was removed; use atlas_symbol mode=source"),
-    "atlas_changes" => Some("atlas_changes was removed; use atlas_status since_run"),
-    _ => None,
+fn removed_tool_replacement(name: &str, profile: &ToolProfile) -> Option<String> {
+  let (replacement, usage) = match name {
+    "atlas_read" => ("atlas_symbol", "atlas_symbol mode=source"),
+    "atlas_changes" => ("atlas_status", "atlas_status since_run"),
+    _ => return None,
+  };
+  match profile.contains(replacement) {
+    true => Some(format!("{name} was removed; use {usage}")),
+    false => Some(format!("{name} was removed; its replacement is not in profile {}", profile.name())),
   }
 }
 
@@ -501,13 +514,75 @@ impl AtlasServer {
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for AtlasServer {
   async fn call_tool(&self, request: CallToolRequestParams, context: RequestContext<RoleServer>) -> Result<CallToolResponse, ErrorData> {
-    if let Some(replacement) = removed_tool_replacement(&request.name) {
+    if let Some(replacement) = removed_tool_replacement(&request.name, &self.shared.profile) {
       return Ok(CallToolResult::error(vec![ContentBlock::text(replacement)]).into());
+    }
+    if let Some(refusal) = self.shared.profile.refusal(&request.name) {
+      return Ok(CallToolResult::error(vec![ContentBlock::text(refusal)]).into());
     }
     self.tool_router.call(ToolCallContext::new(self, request, context)).await
   }
 
   fn get_info(&self) -> ServerConfig {
-    ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(guidance::instructions())
+    ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(guidance::instructions(&self.shared.profile))
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use atlas_project::ToolsSetting;
+
+  use super::*;
+
+  fn routed(router: &ToolRouter<AtlasServer>) -> Vec<String> {
+    let mut names: Vec<String> = router.map.keys().map(ToString::to_string).collect();
+    names.sort_unstable();
+    names
+  }
+
+  #[test]
+  fn should_route_exactly_the_tools_the_guidance_knows() {
+    assert_eq!(routed(&AtlasServer::tool_router()), guidance::TOOLS);
+  }
+
+  #[test]
+  fn should_route_only_the_tools_of_the_profile() {
+    let core = ToolProfile::from_setting(&ToolsSetting::Core).unwrap();
+    let read_only = ToolProfile::from_setting(&ToolsSetting::ReadOnly).unwrap();
+
+    assert_eq!(routed(&profile_router(AtlasServer::tool_router(), &core)), guidance::CORE_TOOLS);
+    assert_eq!(routed(&profile_router(AtlasServer::tool_router(), &read_only)), read_only.tools());
+    assert_eq!(routed(&profile_router(AtlasServer::tool_router(), &ToolProfile::full())), guidance::TOOLS);
+  }
+
+  #[test]
+  fn should_name_a_removed_tool_replacement_only_when_the_profile_serves_it() {
+    let read_only = ToolProfile::from_setting(&ToolsSetting::ReadOnly).unwrap();
+    let only_search = ToolProfile::from_setting(&ToolsSetting::Only(vec!["atlas_search".to_owned()])).unwrap();
+
+    assert_eq!(
+      removed_tool_replacement("atlas_read", &read_only).as_deref(),
+      Some("atlas_read was removed; use atlas_symbol mode=source")
+    );
+    assert_eq!(
+      removed_tool_replacement("atlas_changes", &only_search).as_deref(),
+      Some("atlas_changes was removed; its replacement is not in profile custom")
+    );
+    assert_eq!(removed_tool_replacement("atlas_search", &only_search), None);
+  }
+
+  #[test]
+  fn should_name_no_other_tool_in_a_description_so_every_profile_stays_consistent() {
+    for route in AtlasServer::tool_router().map.values() {
+      let description = route.attr.description.as_deref().unwrap_or_default();
+      let mut texts = vec![description.to_owned()];
+      if let Some(serde_json::Value::Object(properties)) = route.attr.input_schema.get("properties") {
+        texts.extend(properties.values().filter_map(|property| property.get("description")?.as_str().map(str::to_owned)));
+      }
+      for text in texts {
+        let others: Vec<&str> = guidance::TOOLS.into_iter().filter(|tool| *tool != route.attr.name && text.contains(tool)).collect();
+        assert!(others.is_empty(), "{} names {others:?}: {text}", route.attr.name);
+      }
+    }
   }
 }

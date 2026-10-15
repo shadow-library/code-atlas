@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use atlas_engine::EngineOptions;
 use atlas_ide::Launcher;
-use atlas_project::{AtlasHome, McpSettings};
+use atlas_project::{AtlasHome, McpSettings, ToolsSetting};
 
 #[derive(Clone)]
 pub(crate) struct LauncherHandle(pub(crate) Arc<dyn Launcher>);
@@ -25,6 +25,7 @@ pub struct ServeOptions {
   pub engine: EngineOptions,
   pub max_output_bytes: usize,
   pub max_body_lines: usize,
+  pub tools: ToolsSetting,
   pub(crate) launcher: Option<LauncherHandle>,
 }
 
@@ -48,6 +49,7 @@ impl ServeOptions {
       engine: server_engine_options(),
       max_output_bytes: DEFAULT_MAX_OUTPUT_BYTES,
       max_body_lines: DEFAULT_MAX_BODY_LINES,
+      tools: ToolsSetting::Full,
       launcher: None,
     }
   }
@@ -60,6 +62,11 @@ impl ServeOptions {
   pub fn with_output_limits(mut self, max_output_bytes: usize, max_body_lines: usize) -> Self {
     self.max_output_bytes = max_output_bytes;
     self.max_body_lines = max_body_lines;
+    self
+  }
+
+  pub fn with_tools(mut self, tools: ToolsSetting) -> Self {
+    self.tools = tools;
     self
   }
 

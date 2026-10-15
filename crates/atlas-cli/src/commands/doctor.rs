@@ -4,7 +4,7 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use atlas_mcp::guidance::SERVER_NAME;
-use atlas_project::{Project, ProjectError, Registry, UserConfig};
+use atlas_project::{ConfigEnv, McpFlags, Project, ProjectError, Registry, UserConfig, resolve_mcp};
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
 
@@ -12,6 +12,7 @@ use crate::cli::DoctorArgs;
 use crate::commands::agents::claude_config_path;
 use crate::commands::ide::{check_outcome, check_servers, resolved_text, unit_detail};
 use crate::commands::lsp_probe::{self, Resolved};
+use crate::commands::mcp::tool_profile;
 use crate::context::Context;
 use crate::error::CliResult;
 use crate::output::{Outcome, emit_line};
@@ -56,6 +57,7 @@ pub fn run(ctx: &Context, args: DoctorArgs) -> CliResult<Outcome> {
     format!("config {}, data {}", ctx.home.config_dir().display(), ctx.home.data_dir().display()),
   )];
   checks.push(user_config(ctx));
+  checks.extend(mcp_tools(ctx));
   let mut focus = None;
   match Registry::load(&ctx.home) {
     Err(error) => checks.push(Check::new(Level::Fail, "registry", error.to_string())),
@@ -116,6 +118,15 @@ fn user_config(ctx: &Context) -> Check {
     true => check,
     false => check.with_lines(vec![format!("route families declared in {}: {}", ctx.home.detectors_dir().display(), families.join(", "))]),
   }
+}
+
+fn mcp_tools(ctx: &Context) -> Option<Check> {
+  let config = UserConfig::load(&ctx.home).ok()?;
+  let check = match tool_profile(&resolve_mcp(&config, &ConfigEnv::from_process(), McpFlags::default())) {
+    Ok(profile) => Check::new(Level::Ok, "mcp tools", format!("profile {}: {}", profile.name(), profile.tools().join(", "))),
+    Err(error) => Check::new(Level::Fail, "mcp tools", format!("`catl mcp` refuses to start: {error}")),
+  };
+  Some(check)
 }
 
 fn cwd_project(ctx: &Context, registry: &Registry) -> Check {

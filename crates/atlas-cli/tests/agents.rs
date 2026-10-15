@@ -23,6 +23,10 @@ esac
 exit 0
 "#;
 
+fn read_json(path: &Path) -> Value {
+  serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
+}
+
 struct Sandbox {
   root: TempDir,
 }
@@ -113,7 +117,7 @@ impl Sandbox {
   }
 
   fn json(&self, relative: &str) -> Value {
-    serde_json::from_str(&fs::read_to_string(self.path(relative)).unwrap()).unwrap()
+    read_json(&self.path(relative))
   }
 
   fn wiring(&self) -> Vec<Value> {
@@ -262,9 +266,16 @@ fn should_sync_the_user_scope_and_codex_then_track_drift_and_unsync_exactly_what
 fn should_wire_local_scope_with_guidance_and_hooks_git_never_sees_and_remove_them_again() {
   let sandbox = Sandbox::new();
   let repo = sandbox.git_repo("solo");
-  sandbox.config("[agents]\nguidance = \"local\"\n[agents.claude]\nscope = \"local\"\n");
+  sandbox.config("[mcp]\ntools = \"core\"\n[agents]\nguidance = \"local\"\n[agents.claude]\nscope = \"local\"\n");
+  let core = atlas_mcp::guidance::ToolProfile::from_setting(&atlas_project::ToolsSetting::Core).unwrap();
 
-  assert_ok(&sandbox.run(&repo.join("src"), &["agents", "sync", "--agent", "claude"]));
+  let synced = sandbox
+    .command(&repo.join("src"), &["agents", "sync", "--agent", "claude"])
+    .env("CODE_ATLAS_MCP_TOOLS", "full")
+    .stdin(Stdio::null())
+    .output()
+    .unwrap();
+  assert_ok(&synced);
 
   let registered = sandbox.json("atlas/claude/.claude.json");
   assert_eq!(
@@ -272,8 +283,10 @@ fn should_wire_local_scope_with_guidance_and_hooks_git_never_sees_and_remove_the
     json!(["mcp", "--watch"])
   );
   let guidance = fs::read_to_string(repo.join("CLAUDE.local.md")).unwrap();
-  assert_eq!(guidance, format!("{}\n", atlas_mcp::guidance::repo_block("solo")));
-  assert!(repo.join(".claude/settings.local.json").is_file());
+  assert_eq!(guidance, format!("{}\n", atlas_mcp::guidance::repo_block("solo", &core)));
+  assert!(!guidance.contains("atlas_similar"), "{guidance}");
+  let allowed: Vec<String> = core.read_only_tools().iter().map(|tool| format!("mcp__code-atlas__{tool}")).collect();
+  assert_eq!(read_json(&repo.join(".claude/settings.local.json"))["permissions"]["allow"], json!(allowed));
   assert_eq!(git_status(&repo), "");
   let exclude = fs::read_to_string(repo.join(".git/info/exclude")).unwrap();
   assert!(exclude.ends_with("/.claude/settings.local.json\n/CLAUDE.local.md\n"), "{exclude}");

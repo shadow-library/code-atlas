@@ -15,6 +15,8 @@ pub enum McpError {
   Runtime(#[source] std::io::Error),
   #[error("MCP transport failed: {0}")]
   Transport(String),
+  #[error("unknown tool {name:?}; expected the profile core, read-only or full, or a list of tools from: {known}")]
+  UnknownTool { name: String, known: String },
 }
 
 #[derive(Debug, Error)]

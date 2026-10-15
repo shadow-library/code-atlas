@@ -308,6 +308,8 @@ pub enum TokenSection {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SurfaceReport {
   pub model: String,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub tools: Option<String>,
   pub claude_code_version: Option<String>,
   pub atlas_version: Option<String>,
   pub bytes: SurfaceBytes,

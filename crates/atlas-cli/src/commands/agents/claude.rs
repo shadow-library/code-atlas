@@ -2,7 +2,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use atlas_mcp::guidance::{READ_ONLY_TOOLS, SERVER_NAME};
+use atlas_mcp::guidance::{SERVER_NAME, ToolProfile};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -90,8 +90,8 @@ pub(super) fn is_our_hook_group(group: &Value) -> bool {
   Path::new(program).file_name().is_some_and(|name| name.to_string_lossy().starts_with("catl"))
 }
 
-pub(super) fn permission_rules() -> Vec<Value> {
-  READ_ONLY_TOOLS.iter().map(|tool| Value::String(format!("mcp__{SERVER_NAME}__{tool}"))).collect()
+pub(super) fn permission_rules(profile: &ToolProfile) -> Vec<Value> {
+  profile.read_only_tools().iter().map(|tool| Value::String(format!("mcp__{SERVER_NAME}__{tool}"))).collect()
 }
 
 pub(super) fn is_our_permission(rule: &Value) -> bool {
@@ -224,11 +224,22 @@ mod tests {
   }
 
   #[test]
-  fn should_allow_exactly_the_read_only_tools_and_own_every_rule_naming_the_server() {
-    let rules = permission_rules();
+  fn should_allow_exactly_the_read_only_tools_of_the_profile_and_own_every_rule_naming_the_server() {
+    let rules = permission_rules(&ToolProfile::full());
     assert_eq!(rules.len(), 14);
     assert_eq!(rules[0], "mcp__code-atlas__atlas_api");
     assert!(!rules.contains(&json!("mcp__code-atlas__atlas_edit")));
+    let core = ToolProfile::from_setting(&atlas_project::ToolsSetting::Core).unwrap();
+    assert_eq!(
+      permission_rules(&core),
+      [
+        "mcp__code-atlas__atlas_context",
+        "mcp__code-atlas__atlas_impact",
+        "mcp__code-atlas__atlas_search",
+        "mcp__code-atlas__atlas_status",
+        "mcp__code-atlas__atlas_symbol"
+      ]
+    );
     for rule in ["mcp__code-atlas", "mcp__code-atlas__atlas_edit", "mcp__code-atlas__atlas_search"] {
       assert!(is_our_permission(&json!(rule)), "{rule}");
     }

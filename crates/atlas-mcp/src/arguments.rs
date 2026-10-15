@@ -37,18 +37,18 @@ macro_rules! arguments {
 arguments!(ContextArgs {
   #[schemars(description = "What you are about to do, in your own words")]
   task: String,
-  #[schemars(description = "Approximate size budget of the pack in tokens, 500-32000; larger packs include more bodies")]
+  #[schemars(description = "Pack size in tokens, 500-32000; larger packs hold more bodies")]
   budget: Option<usize>,
-  #[schemars(description = "Optional symbols, files or keys to anchor the pack on")]
+  #[schemars(description = "Symbols, files or keys to anchor the pack on")]
   seeds: Option<Vec<String>>,
-  #[schemars(description = "Optional files or symbols you already hold (read or edited): they anchor the pack but are not listed again")]
+  #[schemars(description = "Files or symbols you already hold: they anchor the pack but are not listed again")]
   known: Option<Vec<String>>,
 });
 
 arguments!(SearchArgs {
-  #[schemars(description = "Natural-language or identifier text, e.g. 'convert currency string to cents'")]
+  #[schemars(description = "Words, a phrase or an identifier")]
   query: String,
-  #[schemars(description = "Restrict to an entity kind such as function, method, class, struct, trait, api_endpoint")]
+  #[schemars(description = "Only this entity kind, e.g. function, class, api_endpoint")]
   kind: Option<String>,
   #[schemars(description = "Restrict to one repo of the project")]
   repo: Option<String>,
@@ -117,15 +117,14 @@ arguments!(SymbolArgs {
   body: Option<bool>,
   #[schemars(description = "find: substring match on the last segment")]
   substring: Option<bool>,
-  #[schemars(description = "find: include kinds")]
+  #[schemars(description = "find: kinds to include")]
   kinds: Option<Vec<String>>,
-  #[schemars(description = "find: exclude kinds")]
   exclude_kinds: Option<Vec<String>>,
   #[schemars(description = "find: 1-200")]
   max_matches: Option<usize>,
   #[schemars(description = "declaration: capture group around the name in path")]
   regex: Option<String>,
-  #[schemars(description = "outline: graph (default, from the index) or lsp (exact, from the language server); references: lsp (default) or graph")]
+  #[schemars(description = "outline: graph (default, the index) or lsp (exact); references: lsp (default) or graph")]
   source: Option<ReadSource>,
   #[schemars(description = "source: extra lines, 0-100")]
   context_lines: Option<u32>,
@@ -145,7 +144,7 @@ arguments!(TraverseArgs {
 });
 
 arguments!(ImpactArgs {
-  #[schemars(description = "One or more symbols, files, endpoints or keys that will change")]
+  #[schemars(description = "Symbols, files, endpoints or keys that will change")]
   targets: Vec<String>,
   #[schemars(description = "Hops to follow, 1-6 (default 3)")]
   depth: Option<u32>,
@@ -217,35 +216,28 @@ pub enum CrossRepoMode {
 
 arguments!(EditArgs {
   operation: EditKind,
-  #[schemars(description = "Symbol operations: as in atlas_symbol")]
+  #[schemars(description = "Symbol name, name path or position")]
   target: Option<String>,
   #[schemars(description = "replace_content: [repo:]file")]
   path: Option<String>,
-  #[schemars(description = "rename: the new identifier")]
   new_name: Option<String>,
   #[schemars(description = "New body, inserted code or replacement ($1 with regex)")]
   text: Option<String>,
   #[schemars(description = "replace_content/replace_in_files: text to find")]
   pattern: Option<String>,
-  #[schemars(description = "pattern is a regex")]
   regex: Option<bool>,
   #[schemars(description = "replace_content: allow several matches")]
   all: Option<bool>,
   #[schemars(description = "replace_in_files: globs, optional repo: prefix")]
   include: Option<Vec<String>>,
-  #[schemars(description = "replace_in_files: globs to skip")]
   exclude: Option<Vec<String>>,
-  #[schemars(description = "replace_in_files: ids from a dry run")]
   occurrences: Option<Vec<String>>,
-  #[schemars(description = "replace_in_files: expected count")]
   expected_count: Option<usize>,
   #[schemars(description = "rename: report (default) or apply authoritative other-repo sites")]
   cross_repo: Option<CrossRepoMode>,
-  #[schemars(description = "rename: apply despite unverified sites; check them first")]
   allow_unverified: Option<bool>,
   #[schemars(description = "apply: plan id from a dry run")]
   plan: Option<String>,
-  #[schemars(description = "Plan only: diffs and a plan id")]
   dry_run: Option<bool>,
 });
 
