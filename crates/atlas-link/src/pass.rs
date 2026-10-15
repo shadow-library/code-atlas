@@ -9,7 +9,7 @@ use crate::error::LinkResult;
 use crate::facts::Facts;
 use crate::output::Output;
 use crate::scopes::PackageIndex;
-use crate::{auth, compose, events, http, packages};
+use crate::{auth, compose, events, http, packages, tables};
 
 pub const PASS_NAME: &str = "link";
 const STATUS_KIND: &str = "link_status";
@@ -32,19 +32,21 @@ pub fn link(tx: &ReadTx<'_>, project: &Project) -> LinkResult<LinkOutput> {
   let clients = http::link_clients(&facts, &routes, &package_index, &mut output)?;
   auth::link_client_auth(&facts, &clients, &endpoint_auth, &mut output)?;
   events::annotate_events(&facts, &mut output)?;
-  output.entity(status_entity(&routes, &clients)?);
+  let table_accesses = tables::link_table_accesses(&facts, &mut output)?;
+  output.entity(status_entity(&routes, &clients, table_accesses)?);
   tracing::debug!(
     pass = PASS_NAME,
     composed_endpoints = routes.composed_count(),
     client_calls = clients.client_count,
     unmatched_client_calls = clients.unmatched_count,
+    table_accesses,
     entities = output.entity_count(),
     "linked project"
   );
   Ok(output.finish())
 }
 
-fn status_entity(routes: &compose::Routes, clients: &http::ClientLinks) -> LinkResult<Entity> {
+fn status_entity(routes: &compose::Routes, clients: &http::ClientLinks, table_accesses: usize) -> LinkResult<Entity> {
   let key = EntityKey::Other {
     kind: EntityKind::custom(STATUS_KIND)?,
     repo: None,
@@ -55,5 +57,6 @@ fn status_entity(routes: &compose::Routes, clients: &http::ClientLinks) -> LinkR
   entity.attrs.insert("client_calls".to_owned(), json!(clients.client_count));
   entity.attrs.insert("client_calls_unmatched".to_owned(), json!(clients.unmatched_count));
   entity.attrs.insert("composed_endpoints".to_owned(), json!(routes.composed_count()));
+  entity.attrs.insert("table_accesses".to_owned(), json!(table_accesses));
   Ok(entity)
 }

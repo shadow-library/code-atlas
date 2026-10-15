@@ -18,6 +18,8 @@ The store unions attrs across assertions (see `crates/atlas-store/CLAUDE.md`), s
 - `ClientCall`: `unmatched`, `unmatched_reason`, `packages`
 - manifest `depends_on_package` edges: `cross_repo`, `target_repo`
 
+Pass-owned table accesses (`tables.rs`): for every `maps_to_table` edge into a `DbTable`, each `reads_table`/`writes_table` edge into its source (a Drizzle constant) yields the same kind from the accessor to the table, at the weaker certainty of the access and the mapping, with the access evidence relabelled, `via` (sorted source keys) and `orm` (only when every merged access agrees). Accesses of one function to several constants of one table merge into one edge whose certainty is the strongest of them, independent of read order. `link_status` counts them as `table_accesses`.
+
 The store keeps one assertion per owner and key, so each annotation entity has one certainty for all its attrs. That certainty is the weakest, by `cmp_strength`, of every input behind any of its attrs (heuristic becomes `Heuristic { rule: "link-derived", confidence: min }`), never stronger than the entity itself:
 
 - Endpoint: `requires_guard`, `implements_auth`, `delegates_to` and, for authorization-only guards, `requires_permission`. An `Unknown` guard adds the absence input `no-detected-auth-scheme` (0.5); an `AuthorizationOnly` guard adds `guard-name-classification` (0.5), since it is a name match. A composed endpoint keeps the weaker of its route-chain certainty and this one, so its own certainty can drop (one assertion per owner and key).

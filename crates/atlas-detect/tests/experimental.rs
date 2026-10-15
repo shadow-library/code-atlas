@@ -231,6 +231,42 @@ export async function run(db: Db) {\n\
 }
 
 #[test]
+fn should_leave_tables_behind_named_and_nested_imports_to_the_resolver() {
+  let source = "import { eq } from 'drizzle-orm';\nimport { schema } from '@shop/datastore';\nimport * as datastore from '../datastore';\n\
+import { db } from '../db';\n\
+export async function run() {\n\
+  await db.select().from(schema.users).where(eq(schema.users.id, 1));\n\
+  await db.transaction(async (tx) => {\n\
+    await tx.insert(schema.orders).values({});\n\
+    await tx.select().from(datastore.schema.orders).innerJoin(datastore.tables.users, eq(datastore.tables.users.id, 1));\n\
+  });\n\
+  await db.delete(datastore.schema.orders.archive.rows);\n\
+}\n";
+  assert_eq!(
+    render_source(&DbDetector, "svc", "src/repo.ts", source),
+    lines(&[
+      "reads_table run -> ?datastore::schema::orders [heuristic 0.60]",
+      "reads_table run -> ?datastore::tables::users [heuristic 0.60]",
+      "reads_table run -> ?schema::users [heuristic 0.60]",
+      "writes_table run -> ?schema::orders [heuristic 0.60]",
+    ])
+  );
+}
+
+#[test]
+fn should_skip_columns_of_a_named_import_used_as_a_table_in_the_same_file() {
+  let source = "import { eq } from 'drizzle-orm';\nimport { db } from '../db';\nimport { users } from './schema';\n\
+export async function run() {\n\
+  await db.select().from(users);\n\
+  await db.insert(users.id).values({});\n\
+}\n";
+  assert_eq!(
+    render_source(&DbDetector, "svc", "src/repo.ts", source),
+    lines(&["reads_table run -> ?users [heuristic 0.60]"])
+  );
+}
+
+#[test]
 fn should_not_read_drizzle_access_into_other_receivers_unknown_tables_or_files_without_drizzle() {
   let lookalikes = "import { eq } from 'drizzle-orm';\nimport { orders, users } from './schema';\n\
 export function run(cache: Map<string, number>, items: Set<string>, rows: Rows) {\n\

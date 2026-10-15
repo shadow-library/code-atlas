@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use atlas_core::{ArgSummary, EdgeKind, EntityKey, EntityKind, FileFacts, ImportFact, LocalSymbolId, NodeRef, RefKind, ReferenceFact, Severity, Span, TemplatePart};
 use serde_json::json;
 
@@ -9,7 +11,7 @@ use crate::view::{Binding, FileView, Imported, initializer_start};
 
 pub struct DbDetector;
 
-detector!(DbDetector, "db", 2);
+detector!(DbDetector, "db", 3);
 
 const SQL_CALLS: [&str; 10] = [
   "query",
@@ -35,6 +37,7 @@ const DRIZZLE_QUERY_READS: [&str; 2] = ["findMany", "findFirst"];
 const DRIZZLE_SELECTS: [&str; 3] = [".select(", ".selectDistinct(", ".selectDistinctOn("];
 const DRIZZLE_JOINS: [&str; 5] = ["innerJoin", "leftJoin", "rightJoin", "fullJoin", "crossJoin"];
 const DRIZZLE_RECEIVERS: [&str; 6] = ["db", "tx", "trx", "txn", "transaction", "database"];
+const MAX_TABLE_PATH: usize = 3;
 const DYNAMIC_TABLE_NAME: &str = "db.drizzle_dynamic_table_name";
 const UNBOUND_TABLE: &str = "db.drizzle_unbound_table";
 const SQL_STATEMENTS: [&str; 7] = ["select", "insert", "update", "delete", "with", "merge", "replace"];
@@ -195,8 +198,24 @@ impl DbDetector {
       let Some(local) = declare_table(view, sink, reference, schema) else { continue };
       tables.push(local);
     }
-    for reference in view.facts.references.iter().filter(|reference| reference.kind == RefKind::MethodCall) {
-      let Some((kind, table)) = drizzle_access(view, reference, &tables) else { continue };
+    let accesses: Vec<(&ReferenceFact, EdgeKind, Vec<String>)> = view
+      .facts
+      .references
+      .iter()
+      .filter(|reference| reference.kind == RefKind::MethodCall)
+      .filter_map(|reference| drizzle_access(view, reference, &tables).map(|(kind, table)| (reference, kind, table)))
+      .collect();
+    let bare_tables: BTreeSet<String> = accesses
+      .iter()
+      .filter_map(|(_, _, table)| match table.as_slice() {
+        [name] => Some(name.clone()),
+        _ => None,
+      })
+      .collect();
+    for (reference, kind, table) in accesses {
+      if is_column_of_a_table(&table, &bare_tables) {
+        continue;
+      }
       let target = NodeRef::Unresolved {
         path: table,
         from: reference.from,
@@ -377,7 +396,7 @@ fn drizzle_access(view: &FileView<'_>, reference: &ReferenceFact, tables: &[Loca
 
 fn table_argument(reference: &ReferenceFact) -> Option<Vec<String>> {
   match reference.args.first()? {
-    ArgSummary::Path(path) if matches!(path.len(), 1 | 2) => Some(path.clone()),
+    ArgSummary::Path(path) if (1..=MAX_TABLE_PATH).contains(&path.len()) => Some(path.clone()),
     _ => None,
   }
 }
@@ -385,9 +404,13 @@ fn table_argument(reference: &ReferenceFact) -> Option<Vec<String>> {
 fn is_known_table(view: &FileView<'_>, table: &[String], tables: &[LocalSymbolId]) -> bool {
   match table {
     [name] => view.ts_import(name).is_some_and(|import| import.imported != Imported::Namespace) || view.top_level_named(name).is_some_and(|symbol| tables.contains(&symbol.local)),
-    [namespace, _] => view.ts_import(namespace).is_some_and(|import| import.imported == Imported::Namespace),
-    _ => false,
+    [head, ..] => view.ts_import(head).is_some(),
+    [] => false,
   }
+}
+
+fn is_column_of_a_table(path: &[String], tables: &BTreeSet<String>) -> bool {
+  matches!(path, [head, _, ..] if tables.contains(head))
 }
 
 fn is_drizzle_receiver(receiver: &[String]) -> bool {

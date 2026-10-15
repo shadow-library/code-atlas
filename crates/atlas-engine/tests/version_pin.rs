@@ -10,13 +10,13 @@ use common::{copy_dir, digest, fixtures_root, fresh, open, project, repo_config}
 
 const PINNED_STRUCTURE: (u32, &str, &str) = (
   1,
-  "0154b55c1b0c1e883618b6a6bca69c3fa73cdc4fddf4281755bc1c6cd380ef63",
+  "d89718c807cad9028e46e394bf04f8826ac28913475b8e281d9e945e6b55917d",
   "ec3f51b2a78d7e98e15aa5e2c7e63822eeeec8282aac7b8cc0ed688a426f1776",
 );
 const PINNED_LINK: (u32, &str, &str) = (
-  3,
-  "e4a512a646c73e042edcc176e9e927cc202feae2c79666431f285b471593225f",
-  "9cd2bae20b37137302561f90d66803d3e6f4e43389e0074ec0682ad05f8b217d",
+  4,
+  "8a6affec2450f1c451c047ce8990018e85f061e4d076d134aef4a62e434b0d36",
+  "cbed2b010d6917c9746c102baca55d4b8181f3061f2fbebc45f9969b4d3779d7",
 );
 
 #[derive(Default)]
@@ -183,6 +183,48 @@ fn should_derive_auth_usage_in_the_link_pin_corpus_from_production_code_only() {
     })
     .unwrap();
   assert_eq!(users, vec!["loadMe".to_owned(), "load_order".to_owned()]);
+}
+
+#[test]
+fn should_link_drizzle_accesses_through_re_exported_namespaces_to_tables_in_the_link_pin_corpus() {
+  let scratch = tempfile::tempdir().unwrap();
+  let engine = open(&link_corpus_project(scratch.path()), &scratch.path().join("home"));
+  assert!(fresh(&engine).is_fresh());
+  let owner = Owner::Project {
+    pass: atlas_link::PASS_NAME.to_owned(),
+  };
+  let accesses = engine
+    .store()
+    .read(|tx| -> Result<Vec<String>, atlas_store::StoreError> {
+      let mut accesses = Vec::new();
+      for edge in tx
+        .owned_facts(&owner)?
+        .edges
+        .iter()
+        .filter(|edge| matches!(edge.kind, EdgeKind::ReadsTable | EdgeKind::WritesTable))
+      {
+        let (Some(from), Some(to)) = (tx.entity(edge.from)?, tx.entity(edge.to)?) else {
+          continue;
+        };
+        let via: Vec<&str> = edge.attrs["via"].as_array().unwrap().iter().filter_map(serde_json::Value::as_str).collect();
+        accesses.push(format!("{} {} -> {} {} via {}", edge.kind, from.name, to.key, edge.certainty.tag(), via.join(", ")));
+      }
+      accesses.sort();
+      Ok(accesses)
+    })
+    .unwrap();
+  assert_eq!(
+    accesses,
+    [
+      "reads_table auditUsers -> table:users [heuristic 0.60] via ts:corpus-store:corpus-store:src/datastore/tables/users::users#constant, \
+       ts:corpus-store:corpus-store:src/legacy/users::legacyUsers#constant",
+      "reads_table listOrders -> table:sales.orders [heuristic 0.60] via ts:corpus-store:corpus-store:src/datastore/tables/orders::orders#constant",
+      "reads_table listOrders -> table:users [heuristic 0.60] via ts:corpus-store:corpus-store:src/datastore/tables/users::users#constant",
+      "reads_table mergeUsers -> table:users [heuristic 0.60] via ts:corpus-store:corpus-store:src/legacy/users::legacyUsers#constant",
+      "writes_table mergeUsers -> table:users [heuristic 0.60] via ts:corpus-store:corpus-store:src/datastore/tables/users::users#constant",
+      "writes_table placeOrder -> table:sales.orders [heuristic 0.60] via ts:corpus-store:corpus-store:src/datastore/tables/orders::orders#constant",
+    ]
+  );
 }
 
 #[test]
