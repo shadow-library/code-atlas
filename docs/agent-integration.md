@@ -8,7 +8,7 @@ The server serves one project (`--project`, or inferred from the working directo
 
 | Tool | Use it to | Arguments |
 |---|---|---|
-| `atlas_context` | start a task: ranked, budgeted pack of code to read (full bodies for top items, signatures, one-liners), with why each item is included and what was omitted | `task`, `budget` (500 to 32000 tokens), `seeds` |
+| `atlas_context` | start a task: ranked, budgeted pack of code to read (full bodies for top items, signatures, one-liners), with the line range of each item, why it is included and what was omitted | `task`, `budget` (500 to 32000 tokens), `seeds`, `known` |
 | `atlas_search` | find where a capability lives or whether similar code exists (names, text, structure) | `query`, `kind`, `repo`, `limit` (1 to 200) |
 | `atlas_symbol` | symbol lookup and IDE navigation; `mode` selects the operation (below) | `target`, `mode`, `path`, `depth`, `body`, `substring`, `kinds`, `exclude_kinds`, `max_matches`, `regex`, `source`, `context_lines`, `lines`, `min_severity` |
 | `atlas_edit` | exact renames, symbol edits, safe delete, text replacement, plan application (below) | `operation`, `target`, `path`, `new_name`, `text`, `pattern`, `regex`, `all`, `include`, `exclude`, `occurrences`, `expected_count`, `cross_repo`, `allow_unverified`, `plan`, `dry_run` |
@@ -24,6 +24,8 @@ The server serves one project (`--project`, or inferred from the working directo
 | `atlas_status` | index health: freshness, parse failures, SCIP coverage, LLM status, language servers, server telemetry; with `since_run`, what index runs newer than that run changed (files analysed, deleted, moved, renamed symbols) | `since_run` |
 
 Targets accepted everywhere: a name (`UsersService.findOne`), `[repo:]path[:line]`, an endpoint (`GET /users/{id}`), or a full key. `atlas_symbol` and `atlas_edit` also take name paths (`UsersService/findOne`, `b[1]`) and `[repo:]path:LINE:COL` positions (1-based line, UTF-8 byte column). A name that is not found or is ambiguous returns candidates or a pointer to `atlas_search`. There is no reindex tool: freshness is automatic, and `atlas_status` with `since_run` confirms what the index saw after an edit.
+
+`atlas_context` states a line range on every item: the symbol span for MUST READ, SKIM and TESTS items (`path:31-35`), and for a one-line mention such as an IMPACT caller the line of the reference that put it in the pack (`path:303 (site)`). An item whose body is not shown (SKIM, and MUST READ items marked "named in the task: read the file directly") also shows up to 5 lines around its key site when the budget allows: the reference site, or the body line that matches the most task or search terms. The pack expands up to three graph hops (calls, references, members, implementations) from its seeds; the enclosing type of every code item, the handler and guards of an endpoint and the guards of an auth scheme come with it without counting as a hop. The CLI's `--depth` (0 to 3) narrows the expansion. `known` lists files or symbols the agent already holds: they seed the pack like `seeds` (a file seeds its top-level symbols), but nothing inside them is listed in MUST READ or SKIM; OMITTED says how many relevant items each one held back. A `known` entry that matches nothing (`[unknown known]`) or several entities (`[ambiguous known]`, with the candidates) is reported in OMITTED and seeds nothing.
 
 `atlas_read` and `atlas_changes` were removed in this release (16 tools to 15). Calling either returns an error naming the replacement (`atlas_symbol mode=source`, `atlas_status since_run`). `atlas_dependents` and `atlas_dependencies` exist in the CLI (`query dependents`, `query dependencies`) but are not exposed over MCP. The CLI has top-level shortcuts for `search`, `impact`, `context`, `callers`, `callees`, `symbol`, `api`, `explain`, `read` and `tests-for`, and its own `find`, `outline`, `refs`, `decl`, `impls`, `hierarchy`, `diagnostics`, `edit` and `lsp check` ([operations](operations.md#cli-reference)).
 
@@ -60,7 +62,7 @@ Exact modes come from rust-analyzer or typescript-language-server. With none ava
 ## Recommended workflow
 
 1. **Orient** in an unfamiliar project with `atlas_overview`.
-2. **Start a task** with `atlas_context`. Read what it lists, not the whole repo. Items marked "likely to edit: read the file directly" show only an outline; for a rename or symbol rewrite use `atlas_edit`.
+2. **Start a task** with `atlas_context`. Read what it lists, not the whole repo. Items marked "named in the task: read the file directly" show only an outline and the lines around the key site; for a rename or symbol rewrite use `atlas_edit`.
 3. **Before writing new code**, run `atlas_search` and `atlas_similar` to find something to reuse. A hit is a candidate, not proof of equivalence.
 4. **Before changing shared code**, run `atlas_impact` on it, and `atlas_tests_for` to choose tests. Treat `UNCERTAIN` entries as work to verify, not as noise.
 5. **Edit.** To rename a symbol or rewrite its definition, use `atlas_edit` (exact across files), not find-and-replace; try `dry_run` first on anything wide. For other edits, read the file with your editor's read tool (the harness may require it before an edit). Use `atlas_symbol mode=source` only for code you will not edit yourself. After `atlas_edit` changes a file, re-read it before editing it yourself.
@@ -205,7 +207,7 @@ JSON responses are `{ "freshness": {...}, "answer": {...} }`. Check `freshness.s
 From the harness smoke run (2026-10-04, `t00-smoke`, one run per condition; see [dogfooding](evaluation/dogfooding.md)):
 
 - An agent called `atlas_read` on a file and then the native `Read` on the same file, because the editor requires a read before an edit. The context was duplicated. Tool descriptions and the context pack said: read files you will edit natively, use the symbol reader only for code you will not edit. `atlas_read` is now `atlas_symbol mode=source` with the same rule, and renames and symbol rewrites go through `atlas_edit` instead of the agent's own tools. This guidance has not been re-measured with agents since the surface changed.
-- `atlas_context` bodies for files marked "likely to edit" are suppressed for the same reason; they show an outline.
+- `atlas_context` bodies of items marked "named in the task: read the file directly" are suppressed for the same reason; they show an outline.
 - The atlas run used 15 turns and about 5x the tokens of baseline (including cache reads) on a one-file task, while reading a relevant file the baseline run missed. The pipeline works end to end; cost and benefit on realistic tasks are measured by the A/B harness, not by this single run.
 - Both runs failed the same hidden check (a column-name detail): model capability, not the index.
 - The index cannot tell you about code it does not model. Read the caveats, then the files.

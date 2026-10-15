@@ -240,6 +240,7 @@ impl AtlasServer {
           request.budget = budget;
         }
         request.seeds = args.seeds.unwrap_or_default();
+        request.known = args.known.unwrap_or_default();
         render::plain(&query(shared).context(&request)?, args.format.unwrap_or_default())
       })
       .await

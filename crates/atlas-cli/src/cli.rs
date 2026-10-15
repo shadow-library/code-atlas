@@ -528,6 +528,14 @@ pub struct ContextArgs {
   pub budget: Option<usize>,
   #[arg(long = "seed", value_name = "TARGET", help = "Start from this symbol, file or endpoint instead of searching")]
   pub seeds: Vec<String>,
+  #[arg(
+    long = "known",
+    value_name = "TARGET",
+    help = "A file or symbol you already hold: anchors the pack like a seed but is not listed in MUST READ or SKIM"
+  )]
+  pub known: Vec<String>,
+  #[arg(long, value_name = "HOPS", value_parser = parse_context_depth, help = "Graph hops expanded from the seeds, 0 to 3")]
+  pub depth: Option<u32>,
   #[arg(long, help = "Show scores, expansions and omissions")]
   pub explain: bool,
   #[arg(long, value_parser = parse_confidence)]
@@ -947,6 +955,15 @@ fn parse_confidence(raw: &str) -> Result<f32, String> {
     Ok(value)
   } else {
     Err(format!("{raw} is outside 0..=1"))
+  }
+}
+
+fn parse_context_depth(raw: &str) -> Result<u32, String> {
+  let value: u32 = raw.parse().map_err(|_| format!("{raw:?} is not a whole number"))?;
+  if value <= atlas_query::MAX_CONTEXT_DEPTH {
+    Ok(value)
+  } else {
+    Err(format!("{raw} is outside 0..={}", atlas_query::MAX_CONTEXT_DEPTH))
   }
 }
 

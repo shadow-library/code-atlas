@@ -41,6 +41,12 @@ expression: output
         "signature": "function toCents(amount: string): number",
         "doc": null,
         "skeleton": [],
+        "lines": {
+          "start": 1,
+          "end": 7,
+          "basis": "symbol"
+        },
+        "excerpt": null,
         "body": {
           "state": "text",
           "start_line": 1,
@@ -78,6 +84,12 @@ expression: output
         "signature": "pub fn to_cents(amount: &str) -> i64",
         "doc": null,
         "skeleton": [],
+        "lines": {
+          "start": 1,
+          "end": 15,
+          "basis": "symbol"
+        },
+        "excerpt": null,
         "body": {
           "state": "text",
           "start_line": 1,
@@ -123,6 +135,12 @@ expression: output
         "signature": "function parseMoney(input: string): number",
         "doc": null,
         "skeleton": [],
+        "lines": {
+          "start": 1,
+          "end": 9,
+          "basis": "symbol"
+        },
+        "excerpt": null,
         "body": {
           "state": "text",
           "start_line": 1,
@@ -162,6 +180,12 @@ expression: output
         "signature": "function formatMoney(cents: number): string",
         "doc": null,
         "skeleton": [],
+        "lines": {
+          "start": 1,
+          "end": 7,
+          "basis": "symbol"
+        },
+        "excerpt": null,
         "body": {
           "state": "text",
           "start_line": 1,
@@ -223,6 +247,12 @@ expression: output
         "signature": null,
         "doc": null,
         "skeleton": [],
+        "lines": {
+          "start": 6,
+          "end": 10,
+          "basis": "symbol"
+        },
+        "excerpt": null,
         "body": null,
         "read_directly": false,
         "run": "[acme-sdk] npx vitest run src/money.test.ts -t \"toCents should convert whole and fractional amounts\""
@@ -265,6 +295,12 @@ expression: output
         "signature": null,
         "doc": null,
         "skeleton": [],
+        "lines": {
+          "start": 12,
+          "end": 14,
+          "basis": "symbol"
+        },
+        "excerpt": null,
         "body": null,
         "read_directly": false,
         "run": "[acme-sdk] npx vitest run src/money.test.ts -t \"toCents should keep the sign of negative amounts\""
@@ -307,6 +343,12 @@ expression: output
         "signature": null,
         "doc": null,
         "skeleton": [],
+        "lines": {
+          "start": 21,
+          "end": 26,
+          "basis": "symbol"
+        },
+        "excerpt": null,
         "body": null,
         "read_directly": false,
         "run": "[acme-billing] cargo test -p acme-billing --lib money::tests::converts_whole_and_fractional_amounts"
@@ -349,6 +391,12 @@ expression: output
         "signature": null,
         "doc": null,
         "skeleton": [],
+        "lines": {
+          "start": 28,
+          "end": 31,
+          "basis": "symbol"
+        },
+        "excerpt": null,
         "body": null,
         "read_directly": false,
         "run": "[acme-billing] cargo test -p acme-billing --lib money::tests::keeps_the_sign_of_negative_amounts"
@@ -391,6 +439,12 @@ expression: output
         "signature": null,
         "doc": null,
         "skeleton": [],
+        "lines": {
+          "start": 17,
+          "end": 32,
+          "basis": "symbol"
+        },
+        "excerpt": null,
         "body": null,
         "read_directly": false,
         "run": "[acme-billing] cargo test -p acme-billing --lib money::tests"
@@ -433,6 +487,12 @@ expression: output
         "signature": null,
         "doc": null,
         "skeleton": [],
+        "lines": {
+          "start": 5,
+          "end": 15,
+          "basis": "symbol"
+        },
+        "excerpt": null,
         "body": null,
         "read_directly": false,
         "run": "[acme-sdk] npx vitest run src/money.test.ts -t \"toCents\""

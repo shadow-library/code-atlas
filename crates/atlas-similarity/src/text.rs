@@ -135,7 +135,7 @@ pub fn names_related(left: &str, right: &str) -> bool {
   !name_words(left).is_disjoint(&name_words(right)) || split_words(left) == split_words(right)
 }
 
-pub(crate) fn analyze(input: &str) -> Vec<String> {
+pub fn analyze(input: &str) -> Vec<String> {
   let words = split_words(input);
   let kept: Vec<&String> = words.iter().filter(|word| !is_stopword(word)).collect();
   if kept.is_empty() {

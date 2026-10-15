@@ -112,7 +112,7 @@ Every query accepts `--json`. Other flags are per command (`catl query <command>
 | `similar` | target, `--snippet FILE:START-END` or `--code FILE\|- --language rust\|ts\|tsx\|js` (draft code), `--limit`, `--threshold`, `--include-stale`, `--kind`, `--repo` |
 | `unused` | `--kind`, `--repo`, `--limit` |
 | `patterns` | `--limit`, `--no-excerpts` |
-| `context` | `--budget`, `--seed`, `--explain`, `--min-confidence` |
+| `context` | `--budget`, `--seed`, `--known`, `--depth` (0 to 3 graph hops from the seeds, default 3), `--explain`, `--min-confidence` |
 | `explain` | `--kind`, `--repo` |
 | `read` | `--signature`, `--context N`, `--kind`, `--repo` |
 | `changes` | `--since-run`, `--limit` |

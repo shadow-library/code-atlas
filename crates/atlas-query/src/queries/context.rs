@@ -1,16 +1,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use atlas_core::{Edge, EdgeKind, Entity, EntityId, EntityKey, EntityKind, HttpMethod, normalize_route};
-use atlas_similarity::{SimilarityIndex, names_related};
+use atlas_similarity::{SimilarityIndex, analyze_terms, names_related};
 use serde::Serialize;
 
 use crate::QueryEngine;
-use crate::engine::{Snippet, SnippetMode};
-use crate::error::QueryResult;
+use crate::engine::{Snippet, SnippetMode, SourceReader};
+use crate::error::{QueryError, QueryResult};
 use crate::graph::{Graph, certainty_value};
 use crate::model::{Caveat, CertaintyTag, EntityRef, Hop, Listing, Response, short_name};
 use crate::policy::{Policy, hedge};
-use crate::queries::common::{first_line, is_test};
+use crate::queries::common::{file_entity, first_line, is_test};
 use crate::queries::reuse::access;
 use crate::queries::search::{lexical_hits, query_words, unstemmed};
 use crate::queries::tests_for::{TestItem, direct_tests, run_hint};
@@ -27,7 +27,20 @@ const SCOPE_PENALTY: f64 = 0.6;
 const SCOPE_SEED_PENALTY: f64 = 0.3;
 const SCOPE_ENTRY_WEIGHT: f64 = 0.6;
 const TEST_SUBJECT_FACTOR: f64 = 0.6;
-const EXPANSION_ROUNDS: u32 = 3;
+pub const DEFAULT_CONTEXT_DEPTH: u32 = 3;
+pub const MAX_CONTEXT_DEPTH: u32 = 3;
+const KNOWN_FILE_WEIGHT: f64 = 1.0;
+const EXCERPT_LINES: u32 = 5;
+const SITE_EDGES: [EdgeKind; 8] = [
+  EdgeKind::Calls,
+  EdgeKind::Instantiates,
+  EdgeKind::References,
+  EdgeKind::ReadsEnv,
+  EdgeKind::ReadsConfig,
+  EdgeKind::CallsEndpoint,
+  EdgeKind::MakesRequest,
+  EdgeKind::UsesAuth,
+];
 const EXPAND_THRESHOLD: f64 = 0.25;
 const MEMBERS_PER_TYPE: usize = 8;
 const SKELETON_MEMBERS: usize = 15;
@@ -127,6 +140,8 @@ pub struct ContextRequest {
   pub task: String,
   pub budget: usize,
   pub seeds: Vec<String>,
+  pub known: Vec<String>,
+  pub depth: u32,
   pub explain: bool,
   pub min_confidence: Option<f32>,
 }
@@ -137,10 +152,26 @@ impl ContextRequest {
       task: task.into(),
       budget: DEFAULT_BUDGET,
       seeds: Vec::new(),
+      known: Vec::new(),
+      depth: DEFAULT_CONTEXT_DEPTH,
       explain: false,
       min_confidence: None,
     }
   }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RangeBasis {
+  Symbol,
+  Site,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct LineRange {
+  pub start: u32,
+  pub end: u32,
+  pub basis: RangeBasis,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -154,6 +185,8 @@ pub struct ContextItem {
   pub signature: Option<String>,
   pub doc: Option<String>,
   pub skeleton: Vec<String>,
+  pub lines: Option<LineRange>,
+  pub excerpt: Option<Snippet>,
   pub body: Option<Snippet>,
   pub read_directly: bool,
   pub run: Option<String>,
@@ -162,6 +195,7 @@ pub struct ContextItem {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OmissionReason {
+  Held,
   Budget,
   ShownInEnclosingItem,
   ShownInOutline,
@@ -169,15 +203,18 @@ pub enum OmissionReason {
   BelowConfidenceFloor,
   AmbiguousSeed,
   UnknownSeed,
+  AmbiguousKnown,
+  UnknownKnown,
 }
 
 impl OmissionReason {
   fn is_seed_diagnostic(self) -> bool {
-    matches!(self, Self::AmbiguousSeed | Self::UnknownSeed)
+    matches!(self, Self::AmbiguousSeed | Self::UnknownSeed | Self::AmbiguousKnown | Self::UnknownKnown)
   }
 
   pub fn as_str(self) -> &'static str {
     match self {
+      Self::Held => "already held by the caller",
       Self::Budget => "budget",
       Self::ShownInEnclosingItem => "shown inside an enclosing MUST READ body",
       Self::ShownInOutline => "shown in the outline of an enclosing MUST READ item",
@@ -185,6 +222,8 @@ impl OmissionReason {
       Self::BelowConfidenceFloor => "below confidence floor",
       Self::AmbiguousSeed => "ambiguous seed",
       Self::UnknownSeed => "unknown seed",
+      Self::AmbiguousKnown => "ambiguous known",
+      Self::UnknownKnown => "unknown known",
     }
   }
 }
@@ -266,11 +305,42 @@ struct Node {
   uncertain: bool,
   why: String,
   via: Option<Hop>,
+  site: Option<(u32, u32)>,
+  terms: Vec<String>,
   round: u32,
   named: bool,
   seed: bool,
   near_named: bool,
   reuse: Option<String>,
+}
+
+struct Held {
+  spec: String,
+  entity: Entity,
+}
+
+impl Held {
+  fn is_file(&self) -> bool {
+    self.entity.kind == EntityKind::File
+  }
+
+  fn covers(&self, entity: &Entity) -> bool {
+    if self.entity.id == entity.id {
+      return true;
+    }
+    let held_file = match self.is_file() {
+      true => Some(self.entity.key.clone()),
+      false => file_entity(&self.entity),
+    };
+    if held_file.is_none() || held_file != file_entity(entity) {
+      return false;
+    }
+    match (self.is_file(), self.entity.span, entity.span) {
+      (true, _, _) => true,
+      (false, Some(held), Some(span)) => held.start_byte <= span.start_byte && span.end_byte <= held.end_byte,
+      (false, _, _) => false,
+    }
+  }
 }
 
 #[derive(Default)]
@@ -286,6 +356,7 @@ struct Pack {
   hidden: usize,
   words: Vec<String>,
   scope: Scope,
+  held: Vec<Held>,
 }
 
 #[derive(Default)]
@@ -354,6 +425,8 @@ struct Planned {
   explain: ContextExplain,
   caveats: Vec<Caveat>,
   hidden: usize,
+  held: Vec<Held>,
+  test_spans: BTreeMap<String, (u32, u32)>,
 }
 
 impl Pack {
@@ -361,14 +434,25 @@ impl Pack {
     self.seed_as(entity, weight, why, named, Basis::Relation);
   }
 
-  fn seed_search_hit(&mut self, entity: Entity, weight: f64, why: String) {
+  fn seed_search_hit(&mut self, entity: Entity, weight: f64, why: String, terms: &[String]) {
+    let id = entity.id;
     self.seed_as(entity, weight, why, false, Basis::SearchHit);
+    let Some(node) = self.nodes.get_mut(&id) else { return };
+    for term in terms {
+      if !node.terms.contains(term) {
+        node.terms.push(term.clone());
+      }
+    }
   }
 
   fn seed_as(&mut self, entity: Entity, weight: f64, why: String, named: bool, basis: Basis) {
+    self.seed_weighted(entity, weight, weight, why, named, basis);
+  }
+
+  fn seed_weighted(&mut self, entity: Entity, weight: f64, personal: f64, why: String, named: bool, basis: Basis) {
     self.seed_log.push(format!("{} ({why}, weight {weight:.2})", entity.key));
     let entry = self.personalisation.entry(entity.id).or_insert(0.0);
-    *entry = entry.max(weight);
+    *entry = entry.max(personal);
     let role = role_of(&entity, Role::Code);
     self.insert(Node {
       entity,
@@ -378,6 +462,8 @@ impl Pack {
       uncertain: false,
       why,
       via: None,
+      site: None,
+      terms: Vec::new(),
       round: 0,
       named,
       seed: true,
@@ -396,6 +482,7 @@ impl Pack {
             if firmer || stronger {
               node.why = incoming.why;
               node.via = incoming.via;
+              node.site = incoming.site;
             }
             node.uncertain &= incoming.uncertain;
             node.role = node.role.min(incoming.role);
@@ -404,6 +491,7 @@ impl Pack {
           Placement::TakeIncoming => {
             node.why = incoming.why;
             node.via = incoming.via;
+            node.site = incoming.site;
             node.uncertain = incoming.uncertain;
             node.role = incoming.role;
           }
@@ -418,6 +506,9 @@ impl Pack {
         node.near_named |= incoming.near_named;
         if node.reuse.is_none() {
           node.reuse = incoming.reuse;
+        }
+        if node.terms.is_empty() {
+          node.terms = incoming.terms;
         }
       }
       None => {
@@ -435,6 +526,7 @@ impl Pack {
     self.expansion_log.push(format!("{} -> {} ({why}, weight {weight:.3})", from.entity.key, to.key));
     self.links.push((from.entity.id, to.id, factor * certainty));
     let role = role_of(&to, role);
+    let site = site_in(&to, edge);
     self.insert(Node {
       entity: to,
       basis: Basis::Relation,
@@ -443,12 +535,23 @@ impl Pack {
       uncertain,
       why,
       via: Some(via),
+      site,
+      terms: Vec::new(),
       round: from.round + 1,
       named: false,
       seed: false,
       near_named: from.named,
       reuse: None,
     });
+    Ok(())
+  }
+
+  fn implemented_by(&mut self, graph: &Graph<'_, '_>, from: &Node, code: Entity, edge: &Edge, factor: f64) -> QueryResult<()> {
+    let id = code.id;
+    self.expand_to(graph, from, code, edge, factor, Role::Code)?;
+    if let Some(node) = self.nodes.get_mut(&id) {
+      node.round = node.round.min(from.round);
+    }
     Ok(())
   }
 
@@ -463,6 +566,8 @@ impl Pack {
       weight: from.weight * weight,
       uncertain: from.uncertain || uncertain,
       via: None,
+      site: None,
+      terms: Vec::new(),
       round: from.round + 1,
       named: false,
       seed: false,
@@ -471,6 +576,21 @@ impl Pack {
       why,
     });
   }
+}
+
+fn site_in(entity: &Entity, edge: &Edge) -> Option<(u32, u32)> {
+  if edge.from != entity.id || !SITE_EDGES.contains(&edge.kind) {
+    return None;
+  }
+  let (span, repo, path) = (entity.span?, entity.repo.as_ref()?, entity.path.as_ref()?);
+  edge
+    .evidence
+    .iter()
+    .filter(|evidence| &evidence.repo == repo && &evidence.path == path)
+    .filter(|evidence| span.start_line <= evidence.span.start_line && evidence.span.end_line <= span.end_line)
+    .map(|evidence| (evidence.span.start_line, evidence.span.end_line))
+    .reduce(|(start, end), (other_start, other_end)| (start.min(other_start), end.max(other_end)))
+    .filter(|site| *site != (span.start_line, span.end_line))
 }
 
 fn placement(existing: &Node, incoming: &Node) -> Placement {
@@ -491,6 +611,9 @@ fn role_of(entity: &Entity, role: Role) -> Role {
 
 impl QueryEngine {
   pub fn context(&self, request: &ContextRequest) -> QueryResult<Response<ContextAnswer>> {
+    if request.depth > MAX_CONTEXT_DEPTH {
+      return Err(QueryError::invalid(format!("context depth {} is above the maximum of {MAX_CONTEXT_DEPTH}", request.depth)));
+    }
     let mut freshness = self.barrier()?;
     let index = self.engine().similarity();
     let policy = Policy::with_floor(request.min_confidence.unwrap_or(DEFAULT_FLOOR));
@@ -501,6 +624,8 @@ impl QueryEngine {
       explain,
       caveats,
       hidden,
+      held,
+      test_spans,
     } = planned;
     let mut answer = ContextAnswer {
       task: request.task.clone(),
@@ -523,9 +648,20 @@ impl QueryEngine {
     let mut tests_by_owner: Vec<(bool, f64, Vec<TestItem>)> = Vec::new();
     let mut impact = Vec::new();
     let mut uncertain = Vec::new();
+    let mut held_counts = vec![0_usize; held.len()];
     for item in ranked {
       if item.node.named {
         tests_by_owner.push((true, item.score, item.tests.clone()));
+      }
+      let code_item = item.node.role == Role::Code && !item.node.uncertain;
+      if let Some(index) = held.iter().position(|held| code_item && held.covers(&item.node.entity)) {
+        if item.score >= LOW_RELEVANCE * top {
+          held_counts[index] += 1;
+          if !item.node.named {
+            tests_by_owner.push((false, item.score, item.tests.clone()));
+          }
+        }
+        continue;
       }
       if let Some(reason) = item.node.reuse.clone().filter(|_| !item.node.named && item.node.role != Role::Test) {
         let mut entry = item_of(&item);
@@ -564,6 +700,8 @@ impl QueryEngine {
     let must_read_floor = code.iter().map(|item| item.score).fold(0.0_f64, f64::max) * MUST_READ_RELEVANCE;
     let mut included: Vec<(String, String, u32, u32, bool)> = Vec::new();
     let mut skim_candidates = Vec::new();
+    let mut excerpts: Vec<PlannedExcerpt> = Vec::new();
+    let terms = key_terms(&request.task);
     {
       let mut reader = self.sources(&mut freshness);
       for item in code {
@@ -603,7 +741,7 @@ impl QueryEngine {
         );
         let skeleton_only = type_like && (contains_included || end.saturating_sub(start) > LARGE_TYPE_LINES) && !item.skeleton.is_empty();
         let edit_target = item.node.named && end - start + 1 > SMALL_BODY_LINES;
-        let mut entry = item_of(&item);
+        let mut entry = code_item_of(&item);
         let cost = match (edit_target, skeleton_only) {
           (true, _) => {
             entry.read_directly = true;
@@ -620,6 +758,9 @@ impl QueryEngine {
         if used + cost > must_read_budget {
           skim_candidates.push(item);
           continue;
+        }
+        if entry.body.is_none() {
+          excerpts.extend(PlannedExcerpt::of(Section::MustRead, answer.must_read.len(), &item.node, &terms));
         }
         if !skeleton_only {
           if !edit_target {
@@ -638,10 +779,11 @@ impl QueryEngine {
       }
     }
     for item in skim_candidates {
-      let entry = item_of(&item);
+      let entry = code_item_of(&item);
       let cost = outline_tokens(&entry);
       if used + cost <= request.budget {
         used += cost;
+        excerpts.extend(PlannedExcerpt::of(Section::Skim, answer.skim.len(), &item.node, &terms));
         answer.skim.push(entry);
         continue;
       }
@@ -651,7 +793,33 @@ impl QueryEngine {
         reason: OmissionReason::Budget,
       });
     }
-    let (tests, test_summary) = select_tests(tests_by_owner);
+    {
+      let mut reader = self.sources(&mut freshness);
+      for planned in excerpts {
+        let Some(excerpt) = planned.read(&mut reader)? else { continue };
+        let cost = tokens(excerpt.char_len());
+        if used + cost > request.budget {
+          continue;
+        }
+        used += cost;
+        let section = match planned.section {
+          Section::MustRead => &mut answer.must_read,
+          Section::Skim => &mut answer.skim,
+        };
+        if let Some(entry) = section.get_mut(planned.index) {
+          entry.excerpt = Some(excerpt);
+        }
+      }
+    }
+    for (held, count) in held.iter().zip(held_counts).filter(|(_, count)| *count > 0) {
+      let entity = EntityRef::of(&held.entity);
+      omitted.push(OmittedItem {
+        label: format!("{} as {} ({})", crate::text::entity_line(&entity), held.spec, crate::text::counted(count, "pack item")),
+        entity: Some(entity),
+        reason: OmissionReason::Held,
+      });
+    }
+    let (tests, test_summary) = select_tests(tests_by_owner, &test_spans);
     answer.tests = tests;
     answer.summaries.extend(test_summary);
     impact.sort_by(|left, right| {
@@ -698,7 +866,113 @@ impl QueryEngine {
   }
 }
 
-fn select_tests(owners: Vec<(bool, f64, Vec<TestItem>)>) -> (Vec<ContextItem>, Option<SectionSummary>) {
+#[derive(Clone, Copy)]
+enum Section {
+  MustRead,
+  Skim,
+}
+
+enum KeySite {
+  Lines(u32),
+  Terms(BTreeSet<String>),
+}
+
+struct PlannedExcerpt {
+  section: Section,
+  index: usize,
+  entity: EntityId,
+  span: (u32, u32),
+  key: KeySite,
+}
+
+impl PlannedExcerpt {
+  fn of(section: Section, index: usize, node: &Node, task_terms: &BTreeSet<String>) -> Option<Self> {
+    let span = node.entity.span.filter(|span| span.start_line < span.end_line)?;
+    let key = match (node.site, node.named) {
+      (Some((line, _)), _) => KeySite::Lines(line),
+      (None, true) => {
+        let own: BTreeSet<String> = analyze_terms(&node.entity.name).into_iter().collect();
+        KeySite::Terms(task_terms.difference(&own).cloned().collect())
+      }
+      (None, false) => KeySite::Terms(node.terms.iter().cloned().collect()),
+    };
+    if matches!(&key, KeySite::Terms(terms) if terms.is_empty()) {
+      return None;
+    }
+    Some(Self {
+      section,
+      index,
+      entity: node.entity.id,
+      span: (span.start_line, span.end_line),
+      key,
+    })
+  }
+
+  fn read(&self, reader: &mut SourceReader<'_>) -> QueryResult<Option<Snippet>> {
+    let Snippet::Text { start_line, lines, .. } = reader.snippet(self.entity, SnippetMode::Body { max_lines: None }, 0)? else {
+      return Ok(None);
+    };
+    let key = match &self.key {
+      KeySite::Lines(line) => *line,
+      KeySite::Terms(terms) => match key_line(start_line, &lines, terms) {
+        Some(line) => line,
+        None => return Ok(None),
+      },
+    };
+    let (start, end) = self.span;
+    let first = key.saturating_sub(1).max(start).max(start_line);
+    let last = (first + EXCERPT_LINES - 1).min(end);
+    let selected: Vec<String> = lines
+      .iter()
+      .skip((first - start_line) as usize)
+      .take((last + 1).saturating_sub(first) as usize)
+      .cloned()
+      .collect();
+    if selected.is_empty() {
+      return Ok(None);
+    }
+    Ok(Some(Snippet::Text {
+      start_line: first,
+      lines: selected,
+      omitted_lines: 0,
+    }))
+  }
+}
+
+fn key_terms(task: &str) -> BTreeSet<String> {
+  analyze_terms(&search_text(task)).into_iter().collect()
+}
+
+fn key_line(start_line: u32, lines: &[String], terms: &BTreeSet<String>) -> Option<u32> {
+  let mut best: Option<(usize, u32)> = None;
+  for (offset, line) in lines.iter().enumerate().skip(1) {
+    let found: BTreeSet<String> = analyze_terms(line).into_iter().filter(|term| terms.contains(term)).collect();
+    if found.is_empty() || best.is_some_and(|(count, _)| count >= found.len()) {
+      continue;
+    }
+    best = Some((found.len(), start_line.saturating_add(u32::try_from(offset).unwrap_or(u32::MAX))));
+  }
+  best.map(|(_, line)| line)
+}
+
+fn lines_of(entity: &Entity, site: Option<(u32, u32)>) -> Option<LineRange> {
+  entity.path.as_ref()?;
+  match (site, entity.span) {
+    (Some((start, end)), _) => Some(LineRange {
+      start,
+      end,
+      basis: RangeBasis::Site,
+    }),
+    (None, Some(span)) => Some(LineRange {
+      start: span.start_line,
+      end: span.end_line,
+      basis: RangeBasis::Symbol,
+    }),
+    (None, None) => None,
+  }
+}
+
+fn select_tests(owners: Vec<(bool, f64, Vec<TestItem>)>, spans: &BTreeMap<String, (u32, u32)>) -> (Vec<ContextItem>, Option<SectionSummary>) {
   let mut best: BTreeMap<String, (TestItem, bool, f64)> = BTreeMap::new();
   for (named, score, tests) in owners {
     for test in tests {
@@ -727,6 +1001,12 @@ fn select_tests(owners: Vec<(bool, f64, Vec<TestItem>)>) -> (Vec<ContextItem>, O
       signature: None,
       doc: None,
       skeleton: Vec::new(),
+      lines: spans.get(&test.test.key).map(|(start, end)| LineRange {
+        start: *start,
+        end: *end,
+        basis: RangeBasis::Symbol,
+      }),
+      excerpt: None,
       body: None,
       read_directly: false,
       run: test.run.clone(),
@@ -765,6 +1045,13 @@ fn outline_tokens(entry: &ContextItem) -> usize {
   tokens(entry.signature.as_deref().map_or(0, str::len) + entry.doc.as_deref().map_or(0, str::len) + entry.skeleton.iter().map(String::len).sum::<usize>()) + MENTION_TOKENS
 }
 
+fn code_item_of(item: &Ranked) -> ContextItem {
+  ContextItem {
+    lines: lines_of(&item.node.entity, None),
+    ..item_of(item)
+  }
+}
+
 fn item_of(item: &Ranked) -> ContextItem {
   let entity = &item.node.entity;
   ContextItem {
@@ -777,6 +1064,8 @@ fn item_of(item: &Ranked) -> ContextItem {
     signature: entity.signature.clone(),
     doc: first_line(entity.doc.as_deref()),
     skeleton: item.skeleton.iter().map(|(_, line)| line.clone()).collect(),
+    lines: lines_of(entity, item.node.site),
+    excerpt: None,
     body: None,
     read_directly: false,
     run: match item.node.role {
@@ -793,7 +1082,7 @@ fn plan(query: &QueryEngine, graph: &Graph<'_, '_>, index: &SimilarityIndex, req
     ..Pack::default()
   };
   seed(query, graph, index, request, &mut pack)?;
-  expand(graph, index, &mut pack)?;
+  expand(graph, index, &mut pack, request.depth)?;
   exemplars(graph, &mut pack)?;
   let scope = std::mem::take(&mut pack.scope);
   let mut ranked = rank(&mut pack);
@@ -806,6 +1095,7 @@ fn plan(query: &QueryEngine, graph: &Graph<'_, '_>, index: &SimilarityIndex, req
     ranked.sort_by(|left, right| right.score.total_cmp(&left.score).then_with(|| left.node.entity.key.cmp(&right.node.entity.key)));
   }
   let mut test_owners = 0;
+  let mut test_spans = BTreeMap::new();
   for item in &mut ranked {
     if is_type_like(&item.node.entity.kind) {
       item.skeleton = skeleton(graph, &item.node.entity)?;
@@ -819,6 +1109,11 @@ fn plan(query: &QueryEngine, graph: &Graph<'_, '_>, index: &SimilarityIndex, req
         .into_iter()
         .filter(|test| !type_like || test.relation.entity == own_name || test.reach == crate::queries::TestReach::CoversFile)
         .collect();
+      for test in &item.tests {
+        if let Some(span) = graph.entity(test.test.entity_id()?)?.and_then(|entity| entity.span) {
+          test_spans.insert(test.test.key.clone(), (span.start_line, span.end_line));
+        }
+      }
     }
   }
   let explain = ContextExplain {
@@ -838,6 +1133,8 @@ fn plan(query: &QueryEngine, graph: &Graph<'_, '_>, index: &SimilarityIndex, req
     explain,
     caveats: std::mem::take(&mut pack.caveats),
     hidden: pack.hidden,
+    held: std::mem::take(&mut pack.held),
+    test_spans,
   })
 }
 
@@ -889,6 +1186,17 @@ fn seed(query: &QueryEngine, graph: &Graph<'_, '_>, index: &SimilarityIndex, req
       }),
     }
   }
+  for spec in &request.known {
+    match resolve(graph, &repos, spec, &TargetFilter::default())? {
+      Resolution::Found(entity) => hold(graph, pack, spec, *entity)?,
+      Resolution::Ambiguous(candidates) => ambiguous_known(graph, index, &request.task, spec, candidates, pack)?,
+      Resolution::NotFound(hint) => pack.omitted.push(OmittedItem {
+        entity: None,
+        label: format!("known {spec}: {hint}"),
+        reason: OmissionReason::UnknownKnown,
+      }),
+    }
+  }
   for identifier in identifiers(&request.task) {
     let platform = PLATFORM_TYPES.contains(&identifier.as_str());
     let candidates = match resolve(graph, &repos, &identifier, &TargetFilter::default()) {
@@ -917,6 +1225,46 @@ fn seed(query: &QueryEngine, graph: &Graph<'_, '_>, index: &SimilarityIndex, req
   auth_seeds(graph, &request.task, pack)?;
   scope_seeds(graph, pack)?;
   search_seeds(graph, index, &request.task, pack)
+}
+
+fn ambiguous_known(graph: &Graph<'_, '_>, index: &SimilarityIndex, task: &str, spec: &str, candidates: Vec<Entity>, pack: &mut Pack) -> QueryResult<()> {
+  let total = candidates.len();
+  let file_scores = pack.file_scores.get_or_insert_with(|| file_scores(index, task));
+  let ranked = rank_candidates(graph, file_scores, &pack.scope, candidates)?;
+  pack.omitted.push(OmittedItem {
+    entity: None,
+    label: format!("known {spec}: {total} candidates, none held; pass a key or a path"),
+    reason: OmissionReason::AmbiguousKnown,
+  });
+  for entity in ranked.iter().take(OMITTED_CANDIDATES_SHOWN) {
+    let entry = EntityRef::of(entity);
+    pack.omitted.push(OmittedItem {
+      label: format!("known {spec} candidate {}", crate::text::entity_line(&entry)),
+      entity: Some(entry),
+      reason: OmissionReason::AmbiguousKnown,
+    });
+  }
+  Ok(())
+}
+
+fn hold(graph: &Graph<'_, '_>, pack: &mut Pack, spec: &str, entity: Entity) -> QueryResult<()> {
+  let why = format!("held by the caller as {spec}");
+  match entity.kind {
+    EntityKind::File => {
+      let symbols: Vec<Entity> = neighbours(graph, pack, entity.id, crate::policy::Direction::Forward, &[EdgeKind::Contains])?
+        .into_iter()
+        .map(|(_, symbol)| symbol)
+        .filter(|symbol| symbol.kind.is_code_symbol() && !is_test(symbol))
+        .collect();
+      let personal = KNOWN_FILE_WEIGHT / symbols.len().max(1) as f64;
+      for symbol in symbols {
+        pack.seed_weighted(symbol, 1.0, personal, why.clone(), false, Basis::Relation);
+      }
+    }
+    _ => pack.seed(entity.clone(), 1.0, why, true),
+  }
+  pack.held.push(Held { spec: spec.to_owned(), entity });
+  Ok(())
 }
 
 fn limit_candidates(graph: &Graph<'_, '_>, index: &SimilarityIndex, task: &str, name: &str, candidates: Vec<Entity>, pack: &mut Pack) -> QueryResult<Vec<Entity>> {
@@ -1070,7 +1418,7 @@ fn search_seeds(graph: &Graph<'_, '_>, index: &SimilarityIndex, task: &str, pack
     if !is_test(&entity) {
       taken += 1;
       let terms = unstemmed(&hit.direct_terms, &pack.words).join(" ");
-      pack.seed_search_hit(entity, weight, format!("search hit on {terms}"));
+      pack.seed_search_hit(entity, weight, format!("search hit on {terms}"), &hit.direct_terms);
       continue;
     }
     if test_subjects.len() >= SEARCH_SEEDS {
@@ -1095,7 +1443,7 @@ fn search_seeds(graph: &Graph<'_, '_>, index: &SimilarityIndex, task: &str, pack
       }
       let why = format!("exercised by test {test_name} matching {terms}");
       let subject_id = subject.id;
-      pack.seed_search_hit(subject, weight * TEST_SUBJECT_FACTOR, why);
+      pack.seed_search_hit(subject, weight * TEST_SUBJECT_FACTOR, why, &[]);
       test_subjects.insert(subject_id);
     }
     pack.hidden += hidden;
@@ -1110,7 +1458,7 @@ fn search_seeds(graph: &Graph<'_, '_>, index: &SimilarityIndex, task: &str, pack
     }
     let weight = weigh(pack, &entity, hit, *top);
     let terms = unstemmed(&hit.direct_terms, &pack.words).join(" ");
-    pack.seed_search_hit(entity, weight, format!("search hit on {terms}"));
+    pack.seed_search_hit(entity, weight, format!("search hit on {terms}"), &hit.direct_terms);
     break;
   }
   Ok(())
@@ -1222,6 +1570,7 @@ fn route_seeds(graph: &Graph<'_, '_>, task: &str, pack: &mut Pack) -> QueryResul
         }
         let Some(caller) = graph.entity(edge.from)? else { continue };
         let method = call.name.split(' ').next().unwrap_or("");
+        let site = site_in(&caller, &edge);
         pack.insert(Node {
           entity: caller,
           basis: Basis::Relation,
@@ -1230,6 +1579,8 @@ fn route_seeds(graph: &Graph<'_, '_>, task: &str, pack: &mut Pack) -> QueryResul
           uncertain: true,
           why: format!("possibly calls the same resource: {method} {target} [heuristic route-text match, unverified]"),
           via: None,
+          site,
+          terms: Vec::new(),
           round: 1,
           named: false,
           seed: false,
@@ -1257,18 +1608,63 @@ fn auth_seeds(graph: &Graph<'_, '_>, task: &str, pack: &mut Pack) -> QueryResult
   Ok(())
 }
 
-fn expand(graph: &Graph<'_, '_>, index: &SimilarityIndex, pack: &mut Pack) -> QueryResult<()> {
+fn expand(graph: &Graph<'_, '_>, index: &SimilarityIndex, pack: &mut Pack, depth: u32) -> QueryResult<()> {
   let mut expanded: BTreeSet<EntityId> = BTreeSet::new();
-  for round in 0..EXPANSION_ROUNDS {
-    let frontier: Vec<EntityId> = pack
+  for round in 0..depth {
+    loop {
+      let frontier: Vec<EntityId> = pack
+        .nodes
+        .iter()
+        .filter(|(id, node)| node.round == round && node.role == Role::Code && node.weight >= EXPAND_THRESHOLD && !expanded.contains(*id))
+        .map(|(id, _)| *id)
+        .collect();
+      if frontier.is_empty() {
+        break;
+      }
+      for id in frontier {
+        expanded.insert(id);
+        expand_node(graph, index, pack, id)?;
+      }
+    }
+  }
+  let mut structured = expanded;
+  loop {
+    let leaves: Vec<EntityId> = pack
       .nodes
       .iter()
-      .filter(|(id, node)| node.round == round && node.role == Role::Code && node.weight >= EXPAND_THRESHOLD && !expanded.contains(*id))
+      .filter(|(id, node)| node.role == Role::Code && node.weight >= EXPAND_THRESHOLD && !structured.contains(*id))
       .map(|(id, _)| *id)
       .collect();
-    for id in frontier {
-      expanded.insert(id);
-      expand_node(graph, index, pack, id)?;
+    if leaves.is_empty() {
+      return Ok(());
+    }
+    for id in leaves {
+      structured.insert(id);
+      let Some(node) = pack.nodes.get(&id).cloned() else { continue };
+      expand_structure(graph, pack, &node)?;
+    }
+  }
+}
+
+fn expand_structure(graph: &Graph<'_, '_>, pack: &mut Pack, node: &Node) -> QueryResult<()> {
+  use crate::policy::Direction::Reverse;
+  let id = node.entity.id;
+  for (edge, parent) in neighbours(graph, pack, id, Reverse, &[EdgeKind::Contains])? {
+    if parent.kind.is_code_symbol() {
+      pack.expand_to(graph, node, parent, &edge, 0.6, Role::Code)?;
+    }
+  }
+  if node.entity.kind == EntityKind::ApiEndpoint {
+    for (edge, handler) in neighbours(graph, pack, id, Reverse, &[EdgeKind::ExposesEndpoint])? {
+      pack.implemented_by(graph, node, handler, &edge, 0.9)?;
+    }
+    for (edge, guard) in neighbours(graph, pack, id, crate::policy::Direction::Forward, &[EdgeKind::RequiresGuard])? {
+      pack.implemented_by(graph, node, guard, &edge, 0.6)?;
+    }
+  }
+  if node.entity.kind == EntityKind::AuthScheme {
+    for (edge, guard) in neighbours(graph, pack, id, Reverse, &[EdgeKind::ImplementsAuth])? {
+      pack.implemented_by(graph, node, guard, &edge, 1.0)?;
     }
   }
   Ok(())
@@ -1292,11 +1688,7 @@ fn expand_node(graph: &Graph<'_, '_>, index: &SimilarityIndex, pack: &mut Pack, 
   use crate::policy::Direction::{Forward, Reverse};
   let Some(node) = pack.nodes.get(&id).cloned() else { return Ok(()) };
   let name = short_name(&node.entity.key);
-  for (edge, parent) in neighbours(graph, pack, id, Reverse, &[EdgeKind::Contains])? {
-    if parent.kind.is_code_symbol() {
-      pack.expand_to(graph, &node, parent, &edge, 0.6, Role::Code)?;
-    }
-  }
+  expand_structure(graph, pack, &node)?;
   if is_type_like(&node.entity.kind) {
     let members: Vec<(Edge, Entity)> = neighbours(graph, pack, id, Forward, &[EdgeKind::Contains])?
       .into_iter()
@@ -1326,11 +1718,8 @@ fn expand_node(graph: &Graph<'_, '_>, index: &SimilarityIndex, pack: &mut Pack, 
     pack.expand_to(graph, &node, endpoint, &edge, 0.7, Role::Code)?;
   }
   if node.entity.kind == EntityKind::ApiEndpoint {
-    for (edge, handler) in neighbours(graph, pack, id, Reverse, &[EdgeKind::ExposesEndpoint])? {
-      pack.expand_to(graph, &node, handler, &edge, 0.9, Role::Code)?;
-    }
-    for (edge, guard) in neighbours(graph, pack, id, Forward, &[EdgeKind::RequiresGuard, EdgeKind::SupportsAuth])? {
-      pack.expand_to(graph, &node, guard, &edge, 0.6, Role::Code)?;
+    for (edge, scheme) in neighbours(graph, pack, id, Forward, &[EdgeKind::SupportsAuth])? {
+      pack.expand_to(graph, &node, scheme, &edge, 0.6, Role::Code)?;
     }
     for (edge, consumer) in neighbours(graph, pack, id, Reverse, &[EdgeKind::CallsEndpoint])? {
       let consumers = match consumer.kind {
@@ -1346,9 +1735,6 @@ fn expand_node(graph: &Graph<'_, '_>, index: &SimilarityIndex, pack: &mut Pack, 
     }
   }
   if node.entity.kind == EntityKind::AuthScheme {
-    for (edge, guard) in neighbours(graph, pack, id, Reverse, &[EdgeKind::ImplementsAuth])? {
-      pack.expand_to(graph, &node, guard, &edge, 1.0, Role::Code)?;
-    }
     for (edge, client) in neighbours(graph, pack, id, Reverse, &[EdgeKind::UsesAuth])? {
       pack.expand_to(graph, &node, client, &edge, 0.3, Role::Impact)?;
     }
@@ -1595,6 +1981,8 @@ mod tests {
       uncertain,
       why: why.to_owned(),
       via: None,
+      site: None,
+      terms: Vec::new(),
       round: 1,
       named: false,
       seed: basis == Basis::SearchHit,

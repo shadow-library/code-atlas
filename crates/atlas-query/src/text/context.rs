@@ -1,10 +1,33 @@
-use crate::queries::{ContextAnswer, ContextItem, SectionSummary};
-use crate::text::{RenderText, TextOut, caveats, entity_line, snippet};
+use crate::queries::{ContextAnswer, ContextItem, LineRange, RangeBasis, SectionSummary};
+use crate::text::{RenderText, TextOut, caveats, entity_head, snippet};
+
+fn range(lines: &LineRange) -> String {
+  let span = match lines.start == lines.end {
+    true => lines.start.to_string(),
+    false => format!("{}-{}", lines.start, lines.end),
+  };
+  match lines.basis {
+    RangeBasis::Symbol => span,
+    RangeBasis::Site => format!("{span} (site)"),
+  }
+}
+
+fn place(item: &ContextItem) -> String {
+  let entity = &item.entity;
+  let located = match (&entity.location, &item.lines) {
+    (Some(location), Some(lines)) => format!("{} {} {}:{}:{}", entity.short, entity.kind, location.repo, location.path, range(lines)),
+    _ => entity_head(entity),
+  };
+  match entity.tag() {
+    Some(tag) => format!("{located} {tag}"),
+    None => located,
+  }
+}
 
 fn header(item: &ContextItem) -> String {
   let flag = if item.uncertain { " UNCERTAIN" } else { "" };
   let edit = if item.read_directly { " (named in the task: read the file directly)" } else { "" };
-  format!("{}{flag}{edit}  why: {}", entity_line(&item.entity), item.why)
+  format!("{}{flag}{edit}  why: {}", place(item), item.why)
 }
 
 fn section(out: &mut TextOut, title: &str, items: &[ContextItem], summaries: &[SectionSummary], render: impl Fn(&mut TextOut, &ContextItem)) {
@@ -35,6 +58,9 @@ fn skim(out: &mut TextOut, item: &ContextItem) {
   }
   if let Some(doc) = &item.doc {
     out.line(2, format!("doc {doc}"));
+  }
+  if let Some(excerpt) = &item.excerpt {
+    snippet(out, 2, excerpt);
   }
   for member in &item.skeleton {
     out.line(3, member);

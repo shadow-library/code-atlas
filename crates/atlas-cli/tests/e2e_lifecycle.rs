@@ -163,6 +163,36 @@ fn should_answer_every_query_kind_over_a_freshly_indexed_acme_project() {
     "{context:#}"
   );
   assert!(repos_of(&context).iter().all(|repo| repo.starts_with("acme-")), "{context:#}");
+
+  let held = sandbox
+    .run(
+      &api_repo,
+      &[
+        "context",
+        "fix the lookup of a single user by id in UsersService.findOne",
+        "--known",
+        "UsersService.findOne",
+        "--depth",
+        "2",
+        "--json",
+      ],
+    )
+    .ok()
+    .answer();
+  assert!(!shorts(&held["must_read"]).contains(&"UsersService.findOne".to_owned()), "{held:#}");
+  let held_rows: Vec<&str> = held["omitted"]["items"]
+    .as_array()
+    .unwrap()
+    .iter()
+    .filter(|item| item["reason"] == "held")
+    .map(|item| item["label"].as_str().unwrap())
+    .collect();
+  assert_eq!(
+    held_rows,
+    ["UsersService.findOne method acme-api:src/users/users.service.ts:18 as UsersService.findOne (1 pack item)"],
+    "{held:#}"
+  );
+  sandbox.run(&api_repo, &["context", "fix the lookup", "--depth", "4"]).expect(2);
 }
 
 #[test]

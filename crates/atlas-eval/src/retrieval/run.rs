@@ -354,6 +354,10 @@ fn item_spans<'a>(indexed: &Indexed, items: impl Iterator<Item = &'a ContextItem
   indexed.engine.store().read(|tx| -> RetrievalResult<ItemSpans> {
     let mut spans = ItemSpans::default();
     for item in items {
+      if let Some(stated) = stated_range(indexed, item) {
+        spans.add(Some(stated));
+        continue;
+      }
       let entity = match item.entity.id.parse::<EntityId>() {
         Ok(id) => tx.entity(id)?,
         Err(_) => None,
@@ -362,6 +366,12 @@ fn item_spans<'a>(indexed: &Indexed, items: impl Iterator<Item = &'a ContextItem
     }
     Ok(spans)
   })
+}
+
+fn stated_range(indexed: &Indexed, item: &ContextItem) -> Option<(String, u32, u32)> {
+  let lines = item.lines?;
+  let location = item.entity.location.as_ref()?;
+  Some((tree_path(&indexed.prefixes, &location.repo, &location.path)?, lines.start, lines.end))
 }
 
 fn entity_span(indexed: &Indexed, entity: &Entity) -> Option<(String, u32, u32)> {

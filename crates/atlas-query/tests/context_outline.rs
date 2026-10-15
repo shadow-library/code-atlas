@@ -17,7 +17,7 @@ fn should_outline_named_seeds_and_keep_full_bodies_for_search_hits() {
   let seed = answer.must_read.iter().find(|item| item.entity.short == "UsersService").expect("seed in MUST READ");
   assert!(seed.read_directly && seed.body.is_none(), "{seed:#?}");
   assert!(
-    text.contains("UsersService class acme-api:src/users/users.service.ts:14 (named in the task: read the file directly)"),
+    text.contains("UsersService class acme-api:src/users/users.service.ts:14-37 (named in the task: read the file directly)"),
     "{text}"
   );
   let guard = answer.must_read.iter().find(|item| item.entity.short == "ApiKeyGuard").expect("search hit in MUST READ");

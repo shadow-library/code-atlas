@@ -41,6 +41,8 @@ arguments!(ContextArgs {
   budget: Option<usize>,
   #[schemars(description = "Optional symbols, files or keys to anchor the pack on")]
   seeds: Option<Vec<String>>,
+  #[schemars(description = "Optional files or symbols you already hold (read or edited): they anchor the pack but are not listed again")]
+  known: Option<Vec<String>>,
 });
 
 arguments!(SearchArgs {

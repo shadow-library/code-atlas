@@ -201,7 +201,11 @@ fn context(ctx: &Context, args: ContextArgs) -> CliResult<Outcome> {
   let (query, _) = open(ctx)?;
   let mut request = ContextRequest::new(args.task);
   request.seeds = args.seeds;
+  request.known = args.known;
   request.explain = args.explain;
+  if let Some(depth) = args.depth {
+    request.depth = depth;
+  }
   request.min_confidence = args.min_confidence;
   if let Some(budget) = args.budget {
     request.budget = budget;

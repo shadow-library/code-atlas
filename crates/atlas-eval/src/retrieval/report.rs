@@ -679,8 +679,9 @@ is the strict reading with `must_change` as the gold set."
     "- Line F{F_BETA} (MUST READ and whole pack only). Gold: the old-side lines `reference.patch` changes in files of the base tree, that is every \
 removed line plus, for an insertion that replaces nothing, the old lines directly before and after it. Files the patch adds have no base lines; \
 they are left out and listed per task. Gold lines in base files the index does not hold stay in the gold set and are counted per task. Retrieved: \
-the union of the indexed line spans of the entities the pack items name, whatever part of that span the pack prints; an item whose entity has no \
-span retrieves no line and is counted. Precision, recall and F{F_BETA} are over (file, line) pairs."
+the union of the line ranges the pack items state, whatever part of them the pack prints: the symbol span for MUST READ, SKIM and TESTS items, and \
+for a one-line mention the reference site that put it in the pack when that site lies inside it; an item that states no range retrieves its \
+entity's indexed span, and one whose entity has no span retrieves no line and is counted. Precision, recall and F{F_BETA} are over (file, line) pairs."
   );
   let budgets: Vec<String> = report.settings.yield_budgets.iter().map(usize::to_string).collect();
   let _ = writeln!(

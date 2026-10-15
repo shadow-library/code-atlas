@@ -273,6 +273,8 @@ mod tests {
       signature: None,
       doc: None,
       skeleton: Vec::new(),
+      lines: None,
+      excerpt: None,
       body: None,
       read_directly: false,
       run: None,

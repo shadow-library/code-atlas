@@ -5,9 +5,9 @@ macro_rules! certainty {
 }
 
 pub(crate) const CONTEXT: &str = concat!(
-  "START HERE for a task. Returns a ranked, budgeted pack of the code to read: full bodies for the top items, signatures for the next, one-liners for the rest, each with why it was included, plus what was omitted and why. ",
-  "Items marked \"likely to edit: read the file directly\" show only a signature outline; for a rename or symbol rewrite use atlas_edit. ",
-  "Seeds are optional symbols or files to anchor on. ",
+  "START HERE for a task. Returns a ranked, budgeted pack of the code to read: full bodies for the top items, signatures for the next, one-liners for the rest, each with its line range and why it was included, plus what was omitted and why. ",
+  "Items marked \"named in the task: read the file directly\" show an outline and the lines around the key site instead of the body; for a rename or symbol rewrite use atlas_edit. ",
+  "Seeds are optional symbols or files to anchor on. Pass files or symbols you already read as known: they anchor the pack but are not listed again, so it shows what is missing. ",
   certainty!()
 );
 pub(crate) const SEARCH: &str = "Find where a capability is implemented or whether similar code already exists (names, text and structure). Use before writing new code. Returns ranked hits by match strength; a hit is a candidate, not proof of equivalence.";
