@@ -87,8 +87,12 @@ pub enum Command {
   Edit(EditCommand),
   #[command(subcommand, about = "Inspect the language servers")]
   Lsp(LspCommand),
-  #[command(subcommand, about = "Wire Code Atlas into an agent client")]
+  #[command(subcommand, about = "Wire Code Atlas into Claude Code and Codex as config.toml [agents] asks, and track what was written")]
+  Agents(AgentsCommand),
+  #[command(subcommand, about = "Wire Code Atlas into Claude Code for this repo as earlier versions did; `agents sync` is the managed way")]
   Connect(ConnectCommand),
+  #[command(about = "Answer a Claude Code hook from the JSON on stdin; always exits 0")]
+  Hook(HookArgs),
   #[command(about = "Serve the MCP protocol on stdio")]
   Mcp(McpArgs),
   #[command(subcommand, about = "Inspect internals")]
@@ -826,6 +830,88 @@ pub struct ConnectClaudeArgs {
   pub scope: ConnectScope,
   #[arg(long, short = 'y', help = "Apply changes to existing files without asking")]
   pub yes: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AgentsCommand {
+  #[command(about = "Write or update the agent wiring config.toml [agents] asks for, and record it in wiring.json")]
+  Sync(AgentsSyncArgs),
+  #[command(about = "List what agents sync recorded and whether it changed since (exits 3 on drift)")]
+  Status(AgentsStatusArgs),
+  #[command(about = "Remove exactly what agents sync recorded")]
+  Unsync(AgentsUnsyncArgs),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum AgentName {
+  Claude,
+  Codex,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum AgentScope {
+  User,
+  Local,
+  Project,
+}
+
+#[derive(Debug, Args)]
+pub struct AgentsSyncArgs {
+  #[arg(long = "agent", value_enum, help = "Agent to wire (repeatable); defaults to the agents enabled in config.toml")]
+  pub agents: Vec<AgentName>,
+  #[arg(
+    long,
+    value_enum,
+    help = "Claude Code scope: user (one cwd-routed server), local (per repo, not committed) or project (.mcp.json, committed); defaults to [agents.claude] scope"
+  )]
+  pub scope: Option<AgentScope>,
+  #[arg(
+    long = "repo",
+    value_name = "PATH",
+    help = "Repo to wire for local or project scope and guidance (repeatable); defaults to the repo of the working directory"
+  )]
+  pub repos: Vec<PathBuf>,
+  #[arg(long, help = "Show what would change and write nothing")]
+  pub dry_run: bool,
+  #[arg(long, help = "Overwrite entries that were changed since the last sync or that agents sync did not write")]
+  pub force: bool,
+  #[arg(long, help = "Replace entries from an older catl (an absolute command or a fixed --project)")]
+  pub migrate: bool,
+  #[arg(long, short = 'y', help = "Apply changes to existing files without asking")]
+  pub yes: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct AgentsStatusArgs {
+  #[arg(long)]
+  pub json: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct AgentsUnsyncArgs {
+  #[arg(long = "agent", value_enum)]
+  pub agents: Vec<AgentName>,
+  #[arg(long, value_enum)]
+  pub scope: Option<AgentScope>,
+  #[arg(long = "repo", value_name = "PATH")]
+  pub repos: Vec<PathBuf>,
+  #[arg(long, help = "Show what would be removed and write nothing")]
+  pub dry_run: bool,
+  #[arg(long, help = "Also remove entries that were changed since the last sync")]
+  pub force: bool,
+  #[arg(long, short = 'y', help = "Apply changes without asking")]
+  pub yes: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum HookName {
+  Remind,
+}
+
+#[derive(Debug, Args)]
+pub struct HookArgs {
+  #[arg(value_enum)]
+  pub hook: HookName,
 }
 
 #[derive(Debug, Subcommand)]

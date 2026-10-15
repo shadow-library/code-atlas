@@ -1,14 +1,3 @@
-pub(crate) const INSTRUCTIONS: &str = "\
-Code Atlas answers questions about ONE indexed project (a group of repos) from a knowledge graph; every call first brings the index up to date with the working tree.
-1. Start a task with atlas_context: a ranked, budgeted pack of code to read, with reasons and omissions.
-2. Before writing new code, run atlas_search and atlas_similar to find something to reuse.
-3. Before changing shared code, run atlas_impact on it; use atlas_tests_for to pick tests.
-4. Read only the code the results list (atlas_symbol mode=source only for code you will not edit yourself; read files you will edit with your own tool). To rename or rewrite a symbol use atlas_edit (exact across files), not find-and-replace; after it changes a file, re-read that file before editing it yourself.
-5. Untagged entities and [resolved]/[syntactic]/[compiler]/[declared] relations are reliable but not exhaustive; always read the caveats. An empty result is not proof of absence (unresolved references, files that failed to parse, hidden low-confidence relations). [heuristic] and [inferred] relations are leads: verify them in the source before relying on them; entities carry the same tags. A tag after an entity name tags the entity; a tag in parentheses or in a `verb target [tag]` step tags the relation.
-6. After editing, call atlas_status with since_run or re-query; freshness is automatic, there is no reindex tool.
-7. Targets: a name (UsersService.findOne), a [repo:]path[:line], 'GET /users/{id}' or a full key. If not found or ambiguous, use atlas_search.
-Add format \"json\" to any tool for structured output.";
-
 macro_rules! certainty {
   () => {
     "Relations carry a certainty tag: [heuristic]/[inferred] ones are leads to verify in the source, not facts."

@@ -80,7 +80,7 @@ const fn reserved(name: &'static str, class: KeyClass, kind: ValueKind, validate
   }
 }
 
-pub(crate) const RESERVED_KEYS: [ReservedKey; 7] = [
+pub(crate) const RESERVED_KEYS: [ReservedKey; 8] = [
   reserved("agents.binary", KeyClass::Executable, ValueKind::Text, check_binary),
   reserved("agents.guidance", KeyClass::Runtime, ValueKind::Text, |value| {
     choice(value, &["none", "auto", "local", "tracked"])
@@ -89,6 +89,7 @@ pub(crate) const RESERVED_KEYS: [ReservedKey; 7] = [
   reserved("agents.claude.scope", KeyClass::Runtime, ValueKind::Text, |value| {
     choice(value, &["user", "local", "project"])
   }),
+  reserved("agents.claude.hooks", KeyClass::Runtime, ValueKind::List, check_hooks),
   reserved("agents.codex.enabled", KeyClass::Runtime, ValueKind::Flag, |value| as_flag(value).map(drop)),
   reserved("worktrees.mode", KeyClass::Runtime, ValueKind::Text, |value| choice(value, &["overlay", "main", "off"])),
   reserved("worktrees.gc_after_days", KeyClass::Runtime, ValueKind::Number, |value| as_positive(value).map(drop)),
@@ -358,6 +359,19 @@ fn choice(value: &Value, options: &[&str]) -> Result<(), String> {
   }
 }
 
+const CLAUDE_HOOKS: [&str; 2] = ["auto-approve", "remind"];
+
+fn check_hooks(value: &Value) -> Result<(), String> {
+  let hooks = as_words(value)?;
+  if let Some(unknown) = hooks.iter().find(|hook| !CLAUDE_HOOKS.contains(&hook.as_str())) {
+    return Err(format!("expected hooks from {}, got {unknown:?}", CLAUDE_HOOKS.join(", ")));
+  }
+  match hooks.iter().enumerate().any(|(index, hook)| hooks[..index].contains(hook)) {
+    true => Err("each hook may be listed once".to_owned()),
+    false => Ok(()),
+  }
+}
+
 fn check_binary(value: &Value) -> Result<(), String> {
   let binary = as_text(value)?;
   match binary.is_empty() || (binary.contains('/') && !Path::new(&binary).is_absolute()) {
@@ -429,5 +443,13 @@ mod tests {
       Err("expected one of overlay, main, off, got \"copy\"".to_owned())
     );
     assert_eq!(check("worktrees.gc_after_days", Value::Integer(0)), Err("must be greater than 0".to_owned()));
+    let hooks = |names: &[&str]| Value::Array(names.iter().map(|name| Value::String((*name).to_owned())).collect());
+    assert_eq!(check("agents.claude.hooks", hooks(&["auto-approve", "remind"])), Ok(()));
+    assert_eq!(check("agents.claude.hooks", hooks(&[])), Ok(()));
+    assert_eq!(
+      check("agents.claude.hooks", hooks(&["activate"])),
+      Err("expected hooks from auto-approve, remind, got \"activate\"".to_owned())
+    );
+    assert_eq!(check("agents.claude.hooks", hooks(&["remind", "remind"])), Err("each hook may be listed once".to_owned()));
   }
 }

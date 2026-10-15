@@ -11,6 +11,8 @@ const REGISTRY_FILE: &str = "projects.toml";
 const CONFIG_FILE: &str = "config.toml";
 const DETECTORS_DIR: &str = "detectors";
 const DB_FILE: &str = "atlas.db";
+const WIRING_FILE: &str = "wiring.json";
+const HOOK_STATE_DIR: &str = "hooks";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AtlasHome {
@@ -68,6 +70,14 @@ impl AtlasHome {
 
   pub fn detectors_dir(&self) -> PathBuf {
     self.config_dir.join(DETECTORS_DIR)
+  }
+
+  pub fn wiring_path(&self) -> PathBuf {
+    self.data_dir.join(WIRING_FILE)
+  }
+
+  pub fn hook_state_dir(&self) -> PathBuf {
+    self.data_dir.join(HOOK_STATE_DIR)
   }
 
   pub fn project_data_dir(&self, project: &ProjectName) -> PathBuf {
@@ -129,5 +139,7 @@ mod tests {
     assert_eq!(home.db_path(&project), Path::new("/iso/data/acme/atlas.db"));
     assert_eq!(home.registry_path(), Path::new("/iso/config/projects.toml"));
     assert_eq!(home.config_path(), Path::new("/iso/config/config.toml"));
+    assert_eq!(home.wiring_path(), Path::new("/iso/data/wiring.json"));
+    assert_eq!(home.hook_state_dir(), Path::new("/iso/data/hooks"));
   }
 }

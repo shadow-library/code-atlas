@@ -109,19 +109,8 @@ impl Sandbox {
   }
 
   pub fn command(&self, cwd: &Path, args: &[&str]) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_catl"));
-    for (name, _) in std::env::vars_os() {
-      if name.to_string_lossy().starts_with("CODE_ATLAS_") {
-        command.env_remove(name);
-      }
-    }
-    command
-      .args(args)
-      .current_dir(cwd)
-      .env("CODE_ATLAS_HOME", self.home.path())
-      .env("CLAUDE_CONFIG_DIR", self.home.path().join("claude"))
-      .env_remove("RUST_LOG")
-      .stdin(Stdio::null());
+    let mut command = atlas_test_lsp::hermetic::hermetic_catl(env!("CARGO_BIN_EXE_catl"), self.home.path());
+    command.args(args).current_dir(cwd).stdin(Stdio::null());
     command
   }
 

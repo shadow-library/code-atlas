@@ -22,6 +22,7 @@ use crate::arguments::{
 };
 use crate::descriptions as text;
 use crate::error::{McpError, ToolError};
+use crate::guidance;
 use crate::options::ServeOptions;
 use crate::render;
 use crate::session::Session;
@@ -506,6 +507,6 @@ impl ServerHandler for AtlasServer {
   }
 
   fn get_info(&self) -> ServerConfig {
-    ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(text::INSTRUCTIONS)
+    ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(guidance::instructions())
   }
 }

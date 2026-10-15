@@ -6,6 +6,7 @@ use std::process::{Command, Output, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
+use atlas_test_lsp::hermetic::{hermetic_catl, sandbox_path};
 use serde_json::Value;
 use tempfile::TempDir;
 
@@ -33,22 +34,17 @@ impl Sandbox {
   }
 
   fn run_env(&self, cwd: &Path, args: &[&str], envs: &[(&str, &str)]) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_catl"));
-    for (name, _) in std::env::vars_os() {
-      if name.to_string_lossy().starts_with("CODE_ATLAS_") {
-        command.env_remove(name);
-      }
-    }
-    command
-      .args(args)
-      .current_dir(cwd)
-      .env("CODE_ATLAS_HOME", self.home.path())
-      .env("CLAUDE_CONFIG_DIR", self.home.path().join("claude"))
-      .env_remove("RUST_LOG")
-      .envs(envs.iter().copied())
-      .stdin(Stdio::null())
-      .output()
-      .unwrap()
+    self.catl().args(args).current_dir(cwd).envs(envs.iter().copied()).stdin(Stdio::null()).output().unwrap()
+  }
+
+  fn catl(&self) -> Command {
+    hermetic_catl(env!("CARGO_BIN_EXE_catl"), self.home.path())
+  }
+
+  fn write_config(&self, text: &str) {
+    let config = self.home.path().join("config");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(config.join("config.toml"), text).unwrap();
   }
 
   fn acme(&self) -> PathBuf {
@@ -280,28 +276,41 @@ fn should_write_connect_claude_files_idempotently() {
   let first = sandbox.run(&api, &["connect", "claude"]);
   assert_ok(&first);
   assert!(
-    stdout(&first).contains(".mcp.json: created") && stdout(&first).contains("AGENTS.md: created"),
+    stdout(&first).contains(".mcp.json#mcpServers.code-atlas: created") && stdout(&first).contains("AGENTS.md: created"),
     "{}",
     stdout(&first)
   );
 
   let config: Value = serde_json::from_str(&fs::read_to_string(api.join(".mcp.json")).unwrap()).unwrap();
   let server = &config["mcpServers"]["code-atlas"];
-  assert_eq!(server["command"], fs::canonicalize(env!("CARGO_BIN_EXE_catl")).unwrap().display().to_string());
+  assert_eq!(server["command"], catl_path());
   assert_eq!(server["args"], serde_json::json!(["mcp", "--project", "acme", "--watch"]));
   assert!(stderr(&first).contains("machine-specific"), "{}", stderr(&first));
   let guidance = fs::read_to_string(api.join("AGENTS.md")).unwrap();
-  for tool in ["`context`", "`impact`", "`search`", "`similar`", "`explain`", "[heuristic]", "[inferred]", "[compiler]"] {
+  for tool in [
+    "atlas_context",
+    "atlas_impact",
+    "atlas_search",
+    "atlas_similar",
+    "atlas_explain",
+    "atlas_edit",
+    "[heuristic]",
+    "[inferred]",
+    "[compiler]",
+    "DEGRADED",
+  ] {
     assert!(guidance.contains(tool), "missing {tool}");
   }
+  assert!(guidance.contains("(project `acme`)"), "{guidance}");
   assert!(!guidance.contains("compiler_verified"), "{guidance}");
+  assert!(!api.join(".claude").exists());
 
   let mcp_before = fs::read(api.join(".mcp.json")).unwrap();
   let agents_before = fs::read(api.join("AGENTS.md")).unwrap();
   let second = sandbox.run(&api, &["connect", "claude"]);
   assert_ok(&second);
   assert!(
-    stdout(&second).contains(".mcp.json: unchanged") && stdout(&second).contains("AGENTS.md: unchanged"),
+    stdout(&second).contains(".mcp.json#mcpServers.code-atlas: unchanged") && stdout(&second).contains("AGENTS.md: unchanged"),
     "{}",
     stdout(&second)
   );
@@ -349,6 +358,7 @@ fn should_refuse_to_overwrite_an_invalid_mcp_config() {
   fs::write(sdk.join(".mcp.json"), "{ not json").unwrap();
   let output = sandbox.run(&sdk, &["connect", "claude", "--yes"]);
   assert_eq!(code(&output), 2);
+  assert!(stdout(&output).contains("refused: cannot be read ("), "{}", stdout(&output));
   assert_eq!(fs::read_to_string(sdk.join(".mcp.json")).unwrap(), "{ not json");
   assert!(!sdk.join("AGENTS.md").exists());
 }
@@ -478,10 +488,10 @@ fn should_shut_watch_down_cleanly_on_interrupt() {
   let sandbox = Sandbox::new();
   let root = sandbox.create_acme();
   let api = root.join("acme-api");
-  let mut child = Command::new(env!("CARGO_BIN_EXE_catl"))
+  let mut child = sandbox
+    .catl()
     .args(["watch"])
     .current_dir(&api)
-    .env("CODE_ATLAS_HOME", sandbox.home.path())
     .stdin(Stdio::null())
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
@@ -497,7 +507,7 @@ fn should_shut_watch_down_cleanly_on_interrupt() {
   assert!(sandbox.home.path().join("data/acme/atlas.db").exists());
 }
 
-const CLAUDE_STUB: &str = "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$FAKE_CLAUDE_LOG\"\ncase \"$2\" in remove) exit 1;; esac\nexit 0\n";
+const CLAUDE_STUB: &str = "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$FAKE_CLAUDE_LOG\"\ncase \"$2\" in\n  remove) exit 1;;\n  add-json) printf '{\"mcpServers\":{\"%s\":%s}}' \"$5\" \"$6\" > \"$CLAUDE_CONFIG_DIR/.claude.json\";;\nesac\nexit 0\n";
 
 fn fake_claude(dir: &Path) -> PathBuf {
   use std::os::unix::fs::PermissionsExt;
@@ -552,7 +562,7 @@ impl FakeClaude {
     let config_dir = sandbox.work().join("claude-config");
     fs::create_dir_all(&config_dir).unwrap();
     Self {
-      path: format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+      path: format!("{}:{}", bin.display(), sandbox_path(sandbox.home.path())),
       log: sandbox.work().join("claude.log"),
       config_dir,
     }
@@ -599,17 +609,19 @@ fn should_register_the_user_scope_without_a_project_and_with_watch() {
   let web = root.join("acme-web");
   let claude = FakeClaude::new(&sandbox);
   assert_ok(&claude.connect(&sandbox, &web, &[]));
-  assert_ok(&claude.connect(&sandbox, &web, &[]));
+  let again = claude.connect(&sandbox, &web, &[]);
+  assert_ok(&again);
+  assert!(stdout(&again).contains(".claude.json#mcpServers.code-atlas: unchanged"), "{}", stdout(&again));
   assert!(!web.join(".mcp.json").exists());
   assert!(web.join("AGENTS.md").exists());
   let calls = claude.calls();
-  assert_eq!(calls.iter().filter(|call| call.as_str() == "mcp remove --scope user code-atlas").count(), 2);
+  assert_eq!(calls.iter().filter(|call| call.as_str() == "mcp remove --scope user code-atlas").count(), 1);
   let added = claude.added_entries();
-  assert_eq!(added.len(), 2);
-  assert_eq!(added[0], added[1]);
+  assert_eq!(added.len(), 1);
   assert_eq!(added[0]["command"], catl_path());
   assert_eq!(added[0]["args"], serde_json::json!(["mcp", "--watch"]));
   assert_eq!(added[0]["env"]["CODE_ATLAS_HOME"], sandbox.home.path().to_str().unwrap());
+  assert!(!claude.config_dir.join("settings.json").exists());
 }
 
 #[test]
@@ -625,7 +637,7 @@ fn should_replace_a_user_scope_entry_that_pins_a_project_only_after_confirmation
 
   assert_eq!(code(&refused), 2, "{}", stderr(&refused));
   assert!(
-    stderr(&refused).contains("user-scope code-atlas server") && stderr(&refused).contains("--yes"),
+    stderr(&refused).contains("replace an entry written by an older catl") && stderr(&refused).contains("--yes"),
     "{}",
     stderr(&refused)
   );
@@ -652,13 +664,9 @@ fn should_ask_before_replacing_a_user_scope_entry_in_an_unreadable_claude_config
   let accepted = claude.connect(&sandbox, &web, &["--yes"]);
 
   assert_eq!(code(&refused), 2, "{}", stderr(&refused));
+  assert!(stdout(&refused).contains(".claude.json#mcpServers.code-atlas: updated"), "{}", stdout(&refused));
   assert!(
-    stdout(&refused).contains(".claude.json#mcpServers.code-atlas: replacing an entry that cannot be read ("),
-    "{}",
-    stdout(&refused)
-  );
-  assert!(
-    stderr(&refused).contains("user-scope code-atlas server") && stderr(&refused).contains("--yes"),
+    stderr(&refused).contains("replace an entry that cannot be read (") && stderr(&refused).contains("--yes"),
     "{}",
     stderr(&refused)
   );
@@ -683,7 +691,7 @@ fn should_leave_an_identical_user_scope_entry_unchanged() {
 
   assert_ok(&output);
   assert!(stdout(&output).contains(".claude.json#mcpServers.code-atlas: unchanged"), "{}", stdout(&output));
-  assert_eq!(claude.calls(), ["--version"]);
+  assert!(claude.calls().is_empty(), "{:?}", claude.calls());
 }
 
 #[test]
@@ -716,6 +724,7 @@ fn should_print_the_claude_command_and_exit_2_when_claude_is_missing() {
   assert_eq!(code(&output), 2);
   assert!(stderr(&output).contains("claude mcp add-json --scope user code-atlas"), "{}", stderr(&output));
   assert!(!web.join("AGENTS.md").exists());
+  assert!(!sandbox.home.path().join("data/wiring.json").exists());
 }
 
 #[test]
@@ -805,10 +814,10 @@ fn should_serve_a_search_while_another_process_indexes() {
   let root = sandbox.create_acme();
   let api = root.join("acme-api");
   let spawn = |args: &[&str]| {
-    Command::new(env!("CARGO_BIN_EXE_catl"))
+    sandbox
+      .catl()
       .args(args)
       .current_dir(&api)
-      .env("CODE_ATLAS_HOME", sandbox.home.path())
       .stdin(Stdio::null())
       .stdout(Stdio::piped())
       .stderr(Stdio::piped())
@@ -830,10 +839,10 @@ fn should_reload_the_project_when_another_process_changes_it_while_watching() {
   let root = sandbox.create_acme();
   let api = root.join("acme-api");
   assert_ok(&sandbox.run(&api, &["index"]));
-  let mut child = Command::new(env!("CARGO_BIN_EXE_catl"))
+  let mut child = sandbox
+    .catl()
     .args(["watch"])
     .current_dir(&api)
-    .env("CODE_ATLAS_HOME", sandbox.home.path())
     .stdin(Stdio::null())
     .stdout(Stdio::null())
     .stderr(Stdio::piped())
@@ -877,15 +886,16 @@ impl McpSession {
     assert_ok(&sandbox.run(cwd, &["connect", "claude", "--yes"]));
     let config: Value = serde_json::from_str(&fs::read_to_string(cwd.join(".mcp.json")).unwrap()).unwrap();
     let server = &config["mcpServers"]["code-atlas"];
+    assert_eq!(server["command"], catl_path());
     let arguments: Vec<&str> = server["args"].as_array().unwrap().iter().map(|argument| argument.as_str().unwrap()).collect();
-    Self::spawn(sandbox, cwd, server["command"].as_str().unwrap(), &arguments)
+    Self::spawn(sandbox, cwd, &arguments)
   }
 
-  fn spawn(sandbox: &Sandbox, cwd: &Path, command: &str, arguments: &[&str]) -> Self {
-    let mut child = Command::new(command)
+  fn spawn(sandbox: &Sandbox, cwd: &Path, arguments: &[&str]) -> Self {
+    let mut child = sandbox
+      .catl()
       .args(arguments)
       .current_dir(cwd)
-      .env("CODE_ATLAS_HOME", sandbox.home.path())
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())
       .stderr(Stdio::null())
@@ -1004,7 +1014,7 @@ fn should_exit_cleanly_on_sigterm_while_serving_mcp() {
 #[test]
 fn should_serve_only_atlas_status_outside_every_project() {
   let sandbox = Sandbox::new();
-  let mut session = McpSession::spawn(&sandbox, &sandbox.work(), env!("CARGO_BIN_EXE_catl"), &["mcp", "--watch"]);
+  let mut session = McpSession::spawn(&sandbox, &sandbox.work(), &["mcp", "--watch"]);
   session.handshake();
   let tools = session.request(2, "tools/list", serde_json::json!({}));
   let status = session.request(3, "tools/call", serde_json::json!({"name": "atlas_status", "arguments": {}}));
@@ -1204,6 +1214,22 @@ fn should_connect_claude_from_a_worktree_into_the_worktree_and_leave_the_main_ch
   assert_eq!(config["mcpServers"]["code-atlas"]["args"], serde_json::json!(["mcp", "--project", "shop", "--watch"]));
   assert!(worktree.join("AGENTS.md").exists());
   assert!(!main.join(".mcp.json").exists() && !main.join("AGENTS.md").exists());
+
+  fs::write(worktree.join("CLAUDE.md"), "# rules\n").unwrap();
+  sandbox.write_config("[agents]\nguidance = \"local\"\n[agents.claude]\nhooks = [\"auto-approve\", \"remind\"]\n");
+  let synced = sandbox.run(&worktree.join("src"), &["agents", "sync", "--agent", "claude", "--scope", "project", "--migrate", "--yes"]);
+
+  assert_ok(&synced);
+  let config: Value = serde_json::from_str(&fs::read_to_string(worktree.join(".mcp.json")).unwrap()).unwrap();
+  assert_eq!(
+    config["mcpServers"]["code-atlas"],
+    serde_json::json!({"type": "stdio", "command": "catl", "args": ["mcp", "--watch"]})
+  );
+  assert!(worktree.join("CLAUDE.local.md").exists() && worktree.join(".claude/settings.local.json").exists());
+  assert!(!main.join("CLAUDE.local.md").exists() && !main.join(".claude/settings.local.json").exists());
+  assert!(!worktree.join("AGENTS.md").exists(), "the tracked block connect wrote is no longer wanted");
+  let exclude = fs::read_to_string(main.join(".git/info/exclude")).unwrap();
+  assert!(exclude.ends_with("/.claude/settings.local.json\n/CLAUDE.local.md\n"), "{exclude}");
 }
 
 #[test]
@@ -1540,11 +1566,10 @@ fn should_find_code_similar_to_a_draft_on_stdin_and_follow_http_hops() {
   let sdk = root.join("acme-sdk");
   assert_ok(&sandbox.run(&sdk, &["index"]));
   let draft = fs::read_to_string(sdk.join("src/money.ts")).unwrap();
-  let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_catl"));
+  let mut command = sandbox.catl();
   command
     .args(["query", "similar", "--code", "-", "--language", "ts", "--json"])
     .current_dir(&sdk)
-    .env("CODE_ATLAS_HOME", sandbox.home.path())
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
     .stderr(Stdio::piped());

@@ -7,6 +7,7 @@ use std::process::{Command, ExitStatus, Stdio};
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use atlas_test_lsp::hermetic::hermetic_catl;
 use rmcp::model::{CallToolRequestParams, CallToolResult};
 use rmcp::service::RunningService;
 use rmcp::{RoleClient, ServiceExt};
@@ -95,14 +96,7 @@ impl Sandbox {
   }
 
   pub fn cli(&self, cwd: &Path, args: &[&str]) -> CliRun {
-    let output = without_atlas_settings(Command::new(binary()))
-      .args(args)
-      .current_dir(cwd)
-      .env("CODE_ATLAS_HOME", self.home())
-      .env_remove("RUST_LOG")
-      .stdin(Stdio::null())
-      .output()
-      .unwrap();
+    let output = hermetic_catl(binary(), self.home()).args(args).current_dir(cwd).stdin(Stdio::null()).output().unwrap();
     CliRun {
       code: output.status.code().unwrap_or(-1),
       stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -142,15 +136,6 @@ impl Sandbox {
   }
 }
 
-fn without_atlas_settings(mut command: Command) -> Command {
-  for (name, _) in std::env::vars_os() {
-    if name.to_string_lossy().starts_with("CODE_ATLAS_") {
-      command.env_remove(name);
-    }
-  }
-  command
-}
-
 pub struct Server {
   pub client: RunningService<RoleClient, ()>,
   child: Child,
@@ -158,11 +143,9 @@ pub struct Server {
 
 impl Server {
   pub async fn spawn(command: &Path, args: &[&str], cwd: &Path, home: &Path) -> Self {
-    let mut child = tokio::process::Command::from(without_atlas_settings(Command::new(command)))
+    let mut child = tokio::process::Command::from(hermetic_catl(command, home))
       .args(args)
       .current_dir(cwd)
-      .env("CODE_ATLAS_HOME", home)
-      .env_remove("RUST_LOG")
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())
       .stderr(Stdio::null())

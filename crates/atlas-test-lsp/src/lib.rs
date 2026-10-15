@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
+pub mod hermetic;
+
 pub const FAKE_LSP_BIN: &str = "atlas-fake-lsp";
 
 // Cargo builds no binaries of dependencies and sets CARGO_BIN_EXE_* only for the defining package's tests, so build on first use into the caller's target dir.

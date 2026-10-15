@@ -3,12 +3,13 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
+use atlas_mcp::guidance::SERVER_NAME;
 use atlas_project::{Project, ProjectError, Registry, UserConfig};
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
 
 use crate::cli::DoctorArgs;
-use crate::commands::connect::{SERVER_NAME, claude_config_path};
+use crate::commands::agents::claude_config_path;
 use crate::commands::ide::{check_outcome, check_servers, resolved_text, unit_detail};
 use crate::commands::lsp_probe::{self, Resolved};
 use crate::context::Context;
@@ -148,7 +149,7 @@ fn claude_user_scope() -> Option<Check> {
       Level::Warn,
       name,
       format!(
-        "the user-scope {SERVER_NAME} server in {} pins --project {project}, so every repo without its own .mcp.json talks to {project}; rerun `catl connect claude --scope user`",
+        "the user-scope {SERVER_NAME} server in {} pins --project {project}, so every repo without its own .mcp.json talks to {project}; rerun `catl agents sync --migrate`",
         path.display()
       ),
     ),

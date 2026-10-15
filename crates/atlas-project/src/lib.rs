@@ -13,7 +13,10 @@ mod worktree;
 
 pub use binding::*;
 pub use changes::*;
-pub use config::{ConfigEntry, ConfigEnv, KeyClass, McpFlags, McpSettings, Origin, ResolvedMcp, ToolsSetting, UserConfig, resolve_mcp};
+pub use config::{
+  AgentsSettings, ClaudeAgent, ClaudeHook, ClaudeScope, CodexAgent, ConfigEntry, ConfigEnv, GuidanceMode, KeyClass, McpFlags, McpSettings, Origin, ResolvedMcp, ToolsSetting,
+  UserConfig, resolve_mcp,
+};
 pub use discovery::*;
 pub use error::*;
 pub use globs::PathGlobs;

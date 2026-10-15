@@ -1,7 +1,7 @@
 mod e2e_support;
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
@@ -102,11 +102,9 @@ async fn should_keep_answering_while_a_cli_index_runs_and_see_cli_edits() {
     tokio::task::spawn_blocking(move || {
       (0..4)
         .map(|_| {
-          std::process::Command::new(&bin)
+          atlas_test_lsp::hermetic::hermetic_catl(&bin, &home)
             .args(["index", "--full"])
             .current_dir(&cwd)
-            .env("CODE_ATLAS_HOME", &home)
-            .env_remove("RUST_LOG")
             .output()
             .unwrap()
         })
@@ -200,11 +198,12 @@ impl SignalledServer {
     let config: Value = serde_json::from_str(&fs::read_to_string(api.join(".mcp.json")).unwrap()).unwrap();
     let server = &config["mcpServers"]["code-atlas"];
     let arguments: Vec<&str> = server["args"].as_array().unwrap().iter().map(|argument| argument.as_str().unwrap()).collect();
-    let mut command = tokio::process::Command::new(server["command"].as_str().unwrap());
+    let program = server["command"].as_str().unwrap();
+    assert_eq!(Path::new(program), binary());
+    let mut command = tokio::process::Command::from(atlas_test_lsp::hermetic::hermetic_catl(program, sandbox.home()));
     command
       .args(&arguments)
       .current_dir(api)
-      .env("CODE_ATLAS_HOME", sandbox.home())
       .env("RUST_LOG", "atlas_mcp=info")
       .stdin(std::process::Stdio::piped())
       .stdout(std::process::Stdio::piped())

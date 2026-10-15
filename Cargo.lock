@@ -143,7 +143,9 @@ dependencies = [
  "atlas-semantic",
  "atlas-store",
  "atlas-test-lsp",
+ "blake3",
  "clap",
+ "fd-lock",
  "rusqlite",
  "serde",
  "serde_json",
@@ -151,6 +153,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "toml",
+ "toml_edit",
  "tracing",
  "tracing-subscriber",
 ]

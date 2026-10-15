@@ -1,9 +1,10 @@
+mod agents;
 mod config;
-mod connect;
 mod debug;
 mod doctor;
 mod edit;
 mod enrich;
+mod hook;
 mod ide;
 mod index;
 mod init;
@@ -53,7 +54,9 @@ pub fn run(project: Option<String>, command: Command) -> CliResult<Outcome> {
     Command::Diagnostics(args) => ide::diagnostics(&ctx, args),
     Command::Edit(command) => edit::run(&ctx, command),
     Command::Lsp(command) => ide::lsp(&ctx, command),
-    Command::Connect(command) => connect::run(&ctx, command),
+    Command::Agents(command) => agents::run(&ctx, command),
+    Command::Connect(command) => agents::connect(&ctx, command),
+    Command::Hook(args) => hook::run(&ctx, args.hook),
     Command::Mcp(args) => mcp::run(&ctx, args),
     Command::Debug(command) => debug::run(&ctx, command),
     Command::Doctor(args) => doctor::run(&ctx, args),

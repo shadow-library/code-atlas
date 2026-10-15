@@ -84,6 +84,23 @@ async fn should_tell_agents_to_edit_through_atlas_edit_and_reread_changed_files(
 }
 
 #[tokio::test]
+async fn should_list_as_read_only_exactly_the_tools_the_auto_approve_hook_approves() {
+  let harness = start(&ACME_REPOS).await;
+
+  let tools = harness.client.list_all_tools().await.unwrap();
+
+  let mut read_only: Vec<&str> = tools
+    .iter()
+    .filter(|tool| tool.annotations.as_ref().and_then(|annotations| annotations.read_only_hint) == Some(true))
+    .map(|tool| tool.name.as_ref())
+    .collect();
+  read_only.sort_unstable();
+  assert_eq!(read_only, atlas_mcp::guidance::READ_ONLY_TOOLS);
+  assert!(tools.iter().any(|tool| tool.name == atlas_mcp::guidance::EDIT_TOOL));
+  harness.stop().await.unwrap();
+}
+
+#[tokio::test]
 async fn should_list_every_tool_with_a_schema_and_an_agent_facing_description() {
   let harness = start(&ACME_REPOS).await;
 

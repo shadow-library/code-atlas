@@ -462,6 +462,13 @@ fn rust_analyzer_available() -> bool {
     .is_ok_and(|status| status.success())
 }
 
+fn rust_analyzer_path(sandbox: &Sandbox) -> std::ffi::OsString {
+  let directory = env::split_paths(&env::var_os("PATH").unwrap_or_default())
+    .find(|dir| dir.join("rust-analyzer").is_file())
+    .unwrap_or_default();
+  format!("{}:{}", atlas_test_lsp::hermetic::sandbox_path(sandbox.home()), directory.display()).into()
+}
+
 fn real_acme(test: &str) -> Option<(Sandbox, PathBuf)> {
   let Some((node, cli)) = typescript_command() else {
     eprintln!("SKIPPED {test}: set ATLAS_TEST_TS_LSP to the typescript-language-server cli.mjs and put node on PATH");
@@ -525,7 +532,8 @@ fn should_start_each_real_language_server_once_in_lsp_check() {
   }
 
   let api = root.join("acme-api");
-  let checked = sandbox.run(&api, &["lsp", "check", "--json"]);
+  let path = rust_analyzer_path(&sandbox);
+  let checked = sandbox.run_with(&api, &["lsp", "check", "--json"], &[("PATH", path.as_os_str())]);
 
   assert!([0, 3].contains(&checked.code), "{checked}");
   let report = checked.json();

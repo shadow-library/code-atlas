@@ -23,7 +23,7 @@ Losing the flag costs throughput, never correctness. `catl doctor` reports the s
 
 ## Quickstart
 
-Requires a Rust toolchain (edition 2024 in `Cargo.toml`; `rust-toolchain.toml` pins the stable channel). `rust-analyzer`, `npx` and the `claude` CLI are optional (SCIP, `connect claude`). Exact IDE operations need rust-analyzer (`rustup component add rust-analyzer`) for Rust and typescript-language-server with TypeScript 5 for TypeScript; language servers and the TypeScript download through `npx` are **on by default** (`project config <p> --lsp off`, `--lsp-download off`).
+Requires a Rust toolchain (edition 2024 in `Cargo.toml`; `rust-toolchain.toml` pins the stable channel). `rust-analyzer`, `npx` and the `claude` CLI are optional (SCIP, `agents sync`). Exact IDE operations need rust-analyzer (`rustup component add rust-analyzer`) for Rust and typescript-language-server with TypeScript 5 for TypeScript; language servers and the TypeScript download through `npx` are **on by default** (`project config <p> --lsp off`, `--lsp-download off`).
 
 ```sh
 cargo build --release
@@ -40,11 +40,10 @@ catl -p acme impact UsersService.findOne
 catl -p acme api
 catl -p acme query unused
 
-cd fixtures/acme/acme-api
-catl connect claude
+catl agents sync          # Claude Code (user scope) and Codex, as config.toml [agents] asks
 ```
 
-Inside a registered repo the `-p acme` flag is inferred from the working directory. Set `CODE_ATLAS_HOME=/tmp/atlas-scratch` to keep experiments out of your real registry and databases. `connect claude` writes `.mcp.json` and a guidance block into `AGENTS.md` (or an existing `CLAUDE.md`); `--scope user` registers the server with `claude mcp add-json` instead. Nothing else is needed to use the index: there is no separate reindex step, because every query refreshes it.
+Inside a registered repo the `-p acme` flag is inferred from the working directory. Set `CODE_ATLAS_HOME=/tmp/atlas-scratch` to keep experiments out of your real registry and databases. `agents sync` registers one `catl mcp --watch` server with Claude Code (`claude mcp add-json --scope user`) and Codex (`~/.codex/config.toml`) that binds the project of whatever directory the agent starts in, allows the read-only tools without a prompt (`permissions.allow`), and records what it wrote so `agents status` shows drift and `agents unsync` undoes it ([agent integration](docs/agent-integration.md#wiring-agents-agents-sync)). Nothing else is needed to use the index: there is no separate reindex step, because every query refreshes it.
 
 Exact reads and edits (the first call per language starts a server: 2 to 5 s for TypeScript, 20 to 65 s cold for rust-analyzer; the MCP server keeps it warm):
 
@@ -78,7 +77,7 @@ Measured 2026-10-04 to 2026-10-06; full results, sources and caveats are in [doc
 | [docs/architecture.md](docs/architecture.md) | crates, pipeline, storage, freshness contract, concurrency, failure handling, project isolation |
 | [docs/knowledge-model.md](docs/knowledge-model.md) | entity and edge kinds, keys, certainty classes, evidence, inferred facts, lineage, per-attribute provenance |
 | [docs/trust-and-limitations.md](docs/trust-and-limitations.md) | what is deterministic, heuristic or inferred; where conclusions are not authoritative; known limitations; failure modes |
-| [docs/agent-integration.md](docs/agent-integration.md) | MCP tools (`atlas_symbol` modes, `atlas_edit`), recommended workflow, reading certainty tags, `connect claude`, other agents |
+| [docs/agent-integration.md](docs/agent-integration.md) | MCP tools (`atlas_symbol` modes, `atlas_edit`), recommended workflow, reading certainty tags, `agents sync` and `connect claude`, hooks, other agents |
 | [docs/languages-and-frameworks.md](docs/languages-and-frameworks.md) | Rust and TS/JS depth, supported frameworks, experimental detectors |
 | [docs/extending.md](docs/extending.md) | adding an analyzer, detector, project pass or LLM provider |
 | [docs/operations.md](docs/operations.md) | CLI reference, exit codes, home directories, configuration layers (`config.toml` defaults, repo `.code-atlas.toml`, `CODE_ATLAS_*`, `catl config show --origin`), project settings, language servers, parse budget, watch, SCIP, enrichment, doctor |

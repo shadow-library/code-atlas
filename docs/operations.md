@@ -31,6 +31,8 @@ The repository's `.cargo/config.toml` sets `LIBSQLITE3_FLAGS="-USQLITE_ENABLE_ME
 | SCIP cache | `<data dir>/<project>/scip-cache/` |
 | Repo marker and repo layer | `.code-atlas.toml` in a repo (`project = "<name>"` pin, optional `[index]` and `[detect]` keys), pin written by `init` |
 | Bench corpora | `<data dir>/bench-corpora/` |
+| Agent wiring record | `<data dir>/wiring.json` (what `agents sync` wrote; `wiring.json.lock` while it runs) |
+| Hook state | `<data dir>/hooks/reminded/` (one empty file per session the `remind` hook answered; dropped after 7 days) |
 
 The command is `catl`. The home directories, `CODE_ATLAS_HOME`, the `.code-atlas.toml` marker and the MCP server name keep the project name `code-atlas`.
 
@@ -89,7 +91,11 @@ Global flags: `-p, --project <NAME>`, `--log-level <FILTER>` (overrides `RUST_LO
 | `edit apply <PLAN.json> [--json]` | apply a plan file written by `--dry-run --plan-out` |
 | `lsp check [--json]` | start each language server once and report discovery, versions, readiness time and workspace health |
 | `search`, `impact`, `context`, `callers`, `callees`, `symbol`, `api`, `explain`, `read`, `tests-for` | shortcuts for the same `query` subcommands (none for `similar`, `unused`, `patterns`, `changes`, `overview`, `dependents`, `dependencies`) |
-| `connect claude [--scope project\|user] [-y]` | wire into Claude Code: user scope registers `catl mcp --watch` (project inferred per session), project scope writes `.mcp.json` with `catl mcp --project <p> --watch`; see [agent integration](agent-integration.md) |
+| `agents sync [--agent claude\|codex]... [--scope user\|local\|project] [--repo PATH]... [--dry-run] [--force] [--migrate] [-y]` | wire Claude Code and Codex as `config.toml [agents]` asks (`catl mcp --watch`, no fixed project), plus hooks and guidance, and record it in `wiring.json`; refuses to overwrite entries changed since (exit 2) unless `--force`; see [agent integration](agent-integration.md#wiring-agents-agents-sync) |
+| `agents status [--json]` | each recorded entry as `ok`, `changed`, `removed` or `unreadable`; exits 3 on drift |
+| `agents unsync [--agent A]... [--scope S] [--repo PATH]... [--dry-run] [--force] [-y]` | remove exactly what `agents sync` recorded |
+| `connect claude [--scope project\|user] [-y]` | the earlier per-repo wiring, unchanged: project scope (default) writes `.mcp.json` with `catl mcp --project <p> --watch`, user scope registers this binary's absolute path; both add the guidance block; recorded in `wiring.json` but no permission rules or hooks |
+| `hook remind` | answer a Claude Code `PreToolUse` hook from the JSON on stdin (written by `agents sync`); exits 0 whatever happens, including an unknown hook name |
 | `mcp [--watch]` | serve MCP on stdio for the project of `-p` or the working directory; where no project resolves it serves only `atlas_status`, which explains how to register the repo |
 | `debug run <ID>`, `debug explain-context <TASK>`, `debug dump-file <REPO:PATH>` | per-run phase timings and counts, context scoring, raw facts of a file |
 | `doctor [--lsp]` | check home, `config.toml`, registry, the project resolution trace, ignored configuration values, a user-scope Claude Code entry that still pins `--project`, repos, database integrity, index lock, `rust-analyzer`, `typescript-language-server` discovery (one line per candidate), TypeScript 7 repos, `npx`, `claude`, SQLite build; `--lsp` also starts each language server and reports its health (slow) |
@@ -126,7 +132,7 @@ Worktrees are not indexed yet. A directory inside a git worktree of a registered
 - The same holds for a worktree of a git repo that sits inside a registered folder (a registered parent directory that is not itself a checkout, or an independent repo nested in a registered repo): any linked worktree strictly below a registered repo path binds as a worktree, unless a repo is registered at or inside the worktree itself.
 - A `.git` file below a registered repo root that does not resolve (dangling `gitdir`, deleted admin directory, unreadable file) is treated as a broken worktree: answers carry a caveat and edits are refused with a message saying the worktree could not be resolved (`git worktree repair` fixes it). A worktree admin directory that only lacks its `commondir` file is still recognised.
 - When the indexed checkout is itself a linked worktree (a bare repository with several worktrees), messages call it the indexed checkout rather than the main checkout.
-- A project that registers the worktree's own path wins over the main project there, and `connect claude` run in a worktree writes into the worktree.
+- A project that registers the worktree's own path wins over the main project there, and `agents sync` (or `connect claude`) run in a worktree writes into the worktree; files it excludes from git go into the common `.git/info/exclude`.
 - Limitation: the MCP server decides its binding once, from the directory it starts in. An agent whose server started in the main checkout and that then moves into a worktree (or subagents that share the parent session's servers) is not protected: answers carry no caveat and `atlas_edit` writes into the main checkout. Start the agent session inside the worktree. The CLI resolves on every call, so it has no such gap.
 - The watcher ignores `.worktrees` and `.claude/worktrees` under a repo, so work in a worktree does not wake the main project's index. Submodules are separate checkouts, not worktrees.
 
@@ -135,7 +141,7 @@ Worktrees are not indexed yet. A directory inside a git worktree of a registered
 Every setting resolves through these layers, later ones winning:
 
 1. built-in defaults;
-2. `<config dir>/config.toml` (optional, per user): `[defaults]` for every project, plus `[mcp]`, `[agents]` and `[worktrees]`;
+2. `<config dir>/config.toml` (optional, per user): `[defaults]` for every project, plus `[mcp]`, `[agents]` (read by `agents sync` only, never from the environment or a repository file) and `[worktrees]`;
 3. `projects.toml`: the project's own `[project.settings]` and repo filters;
 4. `<repo>/.code-atlas.toml` of each registered repo (committable);
 5. environment variables `CODE_ATLAS_<KEY>`, the key upper-cased with dots as underscores (`CODE_ATLAS_LSP_ENABLED=false`, `CODE_ATLAS_MCP_WATCH=true`; lists as TOML arrays, `CODE_ATLAS_LSP_EXCLUDE='["fixtures/**"]'`);
@@ -175,9 +181,17 @@ max_output_bytes = 100000
 max_body_lines = 400
 tools = "full"                     # stored and validated; not acted on yet
 
-[agents]                           # validated; not acted on yet
-binary = "catl"
-guidance = "auto"
+[agents]                           # what `catl agents sync` writes
+binary = "catl"                    # command agents start; an absolute path only in this file
+guidance = "auto"                  # "auto" | "none" | "local" (CLAUDE.local.md, git-excluded) | "tracked" (CLAUDE.md / AGENTS.md)
+
+[agents.claude]
+enabled = true
+scope = "user"                     # "user" | "local" | "project" (.mcp.json, committed)
+hooks = ["auto-approve"]           # "auto-approve": permissions.allow for the read-only tools; "remind": once-per-session nudge on grep; [] for none
+
+[agents.codex]
+enabled = true                     # only when $CODEX_HOME or ~/.codex exists
 
 [worktrees]                        # validated; not acted on yet
 mode = "overlay"

@@ -64,10 +64,16 @@ pub enum CliError {
   InvalidSnippet(String),
   #[error("invalid target {0:?}; expected REPO:PATH")]
   InvalidFileTarget(String),
-  #[error("invalid JSON in {}: {message}", .path.display())]
-  InvalidConfig { path: PathBuf, message: String },
-  #[error("{} has an unterminated or duplicated Code Atlas guidance block", .0.display())]
-  MalformedGuidance(PathBuf),
+  #[error("invalid wiring manifest {}: {message}", .path.display())]
+  InvalidManifest { path: PathBuf, message: String },
+  #[error("refusing to change {}; nothing was written", .targets.join(", "))]
+  WiringRefused { targets: Vec<String> },
+  #[error("{target}: {detail}")]
+  WiringNotVisible { target: String, detail: String },
+  #[error(
+    "refusing to change agent configuration from a Cargo build or test (CARGO_MANIFEST_DIR is set) while {missing} is unset, because it would change the real user configuration"
+  )]
+  UnsandboxedAgentWiring { missing: String },
   #[error("{} pins project {existing:?}, not {requested:?}", .path.display())]
   MarkerConflict { path: PathBuf, existing: String, requested: String },
   #[error("cannot derive a project name from {}", .0.display())]
@@ -132,8 +138,8 @@ impl CliError {
       | Self::InvalidRepoSpec(_)
       | Self::InvalidSnippet(_)
       | Self::InvalidFileTarget(_)
-      | Self::InvalidConfig { .. }
-      | Self::MalformedGuidance(_)
+      | Self::WiringRefused { .. }
+      | Self::UnsandboxedAgentWiring { .. }
       | Self::MarkerConflict { .. }
       | Self::ProjectNameUnderivable(_)
       | Self::ConfirmationRequired { .. }
@@ -167,8 +173,9 @@ impl CliError {
       Self::Ide(error) => ide_hint(error),
       Self::EditRefused(error) => error.hint(),
       Self::InvalidPlan { .. } => Some("make a plan with `catl edit <operation> --dry-run --plan-out plan.json`"),
-      Self::MalformedGuidance(_) => Some("fix or delete the code-atlas:begin / code-atlas:end markers, then rerun"),
-      Self::InvalidConfig { .. } => Some("fix the file by hand; Code Atlas will not overwrite it"),
+      Self::UnsandboxedAgentWiring { .. } => Some("point CLAUDE_CONFIG_DIR and CODEX_HOME at a temporary directory"),
+      Self::WiringRefused { .. } => Some("each refused entry above says why and which flag overrides it; `catl agents status` lists drift"),
+      Self::InvalidManifest { .. } => Some("fix or move the file; `catl agents status` and `unsync` rely on it to know what they wrote"),
       _ => None,
     }
   }

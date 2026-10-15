@@ -88,23 +88,95 @@ Exact modes come from rust-analyzer or typescript-language-server. With none ava
 
 Compiler-verified relations render as `[compiler]` everywhere in text output (tool descriptions use the same spelling); the JSON field `certainty.class` is `compiler_verified` and `certainty.authoritative` is a boolean. Two sources produce it: SCIP, ingested into the graph, and live language-server answers, which are not stored. In JSON, every relation carries `certainty` (`class`, `confidence`, `freshness`, `authoritative`, `tag`) and every response carries a `freshness` object. Rules of thumb: an empty result is not proof of absence; "unused" means "no inbound edges found"; a similarity match is a lead.
 
-## `connect claude`
+## Wiring agents: `agents sync`
 
 ```sh
-cd <a registered repo>
-catl connect claude --scope user   # one entry for every repo, project inferred per session
-catl connect claude                # project scope: a .mcp.json in this repo
+catl agents sync                         # what config.toml [agents] asks for (default: Claude Code user scope, plus Codex if ~/.codex exists)
+catl agents sync --agent claude --scope local --repo ../api --repo ../web
+catl agents sync --dry-run               # show the diffs, write nothing
+catl agents status                       # what was written and whether it changed since (exit 3 on drift)
+catl agents unsync                       # remove exactly what was recorded
+catl connect claude [--scope project|user] [-y]   # the earlier per-repo command, unchanged (below)
 ```
 
-- Project scope writes `.mcp.json` at the repo root (`{"mcpServers":{"code-atlas":{"type":"stdio","command":"catl","args":["mcp","--project",<name>,"--watch"]}}}`). The command is the bare `catl` when `catl` on `PATH` is the binary you ran; otherwise it is that binary's absolute path and a warning says the file is machine-specific, so fix `PATH` and rerun before committing it. It also adds a marked block (`<!-- code-atlas:begin -->` ... `end`) to `CLAUDE.md` or `AGENTS.md` (the first that exists; otherwise a new `AGENTS.md`). The block tells the agent to start with `context`, run `impact` before changing shared symbols, `search` and `similar` before writing helpers, `explain` for decisions, to use `atlas_edit` to rename or rewrite a symbol (and to re-read a file after `atlas_edit` changed it before editing it itself), to use `atlas_symbol mode=source` only for code it will not edit, to treat heuristic and inferred results as leads, and to verify `DEGRADED` answers. Its meaning matches the MCP server instructions (`crates/atlas-mcp/src/descriptions.rs`).
-- User scope registers `{"type":"stdio","command":<absolute path to this binary>,"args":["mcp","--watch"]}` with `claude mcp add-json --scope user code-atlas ...` (needs the `claude` CLI) and updates only the guidance file; `CODE_ATLAS_HOME`, if set, is passed through in the server's `env`. There is no `--project`: Claude Code starts the server in each session's directory, and the server binds the project that directory resolves to (marker, then registered repo path), so one entry serves every registered repo. An older entry that pinned `--project` (the last connected repo then won everywhere) is shown as a diff against `~/.claude.json` (or `$CLAUDE_CONFIG_DIR/.claude.json`) and replaced after confirmation.
-- Both scopes pass `--watch`, so answers stay fresh between calls and automatic SCIP (`project config <p> --scip on`) runs for connected agents.
-- In a directory that no registered project contains, the server still starts but serves only `atlas_status`, which says no project is bound and how to register the repo (`catl init -p <project>` or `catl project create`); restart the server afterwards. A directory inside several projects, a marker naming an unknown project, or an unknown `--project` still fails at startup.
-- In a git worktree of a registered repo (for example `.claude/worktrees/<name>` or `.worktrees/<name>`), worktrees are not indexed yet: answers describe the main checkout and end with a `worktree caveat:` line (a `caveat` field in JSON) naming both paths, and `atlas_edit` refuses, because it would write into the main checkout. The binding is fixed when the server starts: an agent that moves into a worktree after its server started in the main checkout, or subagents that share the parent's servers, are not protected, so start the session inside the worktree. See [operations](operations.md#worktrees).
-- `CODE_ATLAS_HOME` is deliberately left out of the project `.mcp.json` because that file is usually committed; a warning says so.
-- Existing files and a differing user-scope entry are shown as a diff and changed only after confirmation (`--yes` skips the prompt). Re-running is idempotent; an identical user-scope entry is left alone.
+**Changed in this version.** `agents sync` is the managed way to wire agents: one cwd-routed user-scope server with no `--project`, permission rules and hooks, a record of what it wrote, drift detection and `unsync`. `connect claude` keeps its earlier behaviour for scripts that call it: project scope by default (`.mcp.json` with `catl mcp --project <p> --watch`, the bare `catl` when `catl` on `PATH` is this binary, otherwise its absolute path with a warning), `--scope user` registers this binary's absolute path with `mcp --watch`, and both write the guidance block into `CLAUDE.md` or `AGENTS.md`. It writes no permission rules or hooks, never removes other entries, and replaces a different existing entry only after showing the diff and asking (`-y`). It now also records what it wrote in `wiring.json`, so `agents status` and `agents unsync` cover it, and `agents sync --migrate` later replaces its entries with the cwd-routed form.
 
-The project must exist first (`project create`, or `init` inside a repo that should join an existing project). `catl doctor` checks the registry, databases, locks and tool availability.
+`agents sync` writes one server entry per agent, with the command `catl` (or `[agents] binary`) and the arguments `mcp --watch`. No entry pins a project: the server binds the project of the directory the client starts it in (marker, then registered repo path), so one entry serves every registered repo, and `--watch` keeps answers fresh between calls and runs automatic SCIP when it is on. A `catl` that is not on `PATH`, or is another binary, gets a warning.
+
+| Agent and scope | What is written | Committed? |
+|---|---|---|
+| Claude Code `user` (default) | `claude mcp add-json --scope user code-atlas {"type":"stdio","command":"catl","args":["mcp","--watch"]}`, plus `env.CODE_ATLAS_HOME` when it is set | no |
+| Claude Code `local` | the same through `claude mcp add-json --scope local`, run in each repo root (Claude Code keeps it in `~/.claude.json` under that path) | no |
+| Claude Code `project` | `.mcp.json` at each repo root with the bare `catl`, never `CODE_ATLAS_HOME`; only when asked for, with a warning that the file is meant to be committed | yes |
+| Codex | `[mcp_servers.code-atlas]` (`command`, `args`, `env`) in `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`), edited in place so comments, key order and other servers stay | no |
+
+- **Repos.** Local and project scope wire `--repo` (repeatable) or, without it, the repo of the working directory; in a git worktree of a registered repo that is the worktree. User scope and Codex need no repo; guidance (below) goes into the same repos.
+- **The `claude` CLI** registers user and local entries (the format of `~/.claude.json` is Claude Code's own). Without it, `sync` exits 2, writes nothing and prints the command to run yourself. `CLAUDE_CONFIG_DIR` moves `.claude.json` and `settings.json` the way it does for Claude Code.
+- **Every registration is read back.** `claude mcp add-json` is run after `claude mcp remove`; if adding fails, `sync` re-adds the entry that was there before. After the CLI reports success, `sync` reads `.claude.json` again and fails loudly, recording nothing, if the entry is not where it looks: `mcpServers.code-atlas` for user scope, `projects["<repo root>"].mcpServers.code-atlas` for local scope. That second key is what the test double writes (the physical path of the directory `claude` runs in, which is the repo root); the key the real `claude` CLI uses for a repo root that is not a git root was not verified, which is why the read-back exists. When an entry was lost (removed, the re-add failed too), its record is dropped, so the next `sync` creates it again instead of reporting drift.
+- **Tests cannot reach your configuration.** When `CARGO_MANIFEST_DIR` is set (inside `cargo test` or `cargo run`), `sync`, `unsync` and `connect` refuse (exit 2) unless `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are set as well.
+- **Codex** is wired when `$CODEX_HOME` (or `~/.codex`) exists and `[agents.codex] enabled` is true, and skipped with a note otherwise; `--agent codex` without it exits 2. Verified against the Codex MCP documentation (2026-10): a stdio server is a `[mcp_servers.<name>]` table with `command`, `args`, `env` (plus optional `cwd`, timeouts and tool lists, which `sync` leaves alone), the user file is `~/.codex/config.toml` and `CODEX_HOME` moves it. The documentation does not say which directory Codex starts a server in; the entry sets no `cwd`, so the project is resolved from Codex's working directory. If yours starts servers elsewhere, add `"--project", "<name>"` by hand (then `status` reports it as changed).
+
+**What it records.** `<data dir>/wiring.json` lists every entry `sync` wrote: agent, scope, repo, where (`~/.claude.json` registration, `.mcp.json` member, settings file permission rules and hooks, Codex table, guidance file, git exclude line) and a BLAKE3 hash of the part it owns. Only that part is compared, so other servers, hooks or settings in the same file never count as a change. With that record:
+
+- `sync` changes its own unchanged entries without asking, leaves identical ones alone, and refuses (exit 2, nothing written) to overwrite an entry that was changed or removed since it wrote it, or one it did not write, unless `--force`. Adding to a file that already existed asks first (`--yes` skips the question). A failure midway leaves the record matching what was applied, so a rerun picks up where it stopped.
+- `sync` also removes what it recorded earlier for the same agent, scope and repos and no longer wants (a hook turned off, guidance switched to `none`, a tracked block `connect` wrote once guidance is `local`).
+- `status` lists each recorded entry as `ok`, `changed`, `removed` or `unreadable`.
+- `unsync [--agent A] [--scope S] [--repo PATH] [--dry-run] [--force]` removes exactly the recorded entries, refuses changed ones without `--force`, and deletes a file only if `sync` created it and nothing else is left in it.
+
+**Migrating from older wiring.** Entries from an older `catl` have an absolute command or a fixed `--project` (the last connected repo then won everywhere). `sync --migrate` replaces them after showing the diff; with user scope it also offers to remove such local-scope entries in `~/.claude.json`, which would otherwise win over the user-scope server in those repos. Without `--migrate` `sync` refuses to replace them and lists them. A `.mcp.json` with a `code-atlas` server also wins over the user scope; `sync` says so but leaves the committed file alone.
+
+### Permission rules and the remind hook (Claude Code)
+
+`[agents.claude] hooks` (default `["auto-approve"]`; `[]` writes neither) goes into the settings file of the scope: `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`) for user scope, `.claude/settings.local.json` for local and project scope. Project scope never writes the committed `.claude/settings.json`, because entries there would apply to every teammate. A local settings file is excluded from git like local guidance. Other rules and hooks in the file are kept.
+
+- `auto-approve` is not a hook: it writes the 14 read-only tools as exact `permissions.allow` rules (`"mcp__code-atlas__atlas_api"`, ..., `"mcp__code-atlas__atlas_unused"`), never `atlas_edit`. Claude Code then skips the prompt for them without running any process, so a missing or mismatched `catl` cannot block a tool call. Claude Code still applies your deny and ask rules. Every rule naming the `code-atlas` server (`mcp__code-atlas`, `mcp__code-atlas__*`) counts as the fragment `sync` owns, so a rule you add or remove there shows as drift, and `sync` rewrites the list when the tool set changes.
+- `remind` is a `PreToolUse` hook on `Grep|Glob|Bash`:
+
+  ```json
+  { "matcher": "Grep|Glob|Bash", "hooks": [{ "type": "command", "command": "CODE_ATLAS_HOME=/iso catl hook remind || true", "timeout": 10 }] }
+  ```
+
+  (`CODE_ATLAS_HOME=...` only when it is set while syncing.) It answers a `Grep` or `Glob` call, or a `Bash` command that runs `grep`, `rg`, `ag`, `ack` or `git grep`, in a directory of a registered project with `{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"..."}}`: a note that `atlas_search`, `atlas_symbol` or `atlas_context` may answer faster. It makes no permission decision, so the tool runs as usual, and it fires at most once per `session_id` (state in `<data dir>/hooks/reminded/`, entries older than 7 days are dropped).
+
+**Exit status.** Claude Code treats a hook that exits 2 as a block. `catl hook ...` exits 0 whatever happens inside it: an unknown hook name or flag (an older or newer `catl`), input that is not the expected JSON, an unreadable home or registry, an error while answering or a panic all end with exit 0 and no output. Only a `catl` that cannot run at all (missing from `PATH`, killed) fails, and the written command ends in `|| true` so the shell turns that into exit 0 too.
+
+Contract verified against the Claude Code hooks reference (code.claude.com/docs/en/hooks, 2026-10) and permissions reference (code.claude.com/docs/en/permissions): input fields `session_id`, `cwd`, `hook_event_name`, `tool_name`, `tool_input`; `additionalContext` is added next to the tool result and leaves the permission flow unchanged; exit 0 with JSON is the structured answer and exit 2 blocks the call; `mcp__<server>__<tool>` names one MCP tool in a permission rule.
+
+### Guidance
+
+Claude Code passes the server's `instructions` to the model, so a repo file repeating them is redundant by default. `[agents] guidance` decides whether `sync` writes the block anyway:
+
+| `guidance` | Effect |
+|---|---|
+| `auto` (default) | nothing for now: Claude Code reads the server instructions; whether Codex shows them to the model is not documented, so set `tracked` for Codex if yours does not |
+| `none` | nothing |
+| `local` | the block in `CLAUDE.local.md` at the repo root, excluded from git through `info/exclude` of the git common dir, so it works in worktrees and never shows in `git status`. Claude Code only; refused (unless `--force`) in a repo that has an `AGENTS.md` and no `CLAUDE.md`, because a `CLAUDE.local.md` makes Claude Code stop reading `AGENTS.md` by default |
+| `tracked` | the block in `CLAUDE.md` or `AGENTS.md` (the first that has it, else the first that exists, else a new `AGENTS.md`), which is usually committed |
+
+The block is a rendering of the server instructions, from one source (`crates/atlas-mcp/src/guidance.rs`); a test checks that this page shows exactly what it renders:
+
+```markdown
+<!-- code-atlas:begin -->
+## Code Atlas
+
+This repo is indexed by Code Atlas (project `<project>`), served by the `code-atlas` MCP server. Prefer it to grep when a question spans files or repos.
+
+Code Atlas answers questions about ONE indexed project (a group of repos) from a knowledge graph; every call first brings the index up to date with the working tree.
+1. Start a task with atlas_context: a ranked, budgeted pack of code to read, with reasons and omissions.
+2. Before writing new code, run atlas_search and atlas_similar to find something to reuse.
+3. Before changing shared code, run atlas_impact on it; use atlas_tests_for to pick tests.
+4. Read only the code the results list (atlas_symbol mode=source only for code you will not edit yourself; read files you will edit with your own tool). To rename or rewrite a symbol use atlas_edit (exact across files), not find-and-replace; after it changes a file, re-read that file before editing it yourself.
+5. Untagged entities and [resolved]/[syntactic]/[compiler]/[declared] relations are reliable but not exhaustive; always read the caveats. An empty result is not proof of absence (unresolved references, files that failed to parse, hidden low-confidence relations). [heuristic] and [inferred] relations are leads: verify them in the source before relying on them; entities carry the same tags. A tag after an entity name tags the entity; a tag in parentheses or in a `verb target [tag]` step tags the relation.
+6. An answer whose first line starts with DEGRADED came from an index that could not be fully refreshed: verify it against the files. Run atlas_explain on a relation that drives a decision to see its evidence.
+7. After editing, call atlas_status with since_run or re-query; freshness is automatic, there is no reindex tool.
+8. Targets: a name (UsersService.findOne), a [repo:]path[:line], 'GET /users/{id}' or a full key. If not found or ambiguous, use atlas_search.
+Add format "json" to any tool for structured output.
+<!-- code-atlas:end -->
+```
+
+The eval's `standard` and `directed` preambles (`atlas-eval`) are versioned experimental conditions and are deliberately not rendered from this source; changing them is a new preamble version.
+
+The project must exist first (`project create`, or `init` inside a repo that should join an existing project). In a directory that no registered project contains the server still starts but serves only `atlas_status`, which explains how to register the repo. In a git worktree of a registered repo, worktrees are not indexed yet: answers describe the main checkout with a `worktree caveat:` line and `atlas_edit` refuses; start the agent session inside the worktree (see [operations](operations.md#worktrees)). `catl doctor` checks the registry, databases, locks, tool availability and a user-scope entry that still pins `--project`.
 
 ## Other agents
 
@@ -114,7 +186,7 @@ The MCP server is vendor-neutral stdio, protocol-compliant with any client that 
 { "mcpServers": { "code-atlas": { "command": "/abs/path/catl", "args": ["mcp", "--watch"] } } }
 ```
 
-Without `--project` the server binds the project of the directory the client starts it in; add `"--project", "acme"` when the client does not start servers in the repo. Add `"env": { "CODE_ATLAS_HOME": "..." }` if the registry is not in the default location. `--watch` keeps the index fresh between calls and enables automatic SCIP (without it each call refreshes the index on demand). Put the guidance from the block above into whatever instruction file your agent reads (`AGENTS.md`, rules files, a system prompt). Because `atlas_edit` writes files, clients that gate tools by annotation will treat it as destructive; approve it deliberately. The MCP server keeps language servers warm (rust-analyzer can hold about 2 GB; see [operations](operations.md#language-servers)).
+Without `--project` the server binds the project of the directory the client starts it in; add `"--project", "acme"` when the client does not start servers in the repo. Add `"env": { "CODE_ATLAS_HOME": "..." }` if the registry is not in the default location. `--watch` keeps the index fresh between calls and enables automatic SCIP (without it each call refreshes the index on demand). If the client does not show MCP server instructions to the model, put the guidance block above into whatever instruction file your agent reads (`AGENTS.md`, rules files, a system prompt). Because `atlas_edit` writes files, clients that gate tools by annotation will treat it as destructive; approve it deliberately. The MCP server keeps language servers warm (rust-analyzer can hold about 2 GB; see [operations](operations.md#language-servers)).
 
 Agents without MCP can shell out. All query commands accept `--json` and exit non-zero as documented in [operations](operations.md#exit-codes); edit commands use exit codes 5 to 7 for refused, rolled-back and partially applied edits:
 

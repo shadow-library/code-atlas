@@ -8,12 +8,14 @@ pub enum JsonEditError {
 }
 
 struct Member {
+  start: usize,
   key: String,
   line_indent: Option<String>,
   value: Range<usize>,
 }
 
 struct Object {
+  open: usize,
   close: usize,
   members: Vec<Member>,
 }
@@ -28,6 +30,39 @@ pub fn upsert_server(text: &str, path: &[&str], key: &str, value: &Value) -> Res
   let layout = layout(text);
   let open = skip_ws(text, 0);
   upsert(text, open, "", path, key, value, &layout)
+}
+
+pub fn remove_member(text: &str, path: &[&str], key: &str) -> Result<Option<String>, JsonEditError> {
+  let mut open = skip_ws(text, 0);
+  for name in path {
+    let object = scan_object(text, open)?;
+    let Some(member) = unique(&object, name)? else { return Ok(None) };
+    if !text[member.value.clone()].starts_with('{') {
+      return Ok(None);
+    }
+    open = member.value.start;
+  }
+  let object = scan_object(text, open)?;
+  let Some(position) = object.members.iter().position(|member| member.key == key) else {
+    return Ok(None);
+  };
+  unique(&object, key)?;
+  let member = &object.members[position];
+  let range = match (position.checked_sub(1).map(|before| &object.members[before]), object.members.get(position + 1)) {
+    (_, Some(next)) => member.start..next.start,
+    (Some(previous), None) => previous.value.end..member.value.end,
+    (None, None) => object.inside(),
+  };
+  Ok(Some(splice(text, range, "")))
+}
+
+fn unique<'a>(object: &'a Object, name: &str) -> Result<Option<&'a Member>, JsonEditError> {
+  let mut matching = object.members.iter().filter(|member| member.key == name);
+  let first = matching.next();
+  match matching.next() {
+    Some(_) => Err(JsonEditError::Unsupported("duplicate key")),
+    None => Ok(first),
+  }
 }
 
 fn upsert(text: &str, open: usize, base: &str, path: &[&str], key: &str, value: &Value, layout: &Layout) -> Result<Option<String>, JsonEditError> {
@@ -88,16 +123,15 @@ fn insert_member(text: &str, object: &Object, name: &str, value: &Value, child_b
     (Some(last), false) => splice(text, last.value.end..last.value.end, &format!(",{name_json}:{}", render(value, "", layout))),
     (None, true) => {
       let member = format!("{eol}{child_base}{name_json}: {}{eol}{base}", render(value, child_base, layout), eol = layout.eol);
-      splice(text, object.close_range_start(text)..object.close, &member)
+      splice(text, object.inside(), &member)
     }
-    (None, false) => splice(text, object.close_range_start(text)..object.close, &format!("{name_json}:{}", render(value, "", layout))),
+    (None, false) => splice(text, object.inside(), &format!("{name_json}:{}", render(value, "", layout))),
   }
 }
 
 impl Object {
-  fn close_range_start(&self, text: &str) -> usize {
-    let open = text[..self.close].rfind('{').unwrap_or(0);
-    open + 1
+  fn inside(&self) -> Range<usize> {
+    self.open + 1..self.close
   }
 }
 
@@ -204,6 +238,7 @@ fn scan_object(text: &str, open: usize) -> Result<Object, JsonEditError> {
     let value_start = skip_ws(text, colon + 1);
     let value_end = scan_value(text, value_start);
     members.push(Member {
+      start: index,
       key,
       line_indent: line_indent(text, index),
       value: value_start..value_end,
@@ -214,7 +249,7 @@ fn scan_object(text: &str, open: usize) -> Result<Object, JsonEditError> {
     }
   }
   match bytes.get(index) {
-    Some(b'}') => Ok(Object { close: index, members }),
+    Some(b'}') => Ok(Object { open, close: index, members }),
     _ => Err(JsonEditError::Unsupported("unexpected JSON structure")),
   }
 }
@@ -283,6 +318,27 @@ mod tests {
     let empty = upsert_server("{\r\n  \"a\": 1\r\n}\r\n", &["mcpServers"], "code-atlas", &server()).unwrap().unwrap();
     assert!(!empty.replace("\r\n", "").contains('\n'), "{empty:?}");
     assert_eq!(serde_json::from_str::<Value>(&edited).unwrap()["mcpServers"]["code-atlas"], server());
+  }
+
+  #[test]
+  fn should_remove_only_the_named_member_wherever_it_sits() {
+    let first = "{\n  \"mcpServers\": {\n    \"code-atlas\": {\"a\": 1},\n    \"other\": 2.50\n  }\n}\n";
+    let last = "{\n  \"mcpServers\": {\n    \"other\": 2.50,\n    \"code-atlas\": {\"a\": 1}\n  }\n}\n";
+    let only = "{\n  \"mcpServers\": {\n    \"code-atlas\": {\"a\": 1}\n  },\n  \"x\": 1\n}\n";
+    assert_eq!(
+      remove_member(first, &["mcpServers"], "code-atlas").unwrap().unwrap(),
+      "{\n  \"mcpServers\": {\n    \"other\": 2.50\n  }\n}\n"
+    );
+    assert_eq!(
+      remove_member(last, &["mcpServers"], "code-atlas").unwrap().unwrap(),
+      "{\n  \"mcpServers\": {\n    \"other\": 2.50\n  }\n}\n"
+    );
+    assert_eq!(
+      remove_member(only, &["mcpServers"], "code-atlas").unwrap().unwrap(),
+      "{\n  \"mcpServers\": {},\n  \"x\": 1\n}\n"
+    );
+    assert_eq!(remove_member(only, &["mcpServers"], "missing").unwrap(), None);
+    assert_eq!(remove_member("{\"a\": 1}", &["hooks"], "PreToolUse").unwrap(), None);
   }
 
   #[test]

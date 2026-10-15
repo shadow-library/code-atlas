@@ -1,6 +1,7 @@
 mod arguments;
 mod descriptions;
 mod error;
+pub mod guidance;
 mod options;
 mod render;
 mod runtime;
