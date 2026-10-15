@@ -316,4 +316,4 @@ module_decls: []
 diagnostics: []
 analyzer:
   name: atlas-lang-ts
-  version: 4
+  version: 5

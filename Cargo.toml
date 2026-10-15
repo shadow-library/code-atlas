@@ -23,6 +23,7 @@ members = [
   "crates/atlas-ide",
   "crates/atlas-test-lsp",
 ]
+exclude = ["vendor"]
 
 [workspace.package]
 version = "0.1.0"
@@ -81,6 +82,9 @@ regex = "1"
 tempfile = "3"
 insta = { version = "1", features = ["yaml", "json"] }
 criterion = "0.8"
+
+[patch.crates-io]
+tree-sitter = { path = "vendor/tree-sitter" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

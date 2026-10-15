@@ -20,6 +20,8 @@ The repository's `.cargo/config.toml` sets `LIBSQLITE3_FLAGS="-USQLITE_ENABLE_ME
 - `catl doctor` reports it under a check called "sqlite build" (ok: "per-connection page caches"; warn when compiled with ENABLE_MEMORY_MANAGEMENT).
 - The MCP server uses max(configured readers, cores) read connections; the default is 4 readers.
 
+tree-sitter is vendored in `vendor/tree-sitter` with one patch (`vendor/tree-sitter.patch`, procedure in `vendor/README.md`) that keeps an unterminated `sql<a><a>…` at end of file from allocating quadratic memory. Workspace builds, `cargo install --path` and `cargo install --git` apply it; only a crate in another workspace that depends on the analyzers gets upstream tree-sitter.
+
 ## Where things live
 
 | Item | Location |

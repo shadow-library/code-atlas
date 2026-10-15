@@ -1,0 +1,69 @@
+--- a/src/stack.c
++++ b/src/stack.c
+@@ -326,7 +326,8 @@
+   StackVersion version,
+   StackCallback callback,
+   void *payload,
+-  int goal_subtree_count
++  int goal_subtree_count,
++  bool bound_paths
+ ) {
+   array_clear(&self->slices);
+   array_clear(&self->iterators);
+@@ -387,6 +388,7 @@
+           next_iterator = array_get(&self->iterators, i);
+         } else {
+           if (self->iterators.size >= MAX_ITERATOR_COUNT) continue;
++          if (bound_paths && self->iterators.size + self->slices.size >= MAX_ITERATOR_COUNT) continue;
+           link = node->links[j];
+           StackIterator current_iterator = *array_get(&self->iterators, i);
+           array_push(&self->iterators, current_iterator);
+@@ -532,7 +534,7 @@
+ }
+ 
+ StackSliceArray ts_stack_pop_count(Stack *self, StackVersion version, uint32_t count) {
+-  return stack__iter(self, version, pop_count_callback, &count, (int)count);
++  return stack__iter(self, version, pop_count_callback, &count, (int)count, false);
+ }
+ 
+ 
+@@ -550,7 +552,7 @@
+ }
+ 
+ StackSliceArray ts_stack_pop_pending(Stack *self, StackVersion version) {
+-  StackSliceArray pop = stack__iter(self, version, pop_pending_callback, NULL, 0);
++  StackSliceArray pop = stack__iter(self, version, pop_pending_callback, NULL, 0, false);
+   if (pop.size > 0) {
+     ts_stack_renumber_version(self, array_get(&pop, 0)->version, version);
+     array_get(&pop, 0)->version = version;
+@@ -577,7 +579,7 @@
+   for (unsigned i = 0; i < node->link_count; i++) {
+     if (node->links[i].subtree.ptr && ts_subtree_is_error(node->links[i].subtree)) {
+       bool found_error = false;
+-      StackSliceArray pop = stack__iter(self, version, pop_error_callback, &found_error, 1);
++      StackSliceArray pop = stack__iter(self, version, pop_error_callback, &found_error, 1, false);
+       if (pop.size > 0) {
+         ts_assert(pop.size == 1);
+         ts_stack_renumber_version(self, array_get(&pop, 0)->version, version);
+@@ -594,8 +596,11 @@
+   return iterator->node->link_count == 0 ? StackActionPop : StackActionNone;
+ }
+ 
++// code-atlas patch: only MAX_ITERATOR_COUNT iterators run at once, but each finished one frees a slot, so upstream returns one
++// slice per path. A stack merged once per token (an unterminated `sql<a><a>...` at end of file) then yields one slice per
++// token and quadratic memory inside this single call, which no progress callback can interrupt.
+ StackSliceArray ts_stack_pop_all(Stack *self, StackVersion version) {
+-  return stack__iter(self, version, pop_all_callback, NULL, 0);
++  return stack__iter(self, version, pop_all_callback, NULL, 0, true);
+ }
+ 
+ typedef struct {
+@@ -627,7 +632,7 @@
+     .max_depth = max_depth
+   };
+   array_init(session.summary);
+-  stack__iter(self, version, summarize_stack_callback, &session, -1);
++  stack__iter(self, version, summarize_stack_callback, &session, -1, false);
+   StackHead *head = array_get(&self->heads, version);
+   if (head->summary) {
+     array_delete(head->summary);

@@ -21,6 +21,8 @@ LIBSQLITE3_FLAGS="-USQLITE_ENABLE_MEMORY_MANAGEMENT -DSQLITE_DEFAULT_MEMSTATUS=0
 
 Losing the flag costs throughput, never correctness. `catl doctor` reports the state under the check "sqlite build" (a warning when the build kept memory management). The MCP server uses max(configured readers, cores) read connections (the default is 4 readers).
 
+tree-sitter is vendored with one patch that bounds its memory on unterminated generic-angle runs (`vendor/README.md`). Workspace builds, `cargo install --path` and `cargo install --git` all apply it through the workspace's `[patch.crates-io]`; only a crate in another workspace that depends on `atlas-lang-ts` or `atlas-lang-rust` gets upstream tree-sitter.
+
 ## Quickstart
 
 Requires a Rust toolchain (edition 2024 in `Cargo.toml`; `rust-toolchain.toml` pins the stable channel). `rust-analyzer`, `npx` and the `claude` CLI are optional (SCIP, `agents sync`). Exact IDE operations need rust-analyzer (`rustup component add rust-analyzer`) for Rust and typescript-language-server with TypeScript 5 for TypeScript; language servers and the TypeScript download through `npx` are **on by default** (`project config <p> --lsp off`, `--lsp-download off`).
