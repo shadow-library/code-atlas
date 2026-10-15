@@ -712,7 +712,48 @@ fn should_seed_plain_english_only_for_the_first_prompt_of_a_session_and_code_pro
     "{}",
     stderr(&unrelated)
   );
-  assert_eq!(fs::read_dir(sandbox.path("atlas/data/hooks/seeded")).unwrap().count(), 3);
+  assert_eq!(fs::read_dir(sandbox.path("atlas/data/hooks/seeded")).unwrap().count(), 2);
+}
+
+#[test]
+fn should_keep_the_first_plain_prompt_of_a_session_for_the_first_seed_that_is_emitted() {
+  let sandbox = Sandbox::new();
+  let repo = sandbox.orders_repo("shop");
+  assert_ok(&sandbox.run(&repo, &["index"]));
+  let plain = "the order total cents are rounded wrong";
+  let markers = sandbox.path("atlas/data/hooks/seeded");
+  let marker_count = || fs::read_dir(&markers).map(Iterator::count).unwrap_or(0);
+  fs::write(repo.join("src/lib.rs"), format!("{ORDERS_RS}\npub fn refund_order() {{}}\n")).unwrap();
+
+  let (stale, _) = sandbox.seed(&repo, &["--log-level", "info"], &session_event(plain, &repo, Some("session-stale")));
+
+  assert_eq!(stdout(&stale), "");
+  assert!(stderr(&stale).contains("reason=the index is not fresh"), "{}", stderr(&stale));
+  assert_eq!(marker_count(), 0);
+  assert_ok(&sandbox.run(&repo, &["status"]));
+  let (second, _) = sandbox.seed(&repo, &[], &session_event(plain, &repo, Some("session-stale")));
+  let (third, _) = sandbox.seed(&repo, &[], &session_event(plain, &repo, Some("session-stale")));
+  assert!(stdout(&second).contains("total_cents function shop:src/lib.rs:9-11"), "{}", stdout(&second));
+  assert_eq!(stdout(&third), "");
+  assert_eq!(marker_count(), 1);
+}
+
+const CACHE_RS: &str = "pub const REFRESH_DEFERRED: u32 = 7;\n\npub struct Cache {\n  pub pending: u32,\n}\n\nimpl Cache {\n  pub fn flush_pending(&mut self) -> u32 {\n    let flushed = self.pending;\n    self.pending = REFRESH_DEFERRED - 7;\n    flushed\n  }\n}\n";
+
+#[test]
+fn should_seed_a_code_prompt_whose_token_is_the_short_name_of_a_top_item_even_when_the_pack_only_has_search_hits() {
+  let sandbox = Sandbox::new();
+  let repo = sandbox.repo("shop");
+  fs::write(repo.join("src/lib.rs"), CACHE_RS).unwrap();
+  assert_ok(&sandbox.run(&repo, &["index"]));
+
+  for (prompt, expected) in [
+    ("what does `flush_pending` return when nothing changed?", "flush_pending"),
+    ("where is `REFRESH_DEFERRED` checked?", "REFRESH_DEFERRED"),
+  ] {
+    let (output, _) = sandbox.seed(&repo, &["--log-level", "info"], &session_event(prompt, &repo, None));
+    assert!(stdout(&output).contains(expected), "{prompt}: {}\n{}", stdout(&output), stderr(&output));
+  }
 }
 
 fn index_runs(sandbox: &Sandbox) -> i64 {

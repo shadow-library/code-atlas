@@ -37,9 +37,14 @@ pub fn run(ctx: &Context, hook: HookName) -> CliResult<Outcome> {
       |cwd| in_project(ctx, cwd),
       |session| first_in_session(&ctx.home.hook_state_dir().join(REMINDED_DIR), session),
     ),
-    HookName::Seed => seed::seed(&ctx.home, ctx.project.as_deref(), &event, |session| {
-      first_in_session(&ctx.home.hook_state_dir().join(SEEDED_DIR), session)
-    }),
+    HookName::Seed => {
+      let directory = ctx.home.hook_state_dir().join(SEEDED_DIR);
+      let markers = seed::SessionMarkers {
+        seen: |session: &str| marker_path(&directory, session).exists(),
+        claim: |session: &str| first_in_session(&directory, session),
+      };
+      seed::seed(&ctx.home, ctx.project.as_deref(), &event, &markers)
+    }
   };
   if let Some(answer) = answer {
     emit_line(answer.to_string())?;
@@ -91,7 +96,7 @@ fn first_in_session(directory: &Path, session: &str) -> bool {
     tracing::debug!(path = %directory.display(), error = %error, "cannot create the reminder state directory");
     return false;
   }
-  let marker = directory.join(blake3::hash(session.as_bytes()).to_hex().as_str());
+  let marker = marker_path(directory, session);
   match OpenOptions::new().write(true).create_new(true).open(&marker) {
     Ok(_) => {
       forget_old_sessions(directory);
@@ -103,6 +108,10 @@ fn first_in_session(directory: &Path, session: &str) -> bool {
       false
     }
   }
+}
+
+fn marker_path(directory: &Path, session: &str) -> PathBuf {
+  directory.join(blake3::hash(session.as_bytes()).to_hex().as_str())
 }
 
 fn forget_old_sessions(directory: &Path) {

@@ -40,6 +40,7 @@ enum PromptKind {
 struct Prompt {
   kind: PromptKind,
   content: BTreeSet<String>,
+  names: BTreeSet<String>,
 }
 
 struct Job {
@@ -47,7 +48,7 @@ struct Job {
   cwd: PathBuf,
   project: Option<String>,
   prompt: String,
-  content: BTreeSet<String>,
+  terms: Prompt,
   deadline: Instant,
 }
 
@@ -81,23 +82,24 @@ impl Silence {
   }
 }
 
-pub(super) fn seed(home: &AtlasHome, project: Option<&str>, event: &Value, first_in_session: impl Fn(&str) -> bool) -> Option<Value> {
+pub(super) struct SessionMarkers<Seen, Claim> {
+  pub seen: Seen,
+  pub claim: Claim,
+}
+
+pub(super) fn seed(home: &AtlasHome, project: Option<&str>, event: &Value, markers: &SessionMarkers<impl Fn(&str) -> bool, impl Fn(&str) -> bool>) -> Option<Value> {
   let started = Instant::now();
   let Some((prompt, cwd)) = user_prompt(event) else {
     tracing::debug!("no seed: not a UserPromptSubmit event with a prompt and an absolute cwd");
     return None;
   };
   let prompt_chars = prompt.chars().count();
-  let Some(Prompt { kind, content }) = classify(prompt) else {
+  let Some(terms) = classify(prompt) else {
     tracing::debug!(prompt_chars, "no seed: the prompt is too short or has no code-like content");
     return None;
   };
-  let first = event
-    .get("session_id")
-    .and_then(Value::as_str)
-    .filter(|session| !session.is_empty())
-    .is_some_and(first_in_session);
-  if kind == PromptKind::Plain && !first {
+  let session = event.get("session_id").and_then(Value::as_str).filter(|session| !session.is_empty());
+  if terms.kind == PromptKind::Plain && session.is_none_or(&markers.seen) {
     tracing::debug!(prompt_chars, "no seed: a plain-English prompt after the first of its session");
     return None;
   }
@@ -106,10 +108,11 @@ pub(super) fn seed(home: &AtlasHome, project: Option<&str>, event: &Value, first
     cwd,
     project: project.map(str::to_owned),
     prompt: prompt.to_owned(),
-    content,
+    terms,
     deadline: started + TIME_LIMIT,
   };
   let (sender, receiver) = mpsc::channel();
+  let kind = job.terms.kind;
   let spawned = thread::Builder::new().name("seed".to_owned()).spawn(move || {
     let _ = sender.send(job.run());
   });
@@ -120,6 +123,11 @@ pub(super) fn seed(home: &AtlasHome, project: Option<&str>, event: &Value, first
   let elapsed_ms = || u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
   match receiver.recv_timeout(TIME_LIMIT) {
     Ok(Ok(context)) => {
+      let claimed = session.is_some_and(&markers.claim);
+      if kind == PromptKind::Plain && !claimed {
+        tracing::debug!(prompt_chars, "no seed: another hook claimed the first plain-English prompt of the session");
+        return None;
+      }
       tracing::info!(prompt_chars, elapsed_ms = elapsed_ms(), context_chars = context.len(), "seeded the prompt");
       Some(json!({ "hookSpecificOutput": { "hookEventName": USER_PROMPT_SUBMIT, "additionalContext": context } }))
     }
@@ -148,16 +156,72 @@ fn classify(prompt: &str) -> Option<Prompt> {
     return None;
   }
   let content = content_words(prompt);
+  let names = code_names(prompt);
   let code = prompt.contains('`')
     || prompt
       .split_whitespace()
       .map(|word| word.trim_matches(|c: char| ",;:!?\"'<>[]{}".contains(c)))
       .any(code_like);
   match (code, content.len() >= MIN_CONTENT_WORDS) {
-    (true, _) => Some(Prompt { kind: PromptKind::Code, content }),
-    (false, true) => Some(Prompt { kind: PromptKind::Plain, content }),
+    (true, _) => Some(Prompt {
+      kind: PromptKind::Code,
+      content,
+      names,
+    }),
+    (false, true) => Some(Prompt {
+      kind: PromptKind::Plain,
+      content,
+      names,
+    }),
     (false, false) => None,
   }
+}
+
+fn code_names(prompt: &str) -> BTreeSet<String> {
+  let spans = prompt.split('`').skip(1).step_by(2);
+  let words = prompt
+    .split_whitespace()
+    .map(|word| word.trim_matches(|c: char| ",;:!?\"'<>[]{}`".contains(c)))
+    .filter(|word| code_like(word));
+  spans
+    .chain(words)
+    .map(|token| token.trim().trim_end_matches(['.', ',']).trim_end_matches("()"))
+    .filter(|token| !token.is_empty())
+    .map(str::to_owned)
+    .collect()
+}
+
+fn segments(path: &str) -> Vec<String> {
+  path
+    .replace("->", "::")
+    .replace('.', "::")
+    .split("::")
+    .filter(|segment| !segment.is_empty())
+    .map(str::to_lowercase)
+    .collect()
+}
+
+fn specific_name(name: &str) -> bool {
+  let chars: Vec<char> = name.chars().collect();
+  let snake = chars
+    .windows(3)
+    .any(|window| window[1] == '_' && window[0].is_alphanumeric() && window[2].is_alphanumeric());
+  let interior_upper = chars.iter().skip(1).any(|c| c.is_uppercase()) && chars.iter().any(|c| c.is_lowercase());
+  snake || interior_upper
+}
+
+fn names_item(names: &BTreeSet<String>, short: &str) -> bool {
+  let item = segments(short);
+  let Some((last, item_qualifier)) = item.split_last() else { return false };
+  names.iter().any(|token| {
+    let path = segments(token);
+    let Some((name, qualifier)) = path.split_last() else { return false };
+    name == last
+      && match qualifier.is_empty() {
+        true => specific_name(token.trim_matches(|c: char| !c.is_alphanumeric() && c != '_')),
+        false => !item_qualifier.is_empty() && (item_qualifier.ends_with(qualifier) || qualifier.ends_with(item_qualifier)),
+      }
+  })
 }
 
 fn content_words(prompt: &str) -> BTreeSet<String> {
@@ -254,7 +318,7 @@ impl Job {
     if engine.index_run_in_progress().map_err(|error| Silence::Failed(error.to_string()))? {
       return Err(Silence::RunInProgress);
     }
-    relevant(&response.answer, &self.content)?;
+    relevant(&response.answer, &self.terms)?;
     render(&response.answer, config.hooks().seed_budget, &profile).ok_or(Silence::EmptyPack)
   }
 
@@ -263,7 +327,7 @@ impl Job {
   }
 }
 
-fn relevant(answer: &ContextAnswer, content: &BTreeSet<String>) -> Result<(), Silence> {
+fn relevant(answer: &ContextAnswer, prompt: &Prompt) -> Result<(), Silence> {
   let code: Vec<&ContextItem> = answer.must_read.iter().chain(&answer.skim).collect();
   if code.is_empty() && answer.tests.is_empty() {
     return Err(Silence::EmptyPack);
@@ -271,11 +335,12 @@ fn relevant(answer: &ContextAnswer, content: &BTreeSet<String>) -> Result<(), Si
   if code.iter().any(|item| item.named) {
     return Ok(());
   }
+  let names_prompt = |item: &ContextItem| prompt.kind == PromptKind::Code && names_item(&prompt.names, &item.entity.short);
   let matches_prompt = |item: &ContextItem| {
-    let matched = item.search_terms.iter().filter(|term| content.iter().any(|word| word.starts_with(term.as_str())));
+    let matched = item.search_terms.iter().filter(|term| prompt.content.iter().any(|word| word.starts_with(term.as_str())));
     matched.collect::<BTreeSet<_>>().len() >= GATE_TERMS
   };
-  match code.iter().take(GATE_ITEMS).any(|item| matches_prompt(item)) {
+  match code.iter().take(GATE_ITEMS).any(|item| names_prompt(item) || matches_prompt(item)) {
     true => Ok(()),
     false => Err(Silence::Unrelated),
   }
@@ -369,7 +434,7 @@ mod tests {
       search_terms: terms.iter().map(|term| (*term).to_owned()).collect(),
       ..item("f", "src/a.rs", (1, 2), "search hit")
     };
-    let content = content_words("users get logged out after five minutes");
+    let content = classify("users get logged out after five minutes").unwrap();
     let pass = |skim: Vec<ContextItem>| relevant(&answer(Vec::new(), skim), &content).is_ok();
     assert!(pass(vec![hit(&[], true)]));
     assert!(pass(vec![hit(&["user", "log"], false)]));
@@ -382,6 +447,74 @@ mod tests {
     ]));
     assert!(!pass(vec![hit(&["user", "hour"], false)]));
     assert!(matches!(relevant(&answer(Vec::new(), Vec::new()), &content), Err(Silence::EmptyPack)));
+  }
+
+  fn search_hit(short: &str) -> ContextItem {
+    ContextItem {
+      search_terms: vec!["unrel".to_owned()],
+      ..item(short, "src/a.rs", (1, 2), "search hit on unrelated")
+    }
+  }
+
+  #[test]
+  fn should_pass_a_code_prompt_whose_token_equals_the_short_name_of_a_top_three_item() {
+    let pack = |names: &[&str]| {
+      answer(
+        names.iter().take(1).map(|name| search_hit(name)).collect(),
+        names.iter().skip(1).map(|name| search_hit(name)).collect(),
+      )
+    };
+    let passes = |prompt: &str, names: &[&str]| relevant(&pack(names), &classify(prompt).unwrap()).is_ok();
+    let flush = ["Cache::flush_pending", "Cache::len", "Cache::clear"];
+    assert!(passes("what does `flush_pending` return when nothing changed?", &flush));
+    assert!(passes("what does flush_pending() return when nothing changed?", &flush));
+    assert!(passes("what does Cache::flush_pending return when nothing changed?", &flush));
+    assert!(passes("what does `FLUSH_PENDING` return when nothing changed?", &flush));
+    assert!(passes("where is `REFRESH_DEFERRED` checked, exactly?", &["REFRESH_DEFERRED", "Cache::len"]));
+    assert!(passes("where is REFRESH_DEFERRED checked, exactly?", &["Cache::len", "Cache::clear", "REFRESH_DEFERRED"]));
+    assert!(!passes(
+      "where is REFRESH_DEFERRED checked, exactly?",
+      &["Cache::len", "Cache::clear", "Cache::drop", "REFRESH_DEFERRED"]
+    ));
+    assert!(!passes("what does `flush_pending_all` return when nothing changed?", &flush));
+    assert!(!passes("what does the flush_pending_x helper return?", &flush));
+    assert!(!passes("what does `Cache` do when the flush pending list is empty?", &["Registry::len", "Registry::clear"]));
+  }
+
+  #[test]
+  fn should_pass_only_specific_identifiers_and_qualified_names_never_a_common_word() {
+    let passes = |prompt: &str, short: &str| relevant(&answer(vec![search_hit(short)], Vec::new()), &classify(prompt).unwrap()).is_ok();
+    for (prompt, short) in [
+      ("use `map` instead", "map"),
+      ("can you call `run()` again", "run"),
+      ("rename it to `main` please", "main"),
+      ("remove the `fmt` step", "fmt"),
+      ("should it be `default()` instead", "default"),
+      ("should it be `default()` instead", "Config::default"),
+      ("can you call `Cache` again", "Cache"),
+      ("use `Other::flush` instead", "Cache::flush"),
+    ] {
+      assert!(!passes(prompt, short), "{prompt} / {short}");
+    }
+    for (prompt, short) in [
+      ("what does `Cache::flush` do now", "Cache::flush"),
+      ("what does `Cache.flush` do now", "Cache::flush"),
+      ("what does `store::Cache::flush` do now", "Cache::flush"),
+      ("what does `flushPending` do now", "flushPending"),
+      ("what does `flush_pending` do now", "Cache::flush_pending"),
+      ("what does `persist_similarity` do now", "Engine::persist_similarity"),
+    ] {
+      assert!(passes(prompt, short), "{prompt} / {short}");
+    }
+  }
+
+  #[test]
+  fn should_not_let_a_plain_english_word_equal_to_an_item_name_pass_the_gate() {
+    let pack = answer(vec![search_hit("flush")], Vec::new());
+    assert!(matches!(
+      relevant(&pack, &classify("please flush the pending entries when the cache closes").unwrap()),
+      Err(Silence::Unrelated)
+    ));
   }
 
   fn item(name: &str, path: &str, lines: (u32, u32), why: &str) -> ContextItem {
