@@ -1306,6 +1306,7 @@ mod tests {
       preamble_variant: PreambleVariant::Standard,
       repo_override: None,
       atlas_config: None,
+      atlas_hooks: None,
       probe: None,
     }
   }
@@ -1340,6 +1341,7 @@ mod tests {
         truths: Vec::new(),
         planned: Vec::new(),
         skipped_for_budget: Vec::new(),
+        skipped_after_hooks_failure: Vec::new(),
         spent_usd: 1.0,
         instruction_sections_dropped: BTreeMap::new(),
       }),

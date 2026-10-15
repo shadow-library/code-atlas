@@ -10,9 +10,15 @@ use atlas_eval::agent::{
 const FAKE_CLAUDE: &str = r#"#!/bin/sh
 if [ "$1" = "--version" ]; then echo "0.0.0-fake (Claude Code)"; exit 0; fi
 mcp=""
+settings=""
+hook_events=""
+prompt=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --mcp-config) mcp="$2"; shift 2 ;;
+    --settings) settings="$2"; shift 2 ;;
+    --include-hook-events) hook_events=1; shift ;;
+    -p) prompt="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
@@ -44,6 +50,17 @@ export class UsersService {
 TS
 entity="$PWD/acme-api/src/users/user.entity.ts"
 printf '%s\n' "{\"type\":\"system\",\"subtype\":\"init\",\"cwd\":\"$PWD\",\"tools\":[\"Read\",\"Edit\"],\"mcp_servers\":$servers,\"model\":\"claude-haiku-4-5-20251001\",\"permissionMode\":\"bypassPermissions\",\"claude_code_version\":\"0.0.0-fake\"}"
+if [ -n "$settings" ]; then echo "SETTINGS=$settings" >&2; fi
+case "$prompt" in *SILENT-HOOKS*) hook_events="" ;; esac
+if [ -n "$settings" ] && grep -q silenthooks "$settings"; then hook_events=""; fi
+if [ -n "$settings" ] && [ -n "$hook_events" ]; then
+  printf '%s\n' '{"type":"system","subtype":"hook_started","hook_id":"h1","hook_name":"UserPromptSubmit","hook_event":"UserPromptSubmit"}'
+  case "$prompt" in
+    *BROKEN-HOOKS*) printf '%s\n' '{"type":"system","subtype":"hook_response","hook_id":"h1","hook_name":"UserPromptSubmit","hook_event":"UserPromptSubmit","stdout":"","stderr":"sh: catl: not found","output":"","exit_code":0,"outcome":"success"}' ;;
+    *) printf '%s\n' '{"type":"system","subtype":"hook_response","hook_id":"h1","hook_name":"UserPromptSubmit","hook_event":"UserPromptSubmit","stdout":"{\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\",\"additionalContext\":\"pack\"}}","stderr":"","output":"","exit_code":0,"outcome":"success"}' ;;
+  esac
+  printf '%s\n' '{"type":"system","subtype":"hook_response","hook_id":"h2","hook_name":"PreToolUse:Read","hook_event":"PreToolUse","stdout":"","stderr":"","output":"","exit_code":0,"outcome":"success"}'
+fi
 printf '%s\n' "{\"type\":\"assistant\",\"message\":{\"id\":\"m1\",\"model\":\"claude-haiku-4-5-20251001\",\"content\":[{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"Read\",\"input\":{\"file_path\":\"$entity\"}}],\"usage\":{\"input_tokens\":10,\"output_tokens\":5,\"cache_read_input_tokens\":100,\"cache_creation_input_tokens\":20}}}"
 printf '%s\n' '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"1\texport class User {\n2\t}"}]}}'
 printf '%s\n' "{\"type\":\"assistant\",\"message\":{\"id\":\"m2\",\"model\":\"claude-haiku-4-5-20251001\",\"content\":[{\"type\":\"tool_use\",\"id\":\"t2\",\"name\":\"Edit\",\"input\":{\"file_path\":\"$entity\"}}],\"usage\":{\"input_tokens\":12,\"output_tokens\":40,\"cache_read_input_tokens\":120,\"cache_creation_input_tokens\":0}}}"
@@ -61,6 +78,13 @@ case "$1" in
     echo data > "$CODE_ATLAS_HOME/atlas.db"
     { cat "$CODE_ATLAS_HOME/config/config.toml" "$CODE_ATLAS_HOME"/config/detectors/*.toml; } > "$CODE_ATLAS_HOME/seen-config.txt" 2>/dev/null
     echo "indexed 4 files"
+    ;;
+  agents)
+    [ "$2 $3 $4 $6" = "hooks --json --binary --home" ] && [ "$7" = "$CODE_ATLAS_HOME" ] || exit 9
+    if grep -q nohooks "$CODE_ATLAS_HOME/config/config.toml" 2>/dev/null; then echo '{}'; exit 0; fi
+    marker=""
+    if grep -q silenthooks "$CODE_ATLAS_HOME/config/config.toml" 2>/dev/null; then marker=" # silenthooks"; fi
+    printf '{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"CODE_ATLAS_HOME=%s %s hook seed || true%s","timeout":10}]}]}\n' "$7" "$5" "$marker"
     ;;
   doctor) echo "ok    home"; if grep -q failmcp "$CODE_ATLAS_HOME/config/config.toml" 2>/dev/null; then echo "FAIL  mcp tools"; exit 1; fi ;;
   config)
@@ -141,6 +165,7 @@ impl Fixture {
       probe: false,
       preamble: PreambleVariant::Standard,
       atlas_config: None,
+      atlas_hooks: false,
     }
   }
 }
@@ -632,4 +657,306 @@ fn should_record_the_digest_in_every_run_and_refuse_to_resume_under_another_conf
     "{error}"
   );
   assert!(agent::run_batch(&config, &tasks, planned).is_ok());
+}
+
+fn hooked(fixture: &Fixture) -> RunnerConfig {
+  RunnerConfig {
+    atlas_hooks: true,
+    probe: true,
+    ..fixture.config(1, None)
+  }
+}
+
+#[test]
+fn should_pass_the_rendered_hooks_only_to_atlas_sessions_and_record_their_digest() {
+  let fixture = fixture();
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+
+  let manifest = agent::run_batch(&hooked(&fixture), &tasks, agent::plan_runs(&tasks, &Condition::ALL, 1, 3)).unwrap();
+
+  let recorded = manifest.environment.atlas_hooks.clone().unwrap();
+  assert_eq!(recorded.groups.into_iter().collect::<Vec<_>>(), vec![("UserPromptSubmit".to_owned(), 1)]);
+  let batch = fs::read_to_string(fixture.batch.join("batch.json")).unwrap();
+  assert!(batch.contains(&recorded.blake3) && !batch.contains(&fixture.trees.display().to_string()), "{batch}");
+
+  let atlas_dir = fixture.batch.join("t99-pipeline.atlas.r0");
+  let atlas: RunManifest = agent::read_json(&atlas_dir.join(RUN_FILE)).unwrap();
+  assert_eq!(atlas.atlas_hooks, manifest.environment.atlas_hooks);
+  assert_eq!(
+    atlas.status,
+    RunStatus::Completed {
+      session: SessionOutcome::Finished { subtype: "success".to_owned() }
+    }
+  );
+  let tree = PathBuf::from(atlas.tree.clone().unwrap());
+  let installed = tree.parent().unwrap().join("atlas-hooks.json");
+  let position = atlas.args.iter().position(|arg| arg == "--settings").unwrap();
+  assert_eq!(
+    (atlas.args[position - 1].as_str(), PathBuf::from(&atlas.args[position + 1])),
+    ("--include-hook-events", installed)
+  );
+  let settings: serde_json::Value = agent::read_json(&atlas_dir.join("atlas-hooks.json")).unwrap();
+  let mcp: serde_json::Value = agent::read_json(&atlas_dir.join("mcp.json")).unwrap();
+  let home = mcp["mcpServers"]["code-atlas"]["env"]["CODE_ATLAS_HOME"].as_str().unwrap();
+  assert_eq!(
+    settings,
+    serde_json::json!({"hooks": {"UserPromptSubmit": [{"hooks": [{"type": "command", "command": format!("CODE_ATLAS_HOME={home} {} hook seed || true", fixture.bin.join("catl").display()), "timeout": 10}]}]}})
+  );
+  assert!(fs::read_to_string(atlas_dir.join("claude.stderr.log")).unwrap().contains("SETTINGS="));
+  let metrics: Metrics = agent::read_json(&atlas_dir.join("metrics.json")).unwrap();
+  assert_eq!((metrics.hooks.seed_injections, metrics.hooks.reminder_injections), (1, 0));
+
+  let baseline_dir = fixture.batch.join("t99-pipeline.baseline.r0");
+  let baseline: RunManifest = agent::read_json(&baseline_dir.join(RUN_FILE)).unwrap();
+  assert_eq!(baseline.atlas_hooks, None);
+  assert!(
+    !baseline.args.iter().any(|arg| arg == "--settings" || arg == "--include-hook-events"),
+    "{:?}",
+    baseline.args
+  );
+  assert!(!baseline_dir.join("atlas-hooks.json").exists());
+  assert!(!fs::read_to_string(baseline_dir.join("claude.stderr.log")).unwrap().contains("SETTINGS="));
+
+  let (batch, records) = agent::load_runs(&fixture.batch).unwrap();
+  let report = agent::build_report(batch.as_ref(), &records, None);
+  let conditions = &report.tasks[0].conditions;
+  assert_eq!(conditions[&Condition::Atlas].metrics["atlas_seed_injections"].mean, 1.0);
+  assert!(!conditions[&Condition::Atlas].metrics.contains_key("atlas_reminder_injections"));
+  assert!(!conditions[&Condition::Baseline].metrics.contains_key("atlas_seed_injections"));
+  assert_eq!(conditions[&Condition::Atlas].metrics["atlas_seed_silent"].mean, 0.0);
+  let markdown = agent::render_markdown(&report);
+  assert!(
+    markdown.contains(&format!("| atlas hooks | blake3 {}: UserPromptSubmit (1 group(s)) |", recorded.blake3)),
+    "{markdown}"
+  );
+  assert!(
+    markdown.contains("- hooks: baseline none; atlas PreToolUse (PreToolUse:Read), UserPromptSubmit (UserPromptSubmit)"),
+    "{markdown}"
+  );
+
+  let probe = manifest.environment.probe.unwrap();
+  assert_eq!(probe.hooks, Vec::<String>::new());
+  let hooked_probe = fixture.batch.join("_probe/hooks");
+  let probe_settings: serde_json::Value = agent::read_json(&hooked_probe.join("atlas-hooks.json")).unwrap();
+  assert_eq!(probe_settings.as_object().unwrap().keys().collect::<Vec<_>>(), ["hooks"]);
+  let invocation: serde_json::Value = agent::read_json(&hooked_probe.join("invocation.json")).unwrap();
+  let args: Vec<&str> = invocation["args"].as_array().unwrap().iter().map(|arg| arg.as_str().unwrap()).collect();
+  let max_turns = args.iter().position(|arg| *arg == "--max-turns").unwrap();
+  let sources = args.iter().position(|arg| *arg == "--setting-sources").unwrap();
+  assert_eq!((args[max_turns + 1], args[sources + 1]), ("1", ""));
+  let session_flags: Vec<&str> = atlas
+    .args
+    .iter()
+    .map(String::as_str)
+    .filter(|arg| arg.starts_with("--") && *arg != "--append-system-prompt")
+    .collect();
+  let probe_flags: Vec<&str> = args.iter().copied().filter(|arg| arg.starts_with("--")).collect();
+  assert_eq!(session_flags, probe_flags);
+  assert!(probe_flags.contains(&"--include-hook-events") && probe_flags.contains(&"--settings"), "{probe_flags:?}");
+}
+
+#[test]
+fn should_refuse_to_resume_a_batch_under_another_hooks_setting() {
+  let fixture = fixture();
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let planned = agent::plan_runs(&tasks, &Condition::ALL, 1, 3);
+  let manifest = agent::run_batch(&hooked(&fixture), &tasks, planned.clone()).unwrap();
+  let digest = manifest.environment.atlas_hooks.unwrap().blake3;
+
+  let without = agent::run_batch(&fixture.config(1, None), &tasks, planned.clone()).unwrap_err();
+  assert!(
+    matches!(&without, AgentError::AtlasHooksMismatch { runs, recorded, expected } if runs == "t99-pipeline.atlas.r0" && *recorded == digest && expected == "none"),
+    "{without}"
+  );
+  assert!(agent::run_batch(&fixture.config(1, None), &tasks, agent::plan_runs(&tasks, &[Condition::Baseline], 1, 3)).is_ok());
+  let batch: agent::BatchManifest = agent::read_json(&fixture.batch.join("batch.json")).unwrap();
+  assert_eq!(batch.environment.atlas_hooks.map(|hooks| hooks.blake3), Some(digest.clone()));
+  assert!(agent::run_batch(&hooked(&fixture), &tasks, planned.clone()).is_ok());
+
+  let other = fixture.eval_home.join("runs/other");
+  let unhooked = RunnerConfig {
+    batch_dir: other.clone(),
+    ..fixture.config(1, None)
+  };
+  agent::run_batch(&unhooked, &tasks, planned.clone()).unwrap();
+  let error = agent::run_batch(
+    &RunnerConfig {
+      batch_dir: other,
+      ..hooked(&fixture)
+    },
+    &tasks,
+    planned,
+  )
+  .unwrap_err();
+  assert!(
+    matches!(&error, AgentError::AtlasHooksMismatch { recorded, expected, .. } if recorded == "none" && *expected == digest),
+    "{error}"
+  );
+}
+
+#[test]
+fn should_refuse_hooks_that_render_no_group_before_any_session() {
+  let fixture = fixture();
+  let dir = private_config(fixture._root.path(), "# nohooks\n");
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let config = RunnerConfig {
+    atlas_config: Some(AtlasConfig::load(&dir).unwrap()),
+    ..hooked(&fixture)
+  };
+
+  let error = agent::run_batch(&config, &tasks, agent::plan_runs(&tasks, &Condition::ALL, 1, 3)).unwrap_err();
+
+  assert!(
+    matches!(&error, AgentError::AtlasHooksUnavailable { reason } if reason.contains("no hook group")),
+    "{error}"
+  );
+  assert!(!fixture.batch.join("batch.json").exists() && !fixture.batch.join("t99-pipeline.atlas.r0").exists());
+  let baseline_only = agent::run_batch(&config, &tasks, agent::plan_runs(&tasks, &[Condition::Baseline], 1, 3)).unwrap();
+  assert_eq!(baseline_only.environment.atlas_hooks, None);
+}
+
+#[test]
+fn should_fail_the_first_atlas_session_whose_hooks_never_ran_and_start_no_further_atlas_session() {
+  let fixture = fixture();
+  write(
+    &fixture.tasks.join("t99-pipeline/task.toml"),
+    &TASK.replace("Add deletedAt to User.", "Add deletedAt to User. SILENT-HOOKS"),
+  );
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let planned = agent::plan_runs(&tasks, &[Condition::Atlas], 2, 3);
+
+  let manifest = agent::run_batch(&hooked(&fixture), &tasks, planned.clone()).unwrap();
+
+  let (first, second) = (&planned[0].run_id, &planned[1].run_id);
+  let atlas: RunManifest = agent::read_json(&fixture.batch.join(first).join(RUN_FILE)).unwrap();
+  assert!(
+    matches!(&atlas.status, RunStatus::SetupFailed { stage, reason } if stage == "atlas-hooks" && reason.contains("reported no UserPromptSubmit hook event")),
+    "{:?}",
+    atlas.status
+  );
+  assert_eq!(manifest.skipped_after_hooks_failure, vec![second.clone()]);
+  assert!(!fixture.batch.join(second).exists());
+  let (batch, records) = agent::load_runs(&fixture.batch).unwrap();
+  let markdown = agent::render_markdown(&agent::build_report(batch.as_ref(), &records, None));
+  assert!(markdown.contains(&format!("failed its hooks: {second}")), "{markdown}");
+}
+
+#[test]
+fn should_finish_the_atlas_arm_when_a_batch_with_a_hooks_failure_is_resumed_after_the_cause_is_fixed() {
+  let fixture = fixture();
+  let silent = TASK.replace("Add deletedAt to User.", "Add deletedAt to User. SILENT-HOOKS");
+  write(&fixture.tasks.join("t99-pipeline/task.toml"), &silent);
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let planned = agent::plan_runs(&tasks, &[Condition::Atlas], 2, 3);
+  let first_attempt = agent::run_batch(&hooked(&fixture), &tasks, planned.clone()).unwrap();
+  assert_eq!(first_attempt.skipped_after_hooks_failure.len(), 1);
+
+  write(&fixture.tasks.join("t99-pipeline/task.toml"), TASK);
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let resumed = agent::run_batch(&hooked(&fixture), &tasks, planned.clone()).unwrap();
+
+  assert_eq!(resumed.skipped_after_hooks_failure, Vec::<String>::new());
+  let status = |run_id: &str| agent::read_json::<RunManifest>(&fixture.batch.join(run_id).join(RUN_FILE)).unwrap().status;
+  assert!(matches!(status(&planned[0].run_id), RunStatus::SetupFailed { ref stage, .. } if stage == "atlas-hooks"));
+  assert_eq!(
+    status(&planned[1].run_id),
+    RunStatus::Completed {
+      session: SessionOutcome::Finished { subtype: "success".to_owned() }
+    }
+  );
+}
+
+fn with_fake_claude(fixture: &Fixture, anchor: &str, inserted: &str) {
+  assert!(FAKE_CLAUDE.contains(anchor));
+  executable(&fixture.bin.join("claude"), &FAKE_CLAUDE.replacen(anchor, &format!("{inserted}\n{anchor}"), 1));
+}
+
+#[test]
+fn should_refuse_atlas_hooks_when_the_isolation_probe_already_sees_a_prompt_hook() {
+  let fixture = fixture();
+  with_fake_claude(
+    &fixture,
+    "case \"$prompt\" in *SILENT-HOOKS*)",
+    r#"if [ -z "$settings" ] && [ -n "$hook_events" ]; then printf '%s\n' '{"type":"system","subtype":"hook_started","hook_id":"m1","hook_name":"UserPromptSubmit","hook_event":"UserPromptSubmit"}'; fi"#,
+  );
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+
+  let error = agent::run_batch(&hooked(&fixture), &tasks, agent::plan_runs(&tasks, &Condition::ALL, 1, 3)).unwrap_err();
+
+  assert!(
+    matches!(&error, AgentError::AtlasHooksUnavailable { reason } if reason.contains("isolation probe already reports a UserPromptSubmit hook")),
+    "{error}"
+  );
+  assert!(!fixture.batch.join("batch.json").exists() && !fixture.batch.join("_probe/hooks").exists());
+}
+
+#[test]
+fn should_say_that_the_hooked_probe_did_not_start_rather_than_blame_the_hooks() {
+  let fixture = fixture();
+  with_fake_claude(&fixture, "servers='[]'", r#"if [ -n "$settings" ]; then echo "cannot start" >&2; exit 3; fi"#);
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+
+  let error = agent::run_batch(&hooked(&fixture), &tasks, agent::plan_runs(&tasks, &Condition::ALL, 1, 3)).unwrap_err();
+
+  assert!(
+    matches!(&error, AgentError::AtlasHooksUnavailable { reason } if reason.contains("did not start") && reason.contains("code: Some(3)") && !reason.contains("does not run --settings hooks")),
+    "{error}"
+  );
+  assert!(!fixture.batch.join("batch.json").exists());
+}
+
+#[test]
+fn should_fail_the_setup_of_an_atlas_session_whose_hooks_only_wrote_errors() {
+  let fixture = fixture();
+  write(
+    &fixture.tasks.join("t99-pipeline/task.toml"),
+    &TASK.replace("Add deletedAt to User.", "Add deletedAt to User. BROKEN-HOOKS"),
+  );
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+
+  agent::run_batch(&hooked(&fixture), &tasks, agent::plan_runs(&tasks, &[Condition::Atlas], 1, 3)).unwrap();
+
+  let dir = fixture.batch.join("t99-pipeline.atlas.r0");
+  let atlas: RunManifest = agent::read_json(&dir.join(RUN_FILE)).unwrap();
+  assert!(
+    matches!(&atlas.status, RunStatus::SetupFailed { stage, reason } if stage == "atlas-hooks" && reason.contains("wrote to stderr")),
+    "{:?}",
+    atlas.status
+  );
+  let metrics: Metrics = agent::read_json(&dir.join("metrics.json")).unwrap();
+  assert_eq!((metrics.hooks.with_stderr.get("UserPromptSubmit"), metrics.hooks.silent("UserPromptSubmit")), (Some(&1), 1));
+}
+
+#[test]
+fn should_refuse_the_batch_when_the_hooked_probe_sees_no_hook_before_any_session() {
+  let fixture = fixture();
+  let dir = private_config(fixture._root.path(), "# silenthooks\n");
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let config = RunnerConfig {
+    atlas_config: Some(AtlasConfig::load(&dir).unwrap()),
+    ..hooked(&fixture)
+  };
+
+  let error = agent::run_batch(&config, &tasks, agent::plan_runs(&tasks, &Condition::ALL, 1, 3)).unwrap_err();
+
+  assert!(
+    matches!(&error, AgentError::AtlasHooksUnavailable { reason } if reason.contains("reached the model but reported no UserPromptSubmit hook event")),
+    "{error}"
+  );
+  assert!(!fixture.batch.join("batch.json").exists());
+  assert!(!fixture.batch.join("t99-pipeline.atlas.r0").exists() && !fixture.batch.join("t99-pipeline.baseline.r0").exists());
+  assert!(fixture.batch.join("_probe/hooks/transcript.jsonl").is_file());
+}
+
+#[test]
+fn should_refuse_atlas_hooks_without_the_probe() {
+  let fixture = fixture();
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let config = RunnerConfig { probe: false, ..hooked(&fixture) };
+
+  let error = agent::run_batch(&config, &tasks, agent::plan_runs(&tasks, &Condition::ALL, 1, 3)).unwrap_err();
+
+  assert!(matches!(&error, AgentError::AtlasHooksUnavailable { reason } if reason.contains("--no-probe")), "{error}");
+  assert!(!fixture.batch.join("batch.json").exists() && !fixture.batch.join("_probe").exists());
+  assert!(agent::run_batch(&config, &tasks, agent::plan_runs(&tasks, &[Condition::Baseline], 1, 3)).is_ok());
 }

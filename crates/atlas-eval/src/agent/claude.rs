@@ -9,6 +9,7 @@ pub const ATLAS_SERVER_NAME: &str = "code-atlas";
 pub const ATLAS_TOOL_PREFIX: &str = "mcp__code-atlas__";
 pub const BASE_TOOLS: [&str; 6] = ["Read", "Edit", "Write", "Glob", "Grep", "Bash"];
 pub const EMPTY_MCP_CONFIG: &str = "{\"mcpServers\":{}}";
+const INCLUDE_HOOK_EVENTS: &str = "--include-hook-events";
 
 const PASSTHROUGH_ENV: [&str; 10] = ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "TERM"];
 const PASSTHROUGH_ENV_PREFIXES: [&str; 1] = ["ANTHROPIC_"];
@@ -29,6 +30,16 @@ pub struct ClaudeConfig {
   pub config_isolation: ConfigIsolation,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum HookWiring {
+  #[default]
+  Unchanged,
+  Observed,
+  Installed {
+    settings: PathBuf,
+  },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionRequest {
   pub prompt: String,
@@ -39,6 +50,7 @@ pub struct SessionRequest {
   pub config_dir: PathBuf,
   pub project_instructions: Option<String>,
   pub tree_env: Vec<(String, String)>,
+  pub hooks: HookWiring,
 }
 
 pub const PROJECT_INSTRUCTION_FILES: [&str; 2] = ["CLAUDE.md", "AGENTS.md"];
@@ -116,6 +128,11 @@ pub fn allowed_tools(with_atlas_tools: bool) -> Vec<String> {
 pub fn session_invocation(config: &ClaudeConfig, request: &SessionRequest, host_env: &[(String, String)]) -> Invocation {
   let mut args = isolation_args(&config.model, &request.mcp_config);
   args.extend(strings(&["--output-format", "stream-json", "--verbose"]));
+  match &request.hooks {
+    HookWiring::Unchanged => {}
+    HookWiring::Observed => args.push(INCLUDE_HOOK_EVENTS.to_owned()),
+    HookWiring::Installed { settings } => args.extend([INCLUDE_HOOK_EVENTS.to_owned(), "--settings".to_owned(), settings.display().to_string()]),
+  }
   args.extend(strings(&["--permission-mode", "bypassPermissions", "--allow-dangerously-skip-permissions"]));
   args.push("--tools".to_owned());
   args.push(BASE_TOOLS.join(","));
@@ -208,6 +225,7 @@ mod tests {
       config_dir: PathBuf::from("/runs/r1/claude-config"),
       project_instructions: None,
       tree_env: Vec::new(),
+      hooks: HookWiring::Unchanged,
     }
   }
 
@@ -285,6 +303,37 @@ mod tests {
     assert_eq!(baseline.args[position + 1], atlas.args[position + 1]);
     assert_eq!(baseline.env, atlas.env);
     assert_eq!(baseline.env.last().unwrap(), &("CARGO_TARGET_DIR".to_owned(), "/runs/r1/cargo-target".to_owned()));
+  }
+
+  #[test]
+  fn should_add_only_the_hook_settings_and_hook_events_to_a_session_with_installed_hooks() {
+    let plain = session_invocation(&config(ConfigIsolation::User), &request(true), &host());
+    let installed = SessionRequest {
+      hooks: HookWiring::Installed {
+        settings: PathBuf::from("/runs/r1/atlas-hooks.json"),
+      },
+      ..request(true)
+    };
+    let hooked = session_invocation(&config(ConfigIsolation::User), &installed, &host());
+    let position = hooked.args.iter().position(|arg| arg == "--verbose").unwrap() + 1;
+    assert_eq!(
+      &hooked.args[position..position + 3],
+      &["--include-hook-events", "--settings", "/runs/r1/atlas-hooks.json"].map(str::to_owned)
+    );
+    let mut without = hooked.args.clone();
+    without.drain(position..position + 3);
+    assert_eq!(without, plain.args);
+    assert_eq!(hooked.env, plain.env);
+    let observed = session_invocation(
+      &config(ConfigIsolation::User),
+      &SessionRequest {
+        hooks: HookWiring::Observed,
+        ..request(false)
+      },
+      &host(),
+    );
+    assert_eq!(observed.args[position], "--include-hook-events");
+    assert_eq!(observed.args.len(), plain.args.len() + 1);
   }
 
   #[test]

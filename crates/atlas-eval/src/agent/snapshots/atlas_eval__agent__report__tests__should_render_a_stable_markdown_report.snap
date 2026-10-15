@@ -20,6 +20,7 @@ expression: render_markdown(&report)
 | preamble version | 1 |
 | repo override | none |
 | spent (reported) | $2.00 |
+| atlas hooks | off |
 
 ## Aggregates (mean of per-task means over 1 paired tasks)
 

@@ -9,6 +9,8 @@ Runs headless Claude Code sessions on the same task in two conditions and scores
 
   The variant is recorded per run, and `agent report` refuses a batch that mixes variants.
 
+  With `--atlas-hooks` an atlas session also gets the Claude Code hooks `catl agents sync` would install (the seed hook by default), rendered by `catl agents hooks --json` for the session's own Code Atlas home and passed with `--settings`; see "Atlas hooks" below.
+
 ## Layout
 
 ```
@@ -98,7 +100,7 @@ sent_by = [{ batch = "<batch>", run = "<task>.atlas.r1" }]   # every run that se
 
 A task without the file, or with no `[[query]]`, is `n/a` for the two agent variants and leaves their means; it is never scored 0. A malformed file fails the task at stage `queries`.
 
-Run flags: `--tree-root` (system temp dir), `--keep-trees`, `--runs-per-condition` (2), `--condition baseline|atlas` (both), `--seed` (1), `--parallel` (2), `--budget-usd` (stop starting runs once the reported spend exceeds it), `--judge claude|off`, `--no-probe`, `--base-only`, `--claude-config user|isolated`, `--validation-timeout-secs`, `--atlas-timeout-secs`, `--eval-home` (the parent of the task directory, so `eval` for `eval/tasks`), `--batch` (`<date>-seed<seed>`). A batch is resumable: runs that already have `score.json` are reused.
+Run flags: `--tree-root` (system temp dir), `--keep-trees`, `--runs-per-condition` (2), `--condition baseline|atlas` (both), `--seed` (1), `--parallel` (2), `--budget-usd` (stop starting runs once the reported spend exceeds it), `--judge claude|off`, `--atlas-hooks`, `--no-probe`, `--base-only`, `--claude-config user|isolated`, `--validation-timeout-secs`, `--atlas-timeout-secs`, `--eval-home` (the parent of the task directory, so `eval` for `eval/tasks`), `--batch` (`<date>-seed<seed>`). A batch is resumable: runs that already have `score.json` are reused.
 
 **Where output goes.** An eval home is a directory with `tasks/`, `runs/` and `reports/`, and every command derives it from its input. `agent run` writes its batch and the clone cache (`runs/.cache`) into the home of the task directory. `retrieval` and `agent leak-audit` write `reports/<date>/<name>` beside the task directory. `agent report`, `agent headroom` and `agent noise` write `reports/<date>/<name>` into the home of the first `--runs` batch, and `agent headroom` reads the task specs from that home unless `--tasks` or `--repo-root` says otherwise. A batch that is not laid out as `<home>/runs/<batch>` has no home, so those three need `--out`. For `eval/tasks` and `eval/runs/<batch>` this is `eval/reports/<date>/<name>`, as before.
 
@@ -107,6 +109,15 @@ Run flags: `--tree-root` (system temp dir), `--keep-trees`, `--runs-per-conditio
 `agent leak-audit` materialises each task's base tree (no `setup`) and searches every code span, identifier-shaped token and quoted phrase of the prompt in it as a fixed string, the way `agent headroom` derives entry points. A term reaches a task in one of two ways, reported as separate reasons: a file it returns is a `must_change` file, or a file it returns names one (it contains the path of a `must_change` file, or its file name when no other file of the tree carries that name; this is how a comment in a test or a note hands over the diagnosis). The report lists each reaching term with the number of files it returns, the same for the injected project instructions, and a class per task: `handed` (a prompt term returns at most 3 files and reaches the task through one of them), `guided` (a term reaches it among more files) or `open` (none does). A task that declares another `prompt_leak` is listed and makes the command exit non-zero after the report is written. What the audit cannot see: a label or message cited without quotes (it is not a term), and output a command named in the prompt would print.
 
 Per run (`eval/runs/<batch>/<task>.<condition>.r<i>/`): `run.json`, `transcript.jsonl` (+ `transcript.offsets.json`, ms since spawn per line), `diff.patch`, `metrics.json`, `score.json`, and for atlas runs `atlas-review.json` (the unblinded "did Code Atlas mislead the agent" review, never used in the blinded scores). `_base/<task>/base.json` holds the validation and regression results on the untouched base tree; regressions are failures that were not already failing there.
+
+## Atlas hooks
+
+`agent run --atlas-hooks` (off by default) runs the atlas arm with the hooks the product installs. For each atlas session, after indexing, the harness runs `catl agents hooks --json --binary <catl> --home <session atlas-home>` in a sandboxed environment and passes the result to `claude` as `--settings <scratch>/atlas-hooks.json` holding only `{"hooks": …}` (no permissions, no MCP entries), plus `--include-hook-events`. Nothing is written to any user, project or local Claude settings file. Baseline sessions get no hooks and keep their old command line. By default the session home enables only the seed hook (`UserPromptSubmit`); add `[agents.claude] hooks = ["seed", "remind"]` through `--atlas-config` to measure the `PreToolUse` search reminder as well.
+
+- **Recorded:** `batch.json` `environment.atlas_hooks` and each atlas `run.json` `atlas_hooks` hold the event names, the group count per event and a blake3 digest of the groups with the session home and `catl` path replaced by `<atlas-home>`/`<atlas-bin>`. The run directory keeps the installed `atlas-hooks.json`. The report's environment table has an `atlas hooks` row.
+- **Checked before paying for sessions:** one hooked probe session (atlas-session flags, the probe prompt, `--max-turns 1`, about one cheap model request) must report a `UserPromptSubmit` hook event; its files are in `_probe/hooks/`. `--atlas-hooks` is refused under `--no-probe`.
+- **Refused:** the batch, before any session, when the groups cannot be rendered, are empty, have no `UserPromptSubmit` group, the isolation probe already reports a `UserPromptSubmit` hook of its own (managed settings, say), or the hooked probe sees no hook (the message says whether it did not start, failed before the model, or ran without the hook); a resume when a scored atlas run has another digest (or none) than the invocation (`AtlasHooksMismatch`); a session (setup stage `atlas-hooks`) whose home renders another digest, whose transcript reports no `UserPromptSubmit` hook event, or whose every `UserPromptSubmit` hook wrote to stderr without adding context. After the first such failure in this invocation no further atlas session starts (`skipped_after_hooks_failure`); failed runs reused from an earlier invocation do not stop a resume.
+- **Measured:** from `system`/`hook_response` lines of the transcript (`hook_event`, `stdout`, `exit_code`, `outcome`), `metrics.json` `hooks` counts started and finished hooks per event and the injections: a successful hook whose stdout carries a non-blank `hookSpecificOutput.additionalContext` (or plain text, for `UserPromptSubmit` only). `with_stderr` counts responses with stderr. The report aggregates `atlas_seed_injections`, `atlas_reminder_injections`, `atlas_seed_silent` and `atlas_reminder_silent` (finished minus injections) for atlas runs that installed the event. The test fixture `tests/fixtures/hooks-transcript.jsonl` is synthetic, built from the SDK types until a real transcript replaces it. Details and doc references: `docs/evaluation/methodology.md`, "Atlas hooks".
 
 ## Private task sets
 
@@ -172,7 +183,7 @@ Nothing derived from such a repository belongs in a tracked file: no code, promp
 
 ## Isolation
 
-Every session uses the same flags except `--mcp-config` (empty vs Code Atlas), the `mcp__code-atlas` entry in `--allowedTools` and the preamble in the prompt:
+Every session uses the same flags except `--mcp-config` (empty vs Code Atlas), the `mcp__code-atlas` entry in `--allowedTools`, the preamble in the prompt and, for atlas sessions under `--atlas-hooks`, `--include-hook-events --settings <scratch>/atlas-hooks.json` right after `--verbose`:
 
 ```
 claude --model <m> --strict-mcp-config --mcp-config <file> --setting-sources "" --disable-slash-commands --no-session-persistence
@@ -198,6 +209,8 @@ Probe verification (2026-10-04, Claude Code 2.1.289, `claude-haiku-4-5-20251001`
 | user `~/.claude/CLAUDE.md` | not seen |
 | project `CLAUDE.md` in the tree | not auto-loaded by the flags alone (the probe injects nothing); eval sessions get it, and `AGENTS.md`, through `--append-system-prompt` in both conditions, as described above |
 | permission mode | bypassPermissions; the session created `hello.txt` without prompting |
+
+The probe also passes `--include-hook-events` and lists every hook event its transcript reports (`- hooks: baseline …` in the report); with the baseline flags it must be `none`. Under `--atlas-hooks` the line adds the events of the hooked probe (`atlas UserPromptSubmit (…)`).
 
 The CLAUDE.md answers are the model's self-report: it was asked to quote a canary from the project CLAUDE.md and the first heading of the user CLAUDE.md, and answered `none` for both without reading either file. Every batch re-runs the probe (about $0.01) and records it in `batch.json` and the report, unless `--no-probe` is given.
 

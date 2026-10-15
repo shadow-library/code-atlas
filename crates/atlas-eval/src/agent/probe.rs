@@ -1,11 +1,13 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use super::claude::{ClaudeConfig, EMPTY_MCP_CONFIG, SessionRequest, host_env, session_invocation};
+use super::claude::{ClaudeConfig, EMPTY_MCP_CONFIG, HookWiring, SessionRequest, host_env, session_invocation};
 use super::error::{AgentError, AgentResult};
+use super::hooks::{USER_PROMPT_SUBMIT, hook_metrics};
 use super::process::{ProcessExit, run_streaming};
 use super::record::write_json;
 use super::transcript::Transcript;
@@ -14,6 +16,8 @@ use super::workspace::{check_isolated_location, scratch_dir};
 pub const PROJECT_CANARY: &str = "ATLAS-EVAL-PROJECT-CANARY-5821";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(300);
 const PROBE_MAX_TURNS: u32 = 6;
+const HOOKED_PROBE_MAX_TURNS: u32 = 1;
+const HOOKED_SETTINGS_FILE: &str = "atlas-hooks.json";
 const HELLO_FILE: &str = "hello.txt";
 const PROJECT_KEY: &str = "PROJECT_CANARY=";
 const USER_KEY: &str = "USER_MD_HEADING=";
@@ -47,12 +51,87 @@ pub struct ProbeReport {
   pub slash_commands: Vec<String>,
   pub plugins: Vec<String>,
   pub agents: Vec<String>,
+  #[serde(default)]
+  pub hooks: Vec<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub atlas_hooks_seen: Option<Vec<String>>,
   pub project_claude_md: Visibility,
   pub user_claude_md: Visibility,
   pub hello_file: HelloFile,
   pub tool_calls: Vec<String>,
   pub cost_usd: Option<f64>,
   pub answer: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HookedProbe {
+  pub atlas_hooks_blake3: String,
+  pub exit: ProcessExit,
+  pub hooks_seen: Vec<String>,
+  pub user_prompt_submit_seen: bool,
+  #[serde(default)]
+  pub started: bool,
+  #[serde(default)]
+  pub model_turns: usize,
+  pub cost_usd: Option<f64>,
+}
+
+pub struct HookedProbeRequest<'a> {
+  pub out_dir: &'a Path,
+  pub scratch: &'a Path,
+  pub settings: &'a str,
+  pub atlas_hooks_blake3: &'a str,
+  pub tree_env: Vec<(String, String)>,
+}
+
+pub fn run_hooked_probe(request: &HookedProbeRequest<'_>, claude: &ClaudeConfig) -> AgentResult<HookedProbe> {
+  let (out_dir, scratch) = (request.out_dir, request.scratch);
+  let tree = scratch.join("tree");
+  fs::create_dir_all(&tree).map_err(|error| AgentError::io(&tree, error))?;
+  check_isolated_location(&tree, &[out_dir])?;
+  let settings = scratch.join(HOOKED_SETTINGS_FILE);
+  let mcp_config = scratch.join("empty-mcp.json");
+  for (path, content) in [
+    (&settings, request.settings),
+    (&out_dir.join(HOOKED_SETTINGS_FILE), request.settings),
+    (&mcp_config, EMPTY_MCP_CONFIG),
+  ] {
+    fs::write(path, content).map_err(|error| AgentError::io(path, error))?;
+  }
+  let session = SessionRequest {
+    prompt: probe_prompt(),
+    tree,
+    mcp_config,
+    max_turns: HOOKED_PROBE_MAX_TURNS,
+    with_atlas_tools: true,
+    config_dir: scratch.join("claude-config"),
+    project_instructions: None,
+    tree_env: request.tree_env.clone(),
+    hooks: HookWiring::Installed { settings },
+  };
+  let invocation = session_invocation(claude, &session, &host_env());
+  write_json(&out_dir.join("invocation.json"), &invocation.redacted())?;
+  let transcript_path = out_dir.join("transcript.jsonl");
+  let output = run_streaming(invocation.command(), PROBE_TIMEOUT, &transcript_path, &out_dir.join("claude.stderr.log")).map_err(|error| AgentError::io(&transcript_path, error))?;
+  let text = fs::read_to_string(&transcript_path).map_err(|error| AgentError::io(&transcript_path, error))?;
+  let transcript = Transcript::parse(&text, &output.line_offsets_ms);
+  let probe = HookedProbe {
+    atlas_hooks_blake3: request.atlas_hooks_blake3.to_owned(),
+    exit: output.exit,
+    hooks_seen: hooks_seen(&transcript),
+    user_prompt_submit_seen: hook_metrics(&transcript).ran(USER_PROMPT_SUBMIT),
+    started: transcript.init.is_some(),
+    model_turns: transcript.turns.len(),
+    cost_usd: transcript.result.as_ref().and_then(|result| result.total_cost_usd),
+  };
+  write_json(&out_dir.join("probe.json"), &probe)?;
+  Ok(probe)
+}
+
+impl ProbeReport {
+  pub fn saw_hook(&self, event: &str) -> bool {
+    self.hooks.iter().any(|hook| hook.strip_prefix(event).is_some_and(|rest| rest.starts_with(" (")))
+  }
 }
 
 pub fn probe_prompt() -> String {
@@ -105,6 +184,7 @@ fn probe_in(out_dir: &Path, scratch: &Path, tree: &Path, claude: &ClaudeConfig, 
     config_dir: scratch.join("claude-config"),
     project_instructions: None,
     tree_env: Vec::new(),
+    hooks: HookWiring::Observed,
   };
   let invocation = session_invocation(claude, &request, &host_env());
   let invocation_path = out_dir.join("invocation.json");
@@ -171,6 +251,8 @@ pub fn analyze_probe(exit: ProcessExit, transcript: &Transcript, hello: &Option<
     slash_commands: init.slash_commands,
     plugins: init.plugins,
     agents: init.agents,
+    hooks: hooks_seen(transcript),
+    atlas_hooks_seen: None,
     project_claude_md,
     user_claude_md,
     hello_file,
@@ -178,6 +260,11 @@ pub fn analyze_probe(exit: ProcessExit, transcript: &Transcript, hello: &Option<
     cost_usd: transcript.result.as_ref().and_then(|result| result.total_cost_usd),
     answer,
   }
+}
+
+fn hooks_seen(transcript: &Transcript) -> Vec<String> {
+  let seen: BTreeSet<String> = transcript.hooks.iter().map(|hook| format!("{} ({})", hook.event, hook.name)).collect();
+  seen.into_iter().collect()
 }
 
 fn answer_value<'a>(answer: &'a str, key: &str) -> Option<&'a str> {
@@ -210,6 +297,19 @@ mod tests {
     assert_eq!(report.tools, vec!["Bash", "Edit", "Glob", "Grep", "Read", "Write"]);
     assert_eq!(report.permission_mode.as_deref(), Some("bypassPermissions"));
     assert_eq!(report.tool_calls, vec!["Write"]);
+    assert_eq!(report.hooks, Vec::<String>::new());
+    assert!(!report.saw_hook(USER_PROMPT_SUBMIT));
+  }
+
+  #[test]
+  fn should_list_every_hook_the_session_reported() {
+    let synthetic = include_str!("../../tests/fixtures/hooks-transcript.jsonl");
+    let report = analyze_probe(ProcessExit::Exited { code: Some(0) }, &Transcript::parse(synthetic, &[]), &None, None);
+    assert_eq!(
+      report.hooks,
+      vec!["PreToolUse (PreToolUse:Bash)", "PreToolUse (PreToolUse:Grep)", "UserPromptSubmit (UserPromptSubmit)"]
+    );
+    assert!(report.saw_hook(USER_PROMPT_SUBMIT) && report.saw_hook("PreToolUse") && !report.saw_hook("PreTool"));
   }
 
   fn answered(answer: &str, calls: Vec<ToolCall>) -> Transcript {

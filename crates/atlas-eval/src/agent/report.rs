@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::access::OutOfTreeAccess;
 use super::error::{AgentError, AgentResult};
+use super::hooks::{AtlasHooksRecord, HookMetrics, PRE_TOOL_USE, USER_PROMPT_SUBMIT};
 use super::judge::JudgeOutcome;
 use super::metrics::Metrics;
 use super::plan::{Condition, PreambleVariant};
@@ -74,6 +75,11 @@ fn flag(value: bool) -> f64 {
 
 fn count(value: u64) -> f64 {
   value as f64
+}
+
+fn hook_count(record: &RunRecord, event: &str, field: fn(&HookMetrics) -> u64) -> Option<f64> {
+  record.manifest.atlas_hooks.as_ref().filter(|hooks| hooks.installs(event))?;
+  metrics_of(record).map(|metrics| count(field(&metrics.hooks)))
 }
 
 pub(super) const METRICS: &[MetricDef] = &[
@@ -261,6 +267,30 @@ pub(super) const METRICS: &[MetricDef] = &[
     extract: |record| metrics_of(record).map(|metrics| count(metrics.atlas.bytes)),
   },
   MetricDef {
+    name: "atlas_seed_injections",
+    group: MetricGroup::TokensAndContext,
+    better: Better::Neutral,
+    extract: |record| hook_count(record, USER_PROMPT_SUBMIT, |hooks| hooks.seed_injections),
+  },
+  MetricDef {
+    name: "atlas_reminder_injections",
+    group: MetricGroup::TokensAndContext,
+    better: Better::Neutral,
+    extract: |record| hook_count(record, PRE_TOOL_USE, |hooks| hooks.reminder_injections),
+  },
+  MetricDef {
+    name: "atlas_seed_silent",
+    group: MetricGroup::TokensAndContext,
+    better: Better::Neutral,
+    extract: |record| hook_count(record, USER_PROMPT_SUBMIT, |hooks| hooks.silent(USER_PROMPT_SUBMIT)),
+  },
+  MetricDef {
+    name: "atlas_reminder_silent",
+    group: MetricGroup::TokensAndContext,
+    better: Better::Neutral,
+    extract: |record| hook_count(record, PRE_TOOL_USE, |hooks| hooks.silent(PRE_TOOL_USE)),
+  },
+  MetricDef {
     name: "information_density",
     group: MetricGroup::TokensAndContext,
     better: Better::Higher,
@@ -418,6 +448,8 @@ pub struct AgentReport {
   pub setup_failures: Vec<SetupFailure>,
   pub contaminated_runs: Vec<ContaminatedRun>,
   pub skipped_for_budget: Vec<String>,
+  #[serde(default)]
+  pub skipped_after_hooks_failure: Vec<String>,
   pub judge_failures: Vec<String>,
   pub spent_usd: Option<f64>,
   pub comparison: Vec<Delta>,
@@ -463,6 +495,7 @@ pub fn build_report(batch: Option<&BatchManifest>, records: &[RunRecord], previo
     setup_failures: setup_failures(records),
     contaminated_runs: contaminated_runs(records),
     skipped_for_budget: batch.map(|batch| batch.skipped_for_budget.clone()).unwrap_or_default(),
+    skipped_after_hooks_failure: batch.map(|batch| batch.skipped_after_hooks_failure.clone()).unwrap_or_default(),
     judge_failures: judge_failures(records),
     spent_usd: batch.map(|batch| batch.spent_usd),
     comparison: Vec::new(),
@@ -887,14 +920,22 @@ fn render_environment(out: &mut String, report: &AgentReport) {
     .atlas_config
     .as_ref()
     .map(|record| ("atlas config", format!("blake3 {}: {}", record.blake3, record.files.join(", "))));
+  let atlas_hooks = ("atlas hooks", environment.atlas_hooks.as_ref().map_or_else(|| "off".to_owned(), AtlasHooksRecord::describe));
   let _ = writeln!(out, "| key | value |");
   let _ = writeln!(out, "|---|---|");
-  for (key, value) in rows.into_iter().chain(atlas_config) {
+  for (key, value) in rows.into_iter().chain(atlas_config).chain([atlas_hooks]) {
     let _ = writeln!(out, "| {key} | {value} |");
   }
   out.push('\n');
   if !report.skipped_for_budget.is_empty() {
     let _ = writeln!(out, "Runs not started because the budget was exhausted: {}\n", report.skipped_for_budget.join(", "));
+  }
+  if !report.skipped_after_hooks_failure.is_empty() {
+    let _ = writeln!(
+      out,
+      "Atlas runs not started because an earlier atlas session failed its hooks: {}\n",
+      report.skipped_after_hooks_failure.join(", ")
+    );
   }
   if let Some(probe) = &environment.probe {
     let _ = writeln!(out, "### Isolation probe\n");
@@ -903,6 +944,8 @@ fn render_environment(out: &mut String, report: &AgentReport) {
     let _ = writeln!(out, "- MCP servers: {}", list(&probe.mcp_servers));
     let _ = writeln!(out, "- skills: {}; slash commands: {}", list(&probe.skills), list(&probe.slash_commands));
     let _ = writeln!(out, "- plugins: {}", list(&probe.plugins));
+    let atlas_hooks = probe.atlas_hooks_seen.as_ref().map_or_else(|| "not probed".to_owned(), |seen| list(seen));
+    let _ = writeln!(out, "- hooks: baseline {}; atlas {atlas_hooks}", list(&probe.hooks));
     let _ = writeln!(out, "- user CLAUDE.md: {:?}; project CLAUDE.md: {:?}", probe.user_claude_md, probe.project_claude_md);
     let _ = writeln!(out, "- models reported: {}\n", list(&probe.model_reported));
   }
@@ -978,6 +1021,7 @@ mod tests {
       preamble_version: None,
       preamble_variant: None,
       atlas_config_blake3: None,
+      atlas_hooks: None,
       args: Vec::new(),
       env_names: Vec::new(),
       atlas_project: None,
@@ -1166,12 +1210,14 @@ mod tests {
         preamble_variant: PreambleVariant::Standard,
         repo_override: None,
         atlas_config: None,
+        atlas_hooks: None,
         probe: None,
       },
       tasks: vec!["t00-smoke".to_owned()],
       truths: Vec::new(),
       planned: Vec::new(),
       skipped_for_budget: Vec::new(),
+      skipped_after_hooks_failure: Vec::new(),
       spent_usd: 2.0,
       instruction_sections_dropped: BTreeMap::new(),
     }

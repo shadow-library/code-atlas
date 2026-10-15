@@ -32,6 +32,12 @@ pub enum AgentError {
     "scored run(s) {runs} of this batch were produced with another atlas configuration (digest {recorded}) than this invocation ({expected}); rerun them under one or use a new batch"
   )]
   AtlasConfigMismatch { runs: String, recorded: String, expected: String },
+  #[error("--atlas-hooks: {reason}")]
+  AtlasHooksUnavailable { reason: String },
+  #[error(
+    "scored atlas run(s) {runs} of this batch were produced with other Code Atlas hooks (digest {recorded}) than this invocation ({expected}); rerun them under one setting or use a new batch"
+  )]
+  AtlasHooksMismatch { runs: String, recorded: String, expected: String },
   #[error("invalid argument: {0}")]
   InvalidArgument(String),
   #[error("`{path}` reaches outside the tree through the symbolic link `{link}`; a task may only edit files of its own tree")]

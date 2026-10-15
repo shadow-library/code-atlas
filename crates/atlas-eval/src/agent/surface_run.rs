@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 
 use super::atlas_cli::{AtlasCli, isolated_command};
-use super::claude::{ATLAS_SERVER_NAME, ClaudeConfig, EMPTY_MCP_CONFIG, SessionRequest, host_env, session_invocation};
+use super::claude::{ATLAS_SERVER_NAME, ClaudeConfig, EMPTY_MCP_CONFIG, HookWiring, SessionRequest, host_env, session_invocation};
 use super::error::{AgentError, AgentResult};
 use super::process::{ProcessExit, run_captured, run_streaming};
 use super::record::write_json;
@@ -407,6 +407,7 @@ fn run_session(options: &SurfaceOptions, bench: &Workbench, mcp_config: &Path, a
     config_dir: options.work_dir.join("claude-config"),
     project_instructions: None,
     tree_env: Vec::new(),
+    hooks: HookWiring::Unchanged,
   };
   let mut invocation = session_invocation(&options.claude, &request, &host_env());
   for (key, value) in &mut invocation.env {

@@ -10,6 +10,7 @@ use super::accuracy::AtlasAccuracy;
 use super::atlas_config::AtlasConfigRecord;
 use super::claude::ConfigIsolation;
 use super::error::{AgentError, AgentResult};
+use super::hooks::AtlasHooksRecord;
 use super::judge::JudgeOutcome;
 use super::plan::{Condition, PlannedRun, PreambleVariant};
 use super::probe::ProbeReport;
@@ -92,6 +93,8 @@ pub struct RunManifest {
   pub preamble_variant: Option<PreambleVariant>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub atlas_config_blake3: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub atlas_hooks: Option<AtlasHooksRecord>,
   pub args: Vec<String>,
   pub env_names: Vec<String>,
   pub atlas_project: Option<String>,
@@ -236,6 +239,8 @@ pub struct Environment {
   pub repo_override: Option<String>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub atlas_config: Option<AtlasConfigRecord>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub atlas_hooks: Option<AtlasHooksRecord>,
   pub probe: Option<ProbeReport>,
 }
 
@@ -246,6 +251,8 @@ pub struct BatchManifest {
   pub truths: Vec<(String, GroundTruth)>,
   pub planned: Vec<PlannedRun>,
   pub skipped_for_budget: Vec<String>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub skipped_after_hooks_failure: Vec<String>,
   pub spent_usd: f64,
   #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
   pub instruction_sections_dropped: BTreeMap<String, Vec<String>>,

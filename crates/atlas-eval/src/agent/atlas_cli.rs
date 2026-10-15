@@ -64,6 +64,10 @@ impl AtlasCli {
     &self.home
   }
 
+  pub fn binary(&self) -> &Path {
+    &self.binary
+  }
+
   pub fn project_create(&self, project: &str, repos: &[PathBuf], cwd: &Path) -> AgentResult<()> {
     let mut args = vec!["project".to_owned(), "create".to_owned(), project.to_owned()];
     for repo in repos {
@@ -75,6 +79,15 @@ impl AtlasCli {
 
   pub fn index(&self, project: &str, cwd: &Path) -> AgentResult<CapturedOutput> {
     self.run(&["index".to_owned(), "--project".to_owned(), project.to_owned()], cwd)
+  }
+
+  pub fn agents_hooks(&self, cwd: &Path) -> AgentResult<CapturedOutput> {
+    let args =
+      ["agents", "hooks", "--json", "--binary"]
+        .map(str::to_owned)
+        .into_iter()
+        .chain([self.binary.display().to_string(), "--home".to_owned(), self.home.display().to_string()]);
+    self.run(&args.collect::<Vec<_>>(), cwd)
   }
 
   pub fn config_show(&self, project: &str, cwd: &Path) -> AgentResult<CapturedOutput> {

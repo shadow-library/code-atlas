@@ -36,6 +36,7 @@ pub(super) fn run_record(task: &str, condition: Condition, index: u32, total: To
     preamble_version: atlas.then_some(1),
     preamble_variant: atlas.then_some(PreambleVariant::Standard),
     atlas_config_blake3: None,
+    atlas_hooks: None,
     args: [
       "--mcp-config",
       &format!("{scratch}/mcp.json"),

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use super::access::OutOfTreeAccess;
 use super::bash::analyze_bash;
 use super::claude::ATLAS_TOOL_PREFIX;
+use super::hooks::{HookMetrics, hook_metrics};
 use super::spec::GroundTruth;
 use super::transcript::{TokenUsage, ToolCall, Transcript};
 
@@ -87,6 +88,8 @@ pub struct Metrics {
   pub relevance: RelevanceMetrics,
   pub timing: TimingMetrics,
   pub density: DensityMetrics,
+  #[serde(default)]
+  pub hooks: HookMetrics,
 }
 
 pub struct MetricsInput<'a> {
@@ -182,6 +185,7 @@ pub fn compute_metrics(input: &MetricsInput<'_>) -> Metrics {
       context_bytes,
       ratio: (context_bytes > 0).then(|| useful_bytes as f64 / context_bytes as f64),
     },
+    hooks: hook_metrics(transcript),
   }
 }
 

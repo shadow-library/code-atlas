@@ -109,6 +109,11 @@ struct RunArgs {
     help = "Seed every isolated Code Atlas home of the atlas arm with DIR/config.toml and DIR/detectors/*.toml (refused when DIR is missing or the configuration does not load)"
   )]
   atlas_config: Option<PathBuf>,
+  #[arg(
+    long,
+    help = "Pass each atlas session the Claude Code hooks `catl agents hooks --json` renders for its own Code Atlas home, as session settings (--settings); baseline sessions get none"
+  )]
+  atlas_hooks: bool,
   #[arg(long, value_enum, default_value_t = JudgeMode::Claude)]
   judge: JudgeMode,
   #[arg(long, value_enum, default_value_t = PreambleVariant::Standard)]
@@ -317,6 +322,11 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
         atlas_config.keys().join(", ")
       ));
     }
+    if args.atlas_hooks && conditions.contains(&Condition::Atlas) {
+      notes.push(
+        "atlas hooks: each atlas session gets the hook groups `catl agents hooks --json --binary <catl> --home <session home>` prints, passed with --settings and --include-hook-events; before any session one hooked probe session (atlas flags, --max-turns 1) must report a UserPromptSubmit hook event, so --no-probe is refused; baseline sessions get none".to_owned(),
+      );
+    }
     let context = DryRunContext {
       tasks: &tasks,
       runs: &planned,
@@ -364,7 +374,7 @@ fn runner_config(args: &RunArgs, repo_root: PathBuf, home: &EvalHome, atlas_bin:
     tree_root: args.tree_root.clone().unwrap_or_else(std::env::temp_dir),
     keep_trees: args.keep_trees,
     claude: args.claude.config(),
-    atlas_bin: atlas_bin.unwrap_or_else(|| PathBuf::from("catl")),
+    atlas_bin: atlas_bin.map_or_else(|| PathBuf::from("catl"), |path| path.canonicalize().unwrap_or(path)),
     repo_override: args.repo_override.clone(),
     judge: args.judge,
     parallel: args.parallel,
@@ -375,6 +385,7 @@ fn runner_config(args: &RunArgs, repo_root: PathBuf, home: &EvalHome, atlas_bin:
     probe: !args.no_probe && !args.base_only,
     preamble: args.atlas_preamble,
     atlas_config,
+    atlas_hooks: args.atlas_hooks,
   }
 }
 
@@ -516,6 +527,30 @@ mod tests {
   fn should_pass_the_atlas_config_directory_through_the_flag() {
     assert_eq!(run_args(&[]).atlas_config, None);
     assert_eq!(run_args(&["--atlas-config", "/cfg"]).atlas_config, Some(PathBuf::from("/cfg")));
+  }
+
+  #[test]
+  fn should_resolve_the_catl_binary_to_an_absolute_path_when_it_exists() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("catl"), "").unwrap();
+    std::fs::create_dir(dir.path().join("sub")).unwrap();
+    let relative = dir.path().join("sub/../catl");
+    let resolved = runner_config(&run_args(&[]), PathBuf::from("/work"), &EvalHome::new("/work/eval"), Some(relative), None);
+    assert_eq!(resolved.atlas_bin, dir.path().canonicalize().unwrap().join("catl"));
+    let missing = runner_config(
+      &run_args(&[]),
+      PathBuf::from("/work"),
+      &EvalHome::new("/work/eval"),
+      Some(PathBuf::from("/no/such/catl")),
+      None,
+    );
+    assert_eq!(missing.atlas_bin, PathBuf::from("/no/such/catl"));
+  }
+
+  #[test]
+  fn should_install_atlas_hooks_only_when_asked() {
+    assert!(!config(&[]).atlas_hooks);
+    assert!(config(&["--atlas-hooks"]).atlas_hooks);
   }
 
   #[test]

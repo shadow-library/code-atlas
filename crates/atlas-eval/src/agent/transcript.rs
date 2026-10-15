@@ -162,6 +162,50 @@ pub struct ResultInfo {
   pub text: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "phase", rename_all = "snake_case")]
+pub enum HookPhase {
+  Started,
+  Finished {
+    outcome: Option<String>,
+    exit_code: Option<i64>,
+    stdout: String,
+    #[serde(default)]
+    stderr: String,
+  },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HookEvent {
+  pub event: String,
+  pub name: String,
+  #[serde(flatten)]
+  pub phase: HookPhase,
+}
+
+impl HookPhase {
+  fn finished(event: &Value) -> Self {
+    let text = |field: &str| event.get(field).and_then(Value::as_str).map(str::to_owned);
+    Self::Finished {
+      outcome: text("outcome"),
+      exit_code: event.get("exit_code").and_then(Value::as_i64),
+      stdout: text("stdout").or_else(|| text("output")).unwrap_or_default(),
+      stderr: text("stderr").unwrap_or_default(),
+    }
+  }
+}
+
+impl HookEvent {
+  fn parse(event: &Value, phase: HookPhase) -> Self {
+    let text = |field: &str| event.get(field).and_then(Value::as_str).unwrap_or_default().to_owned();
+    Self {
+      event: text("hook_event"),
+      name: text("hook_name"),
+      phase,
+    }
+  }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Transcript {
   pub init: Option<InitInfo>,
@@ -169,6 +213,8 @@ pub struct Transcript {
   pub tool_calls: Vec<ToolCall>,
   pub assistant_text: Vec<String>,
   pub result: Option<ResultInfo>,
+  #[serde(default)]
+  pub hooks: Vec<HookEvent>,
   pub event_counts: BTreeMap<String, u64>,
   pub unparsed_lines: u64,
   pub orphan_tool_results: u64,
@@ -219,6 +265,8 @@ impl Transcript {
     *self.event_counts.entry(label).or_default() += 1;
     match (kind, subtype) {
       ("system", Some("init")) => self.init = Some(parse_init(event)),
+      ("system", Some("hook_started")) => self.hooks.push(HookEvent::parse(event, HookPhase::Started)),
+      ("system", Some("hook_response")) => self.hooks.push(HookEvent::parse(event, HookPhase::finished(event))),
       ("assistant", _) => self.absorb_assistant(event, elapsed_ms),
       ("user", _) => self.absorb_user(event),
       ("result", _) => self.result = Some(parse_result(event)),
