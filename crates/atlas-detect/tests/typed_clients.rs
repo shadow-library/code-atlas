@@ -411,21 +411,21 @@ const internalApi = createClient<paths>();
   assert_eq!(attrs("#staticApi").get("base_source"), None);
 }
 
-const KIT_CLIENT: &str = "[client]\nfiles = [\"apps/web/src/transport.ts\"]\nexports = [\"APIRequest\", \"apiClient\"]\nbase = \"/api\"\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces\"\n";
+const KIT_CLIENT: &str = "[client]\nfiles = [\"apps/web/src/transport.ts\"]\nexports = [\"APIRequest\", \"apiClient\"]\nbase = \"/api\"\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createGatewayClient\"\noption = \"surfaces\"\n";
 
-const TRANSPORT: &str = r#"import { createApiClient } from '@acme/http-kit';
+const TRANSPORT: &str = r#"import { createGatewayClient } from '@acme/http-kit';
 import { ssr } from './env';
 
 const AUTH_SURFACES = { auth: '/api/auth/', admin: `/api/admin` } as const;
 
-export const apiClient = createApiClient({ surfaces: { v1: '/api/v1', auth: `${process.env.AUTH_ORIGIN}/api/auth/`, ...extra, [KEY]: '/k' }, ssr });
-export const authClient = await createApiClient<Surfaces>({ surfaces: AUTH_SURFACES });
+export const apiClient = createGatewayClient({ surfaces: { v1: '/api/v1', auth: `${process.env.AUTH_ORIGIN}/api/auth/`, ...extra, [KEY]: '/k' }, ssr });
+export const authClient = await createGatewayClient<Surfaces>({ surfaces: AUTH_SURFACES });
 export const APIRequest = apiClient.v1;
 export const AdminRequest: Surface = authClient.admin as Surface;
 export const Missing = apiClient.v2;
 export const Called = apiClient.v1.withAuth();
 export const Indexed = apiClient['v1'];
-const internal = createApiClient({ surfaces: { v9: '/v9' } });
+const internal = createGatewayClient({ surfaces: { v9: '/v9' } });
 export const local = internal.v9;
 
 export const session = () => apiClient.auth.get('/session');
@@ -564,10 +564,10 @@ export const findBook = (id: string) => booksApi.get(`/${id}`);
 
 #[test]
 fn should_not_take_surfaces_from_lookalike_factories_or_shadowed_containers() {
-  let source = r#"import { createApiClient } from '@acme/other-kit';
-import { createApiClient as kit } from '@acme/http-kit';
+  let source = r#"import { createGatewayClient } from '@acme/other-kit';
+import { createGatewayClient as kit } from '@acme/http-kit';
 
-export const apiClient = createApiClient({ surfaces: { v1: '/api/v1' } });
+export const apiClient = createGatewayClient({ surfaces: { v1: '/api/v1' } });
 export const wrongOption = kit({ bases: { v1: '/api/v1' } });
 
 export function shadowed(apiClient: { v1: { get(path: string): void } }) {
@@ -604,12 +604,14 @@ export const cachedViaNamespace = () => transport.APIRequest.cache.post('/users'
 }
 
 fn web_family(files: &str) -> String {
-  format!("[client]\nfiles = [\"{files}\"]\nexports = [\"APIRequest\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces\"\n")
+  format!(
+    "[client]\nfiles = [\"{files}\"]\nexports = [\"APIRequest\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createGatewayClient\"\noption = \"surfaces\"\n"
+  )
 }
 
-const WEB_TRANSPORT: &str = r#"import { createApiClient } from '@acme/http-kit';
+const WEB_TRANSPORT: &str = r#"import { createGatewayClient } from '@acme/http-kit';
 
-export const apiClient = createApiClient({ surfaces: { v1: '/api/v1' } });
+export const apiClient = createGatewayClient({ surfaces: { v1: '/api/v1' } });
 export const APIRequest = apiClient.v1;
 "#;
 
@@ -668,7 +670,7 @@ fn should_record_no_definition_claimed_by_two_families_and_report_the_conflict()
 }
 
 fn broad_family() -> String {
-  "[client]\nmodules = [\"@acme/http-kit\"]\nexports = [\"APIRequest\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces\"\n"
+  "[client]\nmodules = [\"@acme/http-kit\"]\nexports = [\"APIRequest\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createGatewayClient\"\noption = \"surfaces\"\n"
     .to_owned()
 }
 
@@ -682,10 +684,10 @@ fn libraries(detector: &DeclaredClientsDetector, path: &str) -> (Vec<String>, Ve
 
 #[test]
 fn should_not_record_a_definition_for_a_family_that_only_imports_the_module_of_another() {
-  let a_web = "[client]\nfiles = [\"apps/a-web/src/lib/apis/transport.ts\"]\nmodules = [\"@/lib/apis/transport\"]\nfactories = [\"createApiClient\"]\n";
-  let b_web = "[client]\nfiles = [\"apps/b-web/src/lib/apis/transport.ts\"]\nfactories = [\"createApiClient\"]\n";
+  let a_web = "[client]\nfiles = [\"apps/a-web/src/lib/apis/transport.ts\"]\nmodules = [\"@/lib/apis/transport\"]\nfactories = [\"createGatewayClient\"]\n";
+  let b_web = "[client]\nfiles = [\"apps/b-web/src/lib/apis/transport.ts\"]\nfactories = [\"createGatewayClient\"]\n";
   let detector = DeclaredClientsDetector::new(&[family("a-web", a_web), family("b-web", b_web)]);
-  let source = "import { createApiClient } from '@/lib/apis/transport';\n\nexport const uploadClient = createApiClient({ baseUrl: '/upload' });\n";
+  let source = "import { createGatewayClient } from '@/lib/apis/transport';\n\nexport const uploadClient = createGatewayClient({ baseUrl: '/upload' });\n";
   let analyzed = analyze("web", "apps/b-web/src/lib/apis/upload.ts", source);
   let (detection, diagnostics) = run(&detector, &analyzed);
   assert_eq!(entity_attrs(&detection), Vec::new());

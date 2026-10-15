@@ -10,8 +10,8 @@ use common::{Analyzed, analyze, render, run, sorted};
 
 const PINNED: (u32, &str, &str) = (
   6,
-  "f9e018786ff2a9c36ea9135c426d795e8248aca7792c4800d79146c9cdaec71a",
-  "1f2463de79b5e8f6d0371cd28ac4a7a026f341f9d45d2c8f350198079c0c78f1",
+  "0ae31e156df3f87f4a826085fe718f44efee2c025ce4951271df31b36b7f80cf",
+  "4262dad8edbd33ad3cd7e7cc3757f8a42762469c2028bd17fbf73f1d6fd734c8",
 );
 
 fn corpus() -> PathBuf {

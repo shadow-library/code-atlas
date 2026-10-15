@@ -14,4 +14,4 @@ decorators = ["Guarded", "Authenticated", "Auth", "Public"]
 auth_schemes = { Authenticated = "bearer", Auth = "bearer" }
 
 [permissions]
-decorators = ["Permit", "BotPermission"]
+decorators = ["Permit", "RobotPermit"]

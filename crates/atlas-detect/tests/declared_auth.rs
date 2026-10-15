@@ -124,19 +124,19 @@ fn should_resolve_permission_constants_of_the_same_file_and_name_unread_ones() {
     [
       r#"references permission:projects:PROJECTS_WRITE -> ?PROJECTS_WRITE [syntactic] {"permission_constant":true}"#,
       r#"references permission:projects:Scope.Admin -> ?Scope::Admin [syntactic] {"permission_constant":true}"#,
-      r#"requires_permission ProjectsController.bot -> permission:projects:bot:read [resolved] {"decorator":"BotPermission","level":"method"}"#,
+      r#"requires_permission ProjectsController.bot -> permission:projects:bot:read [resolved] {"decorator":"RobotPermit","level":"method"}"#,
       r#"requires_permission ProjectsController.create -> permission:projects:PROJECTS_WRITE [heuristic 0.60] {"constant":"PROJECTS_WRITE","decorator":"Permit","level":"method"}"#,
       r#"requires_permission ProjectsController.create -> permission:projects:projects:audit [syntactic] {"decorator":"Permit","level":"method"}"#,
       r#"requires_permission ProjectsController.list -> permission:projects:projects:read [resolved] {"constant":"PROJECTS_READ","decorator":"Permit","level":"method"}"#,
-      r#"requires_permission ProjectsController.remove -> permission:projects:Scope.Admin [heuristic 0.60] {"constant":"Scope.Admin","decorator":"BotPermission","level":"method"}"#,
+      r#"requires_permission ProjectsController.remove -> permission:projects:Scope.Admin [heuristic 0.60] {"constant":"Scope.Admin","decorator":"RobotPermit","level":"method"}"#,
     ]
   );
   assert_eq!(
     entity_attrs(&detection, "permission:"),
     [
       r#"permission:projects:PROJECTS_WRITE [heuristic 0.60] {"constant":"PROJECTS_WRITE","decorator":"Permit","value_source":"unread_constant"}"#,
-      r#"permission:projects:Scope.Admin [heuristic 0.60] {"constant":"Scope.Admin","decorator":"BotPermission","value_source":"unread_constant"}"#,
-      r#"permission:projects:bot:read [resolved] {"decorator":"BotPermission","value_source":"constant"}"#,
+      r#"permission:projects:Scope.Admin [heuristic 0.60] {"constant":"Scope.Admin","decorator":"RobotPermit","value_source":"unread_constant"}"#,
+      r#"permission:projects:bot:read [resolved] {"decorator":"RobotPermit","value_source":"constant"}"#,
       r#"permission:projects:projects:audit [syntactic] {"decorator":"Permit","value_source":"literal"}"#,
       r#"permission:projects:projects:read [resolved] {"constant":"PROJECTS_READ","decorator":"Permit","value_source":"constant"}"#,
     ]

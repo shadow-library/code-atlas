@@ -17,6 +17,8 @@ if [[ -n "$unsandboxed" ]]; then
   exit 1
 fi
 
+./scripts/check-denylist.sh
+
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace

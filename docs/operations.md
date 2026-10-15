@@ -12,6 +12,8 @@ cargo install --path crates/atlas-cli
 ./scripts/check.sh                     # fmt --check, clippy -D warnings, test --workspace
 ```
 
+`scripts/check.sh` also runs `scripts/check-denylist.sh`. When the git-ignored `eval/private/denylist.txt` exists in the main checkout (linked worktrees look there too) (one case-insensitive fixed string per line; blank lines and `#` comments ignored), any tracked file outside `eval/private/` and `scratch-pad/` that contains a listed string fails the check. The output names only `path:line`, never the string or the line, so check logs do not reveal the list. Without the file the check does nothing. `ATLAS_DENYLIST` points the script at another list and exists for its tests.
+
 The repository's `.cargo/config.toml` sets `LIBSQLITE3_FLAGS="-USQLITE_ENABLE_MEMORY_MANAGEMENT -DSQLITE_DEFAULT_MEMSTATUS=0"`. Without those flags the bundled SQLite uses one process-wide page cache behind a global mutex, so concurrent queries serialise.
 
 - The flag applies to workspace builds and `cargo install --path crates/atlas-cli`.
@@ -386,8 +388,8 @@ Some transports create one client per API surface from a map of bases and export
 
 ```ts
 // apps/web/src/transport.ts
-import { createApiClient } from '@acme/http-kit';
-export const apiClient = createApiClient({ surfaces: { v1: '/api/v1', auth: '/api/auth' }, ssr });
+import { createGatewayClient } from '@acme/http-kit';
+export const apiClient = createGatewayClient({ surfaces: { v1: '/api/v1', auth: '/api/auth' }, ssr });
 export const APIRequest = apiClient.v1;
 ```
 
@@ -399,12 +401,12 @@ methods = ["get", "post", "put", "patch", "delete"]
 
 [client.surfaces]
 modules = ["@acme/http-kit"]           # import specifiers the factory comes from, compared as written
-factory = "createApiClient"            # the factory's export name ("default" for a default export)
+factory = "createGatewayClient"            # the factory's export name ("default" for a default export)
 option = "surfaces"                    # the factory option holding { name: base }
 containers = ["apiClient"]             # optional; follow members only of these exports
 ```
 
-A binding initialised by calling the factory (named, aliased or default import from a listed module) is a container, and its member `<name>` is a client with the base mapped to `<name>`. The map is an object literal in the call or a top-level `const` object literal of the same file; computed keys and spreads are skipped, and each value is evaluated like `baseUrl` (a literal is a base, a leading environment variable or identifier becomes `base_source`). In the transport file, an exported container is recorded as one `other:typed_client:<repo>:<path>#<container>.<name>` definition per surface, an exported `const X = container.name` (optionally `as T`) as `#X`, and calls such as `apiClient.v1.get(...)` or `APIRequest.get(...)` in that file get the base directly. In other files, `APIRequest.get('/admin/users').query(q).execute()` (chained builders are matched on their first call) records `client_export = APIRequest`, and with `[client.surfaces]` declared a call on a member of an imported client export, `apiClient.auth.get('/session')` after `import { apiClient } from './transport'` or `transport.apiClient.auth.get(...)` through a namespace import, records `client_export = apiClient.auth`; the link pass joins both to their definitions, so they match `/api/v1/admin/users` and `/api/auth/session`. With `containers` set, only members of the listed exports are followed (`APIRequest.cache.get(...)` is then not a client call); without it, a member of any client export is, and one that finds no definition (`APIRequest.cache`, or `apiClient.v2` when `v2` is not a surface) keeps only its written path: the section's `base` is not applied to it. Without `[client.surfaces]`, members of imports are not followed. Not recognised: `createApiClient(...).v1` without a binding, destructuring (`const { v1 } = apiClient`) and computed members (`apiClient['v1']`).
+A binding initialised by calling the factory (named, aliased or default import from a listed module) is a container, and its member `<name>` is a client with the base mapped to `<name>`. The map is an object literal in the call or a top-level `const` object literal of the same file; computed keys and spreads are skipped, and each value is evaluated like `baseUrl` (a literal is a base, a leading environment variable or identifier becomes `base_source`). In the transport file, an exported container is recorded as one `other:typed_client:<repo>:<path>#<container>.<name>` definition per surface, an exported `const X = container.name` (optionally `as T`) as `#X`, and calls such as `apiClient.v1.get(...)` or `APIRequest.get(...)` in that file get the base directly. In other files, `APIRequest.get('/admin/users').query(q).execute()` (chained builders are matched on their first call) records `client_export = APIRequest`, and with `[client.surfaces]` declared a call on a member of an imported client export, `apiClient.auth.get('/session')` after `import { apiClient } from './transport'` or `transport.apiClient.auth.get(...)` through a namespace import, records `client_export = apiClient.auth`; the link pass joins both to their definitions, so they match `/api/v1/admin/users` and `/api/auth/session`. With `containers` set, only members of the listed exports are followed (`APIRequest.cache.get(...)` is then not a client call); without it, a member of any client export is, and one that finds no definition (`APIRequest.cache`, or `apiClient.v2` when `v2` is not a surface) keeps only its written path: the section's `base` is not applied to it. Without `[client.surfaces]`, members of imports are not followed. Not recognised: `createGatewayClient(...).v1` without a binding, destructuring (`const { v1 } = apiClient`) and computed members (`apiClient['v1']`).
 
 A URL with no literal text after a leading `/` (`APIRequest.get(`/${id}`)`) is kept for a call that will be joined to a definition or has a `base`, because the base supplies its static segments; other fully dynamic URLs are still dropped with the `http.dynamic_url` diagnostic.
 

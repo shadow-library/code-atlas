@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 const SERVER_FAMILY: &str = "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"Api\"]\n[routes.methods]\nRead = \"GET\"\nWrite = \"POST\"\n[routes.options]\ndecorators = [\"Route\"]\n[global_prefix]\nfactory = \"AcmeServer.create\"\nmethod = \"setGlobalPrefix\"\n";
 
-const CLIENT_FAMILY: &str = "[client]\nfiles = [\"apps/web/src/transport.ts\"]\nexports = [\"APIRequest\", \"apiClient\", \"legacyApi\"]\nbase = \"/api\"\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces\"\n";
+const CLIENT_FAMILY: &str = "[client]\nfiles = [\"apps/web/src/transport.ts\"]\nexports = [\"APIRequest\", \"apiClient\", \"legacyApi\"]\nbase = \"/api\"\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createGatewayClient\"\noption = \"surfaces\"\n";
 
 const TREE: &[(&str, &str)] = &[
   ("kit/package.json", r#"{ "name": "kit", "private": true, "workspaces": ["apps/*"] }"#),
@@ -42,7 +42,7 @@ const TREE: &[(&str, &str)] = &[
   ),
   (
     "kit/apps/web/src/transport.ts",
-    "import { createApiClient } from '@acme/http-kit';\nimport { makeLegacy } from './legacy';\n\nexport const apiClient = createApiClient({ surfaces: { v1: '/api/v1', auth: '/api/auth' }, ssr: false });\n\nexport const APIRequest = apiClient.v1;\n\nexport const legacyApi = makeLegacy();\n",
+    "import { createGatewayClient } from '@acme/http-kit';\nimport { makeLegacy } from './legacy';\n\nexport const apiClient = createGatewayClient({ surfaces: { v1: '/api/v1', auth: '/api/auth' }, ssr: false });\n\nexport const APIRequest = apiClient.v1;\n\nexport const legacyApi = makeLegacy();\n",
   ),
   (
     "kit/apps/web/src/pages.ts",

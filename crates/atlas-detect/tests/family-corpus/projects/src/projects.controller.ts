@@ -1,4 +1,4 @@
-import { Api, Auth, Authenticated, BotPermission, Guarded, Permit, Read, Remove, Write } from '@acme/server';
+import { Api, Auth, Authenticated, RobotPermit, Guarded, Permit, Read, Remove, Write } from '@acme/server';
 import { PROJECTS_WRITE, Scope } from './permissions';
 import { SessionGuard } from './session.guard';
 
@@ -29,14 +29,14 @@ export class ProjectsController {
   @Remove(':id')
   @Guarded(PROJECTS_READ)
   @Guarded(SessionGuard, { optional: true })
-  @BotPermission(Scope.Admin)
+  @RobotPermit(Scope.Admin)
   remove() {
     return null;
   }
 
   @Read('bot')
   @Auth(ADMIN_ROLE, Scope.Admin, 3)
-  @BotPermission(`${BOT}:read`)
+  @RobotPermit(`${BOT}:read`)
   @Permit(policy())
   bot() {
     return null;

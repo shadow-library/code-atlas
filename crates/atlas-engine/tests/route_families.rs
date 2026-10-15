@@ -220,11 +220,11 @@ fn should_index_a_client_only_family_and_count_its_calls_and_silent_shapes() {
 fn should_count_the_definition_conflicts_of_each_tied_family_in_status() {
   let scratch = tempfile::tempdir().unwrap();
   let root = scratch.path().join("orders");
-  let client = "[client]\nmodules = [\"@acme/http-kit\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces\"\n";
+  let client = "[client]\nmodules = [\"@acme/http-kit\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createGatewayClient\"\noption = \"surfaces\"\n";
   let enabled = with_families(service(&root), &["one-web", "two-web"], vec![family("one-web", client), family("two-web", client)]);
   fs::write(
     root.join("src/transport.ts"),
-    "import { createApiClient } from '@acme/http-kit';\n\nexport const apiClient = createApiClient({ surfaces: { v1: '/api/v1' } });\n",
+    "import { createGatewayClient } from '@acme/http-kit';\n\nexport const apiClient = createGatewayClient({ surfaces: { v1: '/api/v1' } });\n",
   )
   .unwrap();
   let engine = open(&enabled, &scratch.path().join("home"));

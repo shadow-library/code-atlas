@@ -1422,7 +1422,7 @@ mod tests {
 
   #[test]
   fn should_parse_a_client_only_family_with_every_client_key() {
-    let text = "[client]\nmodules = [\"@acme/books-client\"]\nfiles = [\"apps/web/src/api/*.ts\"]\nexports = [\"booksApi\", \"default\"]\nfactories = [\"createBooksClient\"]\nmethods = [\"get\", \"POST\"]\npath = { argument = 1 }\nstyle = \"express\"\ntarget_package = \"@acme/books-api\"\nbase = \"/api/v1/\"\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces\"\ncontainers = [\"apiClient\"]\n";
+    let text = "[client]\nmodules = [\"@acme/books-client\"]\nfiles = [\"apps/web/src/api/*.ts\"]\nexports = [\"booksApi\", \"default\"]\nfactories = [\"createBooksClient\"]\nmethods = [\"get\", \"POST\"]\npath = { argument = 1 }\nstyle = \"express\"\ntarget_package = \"@acme/books-api\"\nbase = \"/api/v1/\"\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createGatewayClient\"\noption = \"surfaces\"\ncontainers = [\"apiClient\"]\n";
     let parsed = parse(text).unwrap();
     let family = parsed.family;
 
@@ -1455,7 +1455,7 @@ mod tests {
         base: Some("/api/v1".to_owned()),
         surfaces: Some(SurfaceMap {
           modules: vec!["@acme/http-kit".to_owned()],
-          factory: "createApiClient".to_owned(),
+          factory: "createGatewayClient".to_owned(),
           option: "surfaces".to_owned(),
           containers: vec!["apiClient".to_owned()],
         }),
@@ -1537,11 +1537,11 @@ mod tests {
         "client.surfaces.factory: missing",
       ),
       (
-        "[client]\nmodules = [\"x\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces.map\"\n",
+        "[client]\nmodules = [\"x\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createGatewayClient\"\noption = \"surfaces.map\"\n",
         "client.surfaces.option: expected an identifier, got a string",
       ),
       (
-        "[client]\nmodules = [\"x\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createApiClient\"\noption = \"surfaces\"\ncontainers = [\"api.client\"]\n",
+        "[client]\nmodules = [\"x\"]\n[client.surfaces]\nmodules = [\"@acme/http-kit\"]\nfactory = \"createGatewayClient\"\noption = \"surfaces\"\ncontainers = [\"api.client\"]\n",
         "client.surfaces.containers: expected export names such as \"booksApi\" or \"default\"",
       ),
     ] {
@@ -1600,7 +1600,7 @@ mod tests {
 
   #[test]
   fn should_parse_guard_auth_schemes_and_permission_decorators() {
-    let text = "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"Api\"]\n[routes.methods]\nRead = \"GET\"\n[guards]\ndecorators = [\"Guarded\", \"Signed\"]\nauth_schemes = { Signed = \"bearer\" }\n[permissions]\ndecorators = [\"Permit\", \"BotPermission\"]\n";
+    let text = "packages = [\"@acme/http\"]\n[controller]\ndecorators = [\"Api\"]\n[routes.methods]\nRead = \"GET\"\n[guards]\ndecorators = [\"Guarded\", \"Signed\"]\nauth_schemes = { Signed = \"bearer\" }\n[permissions]\ndecorators = [\"Permit\", \"RobotPermit\"]\n";
     let parsed = parse(text).unwrap();
 
     assert_eq!(parsed.warnings, Vec::<String>::new());
@@ -1616,7 +1616,7 @@ mod tests {
       (parsed.family.decorator_schemes("Signed"), parsed.family.decorator_schemes("Guarded")),
       (["bearer".to_owned()].as_slice(), [].as_slice())
     );
-    assert_eq!(parsed.family.permissions, ["Permit", "BotPermission"]);
+    assert_eq!(parsed.family.permissions, ["Permit", "RobotPermit"]);
   }
 
   #[test]
