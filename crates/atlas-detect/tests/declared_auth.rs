@@ -91,8 +91,8 @@ fn should_make_a_guard_decorator_without_a_guard_class_argument_the_guard_itself
   assert_eq!(
     entity_attrs(&detection, "other:guard_decorator:"),
     [
-      r#"other:guard_decorator:projects:acme-server:Auth [syntactic] {"auth_scheme":"bearer","decorator":"Auth","framework":"acme-server"}"#,
-      r#"other:guard_decorator:projects:acme-server:Authenticated [syntactic] {"auth_scheme":"bearer","decorator":"Authenticated","framework":"acme-server"}"#,
+      r#"other:guard_decorator:projects:acme-server:Auth [syntactic] {"auth_schemes":["bearer"],"decorator":"Auth","framework":"acme-server"}"#,
+      r#"other:guard_decorator:projects:acme-server:Authenticated [syntactic] {"auth_schemes":["bearer"],"decorator":"Authenticated","framework":"acme-server"}"#,
       r#"other:guard_decorator:projects:acme-server:Guarded [syntactic] {"decorator":"Guarded","framework":"acme-server"}"#,
     ]
   );
@@ -200,5 +200,188 @@ fn should_key_an_imported_permission_constant_by_its_exported_name_whatever_the_
       r#"requires_permission ImportsController.namespaced -> permission:projects:PROJECTS_WRITE [heuristic 0.60] {"constant":"PROJECTS_WRITE","decorator":"Permit","level":"method"}"#,
       r#"requires_permission ImportsController.namespaced -> permission:projects:Scope.Admin [heuristic 0.60] {"constant":"Scope.Admin","decorator":"Permit","level":"method"}"#,
     ]
+  );
+}
+
+fn gate(name: &str) -> (Analyzed, Detection, Vec<String>) {
+  let text = fs::read_to_string(corpus().join("acme-gate.toml")).unwrap();
+  let parsed = DecoratorFamily::parse("acme-gate", &text).unwrap();
+  assert_eq!(parsed.warnings, Vec::<String>::new());
+  let source = fs::read_to_string(corpus().join("gate/src").join(name)).unwrap();
+  let analyzed = analyze("gate", &format!("src/{name}"), &source);
+  let (detection, diagnostics) = run(&DeclaredRoutesDetector::new(vec![parsed.family]), &analyzed);
+  let diagnostics = diagnostics.iter().map(|diagnostic| format!("{} {}", diagnostic.code, diagnostic.message)).collect();
+  (analyzed, detection, diagnostics)
+}
+
+fn endpoint_access(detection: &Detection) -> Vec<String> {
+  sorted(
+    detection
+      .entities
+      .iter()
+      .filter(|entity| entity.key.to_string().starts_with("endpoint:"))
+      .map(|entity| {
+        format!(
+          "{} {} {}",
+          entity.key,
+          entity.attrs.get("auth").map_or_else(|| "-".to_owned(), ToString::to_string),
+          entity.attrs.get("auth_marker").map_or_else(|| "-".to_owned(), ToString::to_string)
+        )
+      })
+      .collect(),
+  )
+}
+
+#[test]
+fn should_mark_routes_public_or_optional_dropping_family_guards_for_public_and_keeping_them_as_optional_for_optional() {
+  let (analyzed, detection, diagnostics) = gate("accounts.controller.ts");
+  assert_eq!(
+    endpoint_access(&detection),
+    [
+      "endpoint:gate:GET /accounts - -",
+      "endpoint:gate:GET /accounts/closed - -",
+      r#"endpoint:gate:GET /accounts/guest "optional" {"decorator":"Auth","level":"method","option":"optional"}"#,
+      r#"endpoint:gate:GET /accounts/health "public" {"decorator":"Public","level":"method"}"#,
+      "endpoint:gate:GET /accounts/lookalike - -",
+      r#"endpoint:gate:GET /accounts/me "public" {"decorator":"Public","level":"method"}"#,
+      r#"endpoint:gate:GET /accounts/open "public" {"decorator":"Auth","level":"method","option":"public"}"#,
+      r#"endpoint:gate:GET /accounts/preview "optional" {"decorator":"OptionalAuth","level":"method"}"#,
+      "endpoint:gate:GET /accounts/scoped - -",
+      "endpoint:gate:GET /accounts/session - -",
+      "endpoint:gate:GET /accounts/spread - -",
+      "endpoint:gate:POST /accounts/override - -",
+      "endpoint:gate:POST /accounts/sync - -",
+    ]
+  );
+  assert_eq!(
+    edges_with_attrs(&analyzed, &detection, &[EdgeKind::RequiresGuard]),
+    [
+      r#"requires_guard endpoint:gate:GET /accounts -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"level":"class","order":0}"#,
+      r#"requires_guard endpoint:gate:GET /accounts/closed -> other:guard_decorator:gate:acme-gate:Auth [syntactic] {"level":"method","options":{"public":false},"order":1}"#,
+      r#"requires_guard endpoint:gate:GET /accounts/closed -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"level":"class","order":0}"#,
+      r#"requires_guard endpoint:gate:GET /accounts/guest -> other:guard_decorator:gate:acme-gate:Auth [syntactic] {"auth":"optional","level":"method","options":{"optional":true,"permission":{"binding":"PROJECTS_READ"}},"order":1}"#,
+      r#"requires_guard endpoint:gate:GET /accounts/guest -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"auth":"optional","level":"class","order":0}"#,
+      r#"requires_guard endpoint:gate:GET /accounts/lookalike -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"level":"class","order":0}"#,
+      r#"requires_guard endpoint:gate:GET /accounts/preview -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"auth":"optional","level":"class","order":0}"#,
+      r#"requires_guard endpoint:gate:GET /accounts/scoped -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"level":"class","order":0}"#,
+      r#"requires_guard endpoint:gate:GET /accounts/scoped -> other:guard_decorator:gate:acme-gate:RequireScope [syntactic] {"level":"method","order":1}"#,
+      r#"requires_guard endpoint:gate:GET /accounts/session -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"level":"class","order":0}"#,
+      r#"requires_guard endpoint:gate:GET /accounts/session -> other:guard_decorator:gate:acme-gate:Session [syntactic] {"level":"method","order":1}"#,
+      r#"requires_guard endpoint:gate:GET /accounts/spread -> other:guard_decorator:gate:acme-gate:Auth [syntactic] {"level":"method","options":{"public":true},"order":1}"#,
+      r#"requires_guard endpoint:gate:GET /accounts/spread -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"level":"class","order":0}"#,
+      r#"requires_guard endpoint:gate:POST /accounts/override -> other:guard_decorator:gate:acme-gate:Auth [syntactic] {"level":"method","options":{"permission":"accounts:read"},"order":1}"#,
+      r#"requires_guard endpoint:gate:POST /accounts/override -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"level":"class","order":0}"#,
+      r#"requires_guard endpoint:gate:POST /accounts/sync -> other:guard_decorator:gate:acme-gate:Auth [syntactic] {"level":"method","options":{"bot":{"binding":"BOT_SYNC"},"permission":["accounts:audit","accounts:write"]},"order":1}"#,
+      r#"requires_guard endpoint:gate:POST /accounts/sync -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"level":"class","order":0}"#,
+    ]
+  );
+  assert_eq!(diagnostics, Vec::<String>::new());
+}
+
+#[test]
+fn should_apply_a_class_marker_only_to_methods_without_family_guards_and_record_it_as_contested_on_the_others() {
+  let (analyzed, detection, diagnostics) = gate("public.controller.ts");
+  assert_eq!(
+    endpoint_access(&detection),
+    [
+      r#"endpoint:gate:GET /public "public" {"decorator":"Public","level":"class"}"#,
+      r#"endpoint:gate:GET /public/admin - {"applied":false,"contested_by":"method","decorator":"Public","level":"class","mode":"public"}"#,
+      r#"endpoint:gate:GET /public/scoped - {"applied":false,"contested_by":"method","decorator":"Public","level":"class","mode":"public"}"#,
+      "endpoint:gate:GET /scopes - -",
+      "endpoint:gate:GET /scopes/lenient - -",
+    ]
+  );
+  assert_eq!(
+    edges_with_attrs(&analyzed, &detection, &[EdgeKind::RequiresGuard, EdgeKind::RequiresPermission]),
+    [
+      r#"requires_guard endpoint:gate:GET /public/admin -> other:guard_decorator:gate:acme-gate:Auth [syntactic] {"level":"method","order":0}"#,
+      r#"requires_guard endpoint:gate:GET /public/scoped -> other:guard_decorator:gate:acme-gate:RequireScope [syntactic] {"level":"method","order":0}"#,
+      r#"requires_guard endpoint:gate:GET /scopes -> other:guard_decorator:gate:acme-gate:RequireScope [syntactic] {"level":"method","order":0}"#,
+      r#"requires_guard endpoint:gate:GET /scopes/lenient -> other:guard_decorator:gate:acme-gate:Lenient [syntactic] {"level":"method","order":0}"#,
+      r#"requires_permission PublicController.scoped -> permission:gate:public:scoped [syntactic] {"decorator":"RequireScope","level":"method"}"#,
+      r#"requires_permission ScopesController.list -> permission:gate:scopes:read [syntactic] {"decorator":"RequireScope","level":"method"}"#,
+    ]
+  );
+  assert_eq!(
+    entity_attrs(&detection, "other:guard_decorator:"),
+    [
+      r#"other:guard_decorator:gate:acme-gate:Auth [syntactic] {"auth_schemes":["bearer"],"decorator":"Auth","framework":"acme-gate"}"#,
+      r#"other:guard_decorator:gate:acme-gate:Lenient [syntactic] {"decorator":"Lenient","framework":"acme-gate"}"#,
+      r#"other:guard_decorator:gate:acme-gate:RequireScope [syntactic] {"auth_schemes":["bearer"],"decorator":"RequireScope","framework":"acme-gate","role":"permission"}"#,
+    ]
+  );
+  assert_eq!(diagnostics, Vec::<String>::new());
+}
+
+#[test]
+fn should_read_permissions_from_guard_options_and_imply_every_declared_scheme_of_a_decorator() {
+  let (analyzed, detection, _) = gate("accounts.controller.ts");
+  assert_eq!(
+    edges_with_attrs(&analyzed, &detection, &[EdgeKind::RequiresPermission, EdgeKind::References]),
+    [
+      r#"references permission:gate:BOT_SYNC -> ?BOT_SYNC [syntactic] {"permission_constant":true}"#,
+      r#"references permission:gate:PROJECTS_READ -> ?PROJECTS_READ [syntactic] {"permission_constant":true}"#,
+      r#"requires_permission AccountsController.guest -> permission:gate:PROJECTS_READ [heuristic 0.60] {"constant":"PROJECTS_READ","decorator":"Auth","level":"method","option":"permission"}"#,
+      r#"requires_permission AccountsController.override -> permission:gate:accounts:read [heuristic 0.50] {"decorator":"Auth","level":"method","option":"permission"}"#,
+      r#"requires_permission AccountsController.scoped -> permission:gate:PROJECTS_READ [heuristic 0.60] {"constant":"PROJECTS_READ","decorator":"RequireScope","level":"method"}"#,
+      r#"requires_permission AccountsController.sync -> permission:gate:BOT_SYNC [heuristic 0.60] {"constant":"BOT_SYNC","decorator":"Auth","level":"method","option":"bot"}"#,
+      r#"requires_permission AccountsController.sync -> permission:gate:accounts:audit [resolved] {"constant":"AUDIT","decorator":"Auth","level":"method","option":"permission"}"#,
+      r#"requires_permission AccountsController.sync -> permission:gate:accounts:write [syntactic] {"decorator":"Auth","level":"method","option":"permission"}"#,
+    ]
+  );
+  assert_eq!(
+    edges_with_attrs(&analyzed, &detection, &[EdgeKind::ImplementsAuth]),
+    [
+      r#"implements_auth other:guard_decorator:gate:acme-gate:Auth -> auth:gate:bearer [syntactic] {"framework":"acme-gate","guard_kind":"declared_decorator"}"#,
+      r#"implements_auth other:guard_decorator:gate:acme-gate:Authenticated -> auth:gate:bearer [syntactic] {"framework":"acme-gate","guard_kind":"declared_decorator"}"#,
+      r#"implements_auth other:guard_decorator:gate:acme-gate:RequireScope -> auth:gate:bearer [syntactic] {"framework":"acme-gate","guard_kind":"declared_decorator"}"#,
+      r#"implements_auth other:guard_decorator:gate:acme-gate:Session -> auth:gate:bearer [syntactic] {"framework":"acme-gate","guard_kind":"declared_decorator"}"#,
+      r#"implements_auth other:guard_decorator:gate:acme-gate:Session -> auth:gate:session_cookie [syntactic] {"framework":"acme-gate","guard_kind":"declared_decorator"}"#,
+    ]
+  );
+}
+
+#[test]
+fn should_keep_explicit_guard_classes_next_to_a_marker_at_either_level() {
+  let (analyzed, detection, diagnostics) = gate("hooks.controller.ts");
+  assert_eq!(
+    endpoint_access(&detection),
+    [
+      r#"endpoint:gate:GET /hooks/maybe "optional" {"decorator":"OptionalAuth","level":"method"}"#,
+      r#"endpoint:gate:GET /overrides/inherited "public" {"decorator":"Auth","level":"class","option":"public"}"#,
+      "endpoint:gate:GET /overrides/narrowed - -",
+      "endpoint:gate:GET /reverse/kept - -",
+      r#"endpoint:gate:GET /reverse/opened "public" {"decorator":"Auth","level":"method","option":"public"}"#,
+      r#"endpoint:gate:GET /signed/status - {"applied":false,"contested_by":"method","decorator":"Public","level":"class","mode":"public"}"#,
+      r#"endpoint:gate:POST /hooks/stripe "public" {"decorator":"Public","level":"method"}"#,
+      r#"endpoint:gate:POST /signed "public" {"decorator":"Public","level":"class"}"#,
+    ]
+  );
+  assert_eq!(
+    edges_with_attrs(&analyzed, &detection, &[EdgeKind::RequiresGuard, EdgeKind::RequiresPermission]),
+    [
+      r#"requires_guard endpoint:gate:GET /hooks/maybe -> ?WebhookGuard [syntactic] {"level":"method","order":1}"#,
+      r#"requires_guard endpoint:gate:GET /hooks/maybe -> other:guard_decorator:gate:acme-gate:Auth [syntactic] {"auth":"optional","level":"class","order":0}"#,
+      r#"requires_guard endpoint:gate:GET /overrides/narrowed -> other:guard_decorator:gate:acme-gate:Auth [syntactic] {"level":"class","options":{"public":true},"order":0}"#,
+      r#"requires_guard endpoint:gate:GET /overrides/narrowed -> other:guard_decorator:gate:acme-gate:Auth [syntactic] {"level":"method","options":{"permission":"overrides:read"},"order":1}"#,
+      r#"requires_guard endpoint:gate:GET /reverse/kept -> other:guard_decorator:gate:acme-gate:Auth [syntactic] {"level":"class","options":{"permission":"reverse:admin"},"order":0}"#,
+      r#"requires_guard endpoint:gate:GET /signed/status -> ?WebhookGuard [syntactic] {"level":"class","order":0}"#,
+      r#"requires_guard endpoint:gate:GET /signed/status -> other:guard_decorator:gate:acme-gate:Authenticated [syntactic] {"level":"method","order":1}"#,
+      r#"requires_guard endpoint:gate:POST /hooks/stripe -> ?WebhookGuard [syntactic] {"level":"method","order":0}"#,
+      r#"requires_guard endpoint:gate:POST /signed -> ?WebhookGuard [syntactic] {"level":"class","order":0}"#,
+      r#"requires_permission OverridesController.narrowed -> permission:gate:overrides:read [syntactic] {"decorator":"Auth","level":"method","option":"permission"}"#,
+      r#"requires_permission ReverseController.kept -> permission:gate:reverse:admin [syntactic] {"decorator":"Auth","level":"class","option":"permission"}"#,
+    ]
+  );
+  assert_eq!(diagnostics, Vec::<String>::new());
+}
+
+#[test]
+fn should_keep_a_public_named_decorator_listed_only_as_a_guard_a_plain_guard() {
+  let (analyzed, detection, _) = detect("public.controller.ts");
+  assert_eq!(endpoint_access(&detection), ["endpoint:projects:GET /status - -"]);
+  assert_eq!(
+    edges_with_attrs(&analyzed, &detection, &[EdgeKind::RequiresGuard]),
+    [r#"requires_guard endpoint:projects:GET /status -> other:guard_decorator:projects:acme-server:Public [syntactic] {"level":"method","order":0}"#]
   );
 }

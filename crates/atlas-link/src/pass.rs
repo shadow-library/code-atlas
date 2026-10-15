@@ -28,7 +28,7 @@ pub fn link(tx: &ReadTx<'_>, project: &Project) -> LinkResult<LinkOutput> {
   packages::link_packages(&facts, &mut output)?;
   let package_index = PackageIndex::load(&facts)?;
   let routes = compose::compose_routes(&facts, &package_index, &mut output)?;
-  let endpoint_auth = auth::link_endpoint_auth(&facts, &routes, &mut output)?;
+  let endpoint_auth = auth::link_endpoint_auth(&facts, &routes, &package_index, &mut output)?;
   let clients = http::link_clients(&facts, &routes, &package_index, &mut output)?;
   auth::link_client_auth(&facts, &clients, &endpoint_auth, &mut output)?;
   events::annotate_events(&facts, &mut output)?;

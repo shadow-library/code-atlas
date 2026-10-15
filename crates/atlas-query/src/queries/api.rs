@@ -14,7 +14,7 @@ use crate::queries::inferred_links::{LinkEnd, LinkScan, inferred_links};
 use crate::target::{TargetFilter, TargetSpec, resolve};
 
 const CONSUMER_CALLER_DEPTH: u32 = 2;
-const ENDPOINT_AUTH_ATTRS: [&str; 4] = ["auth_requirement", "auth_combinator", "unclassified_guards", "authorization_guards"];
+const ENDPOINT_AUTH_ATTRS: [&str; 5] = ["auth_requirement", "auth_combinator", "unclassified_guards", "authorization_guards", "auth_marker"];
 const SCHEME_LINK_ATTRS: [&str; 4] = ["used", "consumers", "evidence_count", "supported_by_endpoints"];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,6 +46,8 @@ pub struct Related {
 pub struct GuardView {
   pub guard: Related,
   pub schemes: Vec<Related>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub credential: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -305,7 +307,8 @@ fn endpoint_view(graph: &Graph<'_, '_>, endpoint: &Entity, hidden: &mut LinkScan
     for implemented in admitted(graph, edge.to, Direction::Forward, EdgeKind::ImplementsAuth)? {
       schemes.extend(related(graph, &implemented, edge.to, implemented.to)?);
     }
-    guards.push(GuardView { guard, schemes });
+    let credential = edge.attrs.get("auth").and_then(serde_json::Value::as_str).map(str::to_owned);
+    guards.push(GuardView { guard, schemes, credential });
   }
   let mut auth = Vec::new();
   for edge in admitted(graph, endpoint.id, Direction::Forward, EdgeKind::SupportsAuth)? {

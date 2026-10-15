@@ -5,7 +5,7 @@ use atlas_core::{
 use serde_json::{Map, Value, json};
 
 use crate::cert::Cert;
-use crate::families::{DecoratorFamily, FamilyOrigin, PathArgument};
+use crate::families::{AccessMode, DecoratorFamily, FamilyOrigin, PathArgument};
 use crate::lex::{Token, TokenKind, lex};
 use crate::objects::const_object;
 use crate::sink::{Sink, attrs};
@@ -17,6 +17,8 @@ const FAMILY_PREFIX_KIND: &str = "http_family_prefix";
 const GUARD_DECORATOR_KIND: &str = "guard_decorator";
 const UNREAD_PERMISSION_CONFIDENCE: f32 = 0.6;
 const RULE_UNREAD_PERMISSION: &str = "permission-constant-unread";
+const OVERRIDABLE_OPTION_CONFIDENCE: f32 = 0.5;
+const RULE_PERMISSION_OPTION_SPREAD: &str = "permission-option-spread";
 const BUILT_IN_VALUE_TYPES: [&str; 16] = [
   "Array", "BigInt", "Boolean", "Date", "Error", "Map", "Number", "Object", "Promise", "Proxy", "RegExp", "Set", "String", "Symbol", "WeakMap", "WeakSet",
 ];
@@ -37,11 +39,105 @@ struct Handler<'f> {
 struct GuardUse<'f> {
   level: &'static str,
   target: GuardTarget<'f>,
+  enforcement: Enforcement,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Enforcement {
+  Required,
+  Optional,
+}
+
+impl<'f> GuardUse<'f> {
+  fn required(level: &'static str, target: GuardTarget<'f>) -> Self {
+    Self {
+      level,
+      target,
+      enforcement: Enforcement::Required,
+    }
+  }
+
+  fn is_family_auth(&self) -> bool {
+    !matches!(self.target, GuardTarget::Class(_))
+  }
+
+  fn under_marker(self, marked: bool, mode: Option<AccessMode>) -> Option<Self> {
+    if !marked || !self.is_family_auth() {
+      return Some(self);
+    }
+    match mode {
+      Some(AccessMode::Optional) => Some(Self {
+        enforcement: Enforcement::Optional,
+        ..self
+      }),
+      Some(AccessMode::Public) | None => None,
+    }
+  }
 }
 
 enum GuardTarget<'f> {
   Class(Vec<String>),
   Decorator { name: &'f str, attribute: &'f AttributeFact },
+  ImpliedByPermission { name: &'f str, attribute: &'f AttributeFact },
+}
+
+struct Access<'f> {
+  mode: AccessMode,
+  decorator: &'f str,
+  option: Option<&'f str>,
+  level: &'static str,
+}
+
+impl Access<'_> {
+  fn marker(&self) -> Value {
+    let mut marker = json!({ "decorator": self.decorator, "level": self.level });
+    if let Some(option) = self.option {
+      marker["option"] = json!(option);
+    }
+    marker
+  }
+}
+
+enum Marking<'f> {
+  Unmarked,
+  Applied(Access<'f>),
+  ContestedByMethod(Access<'f>),
+}
+
+impl Marking<'_> {
+  fn mode(&self) -> Option<AccessMode> {
+    match self {
+      Self::Applied(access) => Some(access.mode),
+      Self::Unmarked | Self::ContestedByMethod(_) => None,
+    }
+  }
+
+  fn marker(&self) -> Value {
+    match self {
+      Self::Unmarked => Value::Null,
+      Self::Applied(access) => access.marker(),
+      Self::ContestedByMethod(access) => {
+        let mut marker = access.marker();
+        marker["mode"] = json!(access.mode.as_str());
+        marker["applied"] = json!(false);
+        marker["contested_by"] = json!("method");
+        marker
+      }
+    }
+  }
+}
+
+struct PermissionArg<'a> {
+  arg: &'a ArgSummary,
+  cap: Option<Cert>,
+}
+
+#[derive(Clone, Copy)]
+struct PermissionSite<'f> {
+  method: &'f SymbolFact,
+  owner: &'f SymbolFact,
+  attribute: &'f AttributeFact,
+  level: &'f str,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -136,6 +232,7 @@ impl Routes<'_, '_> {
     };
     let strategies = self.passport_strategies(class, method);
     let params = &self.family.params;
+    let (marking, guards) = self.access_and_guards(class, method);
     sink.entity(
       endpoint.clone(),
       decorator.span,
@@ -149,6 +246,8 @@ impl Routes<'_, '_> {
         ("headers", self.param_names(method, &params.headers)),
         ("body_type", self.body_type(method, &params.body)),
         ("passport_strategies", if strategies.is_empty() { json!(null) } else { json!(strategies) }),
+        ("auth", marking.mode().map_or(Value::Null, |mode| json!(mode.as_str()))),
+        ("auth_marker", marking.marker()),
       ]),
     );
     sink.edge(
@@ -159,40 +258,136 @@ impl Routes<'_, '_> {
       cert,
       Attrs::new(),
     );
-    let guards = self.guard_uses(class, "class").into_iter().chain(self.guard_uses(method, "method"));
-    for (order, guard) in guards.enumerate() {
-      let level_and_order = [("level", json!(guard.level)), ("order", json!(order))];
-      match guard.target {
-        GuardTarget::Class(path) => sink.edge(
-          EdgeKind::RequiresGuard,
-          NodeRef::Key(endpoint.clone()),
-          NodeRef::Unresolved { path, from: Some(method.local) },
-          decorator.span,
-          cert,
-          attrs(level_and_order),
-        ),
+    for (order, guard) in guards.into_iter().enumerate() {
+      let enforcement = match guard.enforcement {
+        Enforcement::Required => Value::Null,
+        Enforcement::Optional => json!(AccessMode::Optional.as_str()),
+      };
+      let level_and_order = [("level", json!(guard.level)), ("order", json!(order)), ("auth", enforcement)];
+      let (guard, edge_attrs) = match guard.target {
+        GuardTarget::Class(path) => (NodeRef::Unresolved { path, from: Some(method.local) }, attrs(level_and_order)),
         GuardTarget::Decorator { name, attribute } => {
-          let guard = self.decorator_guard(sink, name, attribute);
           let mut edge_attrs = attrs(level_and_order);
           edge_attrs.extend(self.guard_arguments(attribute));
-          sink.edge(
-            EdgeKind::RequiresGuard,
-            NodeRef::Key(endpoint.clone()),
-            NodeRef::Key(guard),
-            decorator.span,
-            cert,
-            edge_attrs,
-          );
+          (NodeRef::Key(self.decorator_guard(sink, name, attribute, None)), edge_attrs)
         }
-      }
+        GuardTarget::ImpliedByPermission { name, attribute } => (NodeRef::Key(self.decorator_guard(sink, name, attribute, Some("permission"))), attrs(level_and_order)),
+      };
+      sink.edge(EdgeKind::RequiresGuard, NodeRef::Key(endpoint.clone()), guard, decorator.span, cert, edge_attrs);
     }
     for (level, owner) in [("class", class), ("method", method)] {
       for attribute in &owner.attributes {
         if self.is_any(attribute, &self.family.permissions) {
           self.declared_permission(sink, method, owner, attribute, level);
+        } else if let Some((name, keys)) = self.guard_permission_keys(attribute) {
+          if level == "class" && self.carries(method, name) {
+            continue;
+          }
+          let site = PermissionSite { method, owner, attribute, level };
+          self.option_permissions(sink, &site, keys);
         } else if is_permission_decorator(attribute) {
           self.named_permission(sink, method, owner, attribute, level);
         }
+      }
+    }
+  }
+
+  fn access_and_guards<'f>(&'f self, class: &'f SymbolFact, method: &'f SymbolFact) -> (Marking<'f>, Vec<GuardUse<'f>>) {
+    let class_guards = self.guard_uses(class, "class");
+    let method_guards = self.guard_uses(method, "method");
+    let method_access = self.access(method, "method", None);
+    let class_access = self.access(class, "class", Some(method));
+    let class_marked = method_access.is_some() || class_access.is_some();
+    let method_marked = method_access.is_some();
+    let method_has_family_guard = method_guards.iter().any(GuardUse::is_family_auth);
+    let marking = match (method_access, class_access) {
+      (Some(access), _) => Marking::Applied(access),
+      (None, Some(access)) if method_has_family_guard => Marking::ContestedByMethod(access),
+      (None, Some(access)) => Marking::Applied(access),
+      (None, None) => Marking::Unmarked,
+    };
+    let mode = marking.mode();
+    let guards = class_guards
+      .into_iter()
+      .map(|guard| (guard, class_marked))
+      .chain(method_guards.into_iter().map(|guard| (guard, method_marked)))
+      .filter_map(|(guard, marked)| guard.under_marker(marked, mode))
+      .collect();
+    (marking, guards)
+  }
+
+  fn carries(&self, owner: &SymbolFact, decorator: &str) -> bool {
+    owner.attributes.iter().any(|attribute| self.is_decorator(attribute, decorator))
+  }
+
+  fn access<'f>(&'f self, owner: &'f SymbolFact, level: &'static str, overriding: Option<&SymbolFact>) -> Option<Access<'f>> {
+    owner
+      .attributes
+      .iter()
+      .flat_map(|attribute| self.access_marks(attribute, level, overriding))
+      .min_by_key(|access| access.mode)
+  }
+
+  fn access_marks<'f>(&'f self, attribute: &'f AttributeFact, level: &'static str, overriding: Option<&SymbolFact>) -> Vec<Access<'f>> {
+    let markers = self.family.access();
+    let mut marks: Vec<Access<'f>> = AccessMode::ALL
+      .into_iter()
+      .filter_map(|mode| {
+        let decorator = markers.decorators(mode).iter().find(|name| self.is_decorator(attribute, name))?;
+        Some(Access {
+          mode,
+          decorator,
+          option: None,
+          level,
+        })
+      })
+      .collect();
+    let objects: Vec<&Vec<ObjectEntry>> = attribute
+      .args
+      .iter()
+      .filter_map(|arg| match arg {
+        ArgSummary::Object(entries) => Some(entries),
+        _ => None,
+      })
+      .collect();
+    let applies = |decorator: &str| self.is_decorator(attribute, decorator) && !overriding.is_some_and(|method| self.carries(method, decorator));
+    for option in markers.options.iter().filter(|option| applies(&option.decorator)) {
+      for key in &option.keys {
+        if objects
+          .iter()
+          .any(|entries| matches!(OptionKey::of(entries, key), OptionKey::Fixed(ArgSummary::Bool(true))))
+        {
+          marks.push(Access {
+            mode: option.mode,
+            decorator: &option.decorator,
+            option: Some(key),
+            level,
+          });
+        }
+      }
+    }
+    marks
+  }
+
+  fn guard_permission_keys(&self, attribute: &AttributeFact) -> Option<(&str, &[String])> {
+    let name = self.family.guards.iter().find(|name| self.is_decorator(attribute, name))?;
+    let keys = self.family.guard_permission_keys(name);
+    (!keys.is_empty()).then_some((name.as_str(), keys))
+  }
+
+  fn option_permissions(&self, sink: &mut Sink, site: &PermissionSite<'_>, keys: &[String]) {
+    for entries in site.attribute.args.iter().filter_map(|arg| match arg {
+      ArgSummary::Object(entries) => Some(entries),
+      _ => None,
+    }) {
+      for key in keys {
+        let (value, cap) = match OptionKey::of(entries, key) {
+          OptionKey::Fixed(value) => (value, None),
+          OptionKey::Overridable(value) => (value, Some(Cert::heuristic(OVERRIDABLE_OPTION_CONFIDENCE, RULE_PERMISSION_OPTION_SPREAD))),
+          OptionKey::Absent | OptionKey::SpreadOnly => continue,
+        };
+        let args = flattened(value).into_iter().map(|arg| PermissionArg { arg, cap }).collect();
+        self.emit_permissions(sink, site, args, Some(key));
       }
     }
   }
@@ -221,18 +416,23 @@ impl Routes<'_, '_> {
   }
 
   fn declared_permission(&self, sink: &mut Sink, method: &SymbolFact, owner: &SymbolFact, attribute: &AttributeFact, level: &str) {
+    let args = attribute.args.iter().flat_map(flattened).map(|arg| PermissionArg { arg, cap: None }).collect();
+    let site = PermissionSite { method, owner, attribute, level };
+    self.emit_permissions(sink, &site, args, None);
+  }
+
+  fn emit_permissions(&self, sink: &mut Sink, site: &PermissionSite<'_>, args: Vec<PermissionArg<'_>>, option: Option<&str>) {
     let view = self.view;
+    let PermissionSite { method, owner, attribute, level } = *site;
     let decorator_name = attribute.path.join(".");
-    let args = attribute.args.iter().flat_map(|arg| match arg {
-      ArgSummary::Array(items) => items.iter().collect(),
-      single => vec![single],
-    });
+    let option = option.map_or(Value::Null, |option| json!(option));
     let mut unreadable = false;
-    for arg in args {
+    for PermissionArg { arg, cap } in args {
       let Some(value) = self.permission_value(arg) else {
         unreadable = true;
         continue;
       };
+      let cert = cap.map_or(value.cert, |cap| value.cert.weaker(cap));
       let permission = EntityKey::Permission {
         repo: view.repo().clone(),
         name: value.name,
@@ -241,9 +441,10 @@ impl Routes<'_, '_> {
       sink.entity(
         permission.clone(),
         attribute.span,
-        value.cert,
+        cert,
         attrs([
           ("decorator", json!(decorator_name)),
+          ("option", option.clone()),
           ("value_source", json!(value.source.label())),
           ("constant", constant.clone().unwrap_or(Value::Null)),
         ]),
@@ -253,8 +454,13 @@ impl Routes<'_, '_> {
         NodeRef::Local(method.local),
         NodeRef::Key(permission.clone()),
         attribute.span,
-        value.cert,
-        attrs([("decorator", json!(decorator_name)), ("level", json!(level)), ("constant", constant.unwrap_or(Value::Null))]),
+        cert,
+        attrs([
+          ("decorator", json!(decorator_name)),
+          ("option", option.clone()),
+          ("level", json!(level)),
+          ("constant", constant.unwrap_or(Value::Null)),
+        ]),
       );
       if let (Some(path), PermissionSource::UnreadConstant) = (value.constant, value.source) {
         sink.edge(
@@ -319,14 +525,14 @@ impl Routes<'_, '_> {
     );
   }
 
-  fn decorator_guard(&self, sink: &mut Sink, name: &str, attribute: &AttributeFact) -> EntityKey {
+  fn decorator_guard(&self, sink: &mut Sink, name: &str, attribute: &AttributeFact, role: Option<&str>) -> EntityKey {
     let view = self.view;
     let guard = EntityKey::Other {
       kind: EntityKind::Custom(GUARD_DECORATOR_KIND.to_owned()),
       repo: Some(view.repo().clone()),
       name: format!("{}:{name}", self.family.name),
     };
-    let scheme = self.family.guard_scheme(name);
+    let schemes = self.family.decorator_schemes(name);
     sink.entity(
       guard.clone(),
       attribute.span,
@@ -334,24 +540,26 @@ impl Routes<'_, '_> {
       attrs([
         ("framework", json!(self.family.name)),
         ("decorator", json!(name)),
-        ("auth_scheme", scheme.map_or(Value::Null, |scheme| json!(scheme))),
+        ("auth_schemes", if schemes.is_empty() { Value::Null } else { json!(schemes) }),
+        ("role", role.map_or(Value::Null, |role| json!(role))),
       ]),
     );
-    let Some(scheme) = scheme else { return guard };
-    let key = EntityKey::AuthScheme {
-      repo: view.repo().clone(),
-      scheme: scheme.to_owned(),
-    };
-    let declared = attrs([("guard_kind", json!("declared_decorator")), ("framework", json!(self.family.name))]);
-    sink.entity(key.clone(), attribute.span, Cert::Syntactic, declared.clone());
-    sink.edge(
-      EdgeKind::ImplementsAuth,
-      NodeRef::Key(guard.clone()),
-      NodeRef::Key(key),
-      attribute.span,
-      Cert::Syntactic,
-      declared,
-    );
+    for scheme in schemes {
+      let key = EntityKey::AuthScheme {
+        repo: view.repo().clone(),
+        scheme: scheme.clone(),
+      };
+      let declared = attrs([("guard_kind", json!("declared_decorator")), ("framework", json!(self.family.name))]);
+      sink.entity(key.clone(), attribute.span, Cert::Syntactic, declared.clone());
+      sink.edge(
+        EdgeKind::ImplementsAuth,
+        NodeRef::Key(guard.clone()),
+        NodeRef::Key(key),
+        attribute.span,
+        Cert::Syntactic,
+        declared,
+      );
+    }
     guard
   }
 
@@ -543,6 +751,16 @@ impl Routes<'_, '_> {
   fn guard_uses<'f>(&'f self, owner: &'f SymbolFact, level: &'static str) -> Vec<GuardUse<'f>> {
     let mut uses = Vec::new();
     for attribute in &owner.attributes {
+      if let Some(implied) = self.family.permission_schemes().iter().find(|implied| self.is_decorator(attribute, &implied.decorator)) {
+        uses.push(GuardUse::required(
+          level,
+          GuardTarget::ImpliedByPermission {
+            name: &implied.decorator,
+            attribute,
+          },
+        ));
+        continue;
+      }
       let Some(name) = self.family.guards.iter().find(|name| self.is_decorator(attribute, name)) else {
         continue;
       };
@@ -551,16 +769,10 @@ impl Routes<'_, '_> {
         FamilyOrigin::Declared => attribute.args.iter().filter_map(|arg| self.guard_class(arg)).collect(),
       };
       if classes.is_empty() && self.family.origin == FamilyOrigin::Declared {
-        uses.push(GuardUse {
-          level,
-          target: GuardTarget::Decorator { name, attribute },
-        });
+        uses.push(GuardUse::required(level, GuardTarget::Decorator { name, attribute }));
         continue;
       }
-      uses.extend(classes.into_iter().map(|path| GuardUse {
-        level,
-        target: GuardTarget::Class(path),
-      }));
+      uses.extend(classes.into_iter().map(|path| GuardUse::required(level, GuardTarget::Class(path))));
     }
     uses
   }
@@ -748,6 +960,13 @@ fn capped_route(route: Route, object_cert: Cert, cap: Cert) -> Route {
     route: route.route,
     cert: route.cert.weaker(cap),
     source,
+  }
+}
+
+fn flattened(arg: &ArgSummary) -> Vec<&ArgSummary> {
+  match arg {
+    ArgSummary::Array(items) => items.iter().collect(),
+    single => vec![single],
   }
 }
 

@@ -6,10 +6,17 @@ fn related(item: &Related) -> String {
   labelled_text(&item.entity, &item.relation)
 }
 
-fn redundant(attr: &AttrView, schemes_rendered: bool) -> bool {
+fn redundant(attr: &AttrView, schemes_rendered: bool, marker_contested: bool) -> bool {
   let empty = attr.value.as_array().is_some_and(Vec::is_empty);
-  let repeated = schemes_rendered && matches!(attr.name.as_str(), "auth_requirement" | "auth_combinator");
+  let per_handler = attr.value.get("per_handler").is_some();
+  let repeated = schemes_rendered && !per_handler && !marker_contested && matches!(attr.name.as_str(), "auth_requirement" | "auth_combinator");
   empty || repeated
+}
+
+fn marker_contested(attrs: &[AttrView]) -> bool {
+  attrs
+    .iter()
+    .any(|attr| attr.name == "auth_marker" && attr.value.get("applied").and_then(serde_json::Value::as_bool) == Some(false))
 }
 
 fn attrs_text(attrs: &[AttrView]) -> String {
@@ -52,7 +59,8 @@ fn endpoint_text(out: &mut TextOut, indent: usize, view: &EndpointView, consumer
           .join(", ")
       ),
     };
-    out.line(indent + 1, format!("guard {}{schemes}", related(&guard.guard)));
+    let credential = guard.credential.as_ref().map(|credential| format!(" ({credential})")).unwrap_or_default();
+    out.line(indent + 1, format!("guard {}{credential}{schemes}", related(&guard.guard)));
   }
   for support in &view.auth {
     let combinator = support
@@ -62,7 +70,8 @@ fn endpoint_text(out: &mut TextOut, indent: usize, view: &EndpointView, consumer
       .unwrap_or_default();
     out.line(indent + 1, format!("{}{combinator}", phrased_text(&support.scheme.entity, &support.scheme.relation)));
   }
-  let extra: Vec<AttrView> = view.auth_attrs.iter().filter(|attr| !redundant(attr, !view.auth.is_empty())).cloned().collect();
+  let contested = marker_contested(&view.auth_attrs);
+  let extra: Vec<AttrView> = view.auth_attrs.iter().filter(|attr| !redundant(attr, !view.auth.is_empty(), contested)).cloned().collect();
   if !extra.is_empty() {
     out.line(indent + 1, format!("auth {}", attrs_text(&extra)));
   }
@@ -170,5 +179,43 @@ impl RenderText for ApiAnswer {
       });
     }
     caveats(out, &self.caveats);
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use atlas_core::Certainty;
+  use serde_json::json;
+
+  use super::*;
+  use crate::model::CertaintyTag;
+
+  fn attr(name: &str, value: serde_json::Value) -> AttrView {
+    AttrView {
+      name: name.to_owned(),
+      value,
+      owner: "link".to_owned(),
+      certainty: CertaintyTag::of(&Certainty::Syntactic),
+    }
+  }
+
+  #[test]
+  fn should_keep_a_per_handler_or_contested_requirement_even_when_supported_schemes_are_rendered() {
+    let per_handler = attr("auth_requirement", json!({ "per_handler": [{ "file": "a.ts", "requirement": "public" }] }));
+    let all_of = attr("auth_requirement", json!({ "all_of": ["bearer"] }));
+    let public = attr("auth_requirement", json!("public"));
+    assert_eq!(
+      (
+        redundant(&per_handler, true, false),
+        redundant(&all_of, true, false),
+        redundant(&all_of, true, true),
+        redundant(&all_of, false, false),
+        redundant(&public, false, false)
+      ),
+      (false, true, false, false, false)
+    );
+    let contested = attr("auth_marker", json!({ "decorator": "Public", "level": "class", "applied": false }));
+    let applied = attr("auth_marker", json!({ "decorator": "Public", "level": "class" }));
+    assert_eq!((marker_contested(&[contested]), marker_contested(&[applied])), (true, false));
   }
 }

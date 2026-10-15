@@ -123,6 +123,27 @@ impl<'t, 'c> Facts<'t, 'c> {
     )
   }
 
+  pub fn file_edges_from(&self, id: EntityId, kind: &EdgeKind) -> LinkResult<Vec<(RepoName, RelPath, Edge)>> {
+    let listed = self.tx.edges_from(id, &filter(kind))?;
+    self.file_edge_assertions(listed)
+  }
+
+  pub fn file_edges_to(&self, id: EntityId, kind: &EdgeKind) -> LinkResult<Vec<(RepoName, RelPath, Edge)>> {
+    let listed = self.tx.edges_to(id, &filter(kind))?;
+    self.file_edge_assertions(listed)
+  }
+
+  fn file_edge_assertions(&self, listed: Vec<Edge>) -> LinkResult<Vec<(RepoName, RelPath, Edge)>> {
+    let mut edges = Vec::new();
+    for edge in listed {
+      edges.extend(self.tx.edge_assertions(edge.id)?.into_iter().filter_map(|assertion| match assertion.owner {
+        Owner::File { repo, path } if self.in_project(&repo) => Some((repo, path, assertion.fact)),
+        _ => None,
+      }));
+    }
+    Ok(edges)
+  }
+
   pub fn file_hash(&self, repo: &RepoName, path: &RelPath) -> LinkResult<Option<atlas_core::ContentHash>> {
     Ok(self.tx.file(repo, path)?.map(|record| record.content_hash))
   }

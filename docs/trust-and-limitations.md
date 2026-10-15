@@ -143,7 +143,7 @@ Concrete items, grouped by area. Source: reviewer findings accepted as known gap
 - Frameworks other than those in [languages and frameworks](languages-and-frameworks.md) produce no endpoints, clients or auth schemes; unknown HTTP clients are invisible.
 - `SELECT * FROM a, b` reports only `b` as a table (DETECT-1).
 - Events assume one bus and DB tables one database per project. Event and job detection are heuristic and flagged experimental.
-- Auth classification is by library, header and name conventions; a guard named unconventionally is "unclassified" with `no-detected-auth-scheme` 0.5.
+- Auth classification is by library, header and name conventions; a guard named unconventionally is "unclassified" with `no-detected-auth-scheme` 0.5. In a declared route family, public and optional routes are known only through `[access]` markers: an unlisted `@Public()` stays an unknown guard, and a listed marker is trusted to bypass the family's own guard decorators, which may in fact ignore it; guard classes named in arguments are kept and decide the requirement. A class-level marker on a method with its own family guard decorator is ambiguous (the decorator may or may not reset the public metadata): the method's guards decide, and the requirement is capped at `heuristic 0.50` (`class-marker-method-guard`). Class and method options of one guard decorator follow override semantics (the method's replace the class's); a framework that merges them instead would be misread.
 
 ### Cross-repo linking
 

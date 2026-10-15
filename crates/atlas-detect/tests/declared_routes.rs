@@ -9,9 +9,9 @@ use atlas_detect::{DECLARED_ROUTES_VERSION, DeclaredRoutesDetector, DecoratorFam
 use common::{Analyzed, analyze, render, run, sorted};
 
 const PINNED: (u32, &str, &str) = (
-  4,
-  "824ac2c3451da5a4bb9a385faa105817ae38c149a712c46825d3994840467312",
-  "ac16ea46e20e503df757db3e3fe8eb7c269598710c76661937c7db4de7b03ed7",
+  5,
+  "5c055ee4b8c96ddda27d6e52b5748f56d38252c4e8c1560be0ea9b9d06b0450f",
+  "475e911908c1d1890f64a1211c0b554028685e4d6dc68bcbf24cca111474ae4c",
 );
 
 fn corpus() -> PathBuf {
@@ -28,6 +28,11 @@ fn acme() -> DecoratorFamily {
 fn acme_server() -> DecoratorFamily {
   let text = fs::read_to_string(corpus().join("acme-server.toml")).unwrap();
   DecoratorFamily::parse("acme-server", &text).unwrap().family
+}
+
+fn acme_gate() -> DecoratorFamily {
+  let text = fs::read_to_string(corpus().join("acme-gate.toml")).unwrap();
+  DecoratorFamily::parse("acme-gate", &text).unwrap().family
 }
 
 fn detector() -> DeclaredRoutesDetector {
@@ -157,7 +162,11 @@ fn should_version_the_detector_by_its_families() {
 fn should_change_declared_route_output_over_the_corpus_only_with_a_version_bump() {
   let mut inputs = Vec::new();
   let mut outputs = Vec::new();
-  for (family, repos) in [(acme(), ["imports", "lookalike", "orders"].as_slice()), (acme_server(), ["projects"].as_slice())] {
+  for (family, repos) in [
+    (acme(), ["imports", "lookalike", "orders"].as_slice()),
+    (acme_server(), ["projects"].as_slice()),
+    (acme_gate(), ["gate"].as_slice()),
+  ] {
     let detector = DeclaredRoutesDetector::new(vec![family.clone()]);
     inputs.extend(families_digest(std::slice::from_ref(&family)).to_string().into_bytes());
     for (repo, path, analyzed) in repos

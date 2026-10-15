@@ -9,11 +9,16 @@ Read = "GET"
 Write = "POST"
 
 [guards]
-decorators = ["Guarded", "Authenticated"]
-auth_schemes = { Authenticated = "bearer" }
+decorators = ["Guarded", "Authenticated", "Session"]
+auth_schemes = { Authenticated = "bearer", Session = ["bearer", "session_cookie"] }
 
 [permissions]
-decorators = ["Permit"]
+decorators = ["Permit", "RequireScope"]
+auth_schemes = { RequireScope = "bearer" }
+
+[access]
+public = ["Public"]
+optional = ["OptionalAuth"]
 
 [global_prefix]
 factory = "AcmeServer.create"

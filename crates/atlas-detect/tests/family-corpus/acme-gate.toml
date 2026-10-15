@@ -1,0 +1,23 @@
+version = 1
+packages = ["@acme/gate"]
+
+[controller]
+decorators = ["Api"]
+
+[routes.methods]
+Read = "GET"
+Write = "POST"
+
+[guards]
+decorators = ["Authenticated", "Auth", "Session", "Lenient", "Guarded"]
+auth_schemes = { Authenticated = "bearer", Auth = "bearer", Session = ["bearer", "session_cookie"] }
+permission_options = { Auth = ["permission", "bot"] }
+
+[permissions]
+decorators = ["Permit", "RequireScope"]
+auth_schemes = { RequireScope = "bearer" }
+
+[access]
+public = ["Public"]
+optional = ["OptionalAuth"]
+options = { Auth = { public = "public", optional = "optional" } }

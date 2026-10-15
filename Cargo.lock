@@ -389,6 +389,7 @@ name = "atlas-query"
 version = "0.1.0"
 dependencies = [
  "atlas-core",
+ "atlas-detect",
  "atlas-engine",
  "atlas-project",
  "atlas-semantic",

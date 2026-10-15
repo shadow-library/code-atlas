@@ -10,7 +10,7 @@ Write = "POST"
 Remove = "DELETE"
 
 [guards]
-decorators = ["Guarded", "Authenticated", "Auth"]
+decorators = ["Guarded", "Authenticated", "Auth", "Public"]
 auth_schemes = { Authenticated = "bearer", Auth = "bearer" }
 
 [permissions]

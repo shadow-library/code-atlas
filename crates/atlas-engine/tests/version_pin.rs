@@ -14,9 +14,9 @@ const PINNED_STRUCTURE: (u32, &str, &str) = (
   "ec3f51b2a78d7e98e15aa5e2c7e63822eeeec8282aac7b8cc0ed688a426f1776",
 );
 const PINNED_LINK: (u32, &str, &str) = (
-  6,
-  "c4a6988bbadc82e6df6f6a7f151864df87ec5b54868732227d92a227a9f7d72a",
-  "e014f398d9ee04d49fab8317aadec31efc12806b53b9465f33aa1edefc680190",
+  7,
+  "8c600d8c7e75a61d45b6d7401592c967ead0ddeeed012b20cd45fb0a165db778",
+  "2552a1bdc337c4775ae2984d710b214dcb5def2599bde75ff74f469d1337da09",
 );
 
 #[derive(Default)]
@@ -215,8 +215,11 @@ fn should_compose_family_prefixes_and_link_surface_clients_and_option_routes_in_
       "findExport -> endpoint:family-api:GET /api/exports/{exportId}",
       "findOrder -> endpoint:family-api:GET /api/orders/{id}",
       "latestExportFile -> endpoint:family-api:GET /api/exports/{exportId}/drafts/{n}/files/latest",
+      "listScoped -> endpoint:family-api:GET /api/scoped",
+      "loadMaybe -> endpoint:family-api:GET /api/access/maybe",
       "loadOrder -> endpoint:family-api:GET /api/orders/{id}",
       "loadProject -> endpoint:family-api:GET /api/projects/{id}",
+      "openAccess -> endpoint:family-api:GET /api/access/open",
       "runExport -> endpoint:family-api:POST /api/exports/run",
     ]
   );
@@ -271,8 +274,20 @@ fn should_derive_auth_and_permissions_of_declared_guard_decorators_in_the_link_p
       "implements_auth other:guard_decorator:family-api:acme-http:Authenticated -> auth:family-api:bearer [syntactic]",
       "references permission:family-api:PROJECTS_READ -> ts:family-api:family-api:src/permissions::PROJECTS_READ#constant [resolved]",
       "requires_permission ts:family-api:family-api:src/projects.controller::ProjectsController::find#method -> permission:family-api:PROJECTS_READ [heuristic 0.60]",
+      "supports_auth endpoint:family-api:GET /access/maybe -> auth:family-api:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-api:GET /api/access/maybe -> auth:family-api:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-api:GET /api/docs/drafts -> auth:family-api:bearer [heuristic 0.99]",
       "supports_auth endpoint:family-api:GET /api/projects/{id} -> auth:family-api:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-api:GET /api/scoped -> auth:family-api:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-api:GET /api/scoped/session -> auth:family-api:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-api:GET /api/scoped/session -> auth:family-api:session_cookie [heuristic 0.99]",
+      "supports_auth endpoint:family-api:GET /docs/drafts -> auth:family-api:bearer [heuristic 0.99]",
       "supports_auth endpoint:family-api:GET /projects/{id} -> auth:family-api:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-api:GET /scoped -> auth:family-api:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-api:GET /scoped/session -> auth:family-api:bearer [heuristic 0.99]",
+      "supports_auth endpoint:family-api:GET /scoped/session -> auth:family-api:session_cookie [heuristic 0.99]",
+      "uses_auth ts:family-web:family-web:src/access::listScoped#function -> auth:family-api:bearer [heuristic 0.75]",
+      "uses_auth ts:family-web:family-web:src/access::loadMaybe#function -> auth:family-api:bearer [heuristic 0.75]",
       "uses_auth ts:family-web:family-web:src/projects::loadProject#function -> auth:family-api:bearer [heuristic 0.75]",
     ]
   );
@@ -313,5 +328,60 @@ fn should_place_monorepo_client_calls_by_package_in_the_link_pin_corpus() {
       "loadBookItem -> endpoint:mono:GET /api/items/{id} (types-package @acme/books-api, share 1.0)",
       "loadOrderItem -> endpoint:mono:GET /api/items/{itemId} (configured-package @acme/orders-api, share 1.0)",
     ]
+  );
+}
+
+fn endpoint_requirements(engine: &atlas_engine::Engine) -> Vec<String> {
+  let owner = Owner::Project {
+    pass: atlas_link::PASS_NAME.to_owned(),
+  };
+  let facts = engine.store().read(|tx| tx.owned_facts(&owner)).unwrap();
+  let mut lines: Vec<String> = facts
+    .entities
+    .iter()
+    .filter(|entity| entity.attrs.contains_key("auth_requirement"))
+    .map(|entity| {
+      let combinator = entity.attrs.get("auth_combinator").map_or_else(|| "-".to_owned(), ToString::to_string);
+      format!("{} {} {} {}", entity.key, entity.attrs["auth_requirement"], combinator, entity.certainty.tag())
+    })
+    .collect();
+  lines.sort();
+  lines
+}
+
+#[test]
+fn should_derive_public_optional_implied_scheme_and_per_handler_requirements_in_the_link_pin_corpora() {
+  let scratch = tempfile::tempdir().unwrap();
+  let family = open(&link_family_project(scratch.path()), &scratch.path().join("home-family"));
+  assert!(fresh(&family).is_fresh());
+  assert_eq!(
+    endpoint_requirements(&family),
+    [
+      r#"endpoint:family-api:GET /access/hook {"all_of":["unknown_guard:SessionGuard"]} "all_of" [heuristic 0.50]"#,
+      r#"endpoint:family-api:GET /access/maybe "optional" "optional" [syntactic]"#,
+      r#"endpoint:family-api:GET /access/open "public" - [syntactic]"#,
+      r#"endpoint:family-api:GET /api/access/hook {"all_of":["unknown_guard:SessionGuard"]} "all_of" [heuristic 0.50]"#,
+      r#"endpoint:family-api:GET /api/access/maybe "optional" "optional" [heuristic 0.85]"#,
+      r#"endpoint:family-api:GET /api/access/open "public" - [heuristic 0.85]"#,
+      r#"endpoint:family-api:GET /api/docs/drafts {"all_of":["bearer"]} "all_of" [heuristic 0.50]"#,
+      r#"endpoint:family-api:GET /api/orders/{id} {"all_of":["unknown_guard:SessionGuard"]} "all_of" [heuristic 0.50]"#,
+      r#"endpoint:family-api:GET /api/projects/{id} {"all_of":["bearer"]} "all_of" [heuristic 0.85]"#,
+      r#"endpoint:family-api:GET /api/scoped {"all_of":["bearer"]} "all_of" [heuristic 0.85]"#,
+      r#"endpoint:family-api:GET /api/scoped/session {"any_of":["bearer","session_cookie"]} "any_of" [heuristic 0.85]"#,
+      r#"endpoint:family-api:GET /docs/drafts {"all_of":["bearer"]} "all_of" [heuristic 0.50]"#,
+      r#"endpoint:family-api:GET /orders/{id} {"all_of":["unknown_guard:SessionGuard"]} "all_of" [heuristic 0.50]"#,
+      r#"endpoint:family-api:GET /projects/{id} {"all_of":["bearer"]} "all_of" [syntactic]"#,
+      r#"endpoint:family-api:GET /scoped {"all_of":["bearer"]} "all_of" [syntactic]"#,
+      r#"endpoint:family-api:GET /scoped/session {"any_of":["bearer","session_cookie"]} "any_of" [syntactic]"#,
+      r#"endpoint:family-api:POST /api/orders {"all_of":["unknown_guard:SessionGuard"]} "all_of" [heuristic 0.50]"#,
+      r#"endpoint:family-api:POST /orders {"all_of":["unknown_guard:SessionGuard"]} "all_of" [heuristic 0.50]"#,
+    ]
+  );
+  let monorepo = open(&link_monorepo_project(scratch.path()), &scratch.path().join("home-monorepo"));
+  assert!(fresh(&monorepo).is_fresh());
+  let per_handler = r#"{"per_handler":[{"file":"apps/books-api/src/health.controller.ts","package":"@acme/books-api","requirement":null},{"file":"apps/orders-api/src/health.controller.ts","package":"@acme/orders-api","requirement":{"all_of":["unknown_guard:InternalGuard"]}}]} "per_handler" [heuristic 0.50]"#;
+  assert_eq!(
+    endpoint_requirements(&monorepo),
+    [format!("endpoint:mono:GET /api/health {per_handler}"), format!("endpoint:mono:GET /health {per_handler}")]
   );
 }

@@ -87,6 +87,10 @@ pub fn single_repo(name: &str, files: &[(&str, &str)]) -> Fixture {
 }
 
 pub fn single_repo_with(name: &str, files: &[(&str, &str)], options: EngineOptions) -> Fixture {
+  single_repo_configured(name, files, ProjectSettings::default(), options)
+}
+
+pub fn single_repo_configured(name: &str, files: &[(&str, &str)], settings: ProjectSettings, options: EngineOptions) -> Fixture {
   let scratch = tempfile::tempdir().unwrap();
   let root = scratch.path().join("tree").join(name);
   for (path, content) in files {
@@ -96,7 +100,7 @@ pub fn single_repo_with(name: &str, files: &[(&str, &str)], options: EngineOptio
   }
   let project = Project {
     name: ProjectName::new(name).unwrap(),
-    settings: ProjectSettings::default(),
+    settings,
     repos: vec![RepoConfig {
       name: RepoName::new(name).unwrap(),
       path: root,
