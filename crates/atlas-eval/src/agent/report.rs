@@ -10,7 +10,7 @@ use super::error::{AgentError, AgentResult};
 use super::hooks::{AtlasHooksRecord, HookMetrics, PRE_TOOL_USE, USER_PROMPT_SUBMIT};
 use super::judge::JudgeOutcome;
 use super::metrics::Metrics;
-use super::plan::{Condition, PreambleVariant};
+use super::plan::{AtlasSurface, Condition, PreambleVariant};
 use super::record::{
   BATCH_FILE, BatchManifest, CostSource, Environment, METRICS_FILE, RUN_FILE, RunManifest, RunStatus, SCORE_FILE, Score, SessionOutcome, SetupStageKind, TRANSCRIPT_FILE,
   read_json, setup_stage_kind,
@@ -289,6 +289,12 @@ pub(super) const METRICS: &[MetricDef] = &[
     group: MetricGroup::TokensAndContext,
     better: Better::Neutral,
     extract: |record| hook_count(record, PRE_TOOL_USE, |hooks| hooks.silent(PRE_TOOL_USE)),
+  },
+  MetricDef {
+    name: "atlas_surface_denials",
+    group: MetricGroup::TokensAndContext,
+    better: Better::Neutral,
+    extract: |record| metrics_of(record)?.atlas_surface_denials.map(count),
   },
   MetricDef {
     name: "information_density",
@@ -921,9 +927,10 @@ fn render_environment(out: &mut String, report: &AgentReport) {
     .as_ref()
     .map(|record| ("atlas config", format!("blake3 {}: {}", record.blake3, record.files.join(", "))));
   let atlas_hooks = ("atlas hooks", environment.atlas_hooks.as_ref().map_or_else(|| "off".to_owned(), AtlasHooksRecord::describe));
+  let atlas_surface = (environment.atlas_surface == AtlasSurface::Forced).then(|| ("atlas surface", environment.atlas_surface.describe().to_owned()));
   let _ = writeln!(out, "| key | value |");
   let _ = writeln!(out, "|---|---|");
-  for (key, value) in rows.into_iter().chain(atlas_config).chain([atlas_hooks]) {
+  for (key, value) in rows.into_iter().chain(atlas_config).chain([atlas_hooks]).chain(atlas_surface) {
     let _ = writeln!(out, "| {key} | {value} |");
   }
   out.push('\n');
@@ -946,6 +953,9 @@ fn render_environment(out: &mut String, report: &AgentReport) {
     let _ = writeln!(out, "- plugins: {}", list(&probe.plugins));
     let atlas_hooks = probe.atlas_hooks_seen.as_ref().map_or_else(|| "not probed".to_owned(), |seen| list(seen));
     let _ = writeln!(out, "- hooks: baseline {}; atlas {atlas_hooks}", list(&probe.hooks));
+    if let Some(seen) = &probe.atlas_surface_seen {
+      let _ = writeln!(out, "- forced atlas surface: {}", seen.describe());
+    }
     let _ = writeln!(out, "- user CLAUDE.md: {:?}; project CLAUDE.md: {:?}", probe.user_claude_md, probe.project_claude_md);
     let _ = writeln!(out, "- models reported: {}\n", list(&probe.model_reported));
   }
@@ -1022,6 +1032,7 @@ mod tests {
       preamble_variant: None,
       atlas_config_blake3: None,
       atlas_hooks: None,
+      atlas_surface: AtlasSurface::Standard,
       args: Vec::new(),
       env_names: Vec::new(),
       atlas_project: None,
@@ -1211,6 +1222,7 @@ mod tests {
         repo_override: None,
         atlas_config: None,
         atlas_hooks: None,
+        atlas_surface: AtlasSurface::Standard,
         probe: None,
       },
       tasks: vec!["t00-smoke".to_owned()],
@@ -1367,6 +1379,36 @@ mod tests {
     assert!(markdown.contains("| preamble version | 2 (directed) |"));
     let standard = render_markdown(&build_report(Some(&batch()), &records(), None));
     assert!(standard.contains("| preamble version | 1 |"));
+  }
+
+  #[test]
+  fn should_report_the_forced_surface_and_its_denials_only_for_a_forced_batch() {
+    let mut forced = batch();
+    forced.environment.atlas_surface = AtlasSurface::Forced;
+    forced.environment.preamble_version = 3;
+    forced.environment.preamble_variant = PreambleVariant::Forced;
+    let mut runs = records();
+    for (run, denials) in runs
+      .iter_mut()
+      .filter(|run| run.manifest.task_id == "t00-smoke" && run.manifest.condition == Condition::Atlas)
+      .zip([2, 4, 9])
+    {
+      run.manifest.atlas_surface = AtlasSurface::Forced;
+      if let Some(metrics) = run.metrics.as_mut() {
+        metrics.atlas_surface_denials = Some(denials);
+      }
+    }
+    let report = build_report(Some(&forced), &runs, None);
+    let markdown = render_markdown(&report);
+    assert!(
+      markdown.contains("| atlas hooks | off |\n| atlas surface | forced (tools Bash, Edit, Read, Write; MCP core; Bash search guard) |\n"),
+      "{markdown}"
+    );
+    assert!(markdown.contains("| preamble version | 3 (forced) |"));
+    assert!(markdown.contains("| atlas_surface_denials | – | 3 |\n"), "{markdown}");
+    assert!(markdown.contains("| atlas_surface_denials | – | 3 (2–4, n=2 of 3) |\n"), "{markdown}");
+    let standard = render_markdown(&build_report(Some(&batch()), &records(), None));
+    assert!(!standard.contains("atlas surface") && !standard.contains("atlas_surface_denials"));
   }
 
   #[test]

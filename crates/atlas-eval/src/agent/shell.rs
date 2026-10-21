@@ -29,6 +29,54 @@ const SEARCH_LONG_VALUE_FLAGS: [&str; 16] = [
   "--color",
   "--colors",
 ];
+const REFUSED_PROGRAMS: [&str; 16] = [
+  "grep", "egrep", "fgrep", "rg", "ag", "ack", "find", "fd", "ls", "tree", "cat", "head", "tail", "less", "more", "awk",
+];
+const REFUSED_GIT_SUBCOMMANDS: [&str; 2] = ["grep", "ls-files"];
+const GIT_VALUED_OPTIONS: [&str; 6] = ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"];
+const ENV_VALUED_OPTIONS: [&str; 6] = ["-u", "-C", "-S", "--unset", "--chdir", "--split-string"];
+const NICE_VALUED_OPTIONS: [&str; 2] = ["-n", "--adjustment"];
+const TIMEOUT_VALUED_OPTIONS: [&str; 4] = ["-k", "-s", "--kill-after", "--signal"];
+const STDBUF_VALUED_OPTIONS: [&str; 6] = ["-i", "-o", "-e", "--input", "--output", "--error"];
+const XARGS_VALUED_OPTIONS: [&str; 16] = [
+  "-I",
+  "-L",
+  "-n",
+  "-P",
+  "-s",
+  "-d",
+  "-E",
+  "-a",
+  "--max-lines",
+  "--max-args",
+  "--max-procs",
+  "--max-chars",
+  "--delimiter",
+  "--arg-file",
+  "--replace",
+  "--process-slot-var",
+];
+const SUDO_VALUED_OPTIONS: [&str; 18] = [
+  "-u",
+  "-g",
+  "-C",
+  "-D",
+  "-h",
+  "-p",
+  "-r",
+  "-t",
+  "-U",
+  "-T",
+  "--user",
+  "--group",
+  "--close-from",
+  "--chdir",
+  "--host",
+  "--prompt",
+  "--role",
+  "--other-user",
+];
+const MAX_SUBSTITUTION_NESTING: usize = 32;
 const PYTHON_WRITES: [&str; 3] = [".write(", ".write_text(", ".writelines("];
 const PYTHON_CHDIR: &str = "os.chdir(";
 const HEREDOC_MARK: char = '\u{E100}';
@@ -1012,6 +1060,190 @@ fn parse(command: &str) -> Vec<Item> {
   parser.items
 }
 
+pub fn refused_program(command: &str) -> Option<String> {
+  refused_in(command, 0)
+}
+
+fn refused_in(command: &str, nesting: usize) -> Option<String> {
+  if nesting > MAX_SUBSTITUTION_NESTING {
+    return None;
+  }
+  let (text, _) = split_heredocs(command);
+  let substitutions = Substitutions::of(&text)?;
+  let head = parse(command).iter().find_map(|item| match item {
+    Item::Command(command) if command.link != Link::Pipe && command.heredoc.is_none() => refused_stage(&command.words),
+    _ => None,
+  });
+  head.or_else(|| substitutions.iter().find_map(|body| refused_in(body, nesting + 1)))
+}
+
+fn refused_stage(words: &[String]) -> Option<String> {
+  let mut rest = words;
+  loop {
+    let (first, tail) = rest.split_first()?;
+    rest = match first.as_str() {
+      "env" => skip_options(tail, &ENV_VALUED_OPTIONS),
+      "time" => skip_options(tail, &[]),
+      "nice" => skip_options(tail, &NICE_VALUED_OPTIONS),
+      "timeout" => skip_options(tail, &TIMEOUT_VALUED_OPTIONS).get(1..)?,
+      "nohup" => skip_options(tail, &[]),
+      "stdbuf" => skip_options(tail, &STDBUF_VALUED_OPTIONS),
+      "xargs" => skip_options(tail, &XARGS_VALUED_OPTIONS),
+      "sudo" => skip_options(tail, &SUDO_VALUED_OPTIONS),
+      "command" if prints_location(tail) => return None,
+      "command" => skip_options(tail, &[]),
+      word if LEADING_KEYWORDS.contains(&word) || assignment(word).is_some() => tail,
+      _ => break,
+    };
+  }
+  let (program, args) = rest.split_first()?;
+  if program.contains(['$', '`']) {
+    return None;
+  }
+  let program = unprotect(program);
+  let name = program.rsplit('/').next().unwrap_or(&program);
+  let args: Vec<Arg> = args.iter().map(|arg| literal_arg(&unprotect(arg))).collect();
+  match name {
+    _ if REFUSED_PROGRAMS.contains(&name) => Some(name.to_owned()),
+    "sed" if sed_in_place_operands(&args).is_none() => Some(name.to_owned()),
+    "git" => git_subcommand(&args)
+      .filter(|subcommand| REFUSED_GIT_SUBCOMMANDS.contains(subcommand))
+      .map(|subcommand| format!("git {subcommand}")),
+    _ => None,
+  }
+}
+
+fn prints_location(args: &[String]) -> bool {
+  args
+    .iter()
+    .take_while(|arg| arg.starts_with('-') && arg.as_str() != "--")
+    .any(|arg| arg.contains(['v', 'V']))
+}
+
+fn skip_options<'a>(args: &'a [String], valued: &[&str]) -> &'a [String] {
+  let mut index = 0;
+  while let Some(arg) = args.get(index) {
+    if arg == "--" {
+      return &args[index + 1..];
+    }
+    if !arg.starts_with('-') || arg == "-" {
+      break;
+    }
+    index += if valued.contains(&arg.as_str()) { 2 } else { 1 };
+  }
+  &args[index.min(args.len())..]
+}
+
+fn git_subcommand(args: &[Arg]) -> Option<&str> {
+  let mut index = 0;
+  while let Some(arg) = args.get(index) {
+    if !arg.text.starts_with('-') {
+      return Some(arg.text.as_str());
+    }
+    index += if GIT_VALUED_OPTIONS.contains(&arg.text.as_str()) { 2 } else { 1 };
+  }
+  None
+}
+
+struct Substitutions {
+  chars: Vec<char>,
+  index: usize,
+  bodies: Vec<String>,
+}
+
+impl Substitutions {
+  fn of(text: &str) -> Option<Vec<String>> {
+    let mut scanner = Self {
+      chars: text.chars().collect(),
+      index: 0,
+      bodies: Vec::new(),
+    };
+    scanner.scan(0)?;
+    Some(scanner.bodies)
+  }
+
+  fn next(&mut self) -> Option<char> {
+    let c = self.chars.get(self.index).copied()?;
+    self.index += 1;
+    Some(c)
+  }
+
+  fn opens_substitution(&mut self) -> bool {
+    let opens = self.chars.get(self.index) == Some(&'(');
+    self.index += usize::from(opens);
+    opens
+  }
+
+  fn scan(&mut self, nesting: usize) -> Option<()> {
+    let mut parens = 0usize;
+    let mut previous: Option<char> = None;
+    while let Some(c) = self.next() {
+      match c {
+        '\\' => {
+          self.next();
+        }
+        '\'' => self.single_quoted()?,
+        '"' => self.double_quoted(nesting)?,
+        '`' => self.backticks()?,
+        '$' | '<' | '>' if self.opens_substitution() => self.substitution(nesting)?,
+        '#' if previous.is_none_or(|before| before.is_whitespace() || ";&|()".contains(before)) => {
+          while self.chars.get(self.index).is_some_and(|next| *next != '\n') {
+            self.index += 1;
+          }
+        }
+        '(' => parens += 1,
+        ')' if nesting > 0 && parens == 0 => return Some(()),
+        ')' => parens = parens.saturating_sub(1),
+        _ => {}
+      }
+      previous = Some(c);
+    }
+    (nesting == 0).then_some(())
+  }
+
+  fn substitution(&mut self, nesting: usize) -> Option<()> {
+    if nesting >= MAX_SUBSTITUTION_NESTING {
+      return None;
+    }
+    let start = self.index;
+    self.scan(nesting + 1)?;
+    self.bodies.push(self.chars[start..self.index - 1].iter().collect());
+    Some(())
+  }
+
+  fn single_quoted(&mut self) -> Option<()> {
+    while self.next()? != '\'' {}
+    Some(())
+  }
+
+  fn double_quoted(&mut self, nesting: usize) -> Option<()> {
+    loop {
+      match self.next()? {
+        '"' => return Some(()),
+        '\\' => {
+          self.next()?;
+        }
+        '`' => self.backticks()?,
+        '$' if self.opens_substitution() => self.substitution(nesting)?,
+        _ => {}
+      }
+    }
+  }
+
+  fn backticks(&mut self) -> Option<()> {
+    let mut body = String::new();
+    loop {
+      match self.next()? {
+        '`' => break,
+        '\\' => body.push(self.next()?),
+        other => body.push(other),
+      }
+    }
+    self.bodies.push(body);
+    Some(())
+  }
+}
+
 fn skip_balanced(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
   let mut depth = 0;
   for c in chars.by_ref() {
@@ -1083,6 +1315,75 @@ mod tests {
 
   fn accesses(trace: &ShellTrace) -> Vec<(ShellAccessKind, &'static str, &str)> {
     trace.accesses.iter().map(|access| (access.kind, access.form.label(), access.path.as_str())).collect()
+  }
+
+  #[test]
+  fn should_name_the_refused_program_at_the_head_of_each_pipeline() {
+    let cases = [
+      ("grep -rn x src", Some("grep")),
+      ("true; ls -la", Some("ls")),
+      ("make || tail -n 5 log", Some("tail")),
+      ("make\nhead -n 3 f", Some("head")),
+      ("cargo build & awk '{print}' f", Some("awk")),
+      ("cargo test |& grep FAILED", None),
+      ("bun test 2>&1 | tail -n 20", None),
+      ("'g'rep x f", Some("grep")),
+      ("\\grep x f", Some("grep")),
+      ("\"rg\" x", Some("rg")),
+      ("env -u HOME LC_ALL=C grep x", Some("grep")),
+      ("time -p nice -n 5 find .", Some("find")),
+      ("command -p cat f", Some("cat")),
+      ("command -v rg", None),
+      ("timeout 30 grep -r x .", Some("grep")),
+      ("timeout -k 5 -s KILL 10s rg x", Some("rg")),
+      ("timeout --preserve-status 60 bun test", None),
+      ("timeout 30", None),
+      ("nohup cat log &", Some("cat")),
+      ("nohup bun run dev &", None),
+      ("stdbuf -oL -e 0 tail -n 5 log", Some("tail")),
+      ("stdbuf -o L bun test", None),
+      ("xargs -n 1 -I {} grep x {} < files.txt", Some("grep")),
+      ("xargs -0 -r rm < list", None),
+      ("xargs < list", None),
+      ("git diff --name-only | xargs cat", None),
+      ("sudo -u root find / -name x", Some("find")),
+      ("sudo -E FOO=1 nice -n 5 ls", Some("ls")),
+      ("sudo -E bun test", None),
+      ("exec fd x", Some("fd")),
+      ("if grep -q x f; then echo y; fi", Some("grep")),
+      ("for f in a b; do cat \"$f\"; done", Some("cat")),
+      ("{ tree; }", Some("tree")),
+      ("git -C sub --no-pager ls-files", Some("git ls-files")),
+      ("git log --oneline | grep fix", None),
+      ("git status", None),
+      ("sed --in-place=.bak s/a/b/ f", None),
+      ("sed -i.bak s/a/b/ f", None),
+      ("sed 's/-i//' f", Some("sed")),
+      ("$PAGER f", None),
+      ("x=$(rg -l y) && echo $x", Some("rg")),
+      ("echo \"$(cat f)\"", Some("cat")),
+      ("echo `ls src`", Some("ls")),
+      ("(cd sub && egrep x f)", Some("egrep")),
+      ("diff <(cat a) b", Some("cat")),
+      ("echo $(echo $(more f))", Some("more")),
+      ("echo '$(grep x f)'", None),
+      ("bun test # then grep the output", None),
+      ("cat > notes.md <<'EOF'\nfiles=$(ls src)\nEOF", None),
+      ("python3 - <<EOF\nprint(1)\nEOF\nless f", Some("less")),
+    ];
+    for (command, refused) in cases {
+      assert_eq!(refused_program(command).as_deref(), refused, "{command}");
+    }
+  }
+
+  #[test]
+  fn should_allow_substitutions_nested_beyond_the_cap_or_left_open() {
+    let deep = format!("echo {}grep x{}", "$(".repeat(40), ")".repeat(40));
+    assert_eq!(refused_program(&deep), None);
+    let shallow = format!("echo {}grep x{}", "$(".repeat(3), ")".repeat(3));
+    assert_eq!(refused_program(&shallow).as_deref(), Some("grep"));
+    assert_eq!(refused_program("echo \"$(grep x f\""), None);
+    assert_eq!(refused_program("echo `grep x f"), None);
   }
 
   #[test]

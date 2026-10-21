@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use atlas_eval::agent::{
-  self, AgentError, AtlasConfig, ClaudeConfig, Condition, ConfigIsolation, DuplicationCheck, JudgeMode, Metrics, PreambleVariant, RUN_FILE, RunManifest, RunStatus, RunnerConfig,
-  SCORE_FILE, Score, SessionOutcome, TargetRole,
+  self, AgentError, AtlasConfig, AtlasSurface, ClaudeConfig, Condition, ConfigIsolation, DuplicationCheck, JudgeMode, Metrics, PreambleVariant, RUN_FILE, RunManifest, RunStatus,
+  RunnerConfig, SCORE_FILE, Score, SessionOutcome, SurfaceSetting, TargetRole,
 };
 
 const FAKE_CLAUDE: &str = r#"#!/bin/sh
@@ -13,9 +13,11 @@ mcp=""
 settings=""
 hook_events=""
 prompt=""
+tools=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --mcp-config) mcp="$2"; shift 2 ;;
+    --tools) tools="$2"; shift 2 ;;
     --settings) settings="$2"; shift 2 ;;
     --include-hook-events) hook_events=1; shift ;;
     -p) prompt="$2"; shift 2 ;;
@@ -49,7 +51,14 @@ export class UsersService {
 }
 TS
 entity="$PWD/acme-api/src/users/user.entity.ts"
-printf '%s\n' "{\"type\":\"system\",\"subtype\":\"init\",\"cwd\":\"$PWD\",\"tools\":[\"Read\",\"Edit\"],\"mcp_servers\":$servers,\"model\":\"claude-haiku-4-5-20251001\",\"permissionMode\":\"bypassPermissions\",\"claude_code_version\":\"0.0.0-fake\"}"
+tool_list='"Read","Edit"'
+if [ "$tools" = "Read,Edit,Write,Bash" ]; then
+  tool_list='"Bash","Edit","Read","Write"'
+  if grep -q '"core"' "$mcp"; then
+    for name in context edit impact search status symbol; do tool_list="$tool_list,\"mcp__code-atlas__atlas_$name\""; done
+  fi
+fi
+printf '%s\n' "{\"type\":\"system\",\"subtype\":\"init\",\"cwd\":\"$PWD\",\"tools\":[$tool_list],\"mcp_servers\":$servers,\"model\":\"claude-haiku-4-5-20251001\",\"permissionMode\":\"bypassPermissions\",\"claude_code_version\":\"0.0.0-fake\"}"
 if [ -n "$settings" ]; then echo "SETTINGS=$settings" >&2; fi
 case "$prompt" in *SILENT-HOOKS*) hook_events="" ;; esac
 if [ -n "$settings" ] && grep -q silenthooks "$settings"; then hook_events=""; fi
@@ -60,6 +69,13 @@ if [ -n "$settings" ] && [ -n "$hook_events" ]; then
     *) printf '%s\n' '{"type":"system","subtype":"hook_response","hook_id":"h1","hook_name":"UserPromptSubmit","hook_event":"UserPromptSubmit","stdout":"{\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\",\"additionalContext\":\"pack\"}}","stderr":"","output":"","exit_code":0,"outcome":"success"}' ;;
   esac
   printf '%s\n' '{"type":"system","subtype":"hook_response","hook_id":"h2","hook_name":"PreToolUse:Read","hook_event":"PreToolUse","stdout":"","stderr":"","output":"","exit_code":0,"outcome":"success"}'
+fi
+if [ "$tools" = "Read,Edit,Write,Bash" ] && [ -n "$settings" ]; then
+  guard=$(sed -n 's/.*"command":"\([^"]*agent bash-guard[^"]*\)".*/\1/p' "$settings")
+  denial=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"grep -rn deletedAt ."}}' | sh -c "$guard")
+  reason=$(printf '%s' "$denial" | sed -n 's/.*"permissionDecisionReason":"\([^"]*\)".*/\1/p')
+  printf '%s\n' '{"type":"assistant","message":{"id":"m0","model":"claude-haiku-4-5-20251001","content":[{"type":"tool_use","id":"t0","name":"Bash","input":{"command":"grep -rn deletedAt ."}}],"usage":{"input_tokens":1,"output_tokens":1}}}'
+  printf '%s\n' "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"t0\",\"content\":\"$reason\",\"is_error\":true}]}}"
 fi
 printf '%s\n' "{\"type\":\"assistant\",\"message\":{\"id\":\"m1\",\"model\":\"claude-haiku-4-5-20251001\",\"content\":[{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"Read\",\"input\":{\"file_path\":\"$entity\"}}],\"usage\":{\"input_tokens\":10,\"output_tokens\":5,\"cache_read_input_tokens\":100,\"cache_creation_input_tokens\":20}}}"
 printf '%s\n' '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"1\texport class User {\n2\t}"}]}}'
@@ -166,6 +182,7 @@ impl Fixture {
       preamble: PreambleVariant::Standard,
       atlas_config: None,
       atlas_hooks: false,
+      atlas_surface: SurfaceSetting::Standard,
     }
   }
 }
@@ -657,6 +674,237 @@ fn should_record_the_digest_in_every_run_and_refuse_to_resume_under_another_conf
     "{error}"
   );
   assert!(agent::run_batch(&config, &tasks, planned).is_ok());
+}
+
+const GUARD: &str = env!("CARGO_BIN_EXE_atlas-eval");
+const FORCED_DESCRIPTION: &str = "forced (tools Bash, Edit, Read, Write; MCP core; Bash search guard)";
+
+fn forced(fixture: &Fixture) -> RunnerConfig {
+  RunnerConfig {
+    probe: true,
+    preamble: PreambleVariant::Forced,
+    atlas_surface: SurfaceSetting::Forced { bash_guard: PathBuf::from(GUARD) },
+    ..fixture.config(1, None)
+  }
+}
+
+fn guard_group() -> serde_json::Value {
+  serde_json::json!({"matcher": "Bash", "hooks": [{"type": "command", "command": format!("{GUARD} agent bash-guard || true"), "timeout": 10}]})
+}
+
+fn arg_after<'a>(args: &'a [String], flag: &str) -> &'a str {
+  let position = args.iter().position(|arg| arg == flag).unwrap();
+  &args[position + 1]
+}
+
+#[test]
+fn should_run_the_atlas_arm_on_the_forced_surface_and_leave_the_baseline_unchanged() {
+  let fixture = fixture();
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+
+  let manifest = agent::run_batch(&forced(&fixture), &tasks, agent::plan_runs(&tasks, &Condition::ALL, 1, 3)).unwrap();
+
+  assert_eq!(manifest.environment.atlas_surface, AtlasSurface::Forced);
+  assert_eq!((manifest.environment.preamble_version, manifest.environment.preamble_variant), (3, PreambleVariant::Forced));
+  let probe = manifest.environment.probe.clone().unwrap();
+  let seen = probe.atlas_surface_seen.clone().unwrap();
+  assert_eq!(seen.builtin_tools, vec!["Bash", "Edit", "Read", "Write"]);
+  assert_eq!(
+    seen.atlas_tools,
+    vec!["atlas_context", "atlas_edit", "atlas_impact", "atlas_search", "atlas_status", "atlas_symbol"]
+  );
+  assert_eq!(seen.bash_denied, vec!["grep -rn deletedAt ."]);
+  let probe_dir = fixture.batch.join("_probe/hooks");
+  let probe_settings: serde_json::Value = agent::read_json(&probe_dir.join("atlas-hooks.json")).unwrap();
+  assert_eq!(probe_settings, serde_json::json!({"hooks": {"PreToolUse": [guard_group()]}}));
+  let probe_mcp: serde_json::Value = agent::read_json(&probe_dir.join("mcp.json")).unwrap();
+  assert_eq!(
+    probe_mcp["mcpServers"]["code-atlas"]["args"].as_array().unwrap()[3..],
+    [serde_json::json!("--tools"), serde_json::json!("core")]
+  );
+
+  let atlas_dir = fixture.batch.join("t99-pipeline.atlas.r0");
+  let atlas: RunManifest = agent::read_json(&atlas_dir.join(RUN_FILE)).unwrap();
+  assert_eq!((atlas.atlas_surface, atlas.atlas_hooks.clone()), (AtlasSurface::Forced, None));
+  assert_eq!(
+    (arg_after(&atlas.args, "--tools"), arg_after(&atlas.args, "--allowedTools")),
+    ("Read,Edit,Write,Bash", "Read,Edit,Write,Bash,mcp__code-atlas")
+  );
+  assert!(arg_after(&atlas.args, "-p").starts_with(&format!("{}\n\n", agent::FORCED_PREAMBLE)));
+  let installed = PathBuf::from(atlas.tree.clone().unwrap()).parent().unwrap().join("atlas-hooks.json");
+  assert_eq!(PathBuf::from(arg_after(&atlas.args, "--settings")), installed);
+  let settings: serde_json::Value = agent::read_json(&atlas_dir.join("atlas-hooks.json")).unwrap();
+  assert_eq!(settings, serde_json::json!({"hooks": {"PreToolUse": [guard_group()]}}));
+  let mcp: serde_json::Value = agent::read_json(&atlas_dir.join("mcp.json")).unwrap();
+  let home = mcp["mcpServers"]["code-atlas"]["env"]["CODE_ATLAS_HOME"].as_str().unwrap();
+  assert_eq!(
+    mcp,
+    serde_json::json!({"mcpServers": {"code-atlas": {"type": "stdio", "command": fixture.bin.join("catl").display().to_string(), "args": ["mcp", "--project", atlas.atlas_project.clone().unwrap(), "--tools", "core"], "env": {"CODE_ATLAS_HOME": home}}}})
+  );
+  let metrics: Metrics = agent::read_json(&atlas_dir.join("metrics.json")).unwrap();
+  assert_eq!(metrics.atlas_surface_denials, Some(1));
+
+  let baseline_dir = fixture.batch.join("t99-pipeline.baseline.r0");
+  let baseline: RunManifest = agent::read_json(&baseline_dir.join(RUN_FILE)).unwrap();
+  assert_eq!(baseline.atlas_surface, AtlasSurface::Standard);
+  assert_eq!(
+    (arg_after(&baseline.args, "--tools"), arg_after(&baseline.args, "--allowedTools")),
+    ("Read,Edit,Write,Glob,Grep,Bash", "Read,Edit,Write,Glob,Grep,Bash")
+  );
+  assert!(!baseline.args.iter().any(|arg| arg == "--settings" || arg == "--include-hook-events"));
+  assert!(!baseline_dir.join("atlas-hooks.json").exists());
+  assert_eq!(fs::read_to_string(baseline_dir.join("mcp.json")).unwrap(), "{\"mcpServers\":{}}");
+  let baseline_metrics = fs::read_to_string(baseline_dir.join("metrics.json")).unwrap();
+  assert!(!baseline_metrics.contains("atlas_surface_denials"));
+
+  let (batch, records) = agent::load_runs(&fixture.batch).unwrap();
+  let markdown = agent::render_markdown(&agent::build_report(batch.as_ref(), &records, None));
+  assert!(markdown.contains(&format!("| atlas surface | {FORCED_DESCRIPTION} |")), "{markdown}");
+  assert!(markdown.contains("| atlas_surface_denials | – | 1 |"), "{markdown}");
+  assert!(
+    markdown.contains("- forced atlas surface: built-in tools Bash, Edit, Read, Write; Code Atlas tools atlas_context, "),
+    "{markdown}"
+  );
+}
+
+#[test]
+fn should_merge_the_guard_into_the_hook_settings_of_a_hooked_forced_batch() {
+  let fixture = fixture();
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let config = RunnerConfig {
+    atlas_hooks: true,
+    ..forced(&fixture)
+  };
+
+  let manifest = agent::run_batch(&config, &tasks, agent::plan_runs(&tasks, &[Condition::Atlas], 1, 3)).unwrap();
+
+  let standard_hooks = agent::run_batch(
+    &RunnerConfig {
+      batch_dir: fixture.eval_home.join("runs/standard"),
+      ..hooked(&fixture)
+    },
+    &tasks,
+    agent::plan_runs(&tasks, &[Condition::Atlas], 1, 3),
+  )
+  .unwrap();
+  assert_eq!(manifest.environment.atlas_hooks, standard_hooks.environment.atlas_hooks);
+  let atlas_dir = fixture.batch.join("t99-pipeline.atlas.r0");
+  let atlas: RunManifest = agent::read_json(&atlas_dir.join(RUN_FILE)).unwrap();
+  assert_eq!(atlas.atlas_hooks, manifest.environment.atlas_hooks);
+  let settings: serde_json::Value = agent::read_json(&atlas_dir.join("atlas-hooks.json")).unwrap();
+  assert_eq!(settings["hooks"]["PreToolUse"], serde_json::json!([guard_group()]));
+  assert_eq!(settings["hooks"]["UserPromptSubmit"].as_array().unwrap().len(), 1);
+  let metrics: Metrics = agent::read_json(&atlas_dir.join("metrics.json")).unwrap();
+  assert_eq!((metrics.hooks.seed_injections, metrics.atlas_surface_denials), (1, Some(1)));
+  let probe = manifest.environment.probe.unwrap();
+  assert!(probe.atlas_hooks_seen.unwrap().contains(&"UserPromptSubmit (UserPromptSubmit)".to_owned()));
+  assert_eq!(probe.atlas_surface_seen.unwrap().bash_denied, vec!["grep -rn deletedAt ."]);
+}
+
+#[test]
+fn should_refuse_to_resume_a_batch_under_another_atlas_surface() {
+  let fixture = fixture();
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let planned = agent::plan_runs(&tasks, &Condition::ALL, 1, 3);
+  agent::run_batch(&fixture.config(1, None), &tasks, planned.clone()).unwrap();
+  let standard_batch = fs::read_to_string(fixture.batch.join("batch.json")).unwrap();
+  let standard_run = fs::read_to_string(fixture.batch.join("t99-pipeline.atlas.r0").join(RUN_FILE)).unwrap();
+  assert!(!standard_batch.contains("atlas_surface") && !standard_run.contains("atlas_surface"));
+
+  let error = agent::run_batch(&forced(&fixture), &tasks, planned.clone()).unwrap_err();
+  assert!(
+    matches!(&error, AgentError::AtlasSurfaceMismatch { runs, recorded, expected } if runs == "t99-pipeline.atlas.r0" && recorded == "standard" && expected == "forced"),
+    "{error}"
+  );
+  assert!(!fixture.batch.join("_probe/hooks").exists());
+  assert!(agent::run_batch(&fixture.config(1, None), &tasks, planned.clone()).is_ok());
+
+  let other = fixture.eval_home.join("runs/forced");
+  agent::run_batch(
+    &RunnerConfig {
+      batch_dir: other.clone(),
+      ..forced(&fixture)
+    },
+    &tasks,
+    planned.clone(),
+  )
+  .unwrap();
+  let error = agent::run_batch(
+    &RunnerConfig {
+      batch_dir: other,
+      ..fixture.config(1, None)
+    },
+    &tasks,
+    planned,
+  )
+  .unwrap_err();
+  assert!(
+    matches!(&error, AgentError::AtlasSurfaceMismatch { recorded, expected, .. } if recorded == "forced" && expected == "standard"),
+    "{error}"
+  );
+}
+
+#[test]
+fn should_record_the_standard_surface_for_a_batch_without_atlas_runs_unless_the_batch_already_records_one() {
+  let fixture = fixture();
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let baseline_only = agent::plan_runs(&tasks, &[Condition::Baseline], 1, 3);
+
+  let manifest = agent::run_batch(&forced(&fixture), &tasks, baseline_only.clone()).unwrap();
+  assert_eq!(manifest.environment.atlas_surface, AtlasSurface::Standard);
+  assert!(!fs::read_to_string(fixture.batch.join("batch.json")).unwrap().contains("atlas_surface"));
+  assert!(!fixture.batch.join("_probe/hooks").exists());
+
+  let recorded = fixture.eval_home.join("runs/recorded");
+  let forced_batch = RunnerConfig {
+    batch_dir: recorded.clone(),
+    ..forced(&fixture)
+  };
+  agent::run_batch(&forced_batch, &tasks, agent::plan_runs(&tasks, &Condition::ALL, 1, 3)).unwrap();
+  let resumed = agent::run_batch(
+    &RunnerConfig {
+      batch_dir: recorded.clone(),
+      ..fixture.config(1, None)
+    },
+    &tasks,
+    baseline_only,
+  )
+  .unwrap();
+  assert_eq!(resumed.environment.atlas_surface, AtlasSurface::Forced);
+  let batch: agent::BatchManifest = agent::read_json(&recorded.join("batch.json")).unwrap();
+  assert_eq!(batch.environment.atlas_surface, AtlasSurface::Forced);
+}
+
+#[test]
+fn should_refuse_the_forced_surface_without_the_probe_or_with_a_guard_that_fails_its_self_check() {
+  let fixture = fixture();
+  let tasks = agent::load_tasks(&fixture.tasks, &[]).unwrap();
+  let planned = agent::plan_runs(&tasks, &Condition::ALL, 1, 3);
+
+  let unprobed = agent::run_batch(&RunnerConfig { probe: false, ..forced(&fixture) }, &tasks, planned.clone()).unwrap_err();
+  assert!(
+    matches!(&unprobed, AgentError::AtlasSurfaceUnavailable { reason } if reason.contains("--no-probe")),
+    "{unprobed}"
+  );
+
+  let broken = RunnerConfig {
+    atlas_surface: SurfaceSetting::Forced {
+      bash_guard: fixture.bin.join("catl"),
+    },
+    ..forced(&fixture)
+  };
+  let error = agent::run_batch(&broken, &tasks, planned.clone()).unwrap_err();
+  assert!(
+    matches!(&error, AgentError::AtlasSurfaceUnavailable { reason } if reason.contains("self-check failed")),
+    "{error}"
+  );
+  assert!(!fixture.batch.join("batch.json").exists() && !fixture.batch.join("_probe").exists());
+
+  let mismatched = RunnerConfig {
+    preamble: PreambleVariant::Standard,
+    ..forced(&fixture)
+  };
+  assert!(matches!(agent::run_batch(&mismatched, &tasks, planned).unwrap_err(), AgentError::InvalidArgument(_)));
 }
 
 fn hooked(fixture: &Fixture) -> RunnerConfig {

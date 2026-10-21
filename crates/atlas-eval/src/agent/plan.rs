@@ -13,6 +13,12 @@ Before searching or reading files, call atlas_context with a one-line descriptio
 Before changing a function or type that other code uses, call atlas_impact on it. \
 Before writing a new helper, call atlas_search or atlas_similar to look for an existing one. \
 Relations tagged [heuristic]/[inferred] are leads to verify. To edit a file, read it with your own file tool.";
+pub const FORCED_PREAMBLE: &str = "A Code Atlas MCP server is available with tools for repository knowledge (context, search, symbol, impact). \
+In this session Grep and Glob are not available and Bash search or read commands (grep, rg, find, ls, cat, head, tail, sed, awk) are refused: \
+find code with atlas_search or atlas_context, list a file's symbols with atlas_symbol mode=outline, and open files with Read. \
+Relations tagged [heuristic]/[inferred] are leads to verify.";
+const FORCED_SURFACE_DESCRIPTION: &str = "forced (tools Bash, Edit, Read, Write; MCP core; Bash search guard)";
+const CORE_TOOL_PROFILE: &str = "core";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "snake_case")]
@@ -20,6 +26,8 @@ pub enum PreambleVariant {
   #[default]
   Standard,
   Directed,
+  #[value(skip)]
+  Forced,
 }
 
 impl PreambleVariant {
@@ -27,6 +35,7 @@ impl PreambleVariant {
     match self {
       Self::Standard => "standard",
       Self::Directed => "directed",
+      Self::Forced => "forced",
     }
   }
 
@@ -34,6 +43,7 @@ impl PreambleVariant {
     match self {
       Self::Standard => 1,
       Self::Directed => 2,
+      Self::Forced => 3,
     }
   }
 
@@ -41,18 +51,67 @@ impl PreambleVariant {
     match self {
       Self::Standard => STANDARD_PREAMBLE,
       Self::Directed => DIRECTED_PREAMBLE,
+      Self::Forced => FORCED_PREAMBLE,
     }
   }
 
   pub fn label(self) -> String {
     match self {
       Self::Standard => self.version().to_string(),
-      Self::Directed => format!("{} ({})", self.version(), self.as_str()),
+      Self::Directed | Self::Forced => format!("{} ({})", self.version(), self.as_str()),
     }
   }
 }
 
 impl fmt::Display for PreambleVariant {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.write_str(self.as_str())
+  }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "snake_case")]
+pub enum AtlasSurface {
+  #[default]
+  Standard,
+  Forced,
+}
+
+impl AtlasSurface {
+  pub fn is_standard(&self) -> bool {
+    *self == Self::Standard
+  }
+
+  pub fn as_str(self) -> &'static str {
+    match self {
+      Self::Standard => "standard",
+      Self::Forced => "forced",
+    }
+  }
+
+  pub fn describe(self) -> &'static str {
+    match self {
+      Self::Standard => self.as_str(),
+      Self::Forced => FORCED_SURFACE_DESCRIPTION,
+    }
+  }
+
+  pub fn preamble(self, requested: PreambleVariant) -> PreambleVariant {
+    match self {
+      Self::Standard => requested,
+      Self::Forced => PreambleVariant::Forced,
+    }
+  }
+
+  pub fn mcp_tool_profile(self) -> Option<&'static str> {
+    match self {
+      Self::Standard => None,
+      Self::Forced => Some(CORE_TOOL_PROFILE),
+    }
+  }
+}
+
+impl fmt::Display for AtlasSurface {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.write_str(self.as_str())
   }
@@ -366,6 +425,44 @@ mod tests {
       PreambleVariant::Standard.text(),
       "A Code Atlas MCP server is available with tools for repository knowledge (context, search, impact, tests-for, explain). Use it to understand the codebase before reading files. Relations tagged [heuristic]/[inferred] are leads to verify."
     );
+  }
+
+  #[test]
+  fn should_replace_any_requested_preamble_with_the_forced_one_under_the_forced_surface() {
+    assert_eq!(AtlasSurface::default(), AtlasSurface::Standard);
+    assert_eq!(AtlasSurface::Forced.preamble(PreambleVariant::Standard), PreambleVariant::Forced);
+    assert_eq!(AtlasSurface::Standard.preamble(PreambleVariant::Directed), PreambleVariant::Directed);
+    assert_eq!((PreambleVariant::Forced.version(), PreambleVariant::Forced.label()), (3, "3 (forced)".to_owned()));
+    assert_eq!(
+      PreambleVariant::Forced.text(),
+      "A Code Atlas MCP server is available with tools for repository knowledge (context, search, symbol, impact). In this session Grep and Glob are not available and Bash search or read commands (grep, rg, find, ls, cat, head, tail, sed, awk) are refused: find code with atlas_search or atlas_context, list a file's symbols with atlas_symbol mode=outline, and open files with Read. Relations tagged [heuristic]/[inferred] are leads to verify."
+    );
+    assert_eq!(
+      Condition::Atlas.prompt(AtlasSurface::Forced.preamble(PreambleVariant::Standard), "Fix it."),
+      format!("{FORCED_PREAMBLE}\n\nFix it.")
+    );
+    assert_eq!(AtlasSurface::Forced.describe(), "forced (tools Bash, Edit, Read, Write; MCP core; Bash search guard)");
+  }
+
+  #[test]
+  fn should_name_only_core_profile_tools_in_the_forced_preamble() {
+    let named: Vec<&str> = FORCED_PREAMBLE
+      .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+      .filter(|word| word.starts_with("atlas_"))
+      .collect();
+    assert_eq!(named, vec!["atlas_search", "atlas_context", "atlas_symbol"]);
+    assert!(named.iter().all(|tool| super::super::claude::CORE_ATLAS_TOOLS.contains(tool)));
+  }
+
+  #[test]
+  fn should_not_offer_the_forced_preamble_as_a_preamble_flag() {
+    use clap::ValueEnum;
+    let offered: Vec<String> = PreambleVariant::value_variants()
+      .iter()
+      .filter_map(|variant| variant.to_possible_value())
+      .map(|value| value.get_name().to_owned())
+      .collect();
+    assert_eq!(offered, vec!["standard", "directed"]);
   }
 
   #[test]

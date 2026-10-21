@@ -1,5 +1,5 @@
 use super::metrics::{Metrics, TokenMetrics};
-use super::plan::{Condition, PreambleVariant};
+use super::plan::{AtlasSurface, Condition, PreambleVariant};
 use super::record::{CostSource, RunManifest, RunStatus, SessionOutcome};
 use super::report::RunRecord;
 use super::transcript::TokenUsage;
@@ -37,6 +37,7 @@ pub(super) fn run_record(task: &str, condition: Condition, index: u32, total: To
     preamble_variant: atlas.then_some(PreambleVariant::Standard),
     atlas_config_blake3: None,
     atlas_hooks: None,
+    atlas_surface: AtlasSurface::Standard,
     args: [
       "--mcp-config",
       &format!("{scratch}/mcp.json"),

@@ -2,6 +2,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use super::bash_guard::denied_by_bash_guard;
 use super::transcript::{ToolCall, Transcript};
 
 const PATH_FIELDS: [&str; 4] = ["file_path", "path", "pattern", "notebook_path"];
@@ -72,7 +73,7 @@ impl AccessPolicy {
 
 pub fn out_of_tree_accesses(transcript: &Transcript, policy: &AccessPolicy) -> Vec<OutOfTreeAccess> {
   let mut accesses: Vec<OutOfTreeAccess> = Vec::new();
-  for call in &transcript.tool_calls {
+  for call in transcript.tool_calls.iter().filter(|call| !denied_by_bash_guard(call)) {
     for raw in candidate_paths(call) {
       let Some(path) = resolve(&raw, policy) else {
         continue;
@@ -153,6 +154,8 @@ fn normalize(path: &Path) -> PathBuf {
 mod tests {
   use serde_json::json;
 
+  use super::super::bash_guard::BASH_GUARD_REASON;
+  use super::super::transcript::ToolResult;
   use super::*;
 
   fn policy() -> AccessPolicy {
@@ -165,6 +168,30 @@ mod tests {
       own_scratch: PathBuf::from("/var/tmp/T/ae-111"),
       source_roots: vec![PathBuf::from("/Users/dev/src/storefront"), PathBuf::from("/private/var/cache/clones/storefront.git")],
     }
+  }
+
+  #[test]
+  fn should_never_flag_a_bash_command_the_guard_refused() {
+    let mut refused = call("Bash", json!({"command": "cat /Users/dev/src/code-atlas/eval/tasks/t01/hidden/x.rs"}));
+    refused.result = Some(ToolResult {
+      text: BASH_GUARD_REASON.to_owned(),
+      is_error: true,
+      ..ToolResult::default()
+    });
+    let ran = call("Bash", json!({"command": "cat /Users/dev/src/code-atlas/eval/tasks/t01/hidden/x.rs"}));
+    let transcript = |calls: Vec<ToolCall>| Transcript {
+      tool_calls: calls,
+      ..Transcript::default()
+    };
+    assert_eq!(out_of_tree_accesses(&transcript(vec![refused]), &policy()), Vec::new());
+    assert_eq!(
+      out_of_tree_accesses(&transcript(vec![ran]), &policy()),
+      vec![OutOfTreeAccess {
+        tool: "Bash".to_owned(),
+        path: "/Users/dev/src/code-atlas/eval/tasks/t01/hidden/x.rs".to_owned(),
+        contamination: Some(Contamination::EvalHome),
+      }]
+    );
   }
 
   fn call(name: &str, input: serde_json::Value) -> ToolCall {

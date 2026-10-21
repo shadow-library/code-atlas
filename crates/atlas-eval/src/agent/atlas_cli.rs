@@ -126,13 +126,17 @@ impl AtlasCli {
     output.exit.succeeded().then(|| output.stdout.trim().to_owned())
   }
 
-  pub fn mcp_config(&self, project: &str) -> Value {
+  pub fn mcp_config(&self, project: &str, tool_profile: Option<&str>) -> Value {
+    let mut args = vec!["mcp", "--project", project];
+    if let Some(profile) = tool_profile {
+      args.extend(["--tools", profile]);
+    }
     json!({
       "mcpServers": {
         ATLAS_SERVER_NAME: {
           "type": "stdio",
           "command": self.binary.display().to_string(),
-          "args": ["mcp", "--project", project],
+          "args": args,
           "env": { ATLAS_HOME_VAR: self.home.display().to_string() }
         }
       }
@@ -271,15 +275,26 @@ pub fn locate_atlas_bin(explicit: Option<&Path>, repo_root: &Path) -> Option<Pat
 
 #[cfg(test)]
 mod tests {
+  use super::super::plan::AtlasSurface;
   use super::*;
 
   #[test]
   fn should_render_the_mcp_config_with_an_isolated_home() {
     let cli = AtlasCli::new("/bin/catl", "/runs/r1/atlas", Duration::from_secs(1));
     assert_eq!(
-      cli.mcp_config("eval-r1"),
+      cli.mcp_config("eval-r1", None),
       json!({"mcpServers": {"code-atlas": {"type": "stdio", "command": "/bin/catl", "args": ["mcp", "--project", "eval-r1"], "env": {"CODE_ATLAS_HOME": "/runs/r1/atlas"}}}})
     );
+  }
+
+  #[test]
+  fn should_serve_only_the_core_profile_to_a_forced_session() {
+    let cli = AtlasCli::new("/bin/catl", "/runs/r1/atlas", Duration::from_secs(1));
+    assert_eq!(
+      cli.mcp_config("eval-r1", AtlasSurface::Forced.mcp_tool_profile()).to_string(),
+      r#"{"mcpServers":{"code-atlas":{"args":["mcp","--project","eval-r1","--tools","core"],"command":"/bin/catl","env":{"CODE_ATLAS_HOME":"/runs/r1/atlas"},"type":"stdio"}}}"#
+    );
+    assert_eq!(AtlasSurface::Standard.mcp_tool_profile(), None);
   }
 
   #[test]

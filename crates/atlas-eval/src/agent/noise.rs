@@ -1188,7 +1188,7 @@ pub fn write_noise(report: &NoiseReport, out_base: &Path) -> AgentResult<(PathBu
 #[cfg(test)]
 mod tests {
   use super::super::claude::ConfigIsolation;
-  use super::super::plan::PreambleVariant;
+  use super::super::plan::{AtlasSurface, PreambleVariant};
   use super::super::testing::run_record;
   use super::super::transcript::TokenUsage;
   use super::*;
@@ -1307,6 +1307,7 @@ mod tests {
       repo_override: None,
       atlas_config: None,
       atlas_hooks: None,
+      atlas_surface: AtlasSurface::Standard,
       probe: None,
     }
   }

@@ -2,11 +2,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitCode};
 use std::time::Duration;
 
-use clap::{Args, Parser, Subcommand};
+use clap::error::ErrorKind;
+use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use atlas_eval::agent::{
-  self, AgentError, AgentReport, ClaudeConfig, Condition, ConfigIsolation, DEFAULT_JUDGE_MODEL, DEFAULT_SESSION_MODEL, DryRunContext, EvalHome, JudgeMode, LoadedTask,
-  PreambleVariant, RepoSource, RunnerConfig,
+  self, AgentError, AgentReport, AtlasSurface, ClaudeConfig, Condition, ConfigIsolation, DEFAULT_JUDGE_MODEL, DEFAULT_SESSION_MODEL, DryRunContext, EvalHome, JudgeMode,
+  LoadedTask, PreambleVariant, RepoSource, RunnerConfig, SurfaceSetting,
 };
 use atlas_eval::quality::{self, QualityArgs};
 use atlas_eval::retrieval::{self, RetrievalArgs};
@@ -44,6 +45,11 @@ enum AgentCommand {
   Noise(NoiseArgs),
   #[command(about = "Per task, without a session: which prompt terms return a file the task must change, and the leak class that follows")]
   LeakAudit(LeakAuditArgs),
+  #[command(
+    hide = true,
+    about = "Claude Code PreToolUse hook of the forced atlas surface: refuses Bash search and read commands; always exits 0"
+  )]
+  BashGuard,
 }
 
 #[derive(Debug, Args)]
@@ -118,6 +124,13 @@ struct RunArgs {
   judge: JudgeMode,
   #[arg(long, value_enum, default_value_t = PreambleVariant::Standard)]
   atlas_preamble: PreambleVariant,
+  #[arg(
+    long,
+    value_enum,
+    default_value_t = AtlasSurface::Standard,
+    help = "forced: atlas sessions get only Read, Edit, Write and Bash, the core MCP profile, the forced preamble and a PreToolUse guard refusing Bash search and read commands; baseline sessions and the judge are unchanged"
+  )]
+  atlas_surface: AtlasSurface,
   #[arg(long)]
   no_probe: bool,
   #[arg(long, default_value_t = 900)]
@@ -224,11 +237,21 @@ struct SurfaceArgs {
 }
 
 fn main() -> ExitCode {
+  let cli = Cli::parse();
+  if let Command::Agent(AgentCommand::BashGuard) = cli.command {
+    std::panic::set_hook(Box::new(|_| {}));
+    agent::run_bash_guard(&mut std::io::stdin().lock(), &mut std::io::stdout().lock());
+    return ExitCode::SUCCESS;
+  }
+  if let Command::Agent(AgentCommand::Run(args)) = &cli.command
+    && let Some(error) = surface_conflict(args)
+  {
+    error.exit();
+  }
   tracing_subscriber::fmt()
     .with_writer(std::io::stderr)
     .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
     .init();
-  let cli = Cli::parse();
   let outcome: Result<(), Box<dyn std::error::Error>> = match cli.command {
     Command::Agent(AgentCommand::Run(args)) => run(&args).map_err(Into::into),
     Command::Agent(AgentCommand::Report(args)) => report(&args).map_err(Into::into),
@@ -237,6 +260,7 @@ fn main() -> ExitCode {
     Command::Agent(AgentCommand::Headroom(args)) => headroom(&args).map_err(Into::into),
     Command::Agent(AgentCommand::Noise(args)) => noise(&args).map_err(Into::into),
     Command::Agent(AgentCommand::LeakAudit(args)) => leak_audit(&args).map_err(Into::into),
+    Command::Agent(AgentCommand::BashGuard) => Ok(()),
     Command::Quality(args) => run_quality(&args).map_err(Into::into),
     Command::Retrieval(args) => run_retrieval(&args),
   };
@@ -247,6 +271,15 @@ fn main() -> ExitCode {
       ExitCode::FAILURE
     }
   }
+}
+
+fn surface_conflict(args: &RunArgs) -> Option<clap::Error> {
+  (args.atlas_surface == AtlasSurface::Forced && args.atlas_preamble == PreambleVariant::Directed).then(|| {
+    Cli::command().error(
+      ErrorKind::ArgumentConflict,
+      "--atlas-surface forced runs the atlas arm with its own forced preamble, so it cannot be combined with --atlas-preamble directed",
+    )
+  })
 }
 
 fn repo_root(explicit: Option<&Path>) -> Result<PathBuf, AgentError> {
@@ -322,6 +355,11 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
         atlas_config.keys().join(", ")
       ));
     }
+    if args.atlas_surface == AtlasSurface::Forced && conditions.contains(&Condition::Atlas) {
+      notes.push(
+        "atlas surface forced: atlas sessions get --tools Read,Edit,Write,Bash, `catl mcp --tools core`, the forced preamble and a PreToolUse guard (`atlas-eval agent bash-guard`) refusing Bash search and read commands; before any session the guard answers a self-check and one probe session must list exactly those tools and see a Bash grep refused, so --no-probe is refused; baseline sessions and the judge are unchanged".to_owned(),
+      );
+    }
     if args.atlas_hooks && conditions.contains(&Condition::Atlas) {
       notes.push(
         "atlas hooks: each atlas session gets the hook groups `catl agents hooks --json --binary <catl> --home <session home>` prints, passed with --settings and --include-hook-events; before any session one hooked probe session (atlas flags, --max-turns 1) must report a UserPromptSubmit hook event, so --no-probe is refused; baseline sessions get none".to_owned(),
@@ -335,7 +373,7 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
       seed: args.seed,
       parallel: args.parallel,
       budget_usd: args.budget_usd,
-      preamble: args.atlas_preamble,
+      preamble: args.atlas_surface.preamble(args.atlas_preamble),
       notes: &notes,
     };
     print!("{}", agent::render_dry_run(&context));
@@ -346,7 +384,8 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
     None => EvalHome::of_tasks(&tasks_dir)?,
   };
   agent::keep_private_untracked(&[&tasks_dir], &[home.root()])?;
-  let config = runner_config(args, repo_root, &home, atlas_bin, atlas_config);
+  let atlas_surface = SurfaceSetting::resolve(args.atlas_surface)?;
+  let config = runner_config(args, repo_root, &home, atlas_bin, atlas_config, atlas_surface);
   let manifest = agent::run_batch(&config, &tasks, planned)?;
   tracing::info!(
     batch = %config.batch_dir.display(),
@@ -364,7 +403,14 @@ fn planned_runs(args: &RunArgs, tasks: &[LoadedTask], conditions: &[Condition]) 
   agent::plan_runs(tasks, conditions, args.runs_per_condition, args.seed)
 }
 
-fn runner_config(args: &RunArgs, repo_root: PathBuf, home: &EvalHome, atlas_bin: Option<PathBuf>, atlas_config: Option<agent::AtlasConfig>) -> RunnerConfig {
+fn runner_config(
+  args: &RunArgs,
+  repo_root: PathBuf,
+  home: &EvalHome,
+  atlas_bin: Option<PathBuf>,
+  atlas_config: Option<agent::AtlasConfig>,
+  atlas_surface: SurfaceSetting,
+) -> RunnerConfig {
   let batch = args.batch.clone().unwrap_or_else(|| format!("{}-seed{}", agent::today_utc(), args.seed));
   RunnerConfig {
     repo_root,
@@ -383,9 +429,10 @@ fn runner_config(args: &RunArgs, repo_root: PathBuf, home: &EvalHome, atlas_bin:
     atlas_timeout: Duration::from_secs(args.atlas_timeout_secs),
     seed: args.seed,
     probe: !args.no_probe && !args.base_only,
-    preamble: args.atlas_preamble,
+    preamble: args.atlas_surface.preamble(args.atlas_preamble),
     atlas_config,
     atlas_hooks: args.atlas_hooks,
+    atlas_surface,
   }
 }
 
@@ -520,7 +567,7 @@ mod tests {
   }
 
   fn config(flags: &[&str]) -> RunnerConfig {
-    runner_config(&run_args(flags), PathBuf::from("/work"), &EvalHome::new("/work/eval"), None, None)
+    runner_config(&run_args(flags), PathBuf::from("/work"), &EvalHome::new("/work/eval"), None, None, SurfaceSetting::Standard)
   }
 
   #[test]
@@ -535,7 +582,14 @@ mod tests {
     std::fs::write(dir.path().join("catl"), "").unwrap();
     std::fs::create_dir(dir.path().join("sub")).unwrap();
     let relative = dir.path().join("sub/../catl");
-    let resolved = runner_config(&run_args(&[]), PathBuf::from("/work"), &EvalHome::new("/work/eval"), Some(relative), None);
+    let resolved = runner_config(
+      &run_args(&[]),
+      PathBuf::from("/work"),
+      &EvalHome::new("/work/eval"),
+      Some(relative),
+      None,
+      SurfaceSetting::Standard,
+    );
     assert_eq!(resolved.atlas_bin, dir.path().canonicalize().unwrap().join("catl"));
     let missing = runner_config(
       &run_args(&[]),
@@ -543,6 +597,7 @@ mod tests {
       &EvalHome::new("/work/eval"),
       Some(PathBuf::from("/no/such/catl")),
       None,
+      SurfaceSetting::Standard,
     );
     assert_eq!(missing.atlas_bin, PathBuf::from("/no/such/catl"));
   }
@@ -551,6 +606,28 @@ mod tests {
   fn should_install_atlas_hooks_only_when_asked() {
     assert!(!config(&[]).atlas_hooks);
     assert!(config(&["--atlas-hooks"]).atlas_hooks);
+  }
+
+  #[test]
+  fn should_refuse_the_forced_surface_with_the_directed_preamble_as_a_usage_error() {
+    let error = surface_conflict(&run_args(&["--atlas-surface", "forced", "--atlas-preamble", "directed"])).unwrap();
+    assert_eq!((error.kind(), error.exit_code()), (ErrorKind::ArgumentConflict, 2));
+    let message = error.to_string();
+    assert!(message.contains("--atlas-surface forced") && message.contains("--atlas-preamble directed"), "{message}");
+    assert!(surface_conflict(&run_args(&["--atlas-surface", "forced"])).is_none());
+    assert!(surface_conflict(&run_args(&["--atlas-preamble", "directed"])).is_none());
+  }
+
+  #[test]
+  fn should_run_the_forced_surface_with_its_own_preamble_and_the_running_binary_as_guard() {
+    assert_eq!(run_args(&[]).atlas_surface, AtlasSurface::Standard);
+    let forced = run_args(&["--atlas-surface", "forced"]);
+    let setting = SurfaceSetting::resolve(forced.atlas_surface).unwrap();
+    assert_eq!(setting.bash_guard(), Some(std::env::current_exe().unwrap().as_path()));
+    let resolved = runner_config(&forced, PathBuf::from("/work"), &EvalHome::new("/work/eval"), None, None, setting);
+    assert_eq!((resolved.preamble, resolved.atlas_surface.surface()), (PreambleVariant::Forced, AtlasSurface::Forced));
+    assert_eq!(config(&[]).preamble, PreambleVariant::Standard);
+    assert!(Cli::try_parse_from(["atlas-eval", "agent", "run", "--atlas-preamble", "forced"]).is_err());
   }
 
   #[test]

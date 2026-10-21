@@ -9,8 +9,9 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 
 use super::atlas_cli::{AtlasCli, isolated_command};
-use super::claude::{ATLAS_SERVER_NAME, ClaudeConfig, EMPTY_MCP_CONFIG, HookWiring, SessionRequest, host_env, session_invocation};
+use super::claude::{ATLAS_SERVER_NAME, ClaudeConfig, EMPTY_MCP_CONFIG, HookWiring, SessionRequest, SessionTools, host_env, session_invocation};
 use super::error::{AgentError, AgentResult};
+use super::plan::AtlasSurface;
 use super::process::{ProcessExit, run_captured, run_streaming};
 use super::record::write_json;
 use super::surface::{
@@ -222,7 +223,7 @@ fn workbench(options: &SurfaceOptions, cli: &AtlasCli) -> AgentResult<Workbench>
   let empty_config = options.work_dir.join("empty-mcp.json");
   fs::write(&empty_config, EMPTY_MCP_CONFIG).map_err(|error| AgentError::io(&empty_config, error))?;
   let atlas_config = options.work_dir.join("atlas-mcp.json");
-  let mut config = cli.mcp_config(PROJECT_NAME);
+  let mut config = cli.mcp_config(PROJECT_NAME, None);
   config["mcpServers"][ATLAS_SERVER_NAME]["args"] = Value::from(mcp_arguments(options));
   write_json(&atlas_config, &config)?;
   Ok(Workbench {
@@ -403,7 +404,10 @@ fn run_session(options: &SurfaceOptions, bench: &Workbench, mcp_config: &Path, a
     tree: bench.tree.clone(),
     mcp_config: mcp_config.to_owned(),
     max_turns: SURFACE_MAX_TURNS,
-    with_atlas_tools: arm == McpArm::CodeAtlas,
+    tools: match arm {
+      McpArm::NoMcp => SessionTools::Baseline,
+      McpArm::CodeAtlas => SessionTools::Atlas(AtlasSurface::Standard),
+    },
     config_dir: options.work_dir.join("claude-config"),
     project_instructions: None,
     tree_env: Vec::new(),

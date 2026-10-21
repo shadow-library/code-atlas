@@ -3,11 +3,15 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
+use super::plan::{AtlasSurface, Condition};
+
 pub const DEFAULT_SESSION_MODEL: &str = "claude-sonnet-5-5";
 pub const DEFAULT_JUDGE_MODEL: &str = "claude-sonnet-5-5";
 pub const ATLAS_SERVER_NAME: &str = "code-atlas";
 pub const ATLAS_TOOL_PREFIX: &str = "mcp__code-atlas__";
 pub const BASE_TOOLS: [&str; 6] = ["Read", "Edit", "Write", "Glob", "Grep", "Bash"];
+pub const FORCED_TOOLS: [&str; 4] = ["Read", "Edit", "Write", "Bash"];
+pub const CORE_ATLAS_TOOLS: [&str; 6] = ["atlas_context", "atlas_search", "atlas_symbol", "atlas_impact", "atlas_edit", "atlas_status"];
 pub const EMPTY_MCP_CONFIG: &str = "{\"mcpServers\":{}}";
 const INCLUDE_HOOK_EVENTS: &str = "--include-hook-events";
 
@@ -40,13 +44,43 @@ pub enum HookWiring {
   },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionTools {
+  Baseline,
+  Atlas(AtlasSurface),
+}
+
+impl SessionTools {
+  pub fn of(condition: Condition, surface: AtlasSurface) -> Self {
+    match condition {
+      Condition::Baseline => Self::Baseline,
+      Condition::Atlas => Self::Atlas(surface),
+    }
+  }
+
+  pub fn builtin(self) -> &'static [&'static str] {
+    match self {
+      Self::Atlas(AtlasSurface::Forced) => &FORCED_TOOLS,
+      Self::Baseline | Self::Atlas(AtlasSurface::Standard) => &BASE_TOOLS,
+    }
+  }
+
+  pub fn allowed(self) -> Vec<String> {
+    let mut tools: Vec<String> = self.builtin().iter().map(|tool| (*tool).to_owned()).collect();
+    if let Self::Atlas(_) = self {
+      tools.push(format!("mcp__{ATLAS_SERVER_NAME}"));
+    }
+    tools
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionRequest {
   pub prompt: String,
   pub tree: PathBuf,
   pub mcp_config: PathBuf,
   pub max_turns: u32,
-  pub with_atlas_tools: bool,
+  pub tools: SessionTools,
   pub config_dir: PathBuf,
   pub project_instructions: Option<String>,
   pub tree_env: Vec<(String, String)>,
@@ -117,14 +151,6 @@ pub struct RedactedInvocation {
   pub cwd: PathBuf,
 }
 
-pub fn allowed_tools(with_atlas_tools: bool) -> Vec<String> {
-  let mut tools: Vec<String> = BASE_TOOLS.iter().map(|tool| (*tool).to_owned()).collect();
-  if with_atlas_tools {
-    tools.push(format!("mcp__{ATLAS_SERVER_NAME}"));
-  }
-  tools
-}
-
 pub fn session_invocation(config: &ClaudeConfig, request: &SessionRequest, host_env: &[(String, String)]) -> Invocation {
   let mut args = isolation_args(&config.model, &request.mcp_config);
   args.extend(strings(&["--output-format", "stream-json", "--verbose"]));
@@ -135,9 +161,9 @@ pub fn session_invocation(config: &ClaudeConfig, request: &SessionRequest, host_
   }
   args.extend(strings(&["--permission-mode", "bypassPermissions", "--allow-dangerously-skip-permissions"]));
   args.push("--tools".to_owned());
-  args.push(BASE_TOOLS.join(","));
+  args.push(request.tools.builtin().join(","));
   args.push("--allowedTools".to_owned());
-  args.push(allowed_tools(request.with_atlas_tools).join(","));
+  args.push(request.tools.allowed().join(","));
   args.push("--add-dir".to_owned());
   args.push(request.tree.display().to_string());
   args.push("--max-turns".to_owned());
@@ -221,7 +247,11 @@ mod tests {
       tree: PathBuf::from("/runs/r1/tree"),
       mcp_config: PathBuf::from("/runs/r1/mcp.json"),
       max_turns: 30,
-      with_atlas_tools,
+      tools: if with_atlas_tools {
+        SessionTools::Atlas(AtlasSurface::Standard)
+      } else {
+        SessionTools::Baseline
+      },
       config_dir: PathBuf::from("/runs/r1/claude-config"),
       project_instructions: None,
       tree_env: Vec::new(),
@@ -334,6 +364,75 @@ mod tests {
     );
     assert_eq!(observed.args[position], "--include-hook-events");
     assert_eq!(observed.args.len(), plain.args.len() + 1);
+  }
+
+  #[test]
+  fn should_narrow_only_the_tool_flags_of_a_forced_atlas_session() {
+    let forced = SessionRequest {
+      tools: SessionTools::Atlas(AtlasSurface::Forced),
+      hooks: HookWiring::Installed {
+        settings: PathBuf::from("/runs/r1/atlas-hooks.json"),
+      },
+      ..request(true)
+    };
+    let invocation = session_invocation(&config(ConfigIsolation::User), &forced, &host());
+    assert_eq!(
+      invocation.args,
+      vec![
+        "--model",
+        "claude-haiku-4-5-20251001",
+        "--strict-mcp-config",
+        "--mcp-config",
+        "/runs/r1/mcp.json",
+        "--setting-sources",
+        "",
+        "--disable-slash-commands",
+        "--no-session-persistence",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--include-hook-events",
+        "--settings",
+        "/runs/r1/atlas-hooks.json",
+        "--permission-mode",
+        "bypassPermissions",
+        "--allow-dangerously-skip-permissions",
+        "--tools",
+        "Read,Edit,Write,Bash",
+        "--allowedTools",
+        "Read,Edit,Write,Bash,mcp__code-atlas",
+        "--add-dir",
+        "/runs/r1/tree",
+        "--max-turns",
+        "30",
+        "-p",
+        "do it",
+      ]
+    );
+    let standard = SessionRequest {
+      tools: SessionTools::Atlas(AtlasSurface::Standard),
+      ..forced.clone()
+    };
+    let standard = session_invocation(&config(ConfigIsolation::User), &standard, &host());
+    let differing: Vec<(&String, &String)> = standard.args.iter().zip(&invocation.args).filter(|(left, right)| left != right).collect();
+    assert_eq!(
+      differing,
+      vec![
+        (&"Read,Edit,Write,Glob,Grep,Bash".to_owned(), &"Read,Edit,Write,Bash".to_owned()),
+        (
+          &"Read,Edit,Write,Glob,Grep,Bash,mcp__code-atlas".to_owned(),
+          &"Read,Edit,Write,Bash,mcp__code-atlas".to_owned()
+        ),
+      ]
+    );
+    assert_eq!(standard.env, invocation.env);
+  }
+
+  #[test]
+  fn should_give_baseline_sessions_the_baseline_tools_whatever_the_atlas_surface() {
+    assert_eq!(SessionTools::of(Condition::Baseline, AtlasSurface::Forced), SessionTools::Baseline);
+    assert_eq!(SessionTools::of(Condition::Atlas, AtlasSurface::Forced), SessionTools::Atlas(AtlasSurface::Forced));
+    assert_eq!(SessionTools::Baseline.allowed(), BASE_TOOLS.map(str::to_owned).to_vec());
   }
 
   #[test]

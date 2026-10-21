@@ -12,7 +12,7 @@ use super::claude::ConfigIsolation;
 use super::error::{AgentError, AgentResult};
 use super::hooks::AtlasHooksRecord;
 use super::judge::JudgeOutcome;
-use super::plan::{Condition, PlannedRun, PreambleVariant};
+use super::plan::{AtlasSurface, Condition, PlannedRun, PreambleVariant};
 use super::probe::ProbeReport;
 use super::process::ProcessExit;
 use super::reuse::{DuplicationFinding, LexicalCandidate, NewFunction, ReuseReference, reclassify_legacy};
@@ -95,6 +95,8 @@ pub struct RunManifest {
   pub atlas_config_blake3: Option<String>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub atlas_hooks: Option<AtlasHooksRecord>,
+  #[serde(default, skip_serializing_if = "AtlasSurface::is_standard")]
+  pub atlas_surface: AtlasSurface,
   pub args: Vec<String>,
   pub env_names: Vec<String>,
   pub atlas_project: Option<String>,
@@ -241,6 +243,8 @@ pub struct Environment {
   pub atlas_config: Option<AtlasConfigRecord>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub atlas_hooks: Option<AtlasHooksRecord>,
+  #[serde(default, skip_serializing_if = "AtlasSurface::is_standard")]
+  pub atlas_surface: AtlasSurface,
   pub probe: Option<ProbeReport>,
 }
 
@@ -370,6 +374,21 @@ mod tests {
     assert_eq!(lines[15], "  ],");
     assert_eq!(lines[17], "  \"read\": {\"call\": 3, \"turn\": 2, \"via\": \"say \\\"hi\\\"\"}");
     assert_eq!(read_json::<Value>(&path).unwrap(), value);
+  }
+
+  #[test]
+  fn should_omit_the_standard_surface_from_a_run_manifest_and_read_old_manifests_as_standard() {
+    let standard = super::super::testing::run_record("t1", Condition::Atlas, 0, Default::default()).manifest;
+    let json = serde_json::to_value(&standard).unwrap();
+    assert_eq!(json.get("atlas_surface"), None);
+    assert_eq!(serde_json::from_value::<RunManifest>(json).unwrap(), standard);
+    let forced = RunManifest {
+      atlas_surface: AtlasSurface::Forced,
+      ..standard.clone()
+    };
+    let json = serde_json::to_value(&forced).unwrap();
+    assert_eq!(json["atlas_surface"], "forced");
+    assert_eq!(serde_json::from_value::<RunManifest>(json).unwrap(), forced);
   }
 
   #[test]

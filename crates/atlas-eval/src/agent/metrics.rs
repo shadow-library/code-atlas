@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::access::OutOfTreeAccess;
 use super::bash::analyze_bash;
+use super::bash_guard::denied_by_bash_guard;
 use super::claude::ATLAS_TOOL_PREFIX;
 use super::hooks::{HookMetrics, hook_metrics};
 use super::spec::GroundTruth;
@@ -90,6 +91,8 @@ pub struct Metrics {
   pub density: DensityMetrics,
   #[serde(default)]
   pub hooks: HookMetrics,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub atlas_surface_denials: Option<u64>,
 }
 
 pub struct MetricsInput<'a> {
@@ -186,6 +189,7 @@ pub fn compute_metrics(input: &MetricsInput<'_>) -> Metrics {
       ratio: (context_bytes > 0).then(|| useful_bytes as f64 / context_bytes as f64),
     },
     hooks: hook_metrics(transcript),
+    atlas_surface_denials: None,
   }
 }
 
@@ -194,6 +198,9 @@ fn tool_metrics(transcript: &Transcript) -> ToolMetrics {
   for call in &transcript.tool_calls {
     *metrics.by_name.entry(call.name.clone()).or_default() += 1;
     metrics.total += 1;
+    if denied_by_bash_guard(call) {
+      continue;
+    }
     metrics.errors += u64::from(call.result.as_ref().is_some_and(|result| result.is_error));
     let bash_search = call.name == "Bash" && call.input_str("command").is_some_and(|command| analyze_bash(command).search);
     metrics.search_calls += u64::from(SEARCH_TOOLS.contains(&call.name.as_str()) || bash_search);
@@ -207,6 +214,7 @@ fn absorb_read(call: &ToolCall, roots: &[PathBuf], relevant: &BTreeSet<String>, 
       ledger.read_calls += 1;
       call.input_str("file_path").map(str::to_owned).into_iter().collect()
     }
+    "Bash" if denied_by_bash_guard(call) => return,
     "Bash" => {
       let analysis = analyze_bash(call.input_str("command").unwrap_or_default());
       ledger.unparsed += u64::from(analysis.unparsed_reads);
@@ -509,6 +517,26 @@ mod tests {
     assert_eq!(metrics.density.useful_bytes, 4 / 2 + atlas_bytes_about_service);
     let context: u64 = transcript.tool_calls.iter().map(ToolCall::result_bytes).sum();
     assert_eq!(metrics.density.context_bytes, context);
+  }
+
+  #[test]
+  fn should_count_no_read_for_a_bash_call_the_guard_refused() {
+    let transcript = Transcript::parse(include_str!("../../tests/fixtures/forced-transcript.jsonl"), &[]);
+    let metrics = compute_metrics(&MetricsInput {
+      transcript: &transcript,
+      tree: Path::new("/eval/runs/r/tree"),
+      ground_truth: &GroundTruth::default(),
+      changed_files: &BTreeSet::new(),
+      wall_ms: None,
+    });
+    assert_eq!(metrics.reads.files, vec!["src/users/user.entity.ts"]);
+    assert_eq!((metrics.reads.read_calls, metrics.reads.bash_read_calls, metrics.reads.unparsed_bash_reads), (1, 0, 0));
+    assert_eq!(
+      (metrics.tools.by_name.get("Bash"), metrics.tools.total, metrics.tools.errors, metrics.tools.search_calls),
+      (Some(&3), 4, 0, 0)
+    );
+    assert_eq!(metrics.atlas_surface_denials, None);
+    assert_eq!(serde_json::to_value(&metrics).unwrap().get("atlas_surface_denials"), None);
   }
 
   #[test]

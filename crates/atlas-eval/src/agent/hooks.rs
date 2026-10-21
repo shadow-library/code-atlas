@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 use super::atlas_cli::AtlasCli;
+use super::bash_guard::bash_guard_group;
 use super::error::{AgentError, AgentResult};
 use super::transcript::{HookPhase, Transcript};
 
@@ -156,6 +157,22 @@ impl AtlasHooks {
   pub fn settings(&self) -> Value {
     json!({ "hooks": Value::Object(self.groups.clone()) })
   }
+}
+
+pub fn session_settings(hooks: Option<&AtlasHooks>, bash_guard: Option<&Path>) -> AgentResult<Option<Value>> {
+  if hooks.is_none() && bash_guard.is_none() {
+    return Ok(None);
+  }
+  let mut groups = hooks.map(|hooks| hooks.groups.clone()).unwrap_or_default();
+  if let Some(binary) = bash_guard {
+    let Value::Array(pre_tool_use) = groups.entry(PRE_TOOL_USE).or_insert_with(|| Value::Array(Vec::new())) else {
+      return Err(AgentError::AtlasSurfaceUnavailable {
+        reason: format!("the rendered hooks hold a `{PRE_TOOL_USE}` entry that is not an array of hook groups, so the Bash guard cannot be added to it"),
+      });
+    };
+    pre_tool_use.push(bash_guard_group(binary));
+  }
+  Ok(Some(json!({ "hooks": Value::Object(groups) })))
 }
 
 fn normalize(value: &Value, home: &str, binary: &str) -> Value {
@@ -317,6 +334,51 @@ mod tests {
       "`PreToolUse` without an array of hook groups"
     );
     assert!(AtlasHooks::parse("PreToolUse: catl hook remind", "catl", "/h").unwrap_err().starts_with("no JSON"));
+  }
+
+  #[test]
+  fn should_append_the_bash_guard_after_the_rendered_pre_tool_use_groups() {
+    let hooks = AtlasHooks::parse(&printed("/h"), "/opt/catl", "/h").unwrap();
+    let merged = session_settings(Some(&hooks), Some(Path::new("/opt/atlas-eval"))).unwrap().unwrap();
+    assert_eq!(
+      merged.to_string(),
+      r#"{"hooks":{"PreToolUse":[{"hooks":[{"command":"CODE_ATLAS_HOME=/h /opt/catl hook remind || true","timeout":10,"type":"command"}],"matcher":"Grep|Glob|Bash"},{"hooks":[{"command":"/opt/atlas-eval agent bash-guard || true","timeout":10,"type":"command"}],"matcher":"Bash"}],"UserPromptSubmit":[{"hooks":[{"command":"CODE_ATLAS_HOME=/h /opt/catl hook seed || true","timeout":10,"type":"command"}]}]}}"#
+    );
+    let unchanged = AtlasHooks::parse(&printed("/h"), "/opt/catl", "/h").unwrap();
+    assert_eq!(unchanged.record(), hooks.record());
+  }
+
+  #[test]
+  fn should_write_a_guard_only_settings_file_without_hooks_and_none_without_either() {
+    let seed_only = json!({"UserPromptSubmit": [{"hooks": [{"type": "command", "command": "catl hook seed || true", "timeout": 10}]}]});
+    let hooks = AtlasHooks::parse(&seed_only.to_string(), "/opt/catl", "/h").unwrap();
+    assert_eq!(
+      session_settings(None, Some(Path::new("/opt/atlas-eval"))).unwrap().unwrap().to_string(),
+      r#"{"hooks":{"PreToolUse":[{"hooks":[{"command":"/opt/atlas-eval agent bash-guard || true","timeout":10,"type":"command"}],"matcher":"Bash"}]}}"#
+    );
+    assert_eq!(
+      session_settings(Some(&hooks), Some(Path::new("/opt/atlas-eval"))).unwrap().unwrap()["hooks"]["PreToolUse"],
+      json!([{"matcher": "Bash", "hooks": [{"type": "command", "command": "/opt/atlas-eval agent bash-guard || true", "timeout": 10}]}])
+    );
+    assert_eq!(session_settings(Some(&hooks), None).unwrap(), Some(hooks.settings()));
+    assert_eq!(session_settings(None, None).unwrap(), None);
+  }
+
+  #[test]
+  fn should_refuse_to_add_the_guard_to_a_pre_tool_use_entry_that_is_not_an_array() {
+    let malformed = AtlasHooks {
+      groups: Map::from_iter([(PRE_TOOL_USE.to_owned(), json!({"matcher": "Bash"}))]),
+      record: AtlasHooksRecord {
+        blake3: "b".to_owned(),
+        groups: BTreeMap::from([(PRE_TOOL_USE.to_owned(), 1)]),
+      },
+    };
+    let error = session_settings(Some(&malformed), Some(Path::new("/opt/atlas-eval"))).unwrap_err();
+    assert_eq!(
+      error.to_string(),
+      "--atlas-surface forced: the rendered hooks hold a `PreToolUse` entry that is not an array of hook groups, so the Bash guard cannot be added to it"
+    );
+    assert_eq!(session_settings(Some(&malformed), None).unwrap(), Some(malformed.settings()));
   }
 
   #[test]

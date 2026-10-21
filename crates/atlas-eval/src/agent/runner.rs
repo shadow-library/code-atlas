@@ -13,13 +13,16 @@ use super::access::{AccessPolicy, contaminated, out_of_tree_accesses};
 use super::accuracy::atlas_accuracy;
 use super::atlas_cli::AtlasCli;
 use super::atlas_config::AtlasConfig;
-use super::claude::{ATLAS_SERVER_NAME, ATLAS_TOOL_PREFIX, ClaudeConfig, EMPTY_MCP_CONFIG, HookWiring, SessionRequest, host_env, project_instructions, session_invocation};
+use super::bash_guard::{bash_guard_denials, check_bash_guard};
+use super::claude::{
+  ATLAS_SERVER_NAME, ATLAS_TOOL_PREFIX, ClaudeConfig, EMPTY_MCP_CONFIG, HookWiring, SessionRequest, SessionTools, host_env, project_instructions, session_invocation,
+};
 use super::diff::{Diff, FileChange};
 use super::error::{AgentError, AgentResult};
-use super::hooks::{AtlasHooks, AtlasHooksRecord, USER_PROMPT_SUBMIT, hook_metrics};
+use super::hooks::{AtlasHooks, AtlasHooksRecord, USER_PROMPT_SUBMIT, hook_metrics, session_settings};
 use super::judge::{JudgeInput, JudgeKind, JudgeOutcome, atlas_review_prompt, blinded_prompt, run_judge};
 use super::metrics::{Metrics, MetricsInput, compute_metrics};
-use super::plan::{Condition, PlannedRun, PreambleVariant, model_price, today_utc};
+use super::plan::{AtlasSurface, Condition, PlannedRun, PreambleVariant, model_price, today_utc};
 use super::probe::{HookedProbe, HookedProbeRequest, ProbeReport, default_user_claude_md, run_hooked_probe, run_probe};
 use super::process::{ProcessExit, run_captured, run_streaming};
 use super::record::{
@@ -43,6 +46,8 @@ const ATLAS_HOOKS_USER: &str = "atlas-hooks-user";
 const ATLAS_HOOKS_STAGE: &str = "atlas-hooks";
 const PROBE_DIR: &str = "_probe";
 const HOOKED_PROBE_DIR: &str = "hooks";
+const FORCED_PROBE_PROJECT: &str = "_probe/forced";
+const FORCED_PROBE_SOURCE: (&str, &str) = ("probe.ts", "export const probe = \"ATLAS-EVAL-GUARD-PROBE\";\n");
 const CARGO_TARGET: &str = "cargo-target";
 const INDEX_DATA_SUFFIXES: [&str; 6] = [".db", ".db-wal", ".db-shm", ".sqlite", ".sqlite-wal", ".sqlite-shm"];
 
@@ -51,6 +56,42 @@ const INDEX_DATA_SUFFIXES: [&str; 6] = [".db", ".db-wal", ".db-shm", ".sqlite", 
 pub enum JudgeMode {
   Claude,
   Off,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum SurfaceSetting {
+  #[default]
+  Standard,
+  Forced {
+    bash_guard: PathBuf,
+  },
+}
+
+impl SurfaceSetting {
+  pub fn resolve(surface: AtlasSurface) -> AgentResult<Self> {
+    match surface {
+      AtlasSurface::Standard => Ok(Self::Standard),
+      AtlasSurface::Forced => std::env::current_exe()
+        .map(|bash_guard| Self::Forced { bash_guard })
+        .map_err(|error| AgentError::AtlasSurfaceUnavailable {
+          reason: format!("cannot locate the running atlas-eval binary for the Bash guard: {error}"),
+        }),
+    }
+  }
+
+  pub fn surface(&self) -> AtlasSurface {
+    match self {
+      Self::Standard => AtlasSurface::Standard,
+      Self::Forced { .. } => AtlasSurface::Forced,
+    }
+  }
+
+  pub fn bash_guard(&self) -> Option<&Path> {
+    match self {
+      Self::Standard => None,
+      Self::Forced { bash_guard } => Some(bash_guard),
+    }
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -74,6 +115,7 @@ pub struct RunnerConfig {
   pub preamble: PreambleVariant,
   pub atlas_config: Option<AtlasConfig>,
   pub atlas_hooks: bool,
+  pub atlas_surface: SurfaceSetting,
 }
 
 struct RunContext<'a> {
@@ -110,6 +152,7 @@ pub fn environment(config: &RunnerConfig) -> Environment {
     repo_override: config.repo_override.as_ref().map(|path| path.display().to_string()),
     atlas_config: config.atlas_config.as_ref().map(AtlasConfig::record),
     atlas_hooks: None,
+    atlas_surface: config.atlas_surface.surface(),
     probe: None,
   }
 }
@@ -117,22 +160,30 @@ pub fn environment(config: &RunnerConfig) -> Environment {
 pub fn run_batch(config: &RunnerConfig, tasks: &[LoadedTask], planned: Vec<PlannedRun>) -> AgentResult<BatchManifest> {
   fs::create_dir_all(&config.batch_dir).map_err(|error| AgentError::io(&config.batch_dir, error))?;
   ensure_same_atlas_config(config, &planned)?;
+  ensure_surface_preamble(config)?;
+  ensure_same_surface(config, &planned)?;
   if let Some(atlas_config) = config.atlas_config.as_ref().filter(|_| !planned.is_empty()) {
     validate_atlas_config(config, atlas_config)?;
   }
   let hooks = expected_hooks(config, &planned)?;
   ensure_same_hooks(config, &planned, hooks.as_ref())?;
+  let bash_guard = checked_bash_guard(config, &planned)?;
   let mut environment = environment(config);
-  environment.atlas_hooks = match &hooks {
-    None if !planned.iter().any(|run| run.condition == Condition::Atlas) => recorded_hooks(config)?,
-    expected => expected.clone(),
-  };
+  if planned.iter().any(|run| run.condition == Condition::Atlas) {
+    environment.atlas_hooks = hooks.clone();
+  } else {
+    let recorded = recorded_environment(config)?;
+    environment.atlas_hooks = recorded.as_ref().and_then(|recorded| recorded.atlas_hooks.clone());
+    environment.atlas_surface = recorded.map_or(AtlasSurface::Standard, |recorded| recorded.atlas_surface);
+  }
   if config.probe {
     environment.probe = Some(probe(config)?);
   }
   let mut hooked_probe_cost = 0.0;
-  if let Some(expected) = &hooks {
-    if let Some(probe) = environment.probe.as_ref().filter(|probe| probe.saw_hook(USER_PROMPT_SUBMIT)) {
+  if hooks.is_some() || bash_guard.is_some() {
+    if hooks.is_some()
+      && let Some(probe) = environment.probe.as_ref().filter(|probe| probe.saw_hook(USER_PROMPT_SUBMIT))
+    {
       return Err(AgentError::AtlasHooksUnavailable {
         reason: format!(
           "the isolation probe already reports a {USER_PROMPT_SUBMIT} hook without --settings ({}), for example from managed settings; the atlas seed hook could not be told apart from it, so the hooked probe could pass for the wrong reason; disable that hook for eval runs (or drop --atlas-hooks), then delete <batch>/_probe/probe.json or start a new --batch so the isolation probe runs again",
@@ -140,10 +191,11 @@ pub fn run_batch(config: &RunnerConfig, tasks: &[LoadedTask], planned: Vec<Plann
         ),
       });
     }
-    let hooked = hooked_probe(config, expected)?;
+    let hooked = hooked_probe(config, hooks.as_ref(), bash_guard)?;
     hooked_probe_cost = hooked.cost_usd.unwrap_or(0.0);
     if let Some(probe) = environment.probe.as_mut() {
       probe.atlas_hooks_seen = Some(hooked.hooks_seen);
+      probe.atlas_surface_seen = hooked.surface_seen;
     }
   }
   let mut sources = BTreeMap::new();
@@ -282,28 +334,83 @@ fn expected_hooks(config: &RunnerConfig, planned: &[PlannedRun]) -> AgentResult<
   Ok(Some(AtlasHooks::render(&atlas, probe.path())?.record().clone()))
 }
 
-fn recorded_hooks(config: &RunnerConfig) -> AgentResult<Option<AtlasHooksRecord>> {
+fn recorded_environment(config: &RunnerConfig) -> AgentResult<Option<Environment>> {
   let path = config.batch_dir.join(BATCH_FILE);
   if !path.is_file() {
     return Ok(None);
   }
-  Ok(read_json::<BatchManifest>(&path)?.environment.atlas_hooks)
+  Ok(Some(read_json::<BatchManifest>(&path)?.environment))
+}
+
+fn ensure_surface_preamble(config: &RunnerConfig) -> AgentResult<()> {
+  let surface = config.atlas_surface.surface();
+  if (surface == AtlasSurface::Forced) == (config.preamble == PreambleVariant::Forced) {
+    return Ok(());
+  }
+  Err(AgentError::InvalidArgument(format!(
+    "atlas surface {surface} runs with the {} preamble, not {}",
+    surface.preamble(PreambleVariant::Standard),
+    config.preamble
+  )))
+}
+
+fn ensure_same_surface(config: &RunnerConfig, planned: &[PlannedRun]) -> AgentResult<()> {
+  let expected = config.atlas_surface.surface();
+  let mut differing = Vec::new();
+  let mut recorded = BTreeSet::new();
+  for run in planned.iter().filter(|run| run.condition == Condition::Atlas) {
+    let dir = config.batch_dir.join(&run.run_id);
+    if !dir.join(SCORE_FILE).is_file() {
+      continue;
+    }
+    let manifest: RunManifest = read_json(&dir.join(RUN_FILE))?;
+    if manifest.atlas_surface != expected {
+      recorded.insert(manifest.atlas_surface);
+      differing.push(run.run_id.clone());
+    }
+  }
+  if differing.is_empty() {
+    return Ok(());
+  }
+  Err(AgentError::AtlasSurfaceMismatch {
+    runs: differing.join(", "),
+    recorded: recorded.iter().map(|surface| surface.as_str()).collect::<Vec<_>>().join(", "),
+    expected: expected.to_string(),
+  })
+}
+
+fn checked_bash_guard<'a>(config: &'a RunnerConfig, planned: &[PlannedRun]) -> AgentResult<Option<&'a Path>> {
+  let Some(bash_guard) = config.atlas_surface.bash_guard() else {
+    return Ok(None);
+  };
+  if !planned.iter().any(|run| run.condition == Condition::Atlas) {
+    return Ok(None);
+  }
+  if !config.probe {
+    return Err(AgentError::AtlasSurfaceUnavailable {
+      reason: "a probe session must confirm the tool surface and that Claude Code honours the Bash guard before any atlas session; drop --no-probe".to_owned(),
+    });
+  }
+  check_bash_guard(bash_guard)?;
+  Ok(Some(bash_guard))
 }
 
 fn failed_hooks(run_dir: &Path) -> bool {
   read_json::<RunManifest>(&run_dir.join(RUN_FILE)).is_ok_and(|manifest| matches!(&manifest.status, RunStatus::SetupFailed { stage, .. } if stage == ATLAS_HOOKS_STAGE))
 }
 
-fn hooked_probe(config: &RunnerConfig, expected: &AtlasHooksRecord) -> AgentResult<HookedProbe> {
+fn hooked_probe(config: &RunnerConfig, expected: Option<&AtlasHooksRecord>, bash_guard: Option<&Path>) -> AgentResult<HookedProbe> {
+  let surface = probed_surface(bash_guard);
   let out_dir = config.batch_dir.join(PROBE_DIR).join(HOOKED_PROBE_DIR);
   let recorded = out_dir.join("probe.json");
   if let Ok(probe) = read_json::<HookedProbe>(&recorded)
-    && probe.atlas_hooks_blake3 == expected.blake3
-    && probe.user_prompt_submit_seen
+    && probe.atlas_hooks_blake3.as_deref() == expected.map(|expected| expected.blake3.as_str())
+    && probe.atlas_surface == surface
+    && hooked_probe_problem(&probe, expected.is_some(), &out_dir).is_none()
   {
     return Ok(probe);
   }
-  if !expected.installs(USER_PROMPT_SUBMIT) {
+  if let Some(expected) = expected.filter(|expected| !expected.installs(USER_PROMPT_SUBMIT)) {
     return Err(AgentError::AtlasHooksUnavailable {
       reason: format!(
         "the hooks {} have no {USER_PROMPT_SUBMIT} group, which the probe and every session need to prove the hooks ran; enable `seed` in [agents.claude] hooks",
@@ -314,52 +421,104 @@ fn hooked_probe(config: &RunnerConfig, expected: &AtlasHooksRecord) -> AgentResu
   remove_dir(&out_dir)?;
   fs::create_dir_all(&out_dir).map_err(|error| AgentError::io(&out_dir, error))?;
   let scratch = isolated_scratch(config, &format!("{PROBE_DIR}/{HOOKED_PROBE_DIR}"))?;
-  let probe = run_hooked_probe_in(config, expected, &out_dir, &scratch);
+  let probe = run_hooked_probe_in(config, expected, bash_guard, &out_dir, &scratch);
   release_scratch(config, &scratch);
   let probe = probe?;
-  match hooked_probe_problem(&probe, &out_dir) {
-    Some(reason) => Err(AgentError::AtlasHooksUnavailable { reason }),
+  match hooked_probe_problem(&probe, expected.is_some(), &out_dir) {
+    Some(error) => Err(error),
     None => Ok(probe),
   }
 }
 
-fn hooked_probe_problem(probe: &HookedProbe, out_dir: &Path) -> Option<String> {
-  if probe.user_prompt_submit_seen {
+fn probed_surface(bash_guard: Option<&Path>) -> AtlasSurface {
+  match bash_guard {
+    Some(_) => AtlasSurface::Forced,
+    None => AtlasSurface::Standard,
+  }
+}
+
+fn hooked_probe_problem(probe: &HookedProbe, hooks: bool, out_dir: &Path) -> Option<AgentError> {
+  let hooks_seen = !hooks || probe.user_prompt_submit_seen;
+  let surface_problem = match (probe.atlas_surface, &probe.surface_seen) {
+    (AtlasSurface::Standard, _) => None,
+    (AtlasSurface::Forced, None) => Some("the forced probe recorded no tool surface".to_owned()),
+    (AtlasSurface::Forced, Some(seen)) => seen.problem(),
+  };
+  if hooks_seen && surface_problem.is_none() {
     return None;
   }
   let logs = format!("see {} and {}", out_dir.join("claude.stderr.log").display(), out_dir.join(TRANSCRIPT_FILE).display());
+  let unavailable = |reason: String| {
+    if hooks_seen {
+      AgentError::AtlasSurfaceUnavailable { reason }
+    } else {
+      AgentError::AtlasHooksUnavailable { reason }
+    }
+  };
+  let shown = if hooks_seen { "the forced tool surface" } else { "whether the hooks run" };
   if !probe.started {
-    return Some(format!(
-      "the hooked probe session did not start (no init event, exit {:?}), so it could not show whether the hooks run; {logs}",
+    return Some(unavailable(format!(
+      "the hooked probe session did not start (no init event, exit {:?}), so it could not show {shown}; {logs}",
       probe.exit
-    ));
+    )));
   }
   if !probe.exit.succeeded() && probe.model_turns == 0 {
-    return Some(format!("the hooked probe session failed before its first model request (exit {:?}); {logs}", probe.exit));
+    return Some(unavailable(format!(
+      "the hooked probe session failed before its first model request (exit {:?}); {logs}",
+      probe.exit
+    )));
   }
-  Some(format!(
-    "the hooked probe session started and reached the model but reported no {USER_PROMPT_SUBMIT} hook event, so Claude Code does not run --settings hooks under the eval flags (exit {:?}); {logs}",
-    probe.exit
-  ))
+  if !hooks_seen {
+    return Some(unavailable(format!(
+      "the hooked probe session started and reached the model but reported no {USER_PROMPT_SUBMIT} hook event, so Claude Code does not run --settings hooks under the eval flags (exit {:?}); {logs}",
+      probe.exit
+    )));
+  }
+  surface_problem.map(|problem| unavailable(format!("{problem}; {logs}")))
 }
 
-fn run_hooked_probe_in(config: &RunnerConfig, expected: &AtlasHooksRecord, out_dir: &Path, scratch: &Path) -> AgentResult<HookedProbe> {
+fn run_hooked_probe_in(config: &RunnerConfig, expected: Option<&AtlasHooksRecord>, bash_guard: Option<&Path>, out_dir: &Path, scratch: &Path) -> AgentResult<HookedProbe> {
   let home = isolated_atlas_home(config, scratch, ATLAS_HOME)?;
-  let atlas = AtlasCli::new(&config.atlas_bin, &home, config.atlas_timeout).sandboxed(scratch.join(ATLAS_HOOKS_USER));
-  let hooks = AtlasHooks::render(&atlas, scratch)?;
-  if hooks.record() != expected {
-    return Err(AgentError::AtlasHooksUnavailable {
-      reason: format!("the probe home renders hooks {} but the batch installs {}", hooks.record().describe(), expected.describe()),
-    });
-  }
+  let atlas = AtlasCli::new(&config.atlas_bin, &home, config.atlas_timeout);
+  let hooks = match expected {
+    None => None,
+    Some(expected) => {
+      let hooks = AtlasHooks::render(&atlas.clone().sandboxed(scratch.join(ATLAS_HOOKS_USER)), scratch)?;
+      if hooks.record() != expected {
+        return Err(AgentError::AtlasHooksUnavailable {
+          reason: format!("the probe home renders hooks {} but the batch installs {}", hooks.record().describe(), expected.describe()),
+        });
+      }
+      Some(hooks)
+    }
+  };
+  let surface = probed_surface(bash_guard);
+  let mcp_config = match surface {
+    AtlasSurface::Standard => EMPTY_MCP_CONFIG.to_owned(),
+    AtlasSurface::Forced => forced_probe_project(config, &atlas, scratch)?,
+  };
+  let settings = session_settings(hooks.as_ref(), bash_guard)?.map(|settings| settings.to_string()).unwrap_or_default();
   let request = HookedProbeRequest {
     out_dir,
     scratch,
-    settings: &hooks.settings().to_string(),
-    atlas_hooks_blake3: &expected.blake3,
+    settings: &settings,
+    mcp_config: &mcp_config,
+    atlas_hooks_blake3: expected.map(|expected| expected.blake3.as_str()),
+    surface,
     tree_env: tree_env(scratch),
   };
   run_hooked_probe(&request, &config.claude)
+}
+
+fn forced_probe_project(config: &RunnerConfig, atlas: &AtlasCli, scratch: &Path) -> AgentResult<String> {
+  let tree = scratch.join("tree");
+  let (name, content) = FORCED_PROBE_SOURCE;
+  fs::create_dir_all(&tree).map_err(|error| AgentError::io(&tree, error))?;
+  fs::write(tree.join(name), content).map_err(|error| AgentError::io(tree.join(name), error))?;
+  let project = project_name(&config.batch_dir, FORCED_PROBE_PROJECT);
+  atlas.project_create(&project, std::slice::from_ref(&tree), &tree)?;
+  atlas.index(&project, &tree)?;
+  Ok(atlas.mcp_config(&project, AtlasSurface::Forced.mcp_tool_profile()).to_string())
 }
 
 fn ensure_same_hooks(config: &RunnerConfig, planned: &[PlannedRun], expected: Option<&AtlasHooksRecord>) -> AgentResult<()> {
@@ -387,26 +546,32 @@ fn ensure_same_hooks(config: &RunnerConfig, planned: &[PlannedRun], expected: Op
   })
 }
 
-fn install_hooks(context: &RunContext<'_>, atlas: &AtlasCli, scratch: &Path, manifest: &mut RunManifest) -> AgentResult<()> {
-  let Some(expected) = context.hooks else {
+fn install_settings(context: &RunContext<'_>, atlas: &AtlasCli, scratch: &Path, manifest: &mut RunManifest) -> AgentResult<()> {
+  let hooks = match context.hooks {
+    None => None,
+    Some(expected) => {
+      let session_atlas = AtlasCli::new(atlas.binary(), atlas.home(), context.config.atlas_timeout).sandboxed(scratch.join(ATLAS_HOOKS_USER));
+      let hooks = AtlasHooks::render(&session_atlas, scratch)?;
+      if hooks.record() != expected {
+        return Err(AgentError::AtlasHooksUnavailable {
+          reason: format!(
+            "the session home renders hooks {} but the batch installs {}",
+            hooks.record().describe(),
+            expected.describe()
+          ),
+        });
+      }
+      Some(hooks)
+    }
+  };
+  let Some(settings) = session_settings(hooks.as_ref(), context.config.atlas_surface.bash_guard())? else {
     return Ok(());
   };
-  let session_atlas = AtlasCli::new(atlas.binary(), atlas.home(), context.config.atlas_timeout).sandboxed(scratch.join(ATLAS_HOOKS_USER));
-  let hooks = AtlasHooks::render(&session_atlas, scratch)?;
-  if hooks.record() != expected {
-    return Err(AgentError::AtlasHooksUnavailable {
-      reason: format!(
-        "the session home renders hooks {} but the batch installs {}",
-        hooks.record().describe(),
-        expected.describe()
-      ),
-    });
-  }
-  let settings = hooks.settings().to_string();
+  let settings = settings.to_string();
   for path in [scratch.join(ATLAS_HOOKS_FILE), context.dir.join(ATLAS_HOOKS_FILE)] {
     fs::write(&path, &settings).map_err(|error| AgentError::io(&path, error))?;
   }
-  manifest.atlas_hooks = Some(hooks.record().clone());
+  manifest.atlas_hooks = hooks.map(|hooks| hooks.record().clone());
   Ok(())
 }
 
@@ -523,6 +688,7 @@ fn execute_run(context: &RunContext<'_>) -> AgentResult<f64> {
   remove_dir(dir)?;
   fs::create_dir_all(dir).map_err(|error| AgentError::io(dir, error))?;
   let is_atlas = context.planned.condition == Condition::Atlas;
+  let surface = context.config.atlas_surface.surface();
   let mut manifest = RunManifest {
     run_id: context.planned.run_id.clone(),
     task_id: context.task.spec.id.clone(),
@@ -541,6 +707,7 @@ fn execute_run(context: &RunContext<'_>) -> AgentResult<f64> {
     preamble_variant: is_atlas.then_some(context.config.preamble),
     atlas_config_blake3: context.config.atlas_config.as_ref().map(AtlasConfig::digest),
     atlas_hooks: None,
+    atlas_surface: if is_atlas { surface } else { AtlasSurface::Standard },
     args: Vec::new(),
     env_names: Vec::new(),
     atlas_project: None,
@@ -601,6 +768,9 @@ fn score_session(context: &RunContext<'_>, scratch: &Path, tree: &Path, base_sha
   });
   metrics.out_of_tree_accesses = out_of_tree_accesses(&session, &access_policy(context, scratch, tree, &session));
   metrics.contaminated = contaminated(&metrics.out_of_tree_accesses);
+  if manifest.atlas_surface == AtlasSurface::Forced {
+    metrics.atlas_surface_denials = Some(bash_guard_denials(&session));
+  }
   if metrics.contaminated {
     tracing::warn!(
       run = context.planned.run_id,
@@ -671,8 +841,8 @@ fn prepare_tree(context: &RunContext<'_>, scratch: &Path, manifest: &mut RunMani
       fs::write(&log, format!("{}\n--- stderr ---\n{}", index.stdout, index.stderr)).map_err(|error| ("atlas-index", AgentError::io(&log, error)))?;
       manifest.atlas_index_ms = Some(millis(index.duration));
       manifest.atlas_project = Some(project.clone());
-      install_hooks(context, &atlas, scratch, manifest).map_err(|error| (ATLAS_HOOKS_STAGE, error))?;
-      atlas.mcp_config(&project).to_string()
+      install_settings(context, &atlas, scratch, manifest).map_err(|error| (ATLAS_HOOKS_STAGE, error))?;
+      atlas.mcp_config(&project, context.config.atlas_surface.surface().mcp_tool_profile()).to_string()
     }
   };
   for path in [mcp_path, context.dir.join("mcp.json")] {
@@ -733,15 +903,16 @@ fn run_session(context: &RunContext<'_>, scratch: &Path, tree: &Path, manifest: 
     tree: tree.to_owned(),
     mcp_config: scratch.join("mcp.json"),
     max_turns: spec.max_turns,
-    with_atlas_tools: context.planned.condition == Condition::Atlas,
+    tools: SessionTools::of(context.planned.condition, manifest.atlas_surface),
     config_dir: scratch.join("claude-config"),
     project_instructions: instructions.map(|(text, _)| text),
     tree_env: tree_env(scratch),
-    hooks: match manifest.atlas_hooks {
-      Some(_) => HookWiring::Installed {
+    hooks: if manifest.atlas_hooks.is_some() || manifest.atlas_surface == AtlasSurface::Forced {
+      HookWiring::Installed {
         settings: scratch.join(ATLAS_HOOKS_FILE),
-      },
-      None => HookWiring::Unchanged,
+      }
+    } else {
+      HookWiring::Unchanged
     },
   };
   let invocation = session_invocation(&context.config.claude, &request, &host_env());
