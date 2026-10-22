@@ -262,9 +262,7 @@ impl AtlasServer {
       .call("atlas_context", args.format, move |shared| {
         arguments::non_empty("task", &args.task)?;
         let mut request = ContextRequest::new(args.task);
-        if let Some(budget) = arguments::budget(args.budget)? {
-          request.budget = budget;
-        }
+        request.budget = arguments::budget(args.budget)?;
         request.seeds = args.seeds.unwrap_or_default();
         request.known = args.known.unwrap_or_default();
         render::plain(&query(shared).context(&request)?, args.format.unwrap_or_default())

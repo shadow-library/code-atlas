@@ -9,7 +9,8 @@ use crate::error::ToolError;
 const MAX_LIMIT: usize = 200;
 const MAX_DEPTH: u32 = 6;
 const MIN_BUDGET: usize = 500;
-const MAX_BUDGET: usize = 32_000;
+const MAX_BUDGET: usize = 4_000;
+const DEFAULT_BUDGET: usize = 4_000;
 const MAX_CONTEXT_LINES: u32 = 100;
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, JsonSchema)]
@@ -37,7 +38,7 @@ macro_rules! arguments {
 arguments!(ContextArgs {
   #[schemars(description = "What you are about to do, in your own words")]
   task: String,
-  #[schemars(description = "Pack size in tokens, 500-32000; larger packs hold more bodies")]
+  #[schemars(description = "Pack size in tokens, 500-4000 (default 4000)")]
   budget: Option<usize>,
   #[schemars(description = "Symbols, files or keys to anchor the pack on")]
   seeds: Option<Vec<String>>,
@@ -249,12 +250,12 @@ pub(crate) fn limit(value: Option<usize>) -> Result<Option<usize>, ToolError> {
   Err(ToolError::invalid(format!("limit must be between 1 and {MAX_LIMIT}, got {value}")))
 }
 
-pub(crate) fn budget(value: Option<usize>) -> Result<Option<usize>, ToolError> {
-  let Some(value) = value else { return Ok(None) };
-  if (MIN_BUDGET..=MAX_BUDGET).contains(&value) {
-    return Ok(Some(value));
+pub(crate) fn budget(value: Option<usize>) -> Result<usize, ToolError> {
+  let value = value.unwrap_or(DEFAULT_BUDGET);
+  if value < MIN_BUDGET {
+    return Err(ToolError::invalid(format!("budget must be at least {MIN_BUDGET} tokens, got {value}")));
   }
-  Err(ToolError::invalid(format!("budget must be between {MIN_BUDGET} and {MAX_BUDGET} tokens, got {value}")))
+  Ok(value.min(MAX_BUDGET))
 }
 
 pub(crate) fn depth(value: Option<u32>, default: u32) -> Result<u32, ToolError> {

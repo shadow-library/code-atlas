@@ -50,7 +50,7 @@ async fn assert_only_acme(server: &Server) {
     ("atlas_impact", json!({ "targets": ["formatMoney"] })),
     ("atlas_callers", json!({ "target": "to_cents" })),
     ("atlas_overview", json!({})),
-    ("atlas_context", json!({ "task": "format money for an order and look up a user by id", "budget": 6000 })),
+    ("atlas_context", json!({ "task": "format money for an order and look up a user by id", "budget": 4000 })),
   ];
   for (tool, arguments) in calls {
     let document = server.json(tool, arguments.clone()).await;

@@ -71,7 +71,7 @@ A task with several queries for a variant is scored on each and the scores are a
 
 **Pipeline per query** (text = the variant's query):
 
-1. `context(text)` at the default budget (6000 tokens; the CLI and MCP defaults are the same), with the recorded seeds for `agent-seeded`.
+1. `context(text)` at the CLI default budget (6000 tokens; the MCP default is 4000, the figure in the 4000 budgeted-yield row), with the recorded seeds for `agent-seeded`.
 2. `search` (default limit 10) with the whole text, then once per significant phrase:
    - code spans: up to 8 backtick spans in order of appearance, at least 3 characters, case-insensitive duplicates dropped, fenced code blocks ignored;
    - prose phrases: up to 4. The text outside code is cut at punctuation and at a fixed stopword list. Runs of at least two remaining words are kept, and a longer run keeps its last four words.

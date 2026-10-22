@@ -480,15 +480,17 @@ async fn should_bound_the_context_budget() {
     harness
       .failure("atlas_context", json!({ "task": "x", "budget": 100 }))
       .await
-      .contains("budget must be between 500 and 32000")
+      .contains("budget must be at least 500 tokens, got 100")
   );
-  assert!(
-    harness
-      .failure("atlas_context", json!({ "task": "x", "budget": 1000000 }))
-      .await
-      .contains("budget must be between 500 and 32000")
-  );
-  harness.text("atlas_context", json!({ "task": "convert currency string to cents", "budget": 500 })).await;
+  let clamped = harness
+    .text("atlas_context", json!({ "task": "convert currency string to cents", "budget": 1000000 }))
+    .await;
+  assert!(clamped.contains(" of 4000 tokens)"), "{clamped}");
+  let default = harness.text("atlas_context", json!({ "task": "convert currency string to cents" })).await;
+  assert!(default.contains(" of 4000 tokens)"), "{default}");
+  let smallest = harness.text("atlas_context", json!({ "task": "convert currency string to cents", "budget": 500 })).await;
+  assert!(smallest.contains(" of 500 tokens)"), "{smallest}");
+  harness.stop().await.unwrap();
 }
 
 #[tokio::test]

@@ -580,7 +580,7 @@ fn render_settings(out: &mut String, report: &RetrievalReport) {
   let budgets: Vec<String> = settings.yield_budgets.iter().map(usize::to_string).collect();
   let rows = [
     ("code atlas revision", revision.to_owned()),
-    ("context budget (CLI and MCP default)", settings.context_budget.to_string()),
+    ("context budget (CLI default)", settings.context_budget.to_string()),
     ("budgeted-yield budgets", budgets.join(", ")),
     ("search limit per query", settings.search_limit.to_string()),
     (
@@ -1471,7 +1471,7 @@ Runs that sent no `atlas_context` call: `b1/t1.atlas.r1`.\n"
       "{markdown}"
     );
     assert!(
-      markdown.contains("| code atlas revision | abc |\n| context budget (CLI and MCP default) | 6000 |\n| budgeted-yield budgets | 4000, 8000, 16000 |\n"),
+      markdown.contains("| code atlas revision | abc |\n| context budget (CLI default) | 6000 |\n| budgeted-yield budgets | 4000, 8000, 16000 |\n"),
       "{markdown}"
     );
     assert!(markdown.contains("- F0.5 = 1.25 x hits / (0.25 x gold + retrieved), which equals"), "{markdown}");
