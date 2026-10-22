@@ -15,6 +15,7 @@ pub enum TargetSpec {
   Name { qualifier: Vec<String>, name: String },
 }
 
+const BARE_NAME_MATCHES_SHOWN: usize = 3;
 pub(crate) const SOURCE_EXTENSIONS: [&str; 10] = [".rs", ".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs", ".json"];
 
 impl TargetSpec {
@@ -127,18 +128,24 @@ impl Resolution {
 
 pub(crate) fn resolve(graph: &Graph<'_, '_>, repos: &[RepoName], text: &str, filter: &TargetFilter) -> QueryResult<Resolution> {
   let spec = TargetSpec::parse(text)?;
-  let mut outside = None;
+  let mut file_hint = None;
   let candidates = match &spec {
     TargetSpec::Key(key) => graph.tx().entity_by_key(key)?.into_iter().collect(),
     TargetSpec::Id(id) => graph.entity(*id)?.into_iter().collect(),
     TargetSpec::Endpoint { method, route } => endpoints(graph, *method, route)?,
-    TargetSpec::File { repo, path, line } => file_targets(graph, repos, repo.as_deref(), path, *line, &mut outside)?,
+    TargetSpec::File { repo, path, line } => {
+      let scoped: Vec<&RepoName> = repos
+        .iter()
+        .filter(|candidate| [repo.as_deref(), filter.repo.as_deref()].into_iter().flatten().all(|repo| candidate.as_str() == repo))
+        .collect();
+      file_targets(graph, &scoped, path, *line, &mut file_hint)?
+    }
     TargetSpec::Name { qualifier, name } => named(graph, qualifier, name)?,
   };
   let candidates: Vec<Entity> = candidates.into_iter().filter(|entity| admits(filter, entity)).collect();
   let candidates = prefer_definitions(candidates);
   Ok(match candidates.len() {
-    0 => Resolution::NotFound(match outside {
+    0 => Resolution::NotFound(match file_hint {
       Some(hint) => hint,
       None => not_found_hint(graph, &spec, text)?,
     }),
@@ -224,44 +231,81 @@ fn endpoints(graph: &Graph<'_, '_>, method: Option<HttpMethod>, route: &str) -> 
   Ok(found)
 }
 
-fn file_targets(graph: &Graph<'_, '_>, repos: &[RepoName], repo: Option<&str>, path: &str, line: Option<u32>, outside: &mut Option<String>) -> QueryResult<Vec<Entity>> {
+fn file_targets(graph: &Graph<'_, '_>, scoped: &[&RepoName], path: &str, line: Option<u32>, hint: &mut Option<String>) -> QueryResult<Vec<Entity>> {
   let Ok(path) = RelPath::new(path) else {
     return Ok(Vec::new());
   };
   let mut found = Vec::new();
-  for candidate in repos.iter().filter(|candidate| repo.is_none_or(|repo| candidate.as_str() == repo)) {
-    let Some(file) = graph.tx().entity_by_key(&EntityKey::File {
-      repo: candidate.clone(),
-      path: path.clone(),
-    })?
-    else {
-      continue;
-    };
-    let Some(line) = line else {
-      found.push(file);
-      continue;
-    };
-    let symbols: Vec<Entity> = graph
-      .tx()
-      .entities_in_file(candidate, &path, &EntityFilter::default())?
-      .into_iter()
-      .filter(|entity| entity.kind.is_code_symbol())
-      .collect();
-    let total = symbols.len();
-    let innermost = symbols
-      .into_iter()
-      .filter(|entity| entity.span.is_some_and(|span| span.start_line <= line && line <= span.end_line))
-      .min_by_key(|entity| entity.span.map(|span| (span.end_byte - span.start_byte, span.start_byte)));
-    match innermost {
-      Some(symbol) => found.push(symbol),
-      None => {
-        *outside = Some(format!(
-          "line {line} is outside any symbol in {candidate}:{path}; the file has {total} symbols (target the file itself to aggregate them)"
-        ))
-      }
+  for candidate in scoped {
+    let Some(file) = indexed_file(graph, candidate, &path)? else { continue };
+    found.extend(file_or_symbol(graph, file, candidate, &path, line, hint)?);
+  }
+  if !found.is_empty() || hint.is_some() || path.as_str().contains('/') {
+    return Ok(found);
+  }
+  let mut named = files_named(graph, scoped, path.as_str())?;
+  match named.len() {
+    0 => {}
+    1 => {
+      let (candidate, file_path, file) = named.remove(0);
+      found.extend(file_or_symbol(graph, file, &candidate, &file_path, line, hint)?);
+    }
+    total => {
+      let shown: Vec<String> = named
+        .iter()
+        .take(BARE_NAME_MATCHES_SHOWN)
+        .map(|(candidate, file_path, _)| format!("{candidate}:{file_path}"))
+        .collect();
+      *hint = Some(format!("{path} matches {total} indexed files: {}", shown.join(", ")));
     }
   }
   Ok(found)
+}
+
+fn indexed_file(graph: &Graph<'_, '_>, repo: &RepoName, path: &RelPath) -> QueryResult<Option<Entity>> {
+  Ok(graph.tx().entity_by_key(&EntityKey::File {
+    repo: repo.clone(),
+    path: path.clone(),
+  })?)
+}
+
+fn files_named(graph: &Graph<'_, '_>, repos: &[&RepoName], name: &str) -> QueryResult<Vec<(RepoName, RelPath, Entity)>> {
+  let mut named = Vec::new();
+  for repo in repos {
+    for record in graph.tx().files_in_repo(repo)? {
+      if record.path.as_str().rsplit('/').next() != Some(name) {
+        continue;
+      }
+      if let Some(file) = indexed_file(graph, repo, &record.path)? {
+        named.push(((*repo).clone(), record.path, file));
+      }
+    }
+  }
+  named.sort_by(|left, right| (left.0.as_str(), left.1.as_str()).cmp(&(right.0.as_str(), right.1.as_str())));
+  Ok(named)
+}
+
+fn file_or_symbol(graph: &Graph<'_, '_>, file: Entity, repo: &RepoName, path: &RelPath, line: Option<u32>, hint: &mut Option<String>) -> QueryResult<Option<Entity>> {
+  let Some(line) = line else {
+    return Ok(Some(file));
+  };
+  let symbols: Vec<Entity> = graph
+    .tx()
+    .entities_in_file(repo, path, &EntityFilter::default())?
+    .into_iter()
+    .filter(|entity| entity.kind.is_code_symbol())
+    .collect();
+  let total = symbols.len();
+  let innermost = symbols
+    .into_iter()
+    .filter(|entity| entity.span.is_some_and(|span| span.start_line <= line && line <= span.end_line))
+    .min_by_key(|entity| entity.span.map(|span| (span.end_byte - span.start_byte, span.start_byte)));
+  if innermost.is_none() {
+    *hint = Some(format!(
+      "line {line} is outside any symbol in {repo}:{path}; the file has {total} symbols (target the file itself to aggregate them)"
+    ));
+  }
+  Ok(innermost)
 }
 
 fn named(graph: &Graph<'_, '_>, qualifier: &[String], name: &str) -> QueryResult<Vec<Entity>> {

@@ -16,6 +16,7 @@ const SEARCH_TOOLS: [&str; 2] = ["Grep", "Glob"];
 const SOURCE_EXTENSIONS: [&str; 12] = ["rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "toml", "json", "md", "yaml", "yml"];
 const ATLAS_SECTIONS: [&str; 7] = ["MUST READ", "SKIM", "REUSE CANDIDATES", "IMPACT", "TESTS", "OMITTED", "UNCERTAIN"];
 const MUST_READ: &str = "MUST READ";
+const OMITTED: &str = "OMITTED";
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TokenMetrics {
@@ -337,8 +338,19 @@ fn section_header(line: &str) -> Option<&'static str> {
   let trimmed = line.trim().trim_start_matches(['#', '=', '-', ' ']).trim_end_matches([':', '=', '-', ' ']);
   ATLAS_SECTIONS
     .iter()
-    .find(|section| trimmed.starts_with(*section) && trimmed[section.len()..].chars().all(|c| !c.is_alphabetic()))
+    .find(|section| {
+      trimmed
+        .strip_prefix(**section)
+        .is_some_and(|rest| rest.chars().all(|c| !c.is_alphabetic()) || (**section == OMITTED && is_reason_counts(rest)))
+    })
     .copied()
+}
+
+fn is_reason_counts(rest: &str) -> bool {
+  let Some((count, _)) = rest.strip_prefix(" (").and_then(|rest| rest.split_once("): ")) else {
+    return false;
+  };
+  !count.is_empty() && count.chars().all(|c| c.is_ascii_digit())
 }
 
 pub fn locations_in(line: &str) -> Vec<AtlasLocation> {
@@ -567,5 +579,30 @@ mod tests {
       }]
     );
     assert_eq!(locations_in("UsersService.findOne returns a user"), Vec::<AtlasLocation>::new());
+  }
+
+  #[test]
+  fn should_attribute_omitted_bytes_to_omitted_in_the_listed_and_the_collapsed_form() {
+    let listed = "SKIM (1)\n  render function web:src/view.ts:3-9  why: called\nOMITTED (2)\n  price function web:src/price.ts:4 [budget]\n  total function web:src/total.ts:8 [low relevance]\n";
+    let collapsed = "SKIM (1)\n  render function web:src/view.ts:3-9  why: called\nOMITTED (16): 11 low relevance; 2 budget (scores with explain=true)\n  rates function web:src/rates.ts:1 as rates (3 pack items) [already held by the caller]\n";
+    let sections = |text: &str| -> Vec<(Option<String>, String, u64)> { atlas_items(text).into_iter().map(|item| (item.section, item.location.path, item.bytes)).collect() };
+    assert_eq!(
+      sections(listed),
+      [
+        (Some("SKIM".to_owned()), "src/view.ts".to_owned(), 51),
+        (Some("OMITTED".to_owned()), "src/price.ts".to_owned(), 45),
+        (Some("OMITTED".to_owned()), "src/total.ts".to_owned(), 52),
+      ]
+    );
+    assert_eq!(
+      sections(collapsed),
+      [
+        (Some("SKIM".to_owned()), "src/view.ts".to_owned(), 51),
+        (Some("OMITTED".to_owned()), "src/rates.ts".to_owned(), 89),
+      ]
+    );
+    assert_eq!(section_header("OMITTED (16): 11 low relevance; 2 budget (scores with explain=true)"), Some("OMITTED"));
+    assert_eq!(section_header("OMITTED (3)"), Some("OMITTED"));
+    assert_eq!(section_header("TESTS (2): run them"), None);
   }
 }

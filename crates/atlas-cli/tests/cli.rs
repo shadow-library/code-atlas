@@ -269,6 +269,22 @@ fn should_find_code_similar_to_a_snippet_from_the_tree_without_a_project_flag() 
 }
 
 #[test]
+fn should_exit_2_naming_the_repos_when_search_repo_is_neither_a_repo_nor_an_indexed_directory() {
+  let sandbox = Sandbox::new();
+  let root = sandbox.create_acme();
+  let billing = root.join("acme-billing");
+  assert_ok(&sandbox.run(&billing, &["index", "--project", "acme"]));
+  let output = sandbox.run(&billing, &["query", "search", "cents", "--repo", "apps/web-shop"]);
+  assert_eq!(code(&output), 2, "stdout: {}", stdout(&output));
+  assert_eq!(stdout(&output), "");
+  let expected = r#"repo "apps/web-shop" is not in project "acme"; its repos are: acme-api, acme-sdk, acme-web, acme-billing"#;
+  assert!(stderr(&output).contains(expected), "{}", stderr(&output));
+  let scoped = sandbox.run(&billing, &["query", "search", "cents", "--repo", "acme-billing:src"]);
+  assert_ok(&scoped);
+  assert_eq!(stdout(&scoped).lines().nth(1), Some("search \"cents\" in acme-billing:src/: 10 hits"));
+}
+
+#[test]
 fn should_write_connect_claude_files_idempotently() {
   let sandbox = Sandbox::new();
   let root = sandbox.create_acme();

@@ -14,17 +14,15 @@ fn hits(out: &mut TextOut, title: &str, hits: &[SearchHitView]) {
     if let Some(doc) = &hit.doc {
       out.line(2, format!("doc {doc}"));
     }
-    let mut why = hit.matched_fields.join("; ");
-    if !hit.expansion_terms.is_empty() {
-      why.push_str(&format!("; expanded {}", hit.expansion_terms.join(", ")));
-    }
-    out.line(2, format!("matched {why}"));
   }
 }
 
 impl RenderText for SearchAnswer {
   fn render_text(&self, out: &mut TextOut) {
-    out.line(0, format!("search {:?}: {} hits", self.query, self.total_hits));
+    match &self.scope {
+      Some(scope) => out.line(0, format!("search {:?} in {scope}: {} hits", self.query, self.total_hits)),
+      None => out.line(0, format!("search {:?}: {} hits", self.query, self.total_hits)),
+    }
     hits(out, "exact name", &self.exact_name);
     hits(out, "strong", &self.strong);
     hits(out, "related", &self.related);

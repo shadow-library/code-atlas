@@ -5,7 +5,8 @@ use std::time::Instant;
 use atlas_engine::Engine;
 use atlas_ide::EditStatus;
 use atlas_query::{
-  ApiRequest, ChangesRequest, ContextRequest, ExplainRequest, ImpactRequest, PatternsRequest, QueryEngine, SearchRequest, Targeted, TestsForRequest, TraverseRequest, UnusedRequest,
+  ApiRequest, ChangesRequest, ContextRequest, ExplainRequest, ImpactRequest, PatternsRequest, QueryEngine, SearchRequest, SearchRestriction, Targeted, TestsForRequest,
+  TraverseRequest, UnusedRequest,
 };
 use rmcp::ErrorData;
 use rmcp::handler::server::router::tool::ToolRouter;
@@ -230,11 +231,23 @@ fn check_repo(shared: &Shared, repo: Option<&str>) -> Result<(), ToolError> {
   if repos.iter().any(|name| name == repo) {
     return Ok(());
   }
-  Err(ToolError::invalid(format!(
+  Err(unknown_repo(shared, repo))
+}
+
+fn unknown_repo(shared: &Shared, repo: &str) -> ToolError {
+  ToolError::invalid(format!(
     "repo {repo:?} is not in project {:?}; its repos are: {}",
     shared.session.project_name(),
-    repos.join(", ")
-  )))
+    shared.session.repo_names().join(", ")
+  ))
+}
+
+fn search_scope(shared: &Shared, repo: Option<&str>) -> Result<Option<SearchRestriction>, ToolError> {
+  let Some(repo) = repo else { return Ok(None) };
+  match query(shared).search_scope(repo)? {
+    Some(scope) => Ok(Some(scope)),
+    None => Err(unknown_repo(shared, repo)),
+  }
 }
 
 fn query(shared: &Shared) -> &QueryEngine {
@@ -264,10 +277,13 @@ impl AtlasServer {
     self
       .call("atlas_search", args.format, move |shared| {
         arguments::non_empty("query", &args.query)?;
-        check_repo(shared, args.repo.as_deref())?;
+        let scope = search_scope(shared, args.repo.as_deref())?;
         let mut request = SearchRequest::new(args.query);
         request.kinds = arguments::kinds(args.kind.as_deref())?;
-        request.repo = args.repo;
+        if let Some(scope) = scope {
+          request.repo = Some(scope.repo);
+          request.path_prefix = scope.path_prefix;
+        }
         if let Some(limit) = arguments::limit(args.limit)? {
           request.limit = limit;
         }

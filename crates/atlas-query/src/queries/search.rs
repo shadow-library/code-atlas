@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use atlas_core::{EntityId, EntityKind, LanguageFamily, RepoName};
+use atlas_core::{Entity, EntityId, EntityKind, LanguageFamily, RepoName};
 use atlas_semantic::RELATION_CAPABILITY_SUMMARY;
 use atlas_similarity::{Field, SearchHit, SearchOptions, SimilarityIndex};
 use atlas_store::{FreshnessPolicy, InferredQuery};
@@ -28,16 +28,33 @@ pub struct SearchRequest {
   pub text: String,
   pub kinds: Vec<EntityKind>,
   pub repo: Option<String>,
+  pub path_prefix: Option<String>,
   pub limit: usize,
   pub include_stale: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchRestriction {
+  pub repo: String,
+  pub path_prefix: Option<String>,
+}
+
 impl SearchRequest {
+  fn admits(&self, entity: &Entity) -> bool {
+    let Some(prefix) = &self.path_prefix else { return true };
+    let in_repo = self
+      .repo
+      .as_deref()
+      .is_none_or(|repo| entity.repo.as_ref().is_some_and(|candidate| candidate.as_str() == repo));
+    in_repo && entity.path.as_ref().is_some_and(|path| path.as_str().starts_with(prefix.as_str()))
+  }
+
   pub fn new(text: impl Into<String>) -> Self {
     Self {
       text: text.into(),
       kinds: Vec::new(),
       repo: None,
+      path_prefix: None,
       limit: DEFAULT_SEARCH_LIMIT,
       include_stale: false,
     }
@@ -74,6 +91,8 @@ pub struct InferredHit {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SearchAnswer {
   pub query: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub scope: Option<String>,
   pub total_hits: usize,
   pub exact_name: Vec<SearchHitView>,
   pub strong: Vec<SearchHitView>,
@@ -93,6 +112,46 @@ impl QueryEngine {
     };
     let answer = self.read(policy, |graph| search(graph, &index, request))?;
     Ok(Response { freshness, answer })
+  }
+
+  pub fn search_scope(&self, value: &str) -> QueryResult<Option<SearchRestriction>> {
+    let repos = self.repos();
+    let known = |name: &str| repos.iter().find(|repo| repo.as_str() == name);
+    if known(value).is_some() {
+      return Ok(Some(SearchRestriction {
+        repo: value.to_owned(),
+        path_prefix: None,
+      }));
+    }
+    let (candidates, dir): (Vec<&RepoName>, &str) = match value.split_once(':') {
+      Some((repo, dir)) => match known(repo) {
+        Some(repo) => (vec![repo], dir),
+        None => return Ok(None),
+      },
+      None => (repos.iter().collect(), value),
+    };
+    let dir = dir.trim_start_matches("./").trim_end_matches('/');
+    if dir.is_empty() || dir.starts_with('/') {
+      return Ok(None);
+    }
+    let prefix = format!("{dir}/");
+    self.barrier()?;
+    let holding = self.read(Policy::with_floor(0.0), |graph| {
+      let mut holding = Vec::new();
+      for repo in candidates {
+        if graph.tx().files_in_repo(repo)?.iter().any(|file| file.path.as_str().starts_with(&prefix)) {
+          holding.push(repo.to_string());
+        }
+      }
+      Ok(holding)
+    })?;
+    Ok(match holding.as_slice() {
+      [repo] => Some(SearchRestriction {
+        repo: repo.clone(),
+        path_prefix: Some(prefix),
+      }),
+      _ => None,
+    })
   }
 }
 
@@ -138,6 +197,7 @@ pub(crate) fn lexical_hits_in(index: &SimilarityIndex, text: &str, kinds: &[Enti
       kinds: kinds.to_vec(),
       repos,
       families: family.into_iter().collect(),
+      path_prefix: None,
     },
   )
 }
@@ -238,7 +298,16 @@ impl QueryShape {
 }
 
 fn search(graph: &Graph<'_, '_>, index: &SimilarityIndex, request: &SearchRequest) -> QueryResult<SearchAnswer> {
-  let hits = lexical_hits(index, &request.text, &request.kinds, request.repo.as_deref(), request.limit.max(1) * 3);
+  let hits = index.search(
+    &request.text,
+    &SearchOptions {
+      k: request.limit.max(1) * 3,
+      kinds: request.kinds.clone(),
+      repos: request.repo.as_deref().and_then(|repo| RepoName::new(repo).ok()).into_iter().collect(),
+      families: Vec::new(),
+      path_prefix: request.path_prefix.clone(),
+    },
+  );
   let words = query_words(&request.text);
   let shape = QueryShape::of(&request.text);
   let significant: BTreeSet<&str> = hits.iter().flat_map(|hit| hit.direct_terms.iter().map(String::as_str)).collect();
@@ -312,7 +381,7 @@ fn search(graph: &Graph<'_, '_>, index: &SimilarityIndex, request: &SearchReques
         continue;
       }
       let Some(entity) = graph.entity(found.entity)? else { continue };
-      if shown.contains(&entity.id.to_string()) {
+      if shown.contains(&entity.id.to_string()) || !request.admits(&entity) {
         continue;
       }
       structurally_similar.push(StructuralHit {
@@ -324,7 +393,7 @@ fn search(graph: &Graph<'_, '_>, index: &SimilarityIndex, request: &SearchReques
       kept += 1;
     }
   }
-  let (inferred_capabilities, hidden) = capability_matches(graph, &request.text)?;
+  let (inferred_capabilities, hidden) = capability_matches(graph, request)?;
   let mut caveats = Vec::new();
   if let Some(hidden) = hidden {
     caveats.push(hidden);
@@ -336,6 +405,10 @@ fn search(graph: &Graph<'_, '_>, index: &SimilarityIndex, request: &SearchReques
   }
   Ok(SearchAnswer {
     query: request.text.clone(),
+    scope: request
+      .path_prefix
+      .as_ref()
+      .map(|prefix| format!("{}:{prefix}", request.repo.as_deref().unwrap_or_default())),
     total_hits,
     exact_name,
     strong,
@@ -346,8 +419,8 @@ fn search(graph: &Graph<'_, '_>, index: &SimilarityIndex, request: &SearchReques
   })
 }
 
-fn capability_matches(graph: &Graph<'_, '_>, text: &str) -> QueryResult<(Vec<InferredHit>, Option<Caveat>)> {
-  let terms = query_terms(text);
+fn capability_matches(graph: &Graph<'_, '_>, request: &SearchRequest) -> QueryResult<(Vec<InferredHit>, Option<Caveat>)> {
+  let terms = query_terms(&request.text);
   let facts = graph.tx().inferred_facts(&InferredQuery {
     subject: None,
     relation: Some(RELATION_CAPABILITY_SUMMARY.to_owned()),
@@ -369,6 +442,10 @@ fn capability_matches(graph: &Graph<'_, '_>, text: &str) -> QueryResult<(Vec<Inf
       continue;
     }
     let Some(subject) = fact.subjects.first() else { continue };
+    let entity = graph.entity(*subject)?;
+    if request.path_prefix.is_some() && !entity.as_ref().is_some_and(|entity| request.admits(entity)) {
+      continue;
+    }
     match graph.policy.inferred_admission(&fact) {
       InferredAdmission::StaleHidden => {
         stale += 1;
@@ -380,7 +457,7 @@ fn capability_matches(graph: &Graph<'_, '_>, text: &str) -> QueryResult<(Vec<Inf
       }
       InferredAdmission::Current | InferredAdmission::StaleShown => {}
     }
-    let Some(entity) = graph.entity(*subject)? else { continue };
+    let Some(entity) = entity else { continue };
     hits.push(InferredHit {
       entity: EntityRef::of(&entity),
       summary,

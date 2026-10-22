@@ -311,6 +311,21 @@ fn should_weight_name_above_doc_above_path() {
 }
 
 #[test]
+fn should_filter_by_path_prefix_before_taking_the_top_hits() {
+  let mut index = SimilarityIndex::default();
+  index.upsert(text_doc(1, "priceRules", None, "apps/web-shop/src/price-rules.ts")).unwrap();
+  index.upsert(text_doc(2, "priceRulesFor", None, "apps/back-office/src/price-rules.ts")).unwrap();
+  index.upsert(text_doc(3, "applyPriceRules", None, "apps/back-office/src/apply.ts")).unwrap();
+  let options = SearchOptions {
+    k: 1,
+    path_prefix: Some("apps/back-office/".to_owned()),
+    ..SearchOptions::default()
+  };
+  let hits = index.search("price rules", &options);
+  assert_eq!(hits.iter().map(|h| h.entity.raw()).collect::<Vec<_>>(), [2]);
+}
+
+#[test]
 fn should_filter_search_by_kind_and_repo() {
   let mut index = SimilarityIndex::default();
   index.upsert(text_doc(1, "parseConfig", None, "src/a.rs")).unwrap();

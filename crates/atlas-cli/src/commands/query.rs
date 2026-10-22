@@ -81,10 +81,21 @@ fn target_filter(args: &TargetFilterArgs) -> TargetFilter {
 }
 
 fn search(ctx: &Context, args: SearchArgs) -> CliResult<Outcome> {
-  let (query, _) = open(ctx)?;
+  let (query, project) = open(ctx)?;
   let mut request = SearchRequest::new(args.text);
   request.kinds = args.kinds;
-  request.repo = args.repo;
+  if let Some(repo) = args.repo {
+    let Some(scope) = query.search_scope(&repo)? else {
+      let repos: Vec<String> = project.repos.iter().map(|repo| repo.name.to_string()).collect();
+      return Err(CliError::InvalidInput(format!(
+        "repo {repo:?} is not in project {:?}; its repos are: {}",
+        project.name.as_str(),
+        repos.join(", ")
+      )));
+    };
+    request.repo = Some(scope.repo);
+    request.path_prefix = scope.path_prefix;
+  }
   request.include_stale = args.include_stale;
   if let Some(limit) = args.limit {
     request.limit = limit;

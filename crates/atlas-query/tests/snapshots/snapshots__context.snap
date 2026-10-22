@@ -3,7 +3,7 @@ source: crates/atlas-query/tests/snapshots.rs
 expression: output
 ---
 fresh run=1 (+0 files, <t>)
-context for "add a DELETE /orders/:id endpoint with api-key auth" (~2360 of 6000 tokens)
+context for "add a DELETE /orders/:id endpoint with api-key auth" (~2913 of 6000 tokens)
 MUST READ (12)
   UsersController.remove method acme-api:src/users/users.controller.ts:31-35  why: exposes endpoint DELETE /users/{id} [syntactic]
     31|   @Delete(':id')
@@ -178,20 +178,4 @@ TESTS (4)
     run: [acme-api] npx jest src/orders/orders.controller.spec.ts -t "OrdersController"
 UNCERTAIN (1)
   bearer auth_scheme acme-api:src/auth/jwt-auth.guard.ts:5 [heuristic 0.85] UNCERTAIN  why: possibly auth supported by GET /orders/{id} [heuristic 0.70]
-OMITTED (16)
-  ApiKeyGuard.canActivate method acme-api:src/auth/api-key.guard.ts:8 [shown inside an enclosing MUST READ body]
-  ApiKeyGuard.constructor method acme-api:src/auth/api-key.guard.ts:6 [shown inside an enclosing MUST READ body]
-  JwtAuthGuard.canActivate method acme-api:src/auth/jwt-auth.guard.ts:8 [shown inside an enclosing MUST READ body]
-  JwtOrApiKeyGuard.canActivate method acme-api:src/auth/jwt-or-api-key.guard.ts:13 [shown inside an enclosing MUST READ body]
-  JwtOrApiKeyGuard.constructor method acme-api:src/auth/jwt-or-api-key.guard.ts:8 [shown inside an enclosing MUST READ body]
-  BillingService.applyTax method acme-api:src/billing/billing.service.ts:9 [low relevance]
-  JwtAuthGuard.constructor method acme-api:src/auth/jwt-auth.guard.ts:6 [low relevance]
-  OrdersController.constructor method acme-api:src/orders/orders.controller.ts:11 [low relevance]
-  PermissionsGuard.canActivate method acme-api:src/auth/permissions.guard.ts:10 [low relevance]
-  PermissionsGuard.constructor method acme-api:src/auth/permissions.guard.ts:8 [low relevance]
-  ReportsService.exportCsv method acme-api:src/reports/reports.service.ts:13 [low relevance]
-  UsersController.constructor method acme-api:src/users/users.controller.ts:11 [low relevance]
-  UsersController.create method acme-api:src/users/users.controller.ts:19 [low relevance]
-  UsersController.findOne method acme-api:src/users/users.controller.ts:13 [low relevance]
-  UsersController.update method acme-api:src/users/users.controller.ts:25 [low relevance]
-  formatMoney function acme-api:src/common/money.ts:1 [low relevance]
+OMITTED (16): 11 low relevance; 5 shown inside an enclosing MUST READ body (scores with explain=true)

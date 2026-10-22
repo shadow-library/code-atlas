@@ -243,6 +243,26 @@ async fn should_turn_a_panic_inside_a_query_into_a_tool_error_and_keep_serving()
 }
 
 #[tokio::test]
+async fn should_search_a_directory_given_as_the_repo() {
+  let harness = start(&ACME_REPOS).await;
+
+  let relative = harness.text("atlas_search", json!({ "query": "remove user", "repo": "src/users" })).await;
+  let qualified = harness.text("atlas_search", json!({ "query": "find order", "repo": "acme-api:src/orders/" })).await;
+  let unknown = harness.failure("atlas_search", json!({ "query": "orders", "repo": "src/invoices" })).await;
+
+  let header = |text: &str| text.lines().find(|line| line.starts_with("search ")).unwrap_or_default().to_owned();
+  assert!(header(&relative).starts_with("search \"remove user\" in acme-api:src/users/: "), "{relative}");
+  assert!(header(&qualified).starts_with("search \"find order\" in acme-api:src/orders/: "), "{qualified}");
+  for (text, dir) in [(&relative, "acme-api:src/users/"), (&qualified, "acme-api:src/orders/")] {
+    let hits: Vec<&str> = text.lines().filter(|line| line.contains(" score=")).collect();
+    assert!(!hits.is_empty(), "{text}");
+    assert!(hits.iter().all(|line| line.contains(dir)), "{text}");
+  }
+  assert!(unknown.contains("repo \"src/invoices\" is not in project \"acme\""), "{unknown}");
+  harness.stop().await.unwrap();
+}
+
+#[tokio::test]
 async fn should_never_answer_about_another_project() {
   let harness = start(&ACME_REPOS).await;
 

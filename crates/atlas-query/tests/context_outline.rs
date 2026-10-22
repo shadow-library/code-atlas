@@ -1,6 +1,6 @@
 mod common;
 
-use atlas_query::{ContextRequest, Snippet};
+use atlas_query::{ContextRequest, OmissionReason, Snippet};
 
 #[test]
 fn should_outline_named_seeds_and_keep_full_bodies_for_search_hits() {
@@ -32,9 +32,11 @@ fn should_say_when_a_child_is_covered_by_an_outline() {
     seeds: vec!["UsersService".to_owned()],
     ..ContextRequest::new("add a DELETE /orders/:id endpoint with api-key auth")
   };
-  let text = fixture.text(&fixture.query.context(&request).unwrap());
+  let response = fixture.query.context(&request).unwrap();
+  let text = fixture.text(&response);
 
-  assert!(text.contains("[shown in the outline of an enclosing MUST READ item]"), "{text}");
+  assert_eq!(response.answer.omitted_by_reason.get(&OmissionReason::ShownInOutline), Some(&5));
+  assert!(text.contains("; 5 shown in the outline of an enclosing MUST READ item"), "{text}");
 }
 
 #[test]

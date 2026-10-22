@@ -172,7 +172,7 @@ fn should_excerpt_the_lines_matching_the_task_inside_an_outlined_edit_target() {
 fn should_drop_an_excerpt_rather_than_an_item_when_the_budget_is_tight() {
   let fixture = common::single_repo("web", &[("package.json", r#"{ "name": "web" }"#), ("src/label.ts", LABEL)]);
   let request = ContextRequest {
-    budget: 260,
+    budget: 100,
     ..ContextRequest::new("make formatLabel stop calling toUpperCase")
   };
 

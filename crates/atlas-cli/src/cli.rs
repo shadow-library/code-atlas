@@ -372,7 +372,7 @@ pub struct SearchArgs {
   pub text: String,
   #[arg(long = "kind", value_name = "KIND")]
   pub kinds: Vec<EntityKind>,
-  #[arg(long)]
+  #[arg(long, help = "Restrict to one repo, or to a directory: repo:dir or dir")]
   pub repo: Option<String>,
   #[arg(long)]
   pub limit: Option<usize>,

@@ -1,5 +1,5 @@
 mod api;
-mod context;
+pub(crate) mod context;
 mod explain;
 mod impact;
 mod overview;
@@ -45,6 +45,12 @@ impl TextOut {
   pub fn finish(self) -> String {
     self.buffer
   }
+}
+
+pub(crate) fn rendered_chars(render: impl FnOnce(&mut TextOut)) -> usize {
+  let mut out = TextOut::default();
+  render(&mut out);
+  out.buffer.chars().count()
 }
 
 pub fn render_text<T: RenderText>(response: &Response<T>) -> String {

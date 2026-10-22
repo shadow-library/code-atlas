@@ -15,6 +15,8 @@ use crate::queries::reuse::access;
 use crate::queries::search::{lexical_hits, query_words, unstemmed};
 use crate::queries::tests_for::{TestItem, direct_tests, is_mock_edge, run_hint};
 use crate::target::{Resolution, TargetFilter, resolve};
+use crate::text::context::{IMPACT, MUST_READ, SKIM, TESTS, UNCERTAIN, excerpt_lines, must_read_item, omitted_section, section_title, skim_item};
+use crate::text::{RenderText, rendered_chars};
 
 mod serving;
 
@@ -56,7 +58,6 @@ const SMALL_BODY_LINES: u32 = 15;
 const LARGE_TYPE_LINES: u32 = 40;
 const LOW_RELEVANCE: f64 = 0.04;
 const MAX_CODE_ITEMS: usize = 40;
-const MENTION_TOKENS: usize = 25;
 const SIMILAR_THRESHOLD: f64 = 0.6;
 const SIMILAR_PER_NODE: usize = 3;
 const SIMILAR_CANDIDATES: usize = 12;
@@ -222,8 +223,12 @@ pub enum OmissionReason {
 }
 
 impl OmissionReason {
-  fn is_seed_diagnostic(self) -> bool {
+  pub(crate) fn is_seed_diagnostic(self) -> bool {
     matches!(self, Self::AmbiguousSeed | Self::UnknownSeed | Self::AmbiguousKnown | Self::UnknownKnown)
+  }
+
+  pub(crate) fn is_listed_when_collapsed(self) -> bool {
+    self.is_seed_diagnostic() || self == Self::Held
   }
 
   pub fn as_str(self) -> &'static str {
@@ -285,6 +290,7 @@ pub struct ContextAnswer {
   pub uncertain: Vec<ContextItem>,
   pub summaries: Vec<SectionSummary>,
   pub omitted: Listing<OmittedItem>,
+  pub omitted_by_reason: BTreeMap<OmissionReason, usize>,
   pub explain: Option<ContextExplain>,
   pub caveats: Vec<Caveat>,
 }
@@ -670,6 +676,7 @@ impl QueryEngine {
       uncertain: Vec::new(),
       summaries: Vec::new(),
       omitted: Listing::default(),
+      omitted_by_reason: BTreeMap::new(),
       explain: None,
       caveats: Vec::new(),
     };
@@ -724,9 +731,52 @@ impl QueryEngine {
         .then_with(|| right.score.total_cmp(&left.score))
         .then_with(|| left.node.entity.key.cmp(&right.node.entity.key))
     });
-    let mut used: usize = [&answer.patterns, &answer.reuse].iter().map(|items| items.len() * MENTION_TOKENS).sum::<usize>()
-      + (impact.len().min(IMPACT_SHOWN) + uncertain.len().min(UNCERTAIN_SHOWN) + TESTS_SHOWN) * MENTION_TOKENS;
-    let must_read_budget = (request.budget as f64 * MUST_READ_SHARE) as usize;
+    impact.sort_by(|left, right| {
+      right
+        .0
+        .cmp(&left.0)
+        .then_with(|| right.1.score.total_cmp(&left.1.score))
+        .then_with(|| left.1.entity.key.cmp(&right.1.entity.key))
+    });
+    let impact = impact.into_iter().map(|(_, item)| item).collect();
+    let (shown, impact_summary) = capped(IMPACT, impact, IMPACT_SHOWN, "run impact on the seeds for the full blast radius");
+    answer.impact = shown;
+    let (shown, uncertain_summary) = capped(
+      UNCERTAIN,
+      uncertain,
+      UNCERTAIN_SHOWN,
+      "relations resting on heuristic or inferred edges; verify before relying on them",
+    );
+    answer.uncertain = shown;
+    if hidden > 0 {
+      omitted.push(OmittedItem {
+        entity: None,
+        label: format!("{hidden} relations below confidence {:.2}", policy.min_confidence),
+        reason: OmissionReason::BelowConfidenceFloor,
+      });
+    }
+    for (held, count) in held.iter().zip(held_counts).filter(|(_, count)| *count > 0) {
+      let entity = EntityRef::of(&held.entity);
+      omitted.push(OmittedItem {
+        label: format!("{} as {} ({})", crate::text::entity_line(&entity), held.spec, crate::text::counted(count, "pack item")),
+        entity: Some(entity),
+        reason: OmissionReason::Held,
+      });
+    }
+    let run = freshness.run;
+    answer.caveats = caveats.iter().cloned().chain(self.problem_files(run)?).collect();
+    let reserved = tests_by_owner
+      .iter()
+      .cloned()
+      .chain(code.iter().map(|item| (item.node.named, item.score, item.tests.clone())));
+    let (tests, test_summary) = select_tests(reserved.collect(), &test_spans);
+    answer.tests = tests;
+    answer.summaries = [test_summary, impact_summary.clone(), uncertain_summary.clone()].into_iter().flatten().collect();
+    answer.estimated_tokens = request.budget;
+    answer.set_omitted(&omitted);
+    let budget = request.budget * 4;
+    let must_read_budget = (request.budget as f64 * MUST_READ_SHARE) as usize * 4;
+    let mut used = pack_chars(&answer);
     let must_read_floor = code.iter().map(|item| item.score).fold(0.0_f64, f64::max) * MUST_READ_RELEVANCE;
     let mut included: Vec<(String, String, u32, u32, bool)> = Vec::new();
     let mut skim_candidates = Vec::new();
@@ -746,15 +796,11 @@ impl QueryEngine {
             .find(|(other_repo, other_path, other_start, other_end, _)| other_repo == repo && other_path == path && other_start <= start && end <= other_end)
         });
         if let Some((.., outline)) = cover {
-          let entry = item_of(&item);
-          omitted.push(OmittedItem {
-            label: crate::text::entity_line(&entry.entity),
-            entity: Some(entry.entity),
-            reason: match outline {
-              true => OmissionReason::ShownInOutline,
-              false => OmissionReason::ShownInEnclosingItem,
-            },
-          });
+          let reason = match outline {
+            true => OmissionReason::ShownInOutline,
+            false => OmissionReason::ShownInEnclosingItem,
+          };
+          used += omit(&mut omitted, item_of(&item), reason);
           continue;
         }
         let relevant = item.node.named || item.score >= must_read_floor;
@@ -772,19 +818,20 @@ impl QueryEngine {
         let skeleton_only = type_like && (contains_included || end.saturating_sub(start) > LARGE_TYPE_LINES) && !item.skeleton.is_empty();
         let edit_target = item.node.named && end - start + 1 > SMALL_BODY_LINES;
         let mut entry = code_item_of(&item);
-        let cost = match (edit_target, skeleton_only) {
-          (true, _) => {
-            entry.read_directly = true;
-            outline_tokens(&entry)
-          }
-          (false, true) => tokens(item.skeleton.iter().map(|(_, line)| line.len() + 1).sum()) + MENTION_TOKENS,
+        match (edit_target, skeleton_only) {
+          (true, _) => entry.read_directly = true,
+          (false, true) => {}
           (false, false) => {
-            let body = reader.snippet(entity.id, SnippetMode::Body { max_lines: Some(BODY_LINES) }, 0)?;
-            let cost = tokens(body.char_len()) + MENTION_TOKENS;
-            entry.body = Some(body);
-            cost
+            entry.body = Some(reader.snippet(entity.id, SnippetMode::Body { max_lines: Some(BODY_LINES) }, 0)?);
+            entry.skeleton = item
+              .skeleton
+              .iter()
+              .filter(|(line, _)| !(start..=end).contains(line))
+              .map(|(_, text)| text.clone())
+              .collect();
           }
-        };
+        }
+        let cost = title_chars(MUST_READ, answer.must_read.len()) + rendered_chars(|out| must_read_item(out, &entry));
         if used + cost > must_read_budget {
           skim_candidates.push(item);
           continue;
@@ -793,14 +840,6 @@ impl QueryEngine {
           excerpts.extend(PlannedExcerpt::of(Section::MustRead, answer.must_read.len(), &item.node, &terms));
         }
         if !skeleton_only {
-          if !edit_target {
-            entry.skeleton = item
-              .skeleton
-              .iter()
-              .filter(|(line, _)| !(start..=end).contains(line))
-              .map(|(_, text)| text.clone())
-              .collect();
-          }
           included.push((repo, path, start, end, edit_target));
         }
         used += cost;
@@ -808,27 +847,30 @@ impl QueryEngine {
         answer.must_read.push(entry);
       }
     }
+    let (tests, test_summary) = select_tests(tests_by_owner, &test_spans);
+    answer.tests = tests;
+    answer.summaries = [test_summary, impact_summary, uncertain_summary].into_iter().flatten().collect();
+    answer.set_omitted(&omitted);
+    used = pack_chars(&answer);
     for item in skim_candidates {
       let entry = code_item_of(&item);
-      let cost = outline_tokens(&entry);
-      if used + cost <= request.budget {
+      let cost = title_chars(SKIM, answer.skim.len()) + rendered_chars(|out| skim_item(out, &entry));
+      if used + cost + omission_growth(&omitted, OmissionReason::Budget) <= budget {
         used += cost;
         excerpts.extend(PlannedExcerpt::of(Section::Skim, answer.skim.len(), &item.node, &terms));
         answer.skim.push(entry);
         continue;
       }
-      omitted.push(OmittedItem {
-        label: crate::text::entity_line(&entry.entity),
-        entity: Some(entry.entity),
-        reason: OmissionReason::Budget,
-      });
+      used += omit(&mut omitted, entry, OmissionReason::Budget);
     }
+    answer.set_omitted(&omitted);
+    used = pack_chars(&answer);
     {
       let mut reader = self.sources(&mut freshness);
       for planned in excerpts {
         let Some(excerpt) = planned.read(&mut reader)? else { continue };
-        let cost = tokens(excerpt.char_len());
-        if used + cost > request.budget {
+        let cost = rendered_chars(|out| excerpt_lines(out, &excerpt));
+        if used + cost > budget {
           continue;
         }
         used += cost;
@@ -841,57 +883,16 @@ impl QueryEngine {
         }
       }
     }
-    for (held, count) in held.iter().zip(held_counts).filter(|(_, count)| *count > 0) {
-      let entity = EntityRef::of(&held.entity);
-      omitted.push(OmittedItem {
-        label: format!("{} as {} ({})", crate::text::entity_line(&entity), held.spec, crate::text::counted(count, "pack item")),
-        entity: Some(entity),
-        reason: OmissionReason::Held,
-      });
+    if freshness.run != run {
+      answer.caveats = caveats.into_iter().chain(self.problem_files(freshness.run)?).collect();
     }
-    let (tests, test_summary) = select_tests(tests_by_owner, &test_spans);
-    answer.tests = tests;
-    answer.summaries.extend(test_summary);
-    impact.sort_by(|left, right| {
-      right
-        .0
-        .cmp(&left.0)
-        .then_with(|| right.1.score.total_cmp(&left.1.score))
-        .then_with(|| left.1.entity.key.cmp(&right.1.entity.key))
-    });
-    let impact = impact.into_iter().map(|(_, item)| item).collect();
-    let (shown, summary) = capped("IMPACT", impact, IMPACT_SHOWN, "run impact on the seeds for the full blast radius");
-    answer.impact = shown;
-    answer.summaries.extend(summary);
-    let (shown, summary) = capped(
-      "UNCERTAIN",
-      uncertain,
-      UNCERTAIN_SHOWN,
-      "relations resting on heuristic or inferred edges; verify before relying on them",
-    );
-    answer.uncertain = shown;
-    answer.summaries.extend(summary);
-    if hidden > 0 {
-      omitted.push(OmittedItem {
-        entity: None,
-        label: format!("{hidden} relations below confidence {:.2}", policy.min_confidence),
-        reason: OmissionReason::BelowConfidenceFloor,
-      });
+    let over_budget = pack_chars(&answer) > budget;
+    if over_budget {
+      answer.caveats.insert(0, over_budget_note(request.budget, request.budget));
     }
-    if used > request.budget {
-      answer.caveats.push(Caveat::Note {
-        message: format!(
-          "mandatory mentions exceed the budget ({used} > {} tokens); uncertain and impact items are never dropped silently",
-          request.budget
-        ),
-      });
-    }
-    answer.caveats.extend(caveats);
-    answer.caveats.extend(self.problem_files(freshness.run)?);
-    omitted.sort_by(|left, right| (!left.reason.is_seed_diagnostic(), left.reason, &left.label).cmp(&(!right.reason.is_seed_diagnostic(), right.reason, &right.label)));
-    answer.estimated_tokens = used;
-    answer.omitted = Listing::truncated(omitted, MAX_CODE_ITEMS);
+    answer.settle_estimate(over_budget);
     answer.explain = request.explain.then_some(explain);
+    answer.settle_estimate(over_budget);
     Ok(Response { freshness, answer })
   }
 }
@@ -1046,7 +1047,7 @@ fn select_tests(owners: Vec<(bool, f64, Vec<TestItem>)>, spans: &BTreeMap<String
       entity: test.test,
     })
     .collect();
-  capped("TESTS", items, TESTS_SHOWN, "run tests-for on the MUST READ items for the full list")
+  capped(TESTS, items, TESTS_SHOWN, "run tests-for on the MUST READ items for the full list")
 }
 
 fn capped(section: &str, items: Vec<ContextItem>, shown: usize, hint: &str) -> (Vec<ContextItem>, Option<SectionSummary>) {
@@ -1073,8 +1074,96 @@ fn tokens(chars: usize) -> usize {
   chars.div_ceil(4)
 }
 
-fn outline_tokens(entry: &ContextItem) -> usize {
-  tokens(entry.signature.as_deref().map_or(0, str::len) + entry.doc.as_deref().map_or(0, str::len) + entry.skeleton.iter().map(String::len).sum::<usize>()) + MENTION_TOKENS
+fn pack_chars(answer: &ContextAnswer) -> usize {
+  rendered_chars(|out| answer.render_text(out))
+}
+
+fn title_chars(title: &str, count: usize) -> usize {
+  rendered_chars(|out| section_title(out, title, count + 1)) - rendered_chars(|out| section_title(out, title, count))
+}
+
+fn omitted_chars(omitted: &[OmittedItem]) -> usize {
+  let mut listed: Vec<OmittedItem> = omitted.iter().filter(|item| listed_when_collapsed(item.reason)).cloned().collect();
+  listed.sort_by(omission_order);
+  listed.truncate(MAX_CODE_ITEMS);
+  let listing = Listing {
+    total: omitted.len(),
+    items: listed,
+  };
+  rendered_chars(|out| omitted_section(out, &listing, &reason_counts(omitted), false))
+}
+
+fn omission_growth(omitted: &[OmittedItem], reason: OmissionReason) -> usize {
+  let mut grown = omitted.to_vec();
+  grown.push(OmittedItem {
+    entity: None,
+    label: String::new(),
+    reason,
+  });
+  omitted_chars(&grown).saturating_sub(omitted_chars(omitted))
+}
+
+fn omit(omitted: &mut Vec<OmittedItem>, entry: ContextItem, reason: OmissionReason) -> usize {
+  let before = omitted_chars(omitted);
+  omitted.push(OmittedItem {
+    label: crate::text::entity_line(&entry.entity),
+    entity: Some(entry.entity),
+    reason,
+  });
+  omitted_chars(omitted).saturating_sub(before)
+}
+
+fn listed_when_collapsed(reason: OmissionReason) -> bool {
+  reason.is_listed_when_collapsed() || reason == OmissionReason::BelowConfidenceFloor
+}
+
+fn omission_order(left: &OmittedItem, right: &OmittedItem) -> std::cmp::Ordering {
+  let key = |item: &OmittedItem| {
+    let reason = item.reason;
+    (
+      !reason.is_seed_diagnostic(),
+      reason != OmissionReason::Held,
+      reason != OmissionReason::BelowConfidenceFloor,
+      reason,
+    )
+  };
+  key(left).cmp(&key(right)).then_with(|| left.label.cmp(&right.label))
+}
+
+fn reason_counts(omitted: &[OmittedItem]) -> BTreeMap<OmissionReason, usize> {
+  let mut counts = BTreeMap::new();
+  for item in omitted {
+    *counts.entry(item.reason).or_default() += 1;
+  }
+  counts
+}
+
+impl ContextAnswer {
+  fn set_omitted(&mut self, omitted: &[OmittedItem]) {
+    let mut sorted = omitted.to_vec();
+    sorted.sort_by(omission_order);
+    self.omitted_by_reason = reason_counts(omitted);
+    self.omitted = Listing::truncated(sorted, MAX_CODE_ITEMS);
+  }
+
+  fn settle_estimate(&mut self, over_budget: bool) {
+    for _ in 0..4 {
+      let estimate = tokens(pack_chars(self));
+      if estimate == self.estimated_tokens {
+        return;
+      }
+      self.estimated_tokens = estimate;
+      if over_budget {
+        self.caveats[0] = over_budget_note(estimate, self.budget);
+      }
+    }
+  }
+}
+
+fn over_budget_note(estimate: usize, budget: usize) -> Caveat {
+  Caveat::Note {
+    message: format!("mandatory mentions exceed the budget ({estimate} > {budget} tokens); uncertain and impact items are never dropped silently"),
+  }
 }
 
 fn code_item_of(item: &Ranked) -> ContextItem {

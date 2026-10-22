@@ -109,7 +109,7 @@ Every query accepts `--json`. Other flags are per command (`catl query <command>
 
 | Command | Flags |
 |---|---|
-| `search` | `--kind`, `--repo`, `--limit`, `--include-stale` |
+| `search` | `--kind`, `--repo` (a repo, or `repo:dir` / `dir` to search one indexed directory), `--limit`, `--include-stale` |
 | `symbol` | `--body`, `--kind`, `--repo` |
 | `callers`, `callees`, `dependents`, `dependencies`, `impact` | `--depth`, `--limit`, `--min-confidence`, `--kind`, `--repo`; `callers` and `callees` also `--via-http` |
 | `tests-for` | `--limit`, `--min-confidence`, `--kind`, `--repo` |

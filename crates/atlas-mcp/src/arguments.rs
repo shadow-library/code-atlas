@@ -50,7 +50,7 @@ arguments!(SearchArgs {
   query: String,
   #[schemars(description = "Only this entity kind, e.g. function, class, api_endpoint")]
   kind: Option<String>,
-  #[schemars(description = "Restrict to one repo of the project")]
+  #[schemars(description = "One repo, or a directory: repo:dir or dir")]
   repo: Option<String>,
   #[schemars(description = "Maximum hits per section, 1-200")]
   limit: Option<usize>,

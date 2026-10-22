@@ -19,6 +19,7 @@ pub struct SearchOptions {
   pub kinds: Vec<EntityKind>,
   pub repos: Vec<RepoName>,
   pub families: Vec<LanguageFamily>,
+  pub path_prefix: Option<String>,
 }
 
 impl Default for SearchOptions {
@@ -28,6 +29,7 @@ impl Default for SearchOptions {
       kinds: Vec::new(),
       repos: Vec::new(),
       families: Vec::new(),
+      path_prefix: None,
     }
   }
 }
@@ -294,6 +296,7 @@ impl SimilarityIndex {
       (options.kinds.is_empty() || options.kinds.contains(&meta.kind))
         && (options.repos.is_empty() || options.repos.contains(&meta.repo))
         && (options.families.is_empty() || family_of(meta).is_some_and(|family| options.families.contains(&family)))
+        && options.path_prefix.as_deref().is_none_or(|prefix| meta.path.as_str().starts_with(prefix))
     };
     let resolve = |slot: u32| self.metas[slot as usize].as_ref().filter(|meta| accepts(meta)).map(|meta| meta.entity);
     self

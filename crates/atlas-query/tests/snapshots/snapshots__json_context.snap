@@ -19,7 +19,7 @@ expression: output
   "answer": {
     "task": "convert currency string to cents",
     "budget": 1500,
-    "estimated_tokens": 668,
+    "estimated_tokens": 886,
     "must_read": [
       {
         "entity": {
@@ -504,6 +504,7 @@ expression: output
       "total": 0,
       "items": []
     },
+    "omitted_by_reason": {},
     "explain": null,
     "caveats": []
   }

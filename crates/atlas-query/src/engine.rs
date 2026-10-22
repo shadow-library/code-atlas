@@ -334,13 +334,3 @@ fn extract(text: &str, located: &Located, mode: SnippetMode, context: u32) -> Sn
     omitted_lines,
   }
 }
-
-impl Snippet {
-  pub fn char_len(&self) -> usize {
-    match self {
-      Self::Text { lines, .. } => lines.iter().map(|line| line.len() + 1).sum(),
-      Self::Mismatch { detail } => detail.len(),
-      Self::Unavailable { reason } => reason.len(),
-    }
-  }
-}

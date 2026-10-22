@@ -568,6 +568,7 @@ mod tests {
       uncertain: Vec::new(),
       summaries: Vec::new(),
       omitted: atlas_query::Listing::default(),
+      omitted_by_reason: std::collections::BTreeMap::new(),
       explain: None,
       caveats: Vec::new(),
     }
