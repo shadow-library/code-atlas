@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use super::claude::ATLAS_TOOL_PREFIX;
+use super::incumbent::serena_edit;
 use super::metrics::locations_in;
 use super::shell::{AccessOutcome, ShellAccessKind, ShellForm, trace_bash};
 use super::transcript::{Completion, ToolCall, ToolResult, Transcript};
@@ -14,6 +15,7 @@ const EDIT_TOOLS: [&str; 4] = ["Edit", WRITE_TOOL, "MultiEdit", "NotebookEdit"];
 const SEARCH_TOOLS: [&str; 2] = ["Grep", "Glob"];
 const BASH_TOOL: &str = "Bash";
 const FILE_FIELDS: [&str; 2] = ["file_path", "notebook_path"];
+const SERENA_PATH_FIELD: &str = "relative_path";
 const CWD_RESET_NOTICE: &str = "Shell cwd was reset to ";
 const CWD_ERROR_NOTE: &str = "your current working directory is ";
 const CWD_HINT: &str = "Session cwd remains ";
@@ -198,6 +200,7 @@ impl Tracker {
     let input_text = match name {
       READ_TOOL => self.observe_file_tool(call, TouchKind::Read, errored, &mut observed),
       _ if EDIT_TOOLS.contains(&name) => self.observe_file_tool(call, TouchKind::Edited, errored, &mut observed),
+      _ if serena_edit(name) && call.input_str(SERENA_PATH_FIELD).is_some() => self.observe_serena_edit(call, errored, &mut observed),
       _ if SEARCH_TOOLS.contains(&name) => self.observe_search_tool(call, errored, &mut observed),
       BASH_TOOL => self.observe_bash(call, &mut observed),
       _ => {
@@ -263,6 +266,20 @@ impl Tracker {
       match errored {
         true => observed.add(file, TouchKind::Mentioned, format!("{} (failed)", call.name)),
         false => observed.add(file, kind, call.name.clone()),
+      }
+    }
+    String::new()
+  }
+
+  fn observe_serena_edit(&mut self, call: &ToolCall, errored: bool, observed: &mut Observed) -> String {
+    let Some(path) = call.input_str(SERENA_PATH_FIELD).and_then(|raw| self.tree.resolve(&Cwd::root(), raw)) else {
+      return call.input.to_string();
+    };
+    self.diagnostics.errored_file_calls += u32::from(errored);
+    if let Some(file) = self.tracked(&path) {
+      match errored {
+        true => observed.add(file, TouchKind::Mentioned, format!("{} (failed)", call.name)),
+        false => observed.add(file, TouchKind::Edited, call.name.clone()),
       }
     }
     String::new()
@@ -704,6 +721,35 @@ mod tests {
     assert_eq!(via(&session.files[0].mentioned), Some("Read (failed)"));
     assert_eq!((session.files[0].read.clone(), session.files[0].edited.clone()), (None, None));
     assert_eq!(session.diagnostics.errored_file_calls, 2);
+  }
+
+  #[test]
+  fn should_count_a_serena_edit_by_its_project_relative_path_as_an_edit() {
+    let session = touches(
+      vec![
+        bash(1, "cd crates", "x"),
+        step(
+          2,
+          "mcp__serena__replace_symbol_body",
+          json!({"name_path": "render", "relative_path": "crates/detect/src/view.rs", "body": "fn render() {}"}),
+          "OK",
+        ),
+        failed(step(
+          3,
+          "mcp__serena__insert_after_symbol",
+          json!({"name_path": "x", "relative_path": "crates/detect/src/detectors/express.rs", "body": "y"}),
+          "error",
+        )),
+      ],
+      &[VIEW, EXPRESS],
+    );
+    assert_eq!(
+      (at(&session.files[0].edited), via(&session.files[0].edited)),
+      (Some((2, 2)), Some("mcp__serena__replace_symbol_body"))
+    );
+    assert_eq!(session.files[1].edited, None);
+    assert_eq!(via(&session.files[1].mentioned), Some("mcp__serena__insert_after_symbol (failed)"));
+    assert_eq!(session.diagnostics.errored_file_calls, 1);
   }
 
   #[test]

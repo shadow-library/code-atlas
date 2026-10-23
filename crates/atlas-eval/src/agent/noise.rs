@@ -8,10 +8,10 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use super::error::{AgentError, AgentResult};
-use super::plan::Condition;
+use super::plan::{CONDITION_PAIRS, Condition, arm_legend, pair_label};
 use super::process::run_captured;
 use super::record::{BatchManifest, Environment, read_json, write_json_dense};
-use super::report::{AgentReport, Better, METRICS, MetricDef, MetricGroup, RunRecord, is_scored, load_runs, metrics_of, number};
+use super::report::{AgentReport, Better, DEV_SECTION, HELD_OUT_CATEGORY, METRICS, MetricDef, MetricGroup, RunRecord, is_scored, load_runs, metrics_of, number};
 
 const CACHE_WRITE_WEIGHT: f64 = 1.25;
 const CACHE_READ_WEIGHT: f64 = 0.1;
@@ -141,8 +141,8 @@ impl NoiseClass {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EffectDirection {
-  AtlasBetter,
-  AtlasWorse,
+  SecondBetter,
+  SecondWorse,
   Neutral,
 }
 
@@ -151,17 +151,49 @@ impl EffectDirection {
     match better {
       Better::Neutral => Self::Neutral,
       _ if effect.abs() <= TOLERANCE => Self::Neutral,
-      Better::Higher if effect > 0.0 => Self::AtlasBetter,
-      Better::Lower if effect < 0.0 => Self::AtlasBetter,
-      Better::Higher | Better::Lower => Self::AtlasWorse,
+      Better::Higher if effect > 0.0 => Self::SecondBetter,
+      Better::Lower if effect < 0.0 => Self::SecondBetter,
+      Better::Higher | Better::Lower => Self::SecondWorse,
     }
   }
 
-  fn label(self) -> &'static str {
+  fn label(self, second: Condition) -> String {
     match self {
-      Self::AtlasBetter => "atlas better",
-      Self::AtlasWorse => "atlas worse",
-      Self::Neutral => "no preferred direction",
+      Self::SecondBetter => format!("{} better", second.label()),
+      Self::SecondWorse => format!("{} worse", second.label()),
+      Self::Neutral => "no preferred direction".to_owned(),
+    }
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Verdict {
+  Equal,
+  SecondBetter,
+  SecondWorse,
+  Different,
+  Undetermined,
+}
+
+impl Verdict {
+  fn of(class: NoiseClass, direction: EffectDirection) -> Self {
+    match (class, direction) {
+      (NoiseClass::NoDifference | NoiseClass::Inside, _) => Self::Equal,
+      (NoiseClass::Undetermined, _) => Self::Undetermined,
+      (NoiseClass::Outside, EffectDirection::SecondBetter) => Self::SecondBetter,
+      (NoiseClass::Outside, EffectDirection::SecondWorse) => Self::SecondWorse,
+      (NoiseClass::Outside, EffectDirection::Neutral) => Self::Different,
+    }
+  }
+
+  fn label(self, second: Condition) -> String {
+    match self {
+      Self::Equal => "equal".to_owned(),
+      Self::SecondBetter => format!("**{} better**", second.label()),
+      Self::SecondWorse => format!("**{} worse**", second.label()),
+      Self::Different => "**different**".to_owned(),
+      Self::Undetermined => "undetermined".to_owned(),
     }
   }
 }
@@ -192,18 +224,20 @@ pub struct LeaveOneOut {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ReportedMeans {
-  pub baseline: f64,
-  pub atlas: f64,
+  pub first: f64,
+  pub second: f64,
   pub matches_recomputation: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Effect {
   pub batch: String,
-  pub baseline_mean: f64,
-  pub atlas_mean: f64,
-  pub baseline_tasks: usize,
-  pub atlas_tasks: usize,
+  pub first: Condition,
+  pub second: Condition,
+  pub first_mean: f64,
+  pub second_mean: f64,
+  pub first_tasks: usize,
+  pub second_tasks: usize,
   pub paired_tasks: usize,
   pub effect: f64,
   pub relative: Option<f64>,
@@ -220,6 +254,13 @@ pub struct Effect {
   pub class: NoiseClass,
   pub leave_one_out: LeaveOneOut,
   pub direction: EffectDirection,
+  pub verdict: Verdict,
+}
+
+impl Effect {
+  fn pair(&self) -> Pair {
+    (self.first, self.second)
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -283,8 +324,20 @@ pub struct NoiseReport {
   pub batches: Vec<NoiseBatch>,
   pub baseline_identity: Vec<BaselineIdentity>,
   pub metrics: Vec<MetricNoise>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub held_out: Vec<String>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub sections: Vec<NoiseSection>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NoiseSection {
+  pub name: String,
+  pub tasks: Vec<String>,
+  pub metrics: Vec<MetricNoise>,
+}
+
+#[derive(Clone)]
 pub struct NoiseInput {
   pub name: String,
   pub manifest: Option<BatchManifest>,
@@ -293,6 +346,8 @@ pub struct NoiseInput {
 }
 
 type Cells = BTreeMap<(String, Condition), Vec<f64>>;
+type Pair = (Condition, Condition);
+type PairedTasks = BTreeMap<Pair, BTreeSet<String>>;
 
 fn cells(def: &MetricDef, records: &[RunRecord]) -> Cells {
   let mut ordered: Vec<&RunRecord> = records.iter().filter(|record| is_scored(record)).collect();
@@ -306,7 +361,7 @@ fn cells(def: &MetricDef, records: &[RunRecord]) -> Cells {
   cells
 }
 
-fn paired_tasks(records: &[RunRecord]) -> BTreeSet<String> {
+fn paired_tasks(records: &[RunRecord]) -> PairedTasks {
   let scored = |condition: Condition| -> BTreeSet<String> {
     records
       .iter()
@@ -314,7 +369,11 @@ fn paired_tasks(records: &[RunRecord]) -> BTreeSet<String> {
       .map(|record| record.manifest.task_id.clone())
       .collect()
   };
-  scored(Condition::Baseline).intersection(&scored(Condition::Atlas)).cloned().collect()
+  CONDITION_PAIRS
+    .into_iter()
+    .map(|(first, second)| ((first, second), scored(first).intersection(&scored(second)).cloned().collect::<BTreeSet<String>>()))
+    .filter(|(_, tasks)| !tasks.is_empty())
+    .collect()
 }
 
 fn repetition_spread(cells: &Cells, condition: Condition) -> Option<PairSpread> {
@@ -356,18 +415,15 @@ fn variance_of_mean(values: &[f64]) -> Option<f64> {
   Some(sample_variance / values.len() as f64)
 }
 
-fn both_cells<'a>(cells: &'a Cells, paired: &BTreeSet<String>) -> Vec<(&'a Vec<f64>, &'a Vec<f64>)> {
+fn both_cells<'a>(cells: &'a Cells, paired: &BTreeSet<String>, (first, second): Pair) -> Vec<(&'a Vec<f64>, &'a Vec<f64>)> {
   let cell = |task_id: &String, condition: Condition| cells.get(&(task_id.clone(), condition));
-  paired
-    .iter()
-    .filter_map(|task_id| cell(task_id, Condition::Baseline).zip(cell(task_id, Condition::Atlas)))
-    .collect()
+  paired.iter().filter_map(|task_id| cell(task_id, first).zip(cell(task_id, second))).collect()
 }
 
-fn replicate_variances(cells: &Cells, paired: &BTreeSet<String>) -> Vec<f64> {
-  both_cells(cells, paired)
+fn replicate_variances(cells: &Cells, paired: &BTreeSet<String>, pair: Pair) -> Vec<f64> {
+  both_cells(cells, paired, pair)
     .iter()
-    .filter_map(|(baseline, atlas)| Some(variance_of_mean(baseline)? + variance_of_mean(atlas)?))
+    .filter_map(|(first, second)| Some(variance_of_mean(first)? + variance_of_mean(second)?))
     .collect()
 }
 
@@ -377,6 +433,7 @@ fn standard_error(variances: &[f64], tasks: usize) -> Option<f64> {
 
 struct EffectInput<'a> {
   batch: &'a str,
+  pair: Pair,
   def: &'a MetricDef,
   cells: &'a Cells,
   paired: &'a BTreeSet<String>,
@@ -386,6 +443,7 @@ struct EffectInput<'a> {
 }
 
 fn effect(input: &EffectInput<'_>) -> Option<Effect> {
+  let (first, second) = input.pair;
   let task_means = |condition: Condition| -> Vec<f64> {
     input
       .paired
@@ -394,14 +452,14 @@ fn effect(input: &EffectInput<'_>) -> Option<Effect> {
       .map(|values| mean(values))
       .collect()
   };
-  let (baseline, atlas) = (task_means(Condition::Baseline), task_means(Condition::Atlas));
-  let both = both_cells(input.cells, input.paired);
+  let (first_means, second_means) = (task_means(first), task_means(second));
+  let both = both_cells(input.cells, input.paired, input.pair);
   if both.is_empty() {
     return None;
   }
-  let paired_baseline = mean(&both.iter().map(|(baseline, _)| mean(baseline)).collect::<Vec<_>>());
-  let effect = mean(&both.iter().map(|(baseline, atlas)| mean(atlas) - mean(baseline)).collect::<Vec<_>>());
-  let variances = replicate_variances(input.cells, input.paired);
+  let paired_first = mean(&both.iter().map(|(first, _)| mean(first)).collect::<Vec<_>>());
+  let effect = mean(&both.iter().map(|(first, second)| mean(second) - mean(first)).collect::<Vec<_>>());
+  let variances = replicate_variances(input.cells, input.paired, input.pair);
   let own = standard_error(&variances, both.len());
   let pooled = standard_error(input.pooled_variances, both.len());
   let terms = [
@@ -421,26 +479,36 @@ fn effect(input: &EffectInput<'_>) -> Option<Effect> {
     Some(bound) if effect.abs() <= bound + TOLERANCE => NoiseClass::Inside,
     Some(_) => NoiseClass::Outside,
   };
-  let (baseline_mean, atlas_mean) = (mean(&baseline), mean(&atlas));
+  let (first_mean, second_mean) = (mean(&first_means), mean(&second_means));
   let reported = input.reported.and_then(|report| {
     let stat = |condition: Condition| report.aggregates.get(&condition)?.get(input.def.name).map(|stat| stat.mean);
-    let (baseline, atlas) = (stat(Condition::Baseline)?, stat(Condition::Atlas)?);
+    let (first, second) = match report.pairwise.is_empty() {
+      true => (stat(first)?, stat(second)?),
+      false => report
+        .pairwise
+        .iter()
+        .find(|delta| (delta.first, delta.second) == (first, second) && delta.metric == input.def.name)
+        .map(|delta| (delta.first_mean, delta.second_mean))?,
+    };
     Some(ReportedMeans {
-      baseline,
-      atlas,
-      matches_recomputation: (baseline - baseline_mean).abs() <= TOLERANCE && (atlas - atlas_mean).abs() <= TOLERANCE,
+      first,
+      second,
+      matches_recomputation: (first - first_mean).abs() <= TOLERANCE && (second - second_mean).abs() <= TOLERANCE,
     })
   });
-  let against_baseline = |value: f64| (paired_baseline.abs() > TOLERANCE).then(|| value / paired_baseline.abs());
+  let against_first = |value: f64| (paired_first.abs() > TOLERANCE).then(|| value / paired_first.abs());
+  let direction = EffectDirection::of(input.def.better, effect);
   Some(Effect {
     batch: input.batch.to_owned(),
-    baseline_mean,
-    atlas_mean,
-    baseline_tasks: baseline.len(),
-    atlas_tasks: atlas.len(),
+    first,
+    second,
+    first_mean,
+    second_mean,
+    first_tasks: first_means.len(),
+    second_tasks: second_means.len(),
     paired_tasks: both.len(),
     effect,
-    relative: against_baseline(effect),
+    relative: against_first(effect),
     reported,
     standard_error: own,
     replicate_tasks: variances.len(),
@@ -450,10 +518,11 @@ fn effect(input: &EffectInput<'_>) -> Option<Effect> {
     largest_same_condition_difference: input.largest_same_condition_difference,
     noise_bound,
     binding: largest_term.map(|(term, _)| term),
-    bound_relative_to_baseline: noise_bound.and_then(against_baseline),
+    bound_relative_to_baseline: noise_bound.and_then(against_first),
     class,
     leave_one_out: LeaveOneOut::default(),
-    direction: EffectDirection::of(input.def.better, effect),
+    direction,
+    verdict: Verdict::of(class, direction),
   })
 }
 
@@ -619,7 +688,7 @@ struct MetricCore {
 struct Measured<'a> {
   inputs: &'a [NoiseInput],
   identities: &'a [(usize, usize, BaselineIdentity)],
-  paired: &'a [BTreeSet<String>],
+  paired: &'a [PairedTasks],
 }
 
 fn single_run_scale(cells: &Cells) -> f64 {
@@ -639,14 +708,19 @@ fn metric_core(def: &MetricDef, measured: &Measured<'_>, per_batch: &[Cells], ex
         .collect()
     })
     .collect();
-  let paired: Vec<BTreeSet<String>> = measured
+  let paired: Vec<PairedTasks> = measured
     .paired
     .iter()
-    .map(|tasks| tasks.iter().filter(|task_id| kept(task_id)).cloned().collect())
+    .map(|pairs| {
+      pairs
+        .iter()
+        .map(|(pair, tasks)| (*pair, tasks.iter().filter(|task_id| kept(task_id)).cloned().collect()))
+        .collect()
+    })
     .collect();
   let mut repetitions = Vec::new();
   for (input, cells) in measured.inputs.iter().zip(&per_batch) {
-    for condition in Condition::ALL {
+    for condition in Condition::EVERY {
       if let Some(spread) = repetition_spread(cells, condition) {
         repetitions.push(Comparison {
           label: format!("{condition}, second run − first run, batch {}", input.name),
@@ -668,23 +742,30 @@ fn metric_core(def: &MetricDef, measured: &Measured<'_>, per_batch: &[Cells], ex
     })
     .collect();
   let largest = repetitions.iter().chain(&baseline_across_batches).map(Comparison::on_effect_scale).reduce(f64::max);
-  let pooled_variances: Vec<f64> = per_batch.iter().zip(&paired).flat_map(|(cells, paired)| replicate_variances(cells, paired)).collect();
-  let effects = measured
-    .inputs
-    .iter()
-    .enumerate()
-    .filter_map(|(index, input)| {
-      effect(&EffectInput {
+  let mut effects = Vec::new();
+  for (index, input) in measured.inputs.iter().enumerate() {
+    for pair in CONDITION_PAIRS {
+      let Some(tasks) = paired[index].get(&pair) else {
+        continue;
+      };
+      let pooled_variances: Vec<f64> = per_batch
+        .iter()
+        .zip(&paired)
+        .filter_map(|(cells, pairs)| pairs.get(&pair).map(|tasks| replicate_variances(cells, tasks, pair)))
+        .flatten()
+        .collect();
+      effects.extend(effect(&EffectInput {
         batch: &input.name,
+        pair,
         def,
         cells: &per_batch[index],
-        paired: &paired[index],
+        paired: tasks,
         reported: input.reported.as_ref(),
         pooled_variances: &pooled_variances,
         largest_same_condition_difference: largest,
-      })
-    })
-    .collect();
+      }));
+    }
+  }
   MetricCore {
     repetitions,
     baseline_across_batches,
@@ -693,18 +774,22 @@ fn metric_core(def: &MetricDef, measured: &Measured<'_>, per_batch: &[Cells], ex
 }
 
 fn leave_one_out(def: &MetricDef, measured: &Measured<'_>, per_batch: &[Cells], effects: &mut [Effect]) {
-  let tasks: BTreeSet<&String> = measured.paired.iter().flatten().collect();
+  let tasks: BTreeSet<&String> = measured.paired.iter().flat_map(|pairs| pairs.values().flatten()).collect();
   for task_id in tasks {
     let without = metric_core(def, measured, per_batch, Some(task_id));
     for effect in effects.iter_mut() {
+      let pair = effect.pair();
       let measures = |condition: Condition| {
         let batch = measured.inputs.iter().position(|input| input.name == effect.batch);
-        batch.is_some_and(|index| measured.paired[index].contains(task_id) && per_batch[index].contains_key(&(task_id.clone(), condition)))
+        batch.is_some_and(|index| measured.paired[index].get(&pair).is_some_and(|tasks| tasks.contains(task_id)) && per_batch[index].contains_key(&(task_id.clone(), condition)))
       };
-      if !Condition::ALL.into_iter().all(measures) {
+      if ![pair.0, pair.1].into_iter().all(measures) {
         continue;
       }
-      let outside_without = without.effects.iter().any(|other| other.batch == effect.batch && other.class == NoiseClass::Outside);
+      let outside_without = without
+        .effects
+        .iter()
+        .any(|other| other.batch == effect.batch && other.pair() == pair && other.class == NoiseClass::Outside);
       effect.leave_one_out.tasks += 1;
       if outside_without != (effect.class == NoiseClass::Outside) {
         effect.leave_one_out.crossing_the_bound.push(task_id.clone());
@@ -718,7 +803,7 @@ pub fn build_noise(inputs: &[NoiseInput]) -> NoiseReport {
     .flat_map(|a| (a + 1..inputs.len()).map(move |b| (a, b)))
     .map(|(a, b)| (a, b, baseline_identity(&inputs[a], &inputs[b])))
     .collect();
-  let paired: Vec<BTreeSet<String>> = inputs.iter().map(|input| paired_tasks(&input.records)).collect();
+  let paired: Vec<PairedTasks> = inputs.iter().map(|input| paired_tasks(&input.records)).collect();
   let mut batches: Vec<NoiseBatch> = inputs
     .iter()
     .map(|input| NoiseBatch {
@@ -747,13 +832,10 @@ pub fn build_noise(inputs: &[NoiseInput]) -> NoiseReport {
     let per_batch: Vec<Cells> = inputs.iter().map(|input| cells(def, &input.records)).collect();
     let mut core = metric_core(def, &measured, &per_batch, None);
     leave_one_out(def, &measured, &per_batch, &mut core.effects);
-    for (batch, effect) in batches
-      .iter_mut()
-      .filter_map(|batch| core.effects.iter().find(|effect| effect.batch == batch.name).map(|effect| (batch, effect)))
-    {
-      if let Some(reported) = effect.reported {
+    for batch in batches.iter_mut() {
+      for reported in core.effects.iter().filter(|effect| effect.batch == batch.name).filter_map(|effect| effect.reported) {
         batch.reported_metrics_compared += 1;
-        if !reported.matches_recomputation {
+        if !reported.matches_recomputation && !batch.reported_metrics_differing.iter().any(|metric| metric == def.name) {
           batch.reported_metrics_differing.push(def.name.to_owned());
         }
       }
@@ -774,7 +856,48 @@ pub fn build_noise(inputs: &[NoiseInput]) -> NoiseReport {
     batches,
     baseline_identity: identities.into_iter().map(|(_, _, identity)| identity).collect(),
     metrics,
+    held_out: Vec::new(),
+    sections: Vec::new(),
   }
+}
+
+pub fn build_split_noise(inputs: &[NoiseInput], held_out: &[String]) -> NoiseReport {
+  let mut report = build_noise(inputs);
+  let held: BTreeSet<String> = inputs
+    .iter()
+    .filter_map(|input| input.manifest.as_ref())
+    .flat_map(|manifest| manifest.held_out.iter().cloned())
+    .chain(held_out.iter().cloned())
+    .collect();
+  if held.is_empty() {
+    return report;
+  }
+  report.held_out = held.iter().cloned().collect();
+  for (name, keep_held) in [(DEV_SECTION, false), (HELD_OUT_CATEGORY, true)] {
+    let filtered: Vec<NoiseInput> = inputs
+      .iter()
+      .map(|input| NoiseInput {
+        records: input
+          .records
+          .iter()
+          .filter(|record| held.contains(&record.manifest.task_id) == keep_held)
+          .cloned()
+          .collect(),
+        reported: None,
+        ..input.clone()
+      })
+      .collect();
+    let tasks: BTreeSet<String> = filtered
+      .iter()
+      .flat_map(|input| input.records.iter().map(|record| record.manifest.task_id.clone()))
+      .collect();
+    report.sections.push(NoiseSection {
+      name: name.to_owned(),
+      tasks: tasks.into_iter().collect(),
+      metrics: build_noise(&filtered).metrics,
+    });
+  }
+  report
 }
 
 fn harness_files_changed(repo_root: &Path, identity: &BaselineIdentity) -> Option<Vec<String>> {
@@ -786,7 +909,7 @@ fn harness_files_changed(repo_root: &Path, identity: &BaselineIdentity) -> Optio
   output.exit.succeeded().then(|| output.stdout.lines().map(str::to_owned).collect())
 }
 
-pub fn load_noise(batch_dirs: &[PathBuf], report_paths: &[PathBuf], repo_root: Option<&Path>) -> AgentResult<NoiseReport> {
+pub fn load_noise(batch_dirs: &[PathBuf], report_paths: &[PathBuf], repo_root: Option<&Path>, held_out: &[String]) -> AgentResult<NoiseReport> {
   let mut reports: Vec<(&PathBuf, AgentReport, bool)> = Vec::new();
   for path in report_paths {
     reports.push((path, read_json(path)?, false));
@@ -815,7 +938,7 @@ pub fn load_noise(batch_dirs: &[PathBuf], report_paths: &[PathBuf], repo_root: O
       path.display()
     )));
   }
-  let mut report = build_noise(&inputs);
+  let mut report = build_split_noise(&inputs, held_out);
   for identity in &mut report.baseline_identity {
     identity.harness_files_changed = repo_root.and_then(|root| harness_files_changed(root, identity));
   }
@@ -856,13 +979,13 @@ const DEFINITIONS: &str = "\
 - **Runs.** Completed, uncontaminated runs, the filter `agent report` applies. Metrics are the ones `agent report` aggregates, read through the same extraction code, plus `cache_weighted_tokens` = input + 1.25 × cache-creation + 0.1 × cache-read tokens (output tokens are not part of it).
 - **A/A difference.** A difference between two measurements of the same task under the same condition. Two kinds are computed. *Repetitions*: the second run minus the first run of a task within one batch and condition (one run on each side). *Across batches*: the baseline per-task mean of one batch minus that of the other (two runs on each side), only for tasks whose baseline is identical in both batches. Run indices and batch order carry no meaning, so only the size of an A/A difference matters, not its sign.
 - **Per comparison.** `pairs`: tasks with a value on both sides. `median |diff|`: the median absolute per-task difference. `median relative`: the median of |b − a| / ((|a| + |b|) / 2) over the tasks where that is defined. `range`: the smallest and largest signed per-task difference. `paired difference`: mean over the paired tasks of side b minus mean over the same tasks of side a, the statistic `agent report` uses for A/B (difference of the means of per-task means), with its size relative to side a.
-- **A/B effect.** Atlas minus baseline, as the mean over the tasks that have the metric in both conditions of (atlas per-task mean − baseline per-task mean); `relative` divides it by the baseline mean of those same tasks. The `baseline` and `atlas` columns are the aggregate means `agent report` prints. When both conditions cover the same tasks, the effect equals their difference; where they do not, the `tasks` column gives the three counts.
-- **Replicate standard error (SE).** For each task, the variance of each condition's per-task mean is estimated from its repetitions (sample variance / runs; with two runs that is (r1 − r0)² / 4). SE = √(mean over tasks of (baseline variance + atlas variance) / tasks). It uses only differences between repetitions of one condition. `this batch` takes the variances from the batch whose effect is judged, `pooled` from all batches given.
+- **A/B effect.** For every pair of arms a batch holds (C vs B = atlas − Serena + graphify, C vs A = atlas − baseline, B vs A = Serena + graphify − baseline), the second arm minus the first, as the mean over the tasks that have the metric in both arms of (second per-task mean − first per-task mean); `relative` divides it by the first arm's mean of those same tasks. The two arm columns are the aggregate means `agent report` prints. When both arms cover the same tasks, the effect equals their difference; where they do not, the `tasks` column gives the three counts.
+- **Replicate standard error (SE).** For each task, the variance of each condition's per-task mean is estimated from its repetitions (sample variance / runs; with two runs that is (r1 − r0)² / 4). SE = √(mean over tasks of (first-arm variance + second-arm variance) / tasks). It uses only differences between repetitions of one condition. `this batch` takes the variances from the batch whose effect is judged, `pooled` from all batches given.
 - **One scale.** A repetition difference compares one run with one run, an A/B effect compares the mean of the runs of each cell. With two runs per cell the first has √2 times the standard deviation of the second, so every repetition difference is multiplied by √(mean over the cells of 1 / runs) before it is compared with an effect. The across-batch baseline difference compares cell means and needs no scaling.
 - **Noise bound.** The largest of 2 × SE of the batch, 2 × pooled SE, and the largest paired A/A difference on the A/B scale observed for the metric in any comparison (repetitions of either condition in any batch, and baseline across batches). The third term is a guard: where repetitions tie often, as judged 1 to 5 scores do, the SE can come out too small, and a difference that large between two runs of one condition was nevertheless observed. An effect is called outside only if it exceeds every one of the three.
 - **Effect / SE.** The effect divided by the SE of the batch, and by the pooled SE, printed beside every class so that a label can be checked against the usual 2.
 - **Leave one task out.** The whole classification of a metric is repeated with each task removed in turn (its runs leave the effect, both SEs and every A/A difference). The last column counts the tasks whose removal moves the effect across the bound, from outside to not outside or the reverse; the JSON names them.
-- **Classes.** `no difference`: the effect is exactly 0. `inside`: |effect| ≤ noise bound. `outside`: |effect| > noise bound. `undetermined`: no repetition exists to estimate noise from.";
+- **Classes.** `no difference`: the effect is exactly 0. `inside`: |effect| ≤ noise bound. `outside`: |effect| > noise bound. `undetermined`: no repetition exists to estimate noise from. In the pairwise verdicts `no difference` and `inside` both read `equal`; an `outside` effect reads as the second arm better or worse, or `different` for a metric without a preferred direction.";
 
 const SCOPE: &str = "\
 This is the noise floor of the task set that exists: 11 tasks written by the authors of Code Atlas, on which the main outcome sits at its ceiling. It is not the A/A run on a harder task set that the roadmap asks for before any arm is compared; that needs a task set which does not exist yet. A harder, more varied task set will have a different and probably larger variance, so none of the bounds below transfer to it.";
@@ -873,7 +996,7 @@ const LIMITS: &str = "\
 - **Borderline labels.** A class is a threshold on a noisy scale. The lists above name every `outside` effect that one task can turn, and every `inside` effect that exceeds 2 × SE of its batch together with the term that keeps it inside.
 - **Inside does not mean no effect.** It means the design cannot tell the effect from run-to-run variation. The column `bound / baseline` says how large an effect would have to be to leave the noise with this task set and two runs per cell; the SE shrinks with the square root of the number of tasks and of the repetitions.
 - **Across batches is more than repetition.** Batches run at different times and may come from different harness commits (see the table above). The across-batch baseline difference therefore includes drift between batches (machine load, service latency) that a within-batch A/B comparison does not contain. It is listed as an A/A difference because the baseline sessions were configured identically.
-- **Metrics that only one condition can move** (`atlas_calls`, `atlas_bytes`) differ by construction, so their class says nothing about noise, and `atlas_index_ms` has no baseline value at all.
+- **Metrics that only one condition can move** (`atlas_calls`, `atlas_bytes`, `serena_calls`, `serena_bytes`, `graphify_calls`, `graphify_bytes`) differ by construction, so their class says nothing about noise, and `atlas_index_ms` and `graph_build_ms` have a value in one arm only.
 - **Judged scores** come from one judge call per run on a 1 to 5 scale; runs whose judge call failed have no score and drop out of the pairs.";
 
 fn render_identity(out: &mut String, identity: &BaselineIdentity) {
@@ -954,7 +1077,11 @@ fn leave_one_out_cell(effect: &Effect) -> String {
 fn token_composition(report: &NoiseReport, batch: &NoiseBatch) -> Option<String> {
   let baseline_mean = |name: &str| {
     let metric = report.metrics.iter().find(|metric| metric.metric == name)?;
-    metric.effects.iter().find(|effect| effect.batch == batch.name).map(|effect| effect.baseline_mean)
+    metric
+      .effects
+      .iter()
+      .find(|effect| effect.batch == batch.name && effect.first == Condition::Baseline)
+      .map(|effect| effect.first_mean)
   };
   let total = baseline_mean(TOTAL_TOKENS_METRIC).filter(|total| *total > TOLERANCE)?;
   let (part, share) = TOKEN_PARTS
@@ -967,13 +1094,117 @@ fn token_composition(report: &NoiseReport, batch: &NoiseBatch) -> Option<String>
   ))
 }
 
+fn batch_pairs(report: &NoiseReport, batch: &NoiseBatch) -> Vec<Pair> {
+  CONDITION_PAIRS
+    .into_iter()
+    .filter(|pair| {
+      report
+        .metrics
+        .iter()
+        .any(|metric| metric.effects.iter().any(|effect| effect.batch == batch.name && effect.pair() == *pair))
+    })
+    .collect()
+}
+
 fn render_effects(out: &mut String, report: &NoiseReport, batch: &NoiseBatch) {
+  let pairs = batch_pairs(report, batch);
+  let _ = writeln!(out, "### Batch {} (preamble {})\n", batch.name, batch.preamble.as_deref().unwrap_or("unknown"));
+  if let Some(note) = token_composition(report, batch) {
+    let _ = writeln!(out, "{note}\n");
+  }
+  match batch.reported_metrics_compared {
+    0 => {
+      let _ = writeln!(out, "No committed A/B report was given for this batch; the means are recomputed from the run records.\n");
+    }
+    compared => {
+      let _ = writeln!(
+        out,
+        "The committed A/B report of this batch has {compared} of these effects; {} metrics differ from the recomputation{}.\n",
+        batch.reported_metrics_differing.len(),
+        if batch.reported_metrics_differing.is_empty() {
+          String::new()
+        } else {
+          format!(": {}", batch.reported_metrics_differing.join(", "))
+        }
+      );
+    }
+  }
+  for pair in pairs.iter().copied() {
+    if pairs.len() > 1 {
+      let _ = writeln!(out, "#### {}: {} − {}\n", pair_label(pair.0, pair.1), pair.1.label(), pair.0.label());
+    }
+    render_pair_effects(out, report, batch, pair);
+  }
+}
+
+fn render_verdicts(out: &mut String, report: &NoiseReport) {
+  let mut present: Vec<Condition> = report
+    .metrics
+    .iter()
+    .flat_map(|metric| metric.effects.iter().flat_map(|effect| [effect.first, effect.second]))
+    .collect::<BTreeSet<_>>()
+    .into_iter()
+    .collect();
+  present.sort_by_key(|condition| condition.arm());
+  let verdict = match present.contains(&Condition::Atlas) && present.contains(&Condition::Incumbent) {
+    true => " C vs B is the verdict.",
+    false => "",
+  };
+  let _ = writeln!(
+    out,
+    "Every effect between two arms ({}), over the tasks scored in both, next to the same-condition spread (the largest A/A difference on the A/B scale) and the noise bound. An effect inside the bound is `equal`.{verdict}\n",
+    arm_legend(&present)
+  );
+  match report.sections.is_empty() {
+    true => render_verdict_tables(out, &report.batches, &report.metrics, "###"),
+    false => {
+      for section in &report.sections {
+        let _ = writeln!(out, "### {} tasks ({})\n", section.name, section.tasks.join(", "));
+        render_verdict_tables(out, &report.batches, &section.metrics, "####");
+      }
+    }
+  }
+}
+
+fn render_verdict_tables(out: &mut String, batches: &[NoiseBatch], metrics: &[MetricNoise], heading: &str) {
+  for batch in batches {
+    let _ = writeln!(out, "{heading} Batch {}\n", batch.name);
+    let _ = writeln!(out, "| metric | comparison | effect | same-condition spread | noise bound | verdict |");
+    let _ = writeln!(out, "|---|---|---|---|---|---|");
+    for pair in CONDITION_PAIRS {
+      for metric in metrics {
+        let Some(effect) = metric.effects.iter().find(|effect| effect.batch == batch.name && effect.pair() == pair) else {
+          continue;
+        };
+        let _ = writeln!(
+          out,
+          "| {} | {} | {} | {} | {} | {} |",
+          metric.metric,
+          pair_label(pair.0, pair.1),
+          signed(effect.effect),
+          optional(effect.largest_same_condition_difference, figure),
+          optional(effect.noise_bound, figure),
+          effect.verdict.label(pair.1)
+        );
+      }
+    }
+    out.push('\n');
+  }
+}
+
+fn render_pair_effects(out: &mut String, report: &NoiseReport, batch: &NoiseBatch, pair: Pair) {
+  let (first, second) = pair;
   let effects: Vec<(&MetricNoise, &Effect)> = report
     .metrics
     .iter()
-    .filter_map(|metric| metric.effects.iter().find(|effect| effect.batch == batch.name).map(|effect| (metric, effect)))
+    .filter_map(|metric| {
+      metric
+        .effects
+        .iter()
+        .find(|effect| effect.batch == batch.name && effect.pair() == pair)
+        .map(|effect| (metric, effect))
+    })
     .collect();
-  let _ = writeln!(out, "### Batch {} (preamble {})\n", batch.name, batch.preamble.as_deref().unwrap_or("unknown"));
   let count = |class: NoiseClass| effects.iter().filter(|(_, effect)| effect.class == class).count();
   let _ = writeln!(
     out,
@@ -1001,7 +1232,7 @@ fn render_effects(out: &mut String, report: &NoiseReport, batch: &NoiseBatch) {
       ratio(effect.effect_over_standard_error),
       ratio(effect.effect_over_pooled_standard_error),
       optional(effect.noise_bound, figure),
-      effect.direction.label(),
+      effect.direction.label(second),
       robustness
     );
   }
@@ -1029,49 +1260,39 @@ fn render_effects(out: &mut String, report: &NoiseReport, batch: &NoiseBatch) {
       ratio(effect.effect_over_pooled_standard_error),
       effect.binding.map_or("no term", BoundTerm::label),
       optional(effect.noise_bound, figure),
-      effect.direction.label()
+      effect.direction.label(second)
     );
   }
   if !above.is_empty() {
     out.push('\n');
   }
-  if let Some(note) = token_composition(report, batch) {
-    let _ = writeln!(out, "{note}\n");
-  }
-  match batch.reported_metrics_compared {
-    0 => {
-      let _ = writeln!(out, "No committed A/B report was given for this batch; the means are recomputed from the run records.\n");
-    }
-    compared => {
-      let _ = writeln!(
-        out,
-        "The committed A/B report of this batch has {compared} of these metrics; {} differ from the recomputation{}.\n",
-        batch.reported_metrics_differing.len(),
-        if batch.reported_metrics_differing.is_empty() {
-          String::new()
-        } else {
-          format!(": {}", batch.reported_metrics_differing.join(", "))
-        }
-      );
-    }
-  }
   let _ = writeln!(
     out,
-    "| metric | baseline | atlas | effect | relative | tasks | SE, this batch | SE, pooled | largest A/A on the A/B scale | noise bound | bound / baseline | effect / SE | effect / pooled SE | class | tasks whose removal moves it across the bound |"
+    "| metric | {} | {} | effect | relative | tasks | SE, this batch | SE, pooled | largest A/A on the A/B scale | noise bound | bound / {} | effect / SE | effect / pooled SE | class | tasks whose removal moves it across the bound |",
+    first.label(),
+    second.label(),
+    first.label()
   );
   let _ = writeln!(out, "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (metric, effect) in &effects {
-    let unequal_sets = effect.baseline_tasks != effect.paired_tasks || effect.atlas_tasks != effect.paired_tasks;
+    let unequal_sets = effect.first_tasks != effect.paired_tasks || effect.second_tasks != effect.paired_tasks;
     let tasks = match unequal_sets {
-      true => format!("{} (baseline {}, atlas {})", effect.paired_tasks, effect.baseline_tasks, effect.atlas_tasks),
+      true => format!(
+        "{} ({} {}, {} {})",
+        effect.paired_tasks,
+        first.label(),
+        effect.first_tasks,
+        second.label(),
+        effect.second_tasks
+      ),
       false => effect.paired_tasks.to_string(),
     };
     let _ = writeln!(
       out,
       "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |",
       metric.metric,
-      figure(effect.baseline_mean),
-      figure(effect.atlas_mean),
+      figure(effect.first_mean),
+      figure(effect.second_mean),
       signed(effect.effect),
       optional(effect.relative, signed_percent),
       tasks,
@@ -1164,6 +1385,8 @@ pub fn render_noise_markdown(report: &NoiseReport) -> String {
     render_identity(&mut out, identity);
   }
   let _ = writeln!(out, "## Definitions\n\n{DEFINITIONS}\n");
+  let _ = writeln!(out, "## Pairwise verdicts\n");
+  render_verdicts(&mut out, report);
   let _ = writeln!(out, "## A/B effects against the noise\n");
   for batch in &report.batches {
     render_effects(&mut out, report, batch);
@@ -1237,6 +1460,7 @@ mod tests {
     let paired: BTreeSet<String> = ["t1", "t2"].map(str::to_owned).into();
     effect(&EffectInput {
       batch: "b1",
+      pair: (Condition::Baseline, Condition::Atlas),
       def: &CACHE_WEIGHTED_TOKENS,
       cells,
       paired: &paired,
@@ -1262,7 +1486,7 @@ mod tests {
     assert!(close(outside.relative, 5.0 / 15.5));
     assert!(close(outside.effect_over_standard_error, 5.0 / 0.75_f64.sqrt()));
     assert_eq!((outside.effect_over_pooled_standard_error, outside.binding), (None, Some(BoundTerm::BatchStandardError)));
-    assert_eq!((outside.class, outside.direction), (NoiseClass::Outside, EffectDirection::AtlasWorse));
+    assert_eq!((outside.class, outside.direction), (NoiseClass::Outside, EffectDirection::SecondWorse));
     let guarded = classified(&measured, &[], Some(5.0));
     assert_eq!((guarded.class, guarded.binding), (NoiseClass::Inside, Some(BoundTerm::SameConditionDifference)));
     let pooled = classified(&measured, &[18.0, 18.0], Some(1.0));
@@ -1284,9 +1508,9 @@ mod tests {
       (undetermined.class, undetermined.noise_bound, undetermined.standard_error),
       (NoiseClass::Undetermined, None, None)
     );
-    assert_eq!((undetermined.baseline_tasks, undetermined.atlas_tasks, undetermined.paired_tasks), (2, 1, 1));
-    assert_eq!((undetermined.baseline_mean, undetermined.effect), (5.5, 4.0));
-    assert_eq!(EffectDirection::of(Better::Higher, 4.0), EffectDirection::AtlasBetter);
+    assert_eq!((undetermined.first_tasks, undetermined.second_tasks, undetermined.paired_tasks), (2, 1, 1));
+    assert_eq!((undetermined.first_mean, undetermined.effect), (5.5, 4.0));
+    assert_eq!(EffectDirection::of(Better::Higher, 4.0), EffectDirection::SecondBetter);
     assert_eq!(EffectDirection::of(Better::Neutral, 4.0), EffectDirection::Neutral);
   }
 
@@ -1310,6 +1534,7 @@ mod tests {
       atlas_surface: AtlasSurface::Standard,
       probe: None,
       linked_paths: BTreeMap::new(),
+      incumbent: None,
     }
   }
 
@@ -1346,6 +1571,7 @@ mod tests {
         skipped_after_hooks_failure: Vec::new(),
         spent_usd: 1.0,
         instruction_sections_dropped: BTreeMap::new(),
+        held_out: Vec::new(),
       }),
       records,
       reported: None,
@@ -1394,7 +1620,7 @@ mod tests {
     assert_eq!(across.label, "baseline, batch b2 − batch b1 (per-task means)");
     assert_eq!((across.spread.mean_a, across.spread.mean_b, across.spread.paired_difference), (3350.0, 3100.0, -250.0));
     let effect = &total.effects[0];
-    assert_eq!((effect.baseline_mean, effect.atlas_mean, effect.effect), (3350.0, 4750.0, 1400.0));
+    assert_eq!((effect.first_mean, effect.second_mean, effect.effect), (3350.0, 4750.0, 1400.0));
     assert!(close(
       effect.standard_error,
       (((200.0_f64.powi(2)) + (500.0_f64.powi(2) + 500.0_f64.powi(2))) / 2.0 / 2.0).sqrt()
@@ -1407,7 +1633,7 @@ mod tests {
     assert!(close(effect.largest_same_condition_difference, 500.0 * 0.5_f64.sqrt()));
     assert_eq!(
       (effect.class, effect.direction, effect.binding),
-      (NoiseClass::Outside, EffectDirection::AtlasWorse, Some(BoundTerm::BatchStandardError))
+      (NoiseClass::Outside, EffectDirection::SecondWorse, Some(BoundTerm::BatchStandardError))
     );
     assert_eq!(
       effect.leave_one_out,
@@ -1418,7 +1644,7 @@ mod tests {
     );
     assert_eq!((total.effects[1].effect, total.effects[1].class), (-100.0, NoiseClass::Inside));
     let weighted = metric(&report, "cache_weighted_tokens");
-    assert_eq!((weighted.effects[0].baseline_mean, weighted.effects[0].class), (250.0, NoiseClass::NoDifference));
+    assert_eq!((weighted.effects[0].first_mean, weighted.effects[0].class), (250.0, NoiseClass::NoDifference));
     assert_eq!(report.batches[0].scored_runs, 8);
   }
 
@@ -1539,6 +1765,114 @@ mod tests {
     );
     assert!(markdown.contains("| eval repository commit | aaa | bbb | **differs** |"), "{markdown}");
     assert!(!markdown.contains("/var/folders") && !markdown.contains("/repo"), "{markdown}");
+  }
+
+  fn arms(name: &str, rows: &[(&str, Condition, [u64; 2])]) -> NoiseInput {
+    let records = rows
+      .iter()
+      .flat_map(|(task, condition, [first, second])| [run_record(task, *condition, 0, tokens(*first)), run_record(task, *condition, 1, tokens(*second))])
+      .collect();
+    NoiseInput {
+      records,
+      ..batch(name, environment("claude-sonnet-5-5", "aaa"), &[])
+    }
+  }
+
+  #[test]
+  fn should_judge_every_pair_of_arms_against_the_spread_of_two_baseline_batches() {
+    let three_arms = arms(
+      "b1",
+      &[
+        ("t1", Condition::Baseline, [2000, 2200]),
+        ("t1", Condition::Incumbent, [2100, 2300]),
+        ("t1", Condition::Atlas, [3000, 3000]),
+        ("t2", Condition::Baseline, [4000, 4000]),
+        ("t2", Condition::Incumbent, [4100, 3900]),
+        ("t2", Condition::Atlas, [6000, 6200]),
+      ],
+    );
+    let second_baseline = arms("b2", &[("t1", Condition::Baseline, [2100, 2100]), ("t2", Condition::Baseline, [4000, 4200])]);
+    let report = build_noise(&[three_arms, second_baseline]);
+    assert_eq!(report.baseline_identity[0].verdict, BaselineVerdict::Identical);
+    let total = metric(&report, "total_tokens");
+    let effects: Vec<(&str, Condition, Condition, f64, Verdict)> = total
+      .effects
+      .iter()
+      .map(|effect| (effect.batch.as_str(), effect.first, effect.second, effect.effect, effect.verdict))
+      .collect();
+    assert_eq!(
+      effects,
+      vec![
+        ("b1", Condition::Incumbent, Condition::Atlas, 1450.0, Verdict::SecondWorse),
+        ("b1", Condition::Baseline, Condition::Atlas, 1500.0, Verdict::SecondWorse),
+        ("b1", Condition::Baseline, Condition::Incumbent, 50.0, Verdict::Equal),
+      ]
+    );
+    assert!(close(total.effects[0].noise_bound, 2.0 * 7500.0_f64.sqrt()));
+    assert!(close(total.effects[1].noise_bound, 2.0 * 5000.0_f64.sqrt()));
+    assert!(close(total.effects[2].largest_same_condition_difference, 100.0 * 0.5_f64.sqrt()));
+    assert_eq!(total.baseline_across_batches[0].spread.paired_difference, 50.0);
+    let labels: Vec<&str> = total.repetitions.iter().map(|comparison| comparison.label.as_str()).collect();
+    assert_eq!(
+      labels,
+      vec![
+        "baseline, second run − first run, batch b1",
+        "atlas, second run − first run, batch b1",
+        "incumbent, second run − first run, batch b1",
+        "baseline, second run − first run, batch b2"
+      ]
+    );
+    let markdown = render_noise_markdown(&report);
+    for line in [
+      "## Pairwise verdicts\n\nEvery effect between two arms (A = baseline, B = Serena + graphify, C = atlas)",
+      "| total_tokens | C vs B (verdict) | +1450 | 70.71 | 173.2 | **atlas worse** |\n",
+      "| total_tokens | C vs A | +1500 | 70.71 | 141.4 | **atlas worse** |\n",
+      "| total_tokens | B vs A | +50 | 70.71 | 173.2 | equal |\n",
+      "#### C vs B (verdict): atlas − Serena + graphify\n",
+      "| metric | Serena + graphify | atlas | effect | relative | tasks |",
+      "| metric | baseline | Serena + graphify | effect | relative | tasks |",
+      "### Batch b2\n\n| metric | comparison | effect | same-condition spread | noise bound | verdict |\n|---|---|---|---|---|---|\n\n",
+    ] {
+      assert!(markdown.contains(line), "{line}\n{markdown}");
+    }
+  }
+
+  #[test]
+  fn should_judge_dev_and_held_out_tasks_separately_when_tasks_are_held_out() {
+    let mut three_arms = arms(
+      "b1",
+      &[
+        ("t1", Condition::Baseline, [2000, 2200]),
+        ("t1", Condition::Incumbent, [2100, 2300]),
+        ("t1", Condition::Atlas, [3000, 3000]),
+        ("t2", Condition::Baseline, [4000, 4000]),
+        ("t2", Condition::Incumbent, [4100, 3900]),
+        ("t2", Condition::Atlas, [6000, 6200]),
+      ],
+    );
+    if let Some(manifest) = three_arms.manifest.as_mut() {
+      manifest.held_out = vec!["t2".to_owned()];
+    }
+    let second_baseline = arms("b2", &[("t1", Condition::Baseline, [2100, 2100]), ("t2", Condition::Baseline, [4000, 4200])]);
+    let report = build_split_noise(&[three_arms, second_baseline], &[]);
+    assert_eq!(report.held_out, vec!["t2"]);
+    let sections: Vec<(&str, Vec<&str>)> = report
+      .sections
+      .iter()
+      .map(|section| (section.name.as_str(), section.tasks.iter().map(String::as_str).collect()))
+      .collect();
+    assert_eq!(sections, vec![("dev", vec!["t1"]), ("held-out", vec!["t2"])]);
+    let dev = report.sections[0].metrics.iter().find(|metric| metric.metric == "total_tokens").unwrap();
+    assert_eq!((dev.effects[0].effect, dev.effects[0].verdict), (800.0, Verdict::SecondWorse));
+    let markdown = render_noise_markdown(&report);
+    for line in [
+      "### dev tasks (t1)\n\n#### Batch b1\n",
+      "| total_tokens | C vs B (verdict) | +800 | 141.4 | 200 | **atlas worse** |\n",
+      "### held-out tasks (t2)\n\n#### Batch b1\n",
+    ] {
+      assert!(markdown.contains(line), "{line}\n{markdown}");
+    }
+    assert_eq!(build_split_noise(&[arms("b3", &[("t1", Condition::Baseline, [2000, 2100])])], &[]).sections, Vec::new());
   }
 
   #[test]

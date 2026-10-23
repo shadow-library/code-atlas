@@ -7,7 +7,7 @@ use serde_json::{Map, Value, json};
 use super::atlas_cli::AtlasCli;
 use super::bash_guard::bash_guard_group;
 use super::error::{AgentError, AgentResult};
-use super::transcript::{HookPhase, Transcript};
+use super::transcript::{HookEvent, HookPhase, Transcript};
 
 pub const ATLAS_HOME_TOKEN: &str = "<atlas-home>";
 pub const ATLAS_BIN_TOKEN: &str = "<atlas-bin>";
@@ -69,8 +69,7 @@ pub fn hook_metrics(transcript: &Transcript) -> HookMetrics {
     if !stderr.trim().is_empty() {
       *metrics.with_stderr.entry(hook.event.clone()).or_default() += 1;
     }
-    let succeeded = exit_code.map_or(outcome.as_deref() == Some(SUCCESS_OUTCOME), |code| code == 0);
-    if !succeeded || !injects_context(&hook.event, stdout) {
+    if !added_context(&hook.event, *exit_code, outcome.as_deref(), stdout) {
       continue;
     }
     match hook.event.as_str() {
@@ -80,6 +79,18 @@ pub fn hook_metrics(transcript: &Transcript) -> HookMetrics {
     }
   }
   metrics
+}
+
+pub fn hook_added_context(hook: &HookEvent) -> bool {
+  match &hook.phase {
+    HookPhase::Finished { outcome, exit_code, stdout, .. } => added_context(&hook.event, *exit_code, outcome.as_deref(), stdout),
+    _ => false,
+  }
+}
+
+fn added_context(event: &str, exit_code: Option<i64>, outcome: Option<&str>, stdout: &str) -> bool {
+  let succeeded = exit_code.map_or(outcome == Some(SUCCESS_OUTCOME), |code| code == 0);
+  succeeded && injects_context(event, stdout)
 }
 
 fn injects_context(event: &str, stdout: &str) -> bool {

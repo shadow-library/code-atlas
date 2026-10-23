@@ -183,6 +183,7 @@ impl Fixture {
       atlas_config: None,
       atlas_hooks: false,
       atlas_surface: SurfaceSetting::Standard,
+      incumbent: None,
     }
   }
 }
@@ -364,7 +365,7 @@ fn should_measure_headroom_and_noise_from_a_recorded_batch() {
 
   let (batch, records) = agent::load_runs(&fixture.batch).unwrap();
   let (_, committed) = agent::write_report(&agent::build_report(batch.as_ref(), &records, None), &fixture.batch.join("report/agent")).unwrap();
-  let noise = agent::load_noise(std::slice::from_ref(&fixture.batch), std::slice::from_ref(&committed), None).unwrap();
+  let noise = agent::load_noise(std::slice::from_ref(&fixture.batch), std::slice::from_ref(&committed), None, &[]).unwrap();
   assert_eq!(noise.baseline_identity, Vec::new());
   assert_eq!((noise.batches[0].scored_runs, noise.batches[0].tasks), (4, 1));
   assert!(noise.batches[0].reported_metrics_compared > 20, "{:?}", noise.batches[0]);
@@ -380,7 +381,7 @@ fn should_measure_headroom_and_noise_from_a_recorded_batch() {
   );
   assert_eq!((tokens.effects[0].effect, tokens.effects[0].class), (0.0, agent::NoiseClass::NoDifference));
   let weighted = noise.metrics.iter().find(|metric| metric.metric == "cache_weighted_tokens").unwrap();
-  assert_eq!(weighted.effects[0].baseline_mean, 22.0 + 1.25 * 20.0 + 0.1 * 220.0);
+  assert_eq!(weighted.effects[0].first_mean, 22.0 + 1.25 * 20.0 + 0.1 * 220.0);
   let (markdown, _) = agent::write_noise(&noise, &fixture.batch.join("report/noise-floor")).unwrap();
   assert!(fs::read_to_string(markdown).unwrap().contains("Only one batch was given"));
 
@@ -388,7 +389,7 @@ fn should_measure_headroom_and_noise_from_a_recorded_batch() {
   foreign["environment"]["seed"] = serde_json::json!(99);
   let foreign_path = fixture.batch.join("report/foreign.json");
   fs::write(&foreign_path, foreign.to_string()).unwrap();
-  let error = agent::load_noise(std::slice::from_ref(&fixture.batch), std::slice::from_ref(&foreign_path), None).unwrap_err();
+  let error = agent::load_noise(std::slice::from_ref(&fixture.batch), std::slice::from_ref(&foreign_path), None, &[]).unwrap_err();
   assert!(matches!(error, agent::AgentError::InvalidArgument(_)), "{error}");
 }
 
@@ -447,7 +448,7 @@ fn should_run_the_base_check_alone_when_no_run_is_planned() {
     .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
     .collect();
   entries.sort();
-  assert_eq!(entries, vec!["_base", "batch.json"]);
+  assert_eq!(entries, vec![".batch.lock", "_base", "batch.json"]);
 }
 
 #[test]

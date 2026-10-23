@@ -11,6 +11,7 @@ use super::atlas_config::AtlasConfigRecord;
 use super::claude::ConfigIsolation;
 use super::error::{AgentError, AgentResult};
 use super::hooks::AtlasHooksRecord;
+use super::incumbent::{IncumbentRecord, IncumbentRun};
 use super::judge::JudgeOutcome;
 use super::plan::{AtlasSurface, Condition, PlannedRun, PreambleVariant};
 use super::probe::ProbeReport;
@@ -63,11 +64,14 @@ pub enum CostSource {
 pub enum SetupStageKind {
   Infrastructure,
   Product,
+  Incumbent,
 }
 
 pub fn setup_stage_kind(stage: &str) -> SetupStageKind {
   if stage.starts_with("atlas-") {
     SetupStageKind::Product
+  } else if stage.starts_with("incumbent-") {
+    SetupStageKind::Incumbent
   } else {
     SetupStageKind::Infrastructure
   }
@@ -97,6 +101,8 @@ pub struct RunManifest {
   pub atlas_hooks: Option<AtlasHooksRecord>,
   #[serde(default, skip_serializing_if = "AtlasSurface::is_standard")]
   pub atlas_surface: AtlasSurface,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub incumbent: Option<IncumbentRun>,
   pub args: Vec<String>,
   pub env_names: Vec<String>,
   pub atlas_project: Option<String>,
@@ -248,6 +254,8 @@ pub struct Environment {
   pub probe: Option<ProbeReport>,
   #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
   pub linked_paths: BTreeMap<String, Vec<String>>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub incumbent: Option<IncumbentRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -262,6 +270,8 @@ pub struct BatchManifest {
   pub spent_usd: f64,
   #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
   pub instruction_sections_dropped: BTreeMap<String, Vec<String>>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub held_out: Vec<String>,
 }
 
 pub fn read_json<T: DeserializeOwned>(path: &Path) -> AgentResult<T> {

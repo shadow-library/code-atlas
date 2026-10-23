@@ -8,9 +8,10 @@ use serde::{Deserialize, Serialize};
 use super::access::OutOfTreeAccess;
 use super::error::{AgentError, AgentResult};
 use super::hooks::{AtlasHooksRecord, HookMetrics, PRE_TOOL_USE, USER_PROMPT_SUBMIT};
+use super::incumbent::{IncumbentRecord, IncumbentRun};
 use super::judge::JudgeOutcome;
-use super::metrics::{LinkedMetrics, Metrics};
-use super::plan::{AtlasSurface, Condition, PreambleVariant};
+use super::metrics::{IncumbentMetrics, LinkedMetrics, Metrics};
+use super::plan::{AtlasSurface, CONDITION_PAIRS, Condition, PreambleVariant, arm_legend, pair_label};
 use super::record::{
   BATCH_FILE, BatchManifest, CostSource, Environment, METRICS_FILE, RUN_FILE, RunManifest, RunStatus, SCORE_FILE, Score, SessionOutcome, SetupStageKind, TRANSCRIPT_FILE,
   read_json, setup_stage_kind,
@@ -80,6 +81,10 @@ fn count(value: u64) -> f64 {
 fn hook_count(record: &RunRecord, event: &str, field: fn(&HookMetrics) -> u64) -> Option<f64> {
   record.manifest.atlas_hooks.as_ref().filter(|hooks| hooks.installs(event))?;
   metrics_of(record).map(|metrics| count(field(&metrics.hooks)))
+}
+
+fn incumbent_count(record: &RunRecord, field: fn(&IncumbentMetrics) -> u64) -> Option<f64> {
+  metrics_of(record)?.incumbent.as_ref().map(|incumbent| count(field(incumbent)))
 }
 
 fn linked_count(record: &RunRecord, field: fn(&LinkedMetrics) -> u64) -> Option<f64> {
@@ -304,6 +309,42 @@ pub(super) const METRICS: &[MetricDef] = &[
     extract: |record| metrics_of(record)?.atlas_surface_denials.map(count),
   },
   MetricDef {
+    name: "serena_calls",
+    group: MetricGroup::TokensAndContext,
+    better: Better::Neutral,
+    extract: |record| incumbent_count(record, IncumbentMetrics::serena_total),
+  },
+  MetricDef {
+    name: "serena_bytes",
+    group: MetricGroup::TokensAndContext,
+    better: Better::Neutral,
+    extract: |record| incumbent_count(record, |incumbent| incumbent.serena_bytes),
+  },
+  MetricDef {
+    name: "graphify_calls",
+    group: MetricGroup::TokensAndContext,
+    better: Better::Neutral,
+    extract: |record| incumbent_count(record, |incumbent| incumbent.graphify_calls),
+  },
+  MetricDef {
+    name: "graphify_bytes",
+    group: MetricGroup::TokensAndContext,
+    better: Better::Neutral,
+    extract: |record| incumbent_count(record, |incumbent| incumbent.graphify_bytes),
+  },
+  MetricDef {
+    name: "graphify_report_reads",
+    group: MetricGroup::TokensAndContext,
+    better: Better::Neutral,
+    extract: |record| incumbent_count(record, |incumbent| incumbent.graphify_report_reads),
+  },
+  MetricDef {
+    name: "serena_hook_denials",
+    group: MetricGroup::TokensAndContext,
+    better: Better::Neutral,
+    extract: |record| incumbent_count(record, |incumbent| incumbent.hook_denials),
+  },
+  MetricDef {
     name: "linked_reads",
     group: MetricGroup::TokensAndContext,
     better: Better::Neutral,
@@ -345,9 +386,18 @@ pub(super) const METRICS: &[MetricDef] = &[
     better: Better::Neutral,
     extract: |record| record.manifest.atlas_index_ms.map(count),
   },
+  MetricDef {
+    name: "graph_build_ms",
+    group: MetricGroup::TokensAndContext,
+    better: Better::Neutral,
+    extract: |record| record.manifest.incumbent.as_ref().map(|incumbent| count(incumbent.graph_build_ms)),
+  },
 ];
 
 const TOKEN_METRIC: &str = "total_tokens";
+pub const HELD_OUT_CATEGORY: &str = "held-out";
+pub const COST_RATIO_THRESHOLD: f64 = 1.15;
+pub const DEV_SECTION: &str = "dev";
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Stat {
@@ -466,11 +516,70 @@ pub struct Delta {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PairwiseDelta {
+  pub first: Condition,
+  pub second: Condition,
+  pub metric: String,
+  pub tasks: usize,
+  pub first_mean: f64,
+  pub second_mean: f64,
+  pub difference: f64,
+  pub direction: Direction,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct CostSummary {
+  pub condition: Condition,
+  pub sessions: usize,
+  pub mean: f64,
+  pub median: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct CostRatio {
+  pub tasks: usize,
+  pub atlas_mean: f64,
+  pub incumbent_mean: f64,
+  pub ratio: f64,
+  pub threshold: f64,
+  pub above_threshold: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArmSummary {
+  pub paired_tasks: Vec<String>,
+  pub aggregates: BTreeMap<Condition, BTreeMap<String, Stat>>,
+  pub pairwise: Vec<PairwiseDelta>,
+  pub costs: Vec<CostSummary>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub cost_ratio: Option<CostRatio>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReportSection {
+  pub name: String,
+  pub tasks: Vec<String>,
+  pub summary: ArmSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentReport {
   pub environment: Option<Environment>,
+  #[serde(default)]
+  pub conditions: Vec<Condition>,
   pub tasks: Vec<TaskReport>,
   pub paired_tasks: Vec<String>,
   pub aggregates: BTreeMap<Condition, BTreeMap<String, Stat>>,
+  #[serde(default)]
+  pub pairwise: Vec<PairwiseDelta>,
+  #[serde(default)]
+  pub costs: Vec<CostSummary>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub cost_ratio: Option<CostRatio>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub held_out: Vec<String>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub sections: Vec<ReportSection>,
   pub negative_results: Vec<NegativeResult>,
   pub setup_failures: Vec<SetupFailure>,
   pub contaminated_runs: Vec<ContaminatedRun>,
@@ -506,18 +615,50 @@ pub fn load_runs(batch_dir: &Path) -> AgentResult<(Option<BatchManifest>, Vec<Ru
 }
 
 pub fn build_report(batch: Option<&BatchManifest>, records: &[RunRecord], previous: Option<&AgentReport>) -> AgentReport {
+  build_split_report(batch, records, previous, &[])
+}
+
+pub fn build_split_report(batch: Option<&BatchManifest>, records: &[RunRecord], previous: Option<&AgentReport>, held_out: &[String]) -> AgentReport {
   let mut task_ids: Vec<String> = records.iter().map(|record| record.manifest.task_id.clone()).collect();
   task_ids.sort();
   task_ids.dedup();
+  let conditions = present_conditions(records);
   let tasks: Vec<TaskReport> = task_ids.iter().map(|task_id| task_report(task_id, records)).collect();
-  let paired_tasks: Vec<String> = tasks.iter().filter(|task| is_paired(task)).map(|task| task.task_id.clone()).collect();
-  let aggregates = aggregates(&tasks);
+  let overall = summary(&tasks.iter().collect::<Vec<_>>(), records, &conditions);
+  let mut held_out: Vec<String> = batch
+    .map(|batch| batch.held_out.clone())
+    .unwrap_or_default()
+    .into_iter()
+    .chain(held_out.iter().cloned())
+    .collect();
+  held_out.sort();
+  held_out.dedup();
+  let sections = match held_out.is_empty() {
+    true => Vec::new(),
+    false => [(DEV_SECTION, false), (HELD_OUT_CATEGORY, true)]
+      .into_iter()
+      .map(|(name, held)| {
+        let members: Vec<&TaskReport> = tasks.iter().filter(|task| held_out.contains(&task.task_id) == held).collect();
+        ReportSection {
+          name: name.to_owned(),
+          tasks: members.iter().map(|task| task.task_id.clone()).collect(),
+          summary: summary(&members, records, &conditions),
+        }
+      })
+      .collect(),
+  };
   let negative_results = tasks.iter().flat_map(|task| negative_results(task, records)).collect();
   let mut report = AgentReport {
     environment: batch.map(|batch| batch.environment.clone()),
+    conditions,
     tasks,
-    paired_tasks,
-    aggregates,
+    paired_tasks: overall.paired_tasks,
+    aggregates: overall.aggregates,
+    pairwise: overall.pairwise,
+    costs: overall.costs,
+    cost_ratio: overall.cost_ratio,
+    held_out,
+    sections,
     negative_results,
     setup_failures: setup_failures(records),
     contaminated_runs: contaminated_runs(records),
@@ -533,9 +674,18 @@ pub fn build_report(batch: Option<&BatchManifest>, records: &[RunRecord], previo
   report
 }
 
+fn present_conditions(records: &[RunRecord]) -> Vec<Condition> {
+  let mut present: Vec<Condition> = Condition::EVERY
+    .into_iter()
+    .filter(|condition| records.iter().any(|record| record.manifest.condition == *condition))
+    .collect();
+  present.sort_by_key(|condition| condition.arm());
+  present
+}
+
 fn task_report(task_id: &str, records: &[RunRecord]) -> TaskReport {
   let mut conditions = BTreeMap::new();
-  for condition in Condition::ALL {
+  for condition in Condition::EVERY {
     let runs: Vec<&RunRecord> = records
       .iter()
       .filter(|record| record.manifest.task_id == task_id && record.manifest.condition == condition)
@@ -600,16 +750,125 @@ fn contaminated_runs(records: &[RunRecord]) -> Vec<ContaminatedRun> {
     .collect()
 }
 
-fn is_paired(task: &TaskReport) -> bool {
-  Condition::ALL
+fn is_paired(task: &TaskReport, conditions: &[Condition]) -> bool {
+  conditions
     .iter()
     .all(|condition| task.conditions.get(condition).is_some_and(|stats| !stats.metrics.is_empty()))
 }
 
-fn aggregates(tasks: &[TaskReport]) -> BTreeMap<Condition, BTreeMap<String, Stat>> {
-  let paired: Vec<&TaskReport> = tasks.iter().filter(|task| is_paired(task)).collect();
+fn summary(tasks: &[&TaskReport], records: &[RunRecord], conditions: &[Condition]) -> ArmSummary {
+  let paired: Vec<&TaskReport> = tasks.iter().copied().filter(|task| is_paired(task, conditions)).collect();
+  let paired_tasks: Vec<String> = paired.iter().map(|task| task.task_id.clone()).collect();
+  let aggregates = aggregates(&paired, conditions);
+  let costs: Vec<CostSummary> = conditions
+    .iter()
+    .filter_map(|condition| {
+      let values: Vec<f64> = records
+        .iter()
+        .filter(|record| record.manifest.condition == *condition && is_scored(record) && paired_tasks.contains(&record.manifest.task_id))
+        .filter_map(|record| record.manifest.session_cost_usd)
+        .collect();
+      let stat = Stat::of(&values)?;
+      Some(CostSummary {
+        condition: *condition,
+        sessions: stat.n,
+        mean: stat.mean,
+        median: median(&values)?,
+      })
+    })
+    .collect();
+  ArmSummary {
+    pairwise: pairwise(tasks, conditions),
+    cost_ratio: cost_ratio(tasks, records),
+    paired_tasks,
+    aggregates,
+    costs,
+  }
+}
+
+fn cost_ratio(tasks: &[&TaskReport], records: &[RunRecord]) -> Option<CostRatio> {
+  let shared: Vec<&String> = tasks
+    .iter()
+    .filter(|task| is_paired(task, &[Condition::Incumbent, Condition::Atlas]))
+    .map(|task| &task.task_id)
+    .collect();
+  let mean_cost = |condition: Condition| {
+    let values: Vec<f64> = records
+      .iter()
+      .filter(|record| record.manifest.condition == condition && is_scored(record) && shared.contains(&&record.manifest.task_id))
+      .filter_map(|record| record.manifest.session_cost_usd)
+      .collect();
+    Stat::of(&values).map(|stat| stat.mean)
+  };
+  let (atlas, incumbent) = (mean_cost(Condition::Atlas)?, mean_cost(Condition::Incumbent)?);
+  (incumbent > 0.0).then(|| CostRatio {
+    tasks: shared.len(),
+    atlas_mean: atlas,
+    incumbent_mean: incumbent,
+    ratio: atlas / incumbent,
+    threshold: COST_RATIO_THRESHOLD,
+    above_threshold: atlas / incumbent > COST_RATIO_THRESHOLD,
+  })
+}
+
+fn median(values: &[f64]) -> Option<f64> {
+  let mut sorted = values.to_vec();
+  sorted.sort_by(f64::total_cmp);
+  let middle = sorted.len() / 2;
+  match sorted.len() {
+    0 => None,
+    odd if odd % 2 == 1 => Some(sorted[middle]),
+    _ => Some((sorted[middle - 1] + sorted[middle]) / 2.0),
+  }
+}
+
+fn pairwise(tasks: &[&TaskReport], conditions: &[Condition]) -> Vec<PairwiseDelta> {
+  let mut deltas = Vec::new();
+  for (first, second) in CONDITION_PAIRS
+    .into_iter()
+    .filter(|(first, second)| conditions.contains(first) && conditions.contains(second))
+  {
+    let shared: Vec<&TaskReport> = tasks.iter().copied().filter(|task| is_paired(task, &[first, second])).collect();
+    for def in METRICS {
+      let means: Vec<(f64, f64)> = shared
+        .iter()
+        .filter_map(|task| {
+          let mean = |condition: Condition| task.conditions.get(&condition)?.metrics.get(def.name).map(|stat| stat.mean);
+          mean(first).zip(mean(second))
+        })
+        .collect();
+      if means.is_empty() {
+        continue;
+      }
+      let average = |pick: fn(&(f64, f64)) -> f64| means.iter().map(pick).sum::<f64>() / means.len() as f64;
+      let (a, b) = (average(|pair| pair.0), average(|pair| pair.1));
+      deltas.push(PairwiseDelta {
+        first,
+        second,
+        metric: def.name.to_owned(),
+        tasks: means.len(),
+        first_mean: a,
+        second_mean: b,
+        difference: b - a,
+        direction: direction(def.better, a, b),
+      });
+    }
+  }
+  deltas
+}
+
+fn direction(better: Better, before: f64, after: f64) -> Direction {
+  match better {
+    Better::Neutral => Direction::Neutral,
+    _ if (before - after).abs() < 1e-9 => Direction::Unchanged,
+    better if worse(better, before, after) => Direction::Regressed,
+    _ => Direction::Improved,
+  }
+}
+
+fn aggregates(paired: &[&TaskReport], conditions: &[Condition]) -> BTreeMap<Condition, BTreeMap<String, Stat>> {
   let mut aggregates = BTreeMap::new();
-  for condition in Condition::ALL {
+  for condition in conditions.iter().copied() {
     let per_metric: BTreeMap<String, Stat> = METRICS
       .iter()
       .filter_map(|def| {
@@ -694,12 +953,7 @@ fn compare(previous: &AgentReport, current: &AgentReport) -> Vec<Delta> {
       let (Some(before), Some(after)) = (previous.get(def.name), current.get(def.name)) else {
         continue;
       };
-      let direction = match def.better {
-        Better::Neutral => Direction::Neutral,
-        _ if (before.mean - after.mean).abs() < 1e-9 => Direction::Unchanged,
-        better if worse(better, before.mean, after.mean) => Direction::Regressed,
-        _ => Direction::Improved,
-      };
+      let direction = direction(def.better, before.mean, after.mean);
       deltas.push(Delta {
         scope: scope.to_owned(),
         condition,
@@ -770,52 +1024,21 @@ pub fn render_markdown(report: &AgentReport) -> String {
   let _ = writeln!(out, "# Agent A/B report\n");
   render_environment(&mut out, report);
   render_contamination(&mut out, report);
-  let paired = report.paired_tasks.len();
-  let _ = writeln!(out, "## Aggregates (mean of per-task means over {paired} paired tasks)\n");
-  let _ = writeln!(
-    out,
-    "Only tasks with scored, uncontaminated runs in both conditions are aggregated ({} contaminated runs excluded). Times (`first_edit_ms`, `session_ms`, `wall_ms`) exclude Code Atlas indexing, which is reported separately as `atlas_index_ms`.\n",
-    report.contaminated_runs.len()
-  );
-  for group in [MetricGroup::Correctness, MetricGroup::ReuseAndBlastRadius, MetricGroup::TokensAndContext] {
-    let _ = writeln!(out, "### {}\n", group.title());
-    let _ = writeln!(out, "| metric | baseline ({paired} tasks) | atlas ({paired} tasks) |");
-    let _ = writeln!(out, "|---|---|---|");
-    for def in METRICS.iter().filter(|def| def.group == group) {
-      let baseline = report.aggregates.get(&Condition::Baseline).and_then(|metrics| metrics.get(def.name));
-      let atlas = report.aggregates.get(&Condition::Atlas).and_then(|metrics| metrics.get(def.name));
-      if baseline.is_none() && atlas.is_none() {
-        continue;
-      }
-      let _ = writeln!(out, "| {} | {} | {} |", def.name, cell(baseline, paired, "tasks"), cell(atlas, paired, "tasks"));
+  let conditions = report_conditions(report);
+  match report.sections.is_empty() {
+    true => {
+      render_summary(&mut out, report, None, &report.summary(), &conditions);
+      render_tasks(&mut out, "## Per task", report.tasks.iter(), &conditions);
     }
-    out.push('\n');
-  }
-  let _ = writeln!(out, "## Per task\n");
-  for task in &report.tasks {
-    let _ = writeln!(out, "### {}\n", task.task_id);
-    let baseline_stats = task.conditions.get(&Condition::Baseline);
-    let atlas_stats = task.conditions.get(&Condition::Atlas);
-    let _ = writeln!(out, "- baseline: {}", outcome_summary(baseline_stats));
-    let _ = writeln!(out, "- atlas: {}\n", outcome_summary(atlas_stats));
-    let _ = writeln!(out, "| metric | baseline | atlas |");
-    let _ = writeln!(out, "|---|---|---|");
-    for def in METRICS {
-      let baseline = baseline_stats.and_then(|stats| stats.metrics.get(def.name));
-      let atlas = atlas_stats.and_then(|stats| stats.metrics.get(def.name));
-      if baseline.is_none() && atlas.is_none() {
-        continue;
+    false => {
+      for section in &report.sections {
+        render_summary(&mut out, report, Some(&section.name), &section.summary, &conditions);
       }
-      let runs = |stats: Option<&ConditionStats>| stats.map_or(0, |stats| stats.runs);
-      let _ = writeln!(
-        out,
-        "| {} | {} | {} |",
-        def.name,
-        cell(baseline, runs(baseline_stats), "n"),
-        cell(atlas, runs(atlas_stats), "n")
-      );
+      for section in &report.sections {
+        let tasks = report.tasks.iter().filter(|task| section.tasks.contains(&task.task_id));
+        render_tasks(&mut out, &format!("## Per task, {} tasks", section.name), tasks, &conditions);
+      }
     }
-    out.push('\n');
   }
   let _ = writeln!(out, "## Negative results\n");
   if report.negative_results.is_empty() && report.setup_failures.is_empty() {
@@ -838,13 +1061,14 @@ pub fn render_markdown(report: &AgentReport) -> String {
   if !report.negative_results.is_empty() {
     out.push('\n');
   }
-  for kind in [SetupStageKind::Product, SetupStageKind::Infrastructure] {
+  for kind in [SetupStageKind::Product, SetupStageKind::Incumbent, SetupStageKind::Infrastructure] {
     let failures: Vec<&SetupFailure> = report.setup_failures.iter().filter(|failure| failure.kind == kind).collect();
     if failures.is_empty() {
       continue;
     }
     let title = match kind {
       SetupStageKind::Product => "Setup failures caused by Code Atlas (excluded from the statistics)",
+      SetupStageKind::Incumbent => "Setup failures caused by Serena or graphify (excluded from the statistics)",
       SetupStageKind::Infrastructure => "Setup failures caused by the harness or environment (excluded from the statistics)",
     };
     let _ = writeln!(out, "### {title}\n");
@@ -888,6 +1112,196 @@ pub fn render_markdown(report: &AgentReport) -> String {
   out
 }
 
+impl AgentReport {
+  pub fn summary(&self) -> ArmSummary {
+    ArmSummary {
+      paired_tasks: self.paired_tasks.clone(),
+      aggregates: self.aggregates.clone(),
+      pairwise: self.pairwise.clone(),
+      costs: self.costs.clone(),
+      cost_ratio: self.cost_ratio,
+    }
+  }
+}
+
+fn report_conditions(report: &AgentReport) -> Vec<Condition> {
+  if !report.conditions.is_empty() {
+    return report.conditions.clone();
+  }
+  let mut present: Vec<Condition> = Condition::EVERY
+    .into_iter()
+    .filter(|condition| report.tasks.iter().any(|task| task.conditions.contains_key(condition)))
+    .collect();
+  present.sort_by_key(|condition| condition.arm());
+  present
+}
+
+fn conditions_phrase(conditions: &[Condition]) -> String {
+  match conditions.len() {
+    1 => "its condition".to_owned(),
+    2 => "both conditions".to_owned(),
+    count => format!("all {count} conditions"),
+  }
+}
+
+fn render_summary(out: &mut String, report: &AgentReport, section: Option<&str>, summary: &ArmSummary, conditions: &[Condition]) {
+  let paired = summary.paired_tasks.len();
+  let scope = section.map(|name| format!(", {name} tasks")).unwrap_or_default();
+  let _ = writeln!(out, "## Aggregates{scope} (mean of per-task means over {paired} paired tasks)\n");
+  let _ = writeln!(
+    out,
+    "Only tasks with scored, uncontaminated runs in {} are aggregated ({} contaminated runs excluded). Times (`first_edit_ms`, `session_ms`, `wall_ms`) exclude Code Atlas indexing, which is reported separately as `atlas_index_ms`.\n",
+    conditions_phrase(conditions),
+    report.contaminated_runs.len()
+  );
+  for group in [MetricGroup::Correctness, MetricGroup::ReuseAndBlastRadius, MetricGroup::TokensAndContext] {
+    let _ = writeln!(out, "### {}\n", group.title());
+    let headers: Vec<String> = conditions.iter().map(|condition| format!("{} ({paired} tasks)", condition.label())).collect();
+    let _ = writeln!(out, "| metric | {} |", headers.join(" | "));
+    let _ = writeln!(out, "|---|{}", "---|".repeat(conditions.len()));
+    for def in METRICS.iter().filter(|def| def.group == group) {
+      let stats: Vec<Option<&Stat>> = conditions
+        .iter()
+        .map(|condition| summary.aggregates.get(condition).and_then(|metrics| metrics.get(def.name)))
+        .collect();
+      if stats.iter().all(Option::is_none) {
+        continue;
+      }
+      let cells: Vec<String> = stats.into_iter().map(|stat| cell(stat, paired, "tasks")).collect();
+      let _ = writeln!(out, "| {} | {} |", def.name, cells.join(" | "));
+    }
+    out.push('\n');
+  }
+  render_pairwise(out, section, summary, conditions);
+  render_costs(out, section, summary);
+}
+
+fn render_pairwise(out: &mut String, section: Option<&str>, summary: &ArmSummary, conditions: &[Condition]) {
+  let pairs: Vec<(Condition, Condition)> = CONDITION_PAIRS
+    .into_iter()
+    .filter(|(first, second)| summary.pairwise.iter().any(|delta| delta.first == *first && delta.second == *second))
+    .collect();
+  if pairs.is_empty() {
+    return;
+  }
+  let scope = section.map(|name| format!(", {name} tasks")).unwrap_or_default();
+  let _ = writeln!(out, "## Pairwise differences{scope}\n");
+  let verdict = match conditions.contains(&Condition::Atlas) && conditions.contains(&Condition::Incumbent) {
+    true => " C vs B is the verdict.",
+    false => "",
+  };
+  let _ = writeln!(
+    out,
+    "Each column is the mean, over the tasks scored in both arms, of the second arm's per-task mean minus the first arm's ({}).{verdict} A difference is evidence only outside the noise bound `agent noise` computes from two batches of one condition.\n",
+    arm_legend(conditions)
+  );
+  let headers: Vec<String> = pairs
+    .iter()
+    .map(|(first, second)| {
+      let tasks = summary
+        .pairwise
+        .iter()
+        .filter(|delta| delta.first == *first && delta.second == *second)
+        .map(|delta| delta.tasks)
+        .max()
+        .unwrap_or(0);
+      format!("{}: {} − {} ({tasks} tasks)", pair_label(*first, *second), second.label(), first.label())
+    })
+    .collect();
+  let _ = writeln!(out, "| metric | {} |", headers.join(" | "));
+  let _ = writeln!(out, "|---|{}", "---|".repeat(pairs.len()));
+  for def in METRICS {
+    let cells: Vec<String> = pairs
+      .iter()
+      .map(|(first, second)| {
+        summary
+          .pairwise
+          .iter()
+          .find(|delta| delta.first == *first && delta.second == *second && delta.metric == def.name)
+          .map_or_else(|| "–".to_owned(), difference_cell)
+      })
+      .collect();
+    if cells.iter().all(|cell| cell == "–") {
+      continue;
+    }
+    let _ = writeln!(out, "| {} | {} |", def.name, cells.join(" | "));
+  }
+  out.push('\n');
+}
+
+fn difference_cell(delta: &PairwiseDelta) -> String {
+  let value = match delta.difference {
+    positive if positive > 1e-9 => format!("+{}", number(positive)),
+    other => number(other),
+  };
+  match delta.direction {
+    Direction::Improved => format!("{value} (better)"),
+    Direction::Regressed => format!("{value} (**worse**)"),
+    Direction::Unchanged => format!("{value} (equal)"),
+    Direction::Neutral => value,
+  }
+}
+
+fn render_costs(out: &mut String, section: Option<&str>, summary: &ArmSummary) {
+  if summary.costs.is_empty() {
+    return;
+  }
+  let scope = section.map(|name| format!(", {name} tasks")).unwrap_or_default();
+  let _ = writeln!(out, "## Cost per session{scope}\n");
+  let _ = writeln!(out, "Reported session cost of the scored runs of the paired tasks; the judge is not included.\n");
+  let _ = writeln!(out, "| arm | sessions | mean | median |");
+  let _ = writeln!(out, "|---|---|---|---|");
+  for cost in &summary.costs {
+    let _ = writeln!(out, "| {} | {} | ${:.4} | ${:.4} |", cost.condition.label(), cost.sessions, cost.mean, cost.median);
+  }
+  out.push('\n');
+  if let Some(ratio) = &summary.cost_ratio {
+    let verdict = match ratio.above_threshold {
+      true => format!("**above the {} threshold**", number(ratio.threshold)),
+      false => format!("within the {} threshold", number(ratio.threshold)),
+    };
+    let _ = writeln!(
+      out,
+      "C/B ratio of mean session cost over the {} tasks scored in both: {:.3} ({} ${:.4} / {} ${:.4}), {verdict}.\n",
+      ratio.tasks,
+      ratio.ratio,
+      Condition::Atlas.label(),
+      ratio.atlas_mean,
+      Condition::Incumbent.label(),
+      ratio.incumbent_mean
+    );
+  }
+}
+
+fn render_tasks<'a>(out: &mut String, title: &str, tasks: impl Iterator<Item = &'a TaskReport>, conditions: &[Condition]) {
+  let _ = writeln!(out, "{title}\n");
+  for task in tasks {
+    let _ = writeln!(out, "### {}\n", task.task_id);
+    for (index, condition) in conditions.iter().enumerate() {
+      let end = if index + 1 == conditions.len() { "\n" } else { "" };
+      let _ = writeln!(out, "- {}: {}{end}", condition.label(), outcome_summary(task.conditions.get(condition)));
+    }
+    let labels: Vec<&str> = conditions.iter().map(|condition| condition.label()).collect();
+    let _ = writeln!(out, "| metric | {} |", labels.join(" | "));
+    let _ = writeln!(out, "|---|{}", "---|".repeat(conditions.len()));
+    for def in METRICS {
+      let stats: Vec<(Option<&Stat>, usize)> = conditions
+        .iter()
+        .map(|condition| {
+          let stats = task.conditions.get(condition);
+          (stats.and_then(|stats| stats.metrics.get(def.name)), stats.map_or(0, |stats| stats.runs))
+        })
+        .collect();
+      if stats.iter().all(|(stat, _)| stat.is_none()) {
+        continue;
+      }
+      let cells: Vec<String> = stats.into_iter().map(|(stat, runs)| cell(stat, runs, "n")).collect();
+      let _ = writeln!(out, "| {} | {} |", def.name, cells.join(" | "));
+    }
+    out.push('\n');
+  }
+}
+
 fn render_contamination(out: &mut String, report: &AgentReport) {
   if report.contaminated_runs.is_empty() {
     return;
@@ -907,6 +1321,17 @@ fn render_contamination(out: &mut String, report: &AgentReport) {
     let _ = writeln!(out, "- `{}` ({}): {}", run.run_id, run.condition, paths.join(", "));
   }
   out.push('\n');
+}
+
+pub fn ensure_single_incumbent(batch: Option<&BatchManifest>, records: &[RunRecord]) -> AgentResult<()> {
+  let mut seen: BTreeSet<String> = records.iter().filter_map(|record| record.manifest.incumbent.as_ref()).map(IncumbentRun::setup).collect();
+  if let Some(recorded) = batch.and_then(|batch| batch.environment.incumbent.as_ref()).filter(|_| !seen.is_empty()) {
+    seen.insert(recorded.setup());
+  }
+  if seen.len() <= 1 {
+    return Ok(());
+  }
+  Err(AgentError::MixedIncumbent(seen.into_iter().collect::<Vec<_>>().join("; ")))
 }
 
 pub fn ensure_single_preamble(batch: Option<&BatchManifest>, records: &[RunRecord]) -> AgentResult<()> {
@@ -963,9 +1388,19 @@ fn render_environment(out: &mut String, report: &AgentReport) {
     let tasks: Vec<String> = environment.linked_paths.iter().map(|(task, paths)| format!("{task}: {}", paths.join(", "))).collect();
     ("linked", tasks.join("; "))
   });
+  let incumbent = environment.incumbent.as_ref().map(|record| ("incumbent", IncumbentRecord::describe(record)));
+  let held_out = (!report.held_out.is_empty()).then(|| ("held-out tasks", report.held_out.join(", ")));
   let _ = writeln!(out, "| key | value |");
   let _ = writeln!(out, "|---|---|");
-  for (key, value) in rows.into_iter().chain(atlas_config).chain([atlas_hooks]).chain(atlas_surface).chain(linked) {
+  for (key, value) in rows
+    .into_iter()
+    .chain(atlas_config)
+    .chain([atlas_hooks])
+    .chain(atlas_surface)
+    .chain(linked)
+    .chain(incumbent)
+    .chain(held_out)
+  {
     let _ = writeln!(out, "| {key} | {value} |");
   }
   out.push('\n');
@@ -1068,6 +1503,7 @@ mod tests {
       atlas_config_blake3: None,
       atlas_hooks: None,
       atlas_surface: AtlasSurface::Standard,
+      incumbent: None,
       args: Vec::new(),
       env_names: Vec::new(),
       atlas_project: None,
@@ -1260,6 +1696,7 @@ mod tests {
         atlas_surface: AtlasSurface::Standard,
         probe: None,
         linked_paths: BTreeMap::new(),
+        incumbent: None,
       },
       tasks: vec!["t00-smoke".to_owned()],
       truths: Vec::new(),
@@ -1268,6 +1705,7 @@ mod tests {
       skipped_after_hooks_failure: Vec::new(),
       spent_usd: 2.0,
       instruction_sections_dropped: BTreeMap::new(),
+      held_out: Vec::new(),
     }
   }
 
@@ -1484,6 +1922,193 @@ mod tests {
     );
     let standard = render_markdown(&build_report(Some(&batch()), &records(), None));
     assert!(!standard.contains("| linked"), "{standard}");
+  }
+
+  fn three_arms(task: &'static str) -> Vec<RunRecord> {
+    let sample = |condition, index, tokens, cost: f64| {
+      let mut run = record(&Sample {
+        task,
+        condition,
+        index,
+        passed: true,
+        correctness: 4,
+        tokens,
+        files: 3,
+        status: finished(),
+      });
+      run.manifest.session_cost_usd = Some(cost);
+      run
+    };
+    vec![
+      sample(Condition::Baseline, 0, 100_000, 0.4),
+      sample(Condition::Baseline, 1, 120_000, 0.6),
+      sample(Condition::Atlas, 0, 80_000, 0.7),
+      sample(Condition::Atlas, 1, 90_000, 0.8),
+      sample(Condition::Incumbent, 0, 110_000, 0.5),
+      sample(Condition::Incumbent, 1, 130_000, 0.6),
+    ]
+  }
+
+  #[test]
+  fn should_report_every_arm_present_with_pairwise_differences_and_the_cost_ratio() {
+    let report = build_report(Some(&batch()), &three_arms("t00-smoke"), None);
+    assert_eq!(report.conditions, vec![Condition::Baseline, Condition::Incumbent, Condition::Atlas]);
+    assert_eq!(report.paired_tasks, vec!["t00-smoke"]);
+    let tokens: Vec<(Condition, Condition, f64, Direction)> = report
+      .pairwise
+      .iter()
+      .filter(|delta| delta.metric == "total_tokens")
+      .map(|delta| (delta.first, delta.second, delta.difference, delta.direction))
+      .collect();
+    assert_eq!(
+      tokens,
+      vec![
+        (Condition::Incumbent, Condition::Atlas, -35_000.0, Direction::Improved),
+        (Condition::Baseline, Condition::Atlas, -25_000.0, Direction::Improved),
+        (Condition::Baseline, Condition::Incumbent, 10_000.0, Direction::Regressed),
+      ]
+    );
+    let ratio = report.cost_ratio.unwrap();
+    assert_eq!((ratio.threshold, ratio.above_threshold), (1.15, true));
+    assert!((ratio.ratio - 0.75 / 0.55).abs() < 1e-9);
+    let markdown = render_markdown(&report);
+    for line in [
+      "| metric | baseline (1 tasks) | Serena + graphify (1 tasks) | atlas (1 tasks) |\n|---|---|---|---|\n",
+      "| total_tokens | 110000 | 120000 | 85000 |\n",
+      "| metric | C vs B (verdict): atlas − Serena + graphify (1 tasks) | C vs A: atlas − baseline (1 tasks) | B vs A: Serena + graphify − baseline (1 tasks) |\n|---|---|---|---|\n",
+      "| total_tokens | -35000 (better) | -25000 (better) | +10000 (**worse**) |\n",
+      "| hidden_tests_pass | 0 (equal) | 0 (equal) | 0 (equal) |\n",
+      "| arm | sessions | mean | median |\n|---|---|---|---|\n| baseline | 2 | $0.5000 | $0.5000 |\n| Serena + graphify | 2 | $0.5500 | $0.5500 |\n| atlas | 2 | $0.7500 | $0.7500 |\n",
+      "C/B ratio of mean session cost over the 1 tasks scored in both: 1.364 (atlas $0.7500 / Serena + graphify $0.5500), **above the 1.15 threshold**.\n",
+      "(A = baseline, B = Serena + graphify, C = atlas). C vs B is the verdict.",
+      "- baseline: 2 runs: completed 2",
+      "- atlas: 2 runs: completed 2, max_turns 0, reported_error 0, timed_out 0, no_result 0, setup_failed 0; contaminated 0; estimated costs 0\n\n| metric | baseline | Serena + graphify | atlas |\n",
+      "Only tasks with scored, uncontaminated runs in all 3 conditions are aggregated",
+    ] {
+      assert!(markdown.contains(line), "{line}\n{markdown}");
+    }
+    let parsed: AgentReport = serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
+    assert_eq!((parsed.conditions, parsed.pairwise.len(), parsed.costs.len()), (report.conditions.clone(), 90, 3));
+  }
+
+  #[test]
+  fn should_report_only_the_arms_a_batch_holds() {
+    let incumbent_only: Vec<RunRecord> = three_arms("t00-smoke").into_iter().filter(|run| run.manifest.condition != Condition::Atlas).collect();
+    let report = build_report(None, &incumbent_only, None);
+    assert_eq!(report.conditions, vec![Condition::Baseline, Condition::Incumbent]);
+    assert_eq!(report.cost_ratio, None);
+    let markdown = render_markdown(&report);
+    assert!(markdown.contains("| metric | B vs A: Serena + graphify − baseline (1 tasks) |\n"), "{markdown}");
+    assert!(markdown.contains("(A = baseline, B = Serena + graphify). A difference"), "{markdown}");
+    assert!(
+      !markdown.contains("C/B ratio") && !markdown.contains("C vs A") && !markdown.contains("| atlas ("),
+      "{markdown}"
+    );
+  }
+
+  #[test]
+  fn should_difference_each_pair_of_arms_over_the_tasks_both_arms_scored() {
+    let mut runs = three_arms("t00-smoke");
+    runs.extend(
+      three_arms("t01-two-arms")
+        .into_iter()
+        .filter(|run| run.manifest.condition != Condition::Incumbent)
+        .map(|mut run| {
+          if let Some(metrics) = run.metrics.as_mut() {
+            metrics.tokens.total.cache_read += 100_000;
+          }
+          run
+        }),
+    );
+    let report = build_report(Some(&batch()), &runs, None);
+    assert_eq!(report.paired_tasks, vec!["t00-smoke"]);
+    let tokens: Vec<(Condition, Condition, usize, f64, f64)> = report
+      .pairwise
+      .iter()
+      .filter(|delta| delta.metric == "total_tokens")
+      .map(|delta| (delta.first, delta.second, delta.tasks, delta.first_mean, delta.difference))
+      .collect();
+    assert_eq!(
+      tokens,
+      vec![
+        (Condition::Incumbent, Condition::Atlas, 1, 120_000.0, -35_000.0),
+        (Condition::Baseline, Condition::Atlas, 2, 160_000.0, -25_000.0),
+        (Condition::Baseline, Condition::Incumbent, 1, 110_000.0, 10_000.0),
+      ]
+    );
+    let markdown = render_markdown(&report);
+    assert!(
+      markdown.contains("| metric | C vs B (verdict): atlas − Serena + graphify (1 tasks) | C vs A: atlas − baseline (2 tasks) | B vs A: Serena + graphify − baseline (1 tasks) |"),
+      "{markdown}"
+    );
+    assert_eq!(report.cost_ratio.map(|ratio| ratio.tasks), Some(1));
+  }
+
+  #[test]
+  fn should_split_every_table_into_dev_and_held_out_tasks() {
+    let mut held = batch();
+    held.held_out = vec!["t02-holdout".to_owned()];
+    let mut runs = three_arms("t00-smoke");
+    runs.extend(three_arms("t02-holdout").into_iter().map(|mut run| {
+      if let Some(metrics) = run.metrics.as_mut() {
+        metrics.tokens.total.cache_read += 10_000;
+      }
+      run
+    }));
+    runs.extend(three_arms("t03-extra"));
+    let report = build_split_report(Some(&held), &runs, None, &["t03-extra".to_owned()]);
+    assert_eq!(report.held_out, vec!["t02-holdout", "t03-extra"]);
+    let sections: Vec<(&str, Vec<&str>, usize)> = report
+      .sections
+      .iter()
+      .map(|section| {
+        (
+          section.name.as_str(),
+          section.tasks.iter().map(String::as_str).collect(),
+          section.summary.paired_tasks.len(),
+        )
+      })
+      .collect();
+    assert_eq!(sections, vec![("dev", vec!["t00-smoke"], 1), ("held-out", vec!["t02-holdout", "t03-extra"], 2)]);
+    assert_eq!(report.sections[1].summary.aggregates[&Condition::Baseline]["total_tokens"].mean, 115_000.0);
+    assert_eq!(report.paired_tasks.len(), 3);
+    let markdown = render_markdown(&report);
+    for line in [
+      "| held-out tasks | t02-holdout, t03-extra |\n",
+      "## Aggregates, dev tasks (mean of per-task means over 1 paired tasks)\n",
+      "## Aggregates, held-out tasks (mean of per-task means over 2 paired tasks)\n",
+      "## Pairwise differences, held-out tasks\n",
+      "## Cost per session, dev tasks\n",
+      "## Per task, dev tasks\n\n### t00-smoke\n",
+      "## Per task, held-out tasks\n\n### t02-holdout\n",
+    ] {
+      assert!(markdown.contains(line), "{line}\n{markdown}");
+    }
+    assert!(!markdown.contains("## Aggregates ("), "{markdown}");
+    let unsplit = render_markdown(&build_report(Some(&batch()), &runs, None));
+    assert!(unsplit.contains("## Aggregates (mean of per-task means over 3 paired tasks)") && !unsplit.contains("dev tasks"));
+  }
+
+  #[test]
+  fn should_refuse_a_batch_mixing_incumbent_setups() {
+    let incumbent = |graphify: &str| {
+      let mut run = three_arms("t00-smoke").remove(4);
+      run.manifest.incumbent = Some(IncumbentRun {
+        serena_version: Some("Serena 1.6.1".to_owned()),
+        graphify_version: Some(graphify.to_owned()),
+        instructions_blake3: "i".to_owned(),
+        ..IncumbentRun::default()
+      });
+      run
+    };
+    assert!(ensure_single_incumbent(None, &[incumbent("graphify 0.8.26"), incumbent("graphify 0.8.26")]).is_ok());
+    assert_eq!(
+      ensure_single_incumbent(None, &[incumbent("graphify 0.8.26"), incumbent("graphify 0.9.0")])
+        .unwrap_err()
+        .to_string(),
+      "batch mixes incumbent setups (Serena 1.6.1, graphify 0.8.26, instructions i; Serena 1.6.1, graphify 0.9.0, instructions i); runs under different Serena, graphify or instructions are not comparable, rerun them under one"
+    );
+    assert!(ensure_single_incumbent(Some(&batch()), &records()).is_ok());
   }
 
   #[test]

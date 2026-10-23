@@ -6,8 +6,8 @@ use clap::error::ErrorKind;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use atlas_eval::agent::{
-  self, AgentError, AgentReport, AtlasSurface, ClaudeConfig, Condition, ConfigIsolation, DEFAULT_JUDGE_MODEL, DEFAULT_SESSION_MODEL, DryRunContext, EvalHome, JudgeMode,
-  LoadedTask, PreambleVariant, RepoSource, RunnerConfig, SurfaceSetting,
+  self, AgentError, AgentReport, AtlasSurface, ClaudeConfig, Condition, ConfigIsolation, DEFAULT_JUDGE_MODEL, DEFAULT_SESSION_MODEL, DryRunContext, EvalHome, IncumbentRequest,
+  IncumbentTools, JudgeMode, LoadedTask, PreambleVariant, RepoSource, RunnerConfig, SurfaceSetting,
 };
 use atlas_eval::quality::{self, QualityArgs};
 use atlas_eval::retrieval::{self, RetrievalArgs};
@@ -35,6 +35,8 @@ enum AgentCommand {
   Run(Box<RunArgs>),
   #[command(about = "Aggregate a batch of runs into agent.md and agent.json")]
   Report(ReportArgs),
+  #[command(about = "Run the judge again for scored runs whose judge failed (or all with --all), updating their records in place; no session runs")]
+  Rejudge(RejudgeArgs),
   #[command(about = "Run one tiny session with the baseline flags and record which isolation they achieve")]
   Probe(ProbeArgs),
   #[command(about = "Measure what the MCP tool surface costs per request: bytes of tools/list and instructions, and tokens in tiny sessions")]
@@ -131,6 +133,30 @@ struct RunArgs {
     help = "forced: atlas sessions get only Read, Edit, Write and Bash, the core MCP profile, the forced preamble and a PreToolUse guard refusing Bash search and read commands; baseline sessions and the judge are unchanged"
   )]
   atlas_surface: AtlasSurface,
+  #[arg(
+    long,
+    value_name = "PATH",
+    help = "Serena binary of the incumbent arm (default `serena`, resolved on PATH); only with --condition incumbent"
+  )]
+  serena_bin: Option<PathBuf>,
+  #[arg(
+    long,
+    value_name = "PATH",
+    help = "Serena hooks binary of the incumbent arm (default `serena-hooks`, resolved on PATH); only with --condition incumbent"
+  )]
+  serena_hooks_bin: Option<PathBuf>,
+  #[arg(
+    long,
+    value_name = "PATH",
+    help = "graphify binary of the incumbent arm (default `graphify`, resolved on PATH); only with --condition incumbent"
+  )]
+  graphify_bin: Option<PathBuf>,
+  #[arg(
+    long,
+    value_name = "DIR",
+    help = "Serena home template whose language_servers directory every incumbent run shares (default: <eval-home>/runs/.cache/serena-language-servers); only with --condition incumbent"
+  )]
+  serena_home_template: Option<PathBuf>,
   #[arg(long)]
   no_probe: bool,
   #[arg(long, default_value_t = 900)]
@@ -153,6 +179,37 @@ struct ReportArgs {
   out: Option<PathBuf>,
   #[arg(long)]
   compare: Option<PathBuf>,
+  #[arg(
+    long,
+    num_args = 1..,
+    value_name = "TASK",
+    help = "Report these tasks (with those of category `held-out`) in a held-out section and every other task in a dev section"
+  )]
+  held_out: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+struct RejudgeArgs {
+  #[arg(long)]
+  runs: PathBuf,
+  #[arg(long = "task", help = "Only rejudge runs of this task (repeatable)")]
+  only: Vec<String>,
+  #[arg(long, help = "Rejudge every scored run, not only those whose judge failed")]
+  all: bool,
+  #[arg(
+    long,
+    num_args = 1..,
+    help = "Task directories the batch drew its tasks from (repeatable; default: the tasks of the batch's eval home, else <repo-root>/eval/tasks)"
+  )]
+  tasks: Vec<PathBuf>,
+  #[arg(long)]
+  repo_root: Option<PathBuf>,
+  #[arg(long, default_value = "claude")]
+  claude_bin: PathBuf,
+  #[arg(long, help = "Must equal the judge model batch.json records (default: that model)")]
+  judge_model: Option<String>,
+  #[arg(long, value_enum, help = "Must equal the claude config batch.json records (default: that setting)")]
+  claude_config: Option<ConfigIsolation>,
 }
 
 #[derive(Debug, Args)]
@@ -177,6 +234,13 @@ struct NoiseArgs {
   out: Option<PathBuf>,
   #[arg(long)]
   repo_root: Option<PathBuf>,
+  #[arg(
+    long,
+    num_args = 1..,
+    value_name = "TASK",
+    help = "Also judge the pairwise effects over these tasks (with those of category `held-out`) and over every other task, as held-out and dev sections"
+  )]
+  held_out: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -244,7 +308,7 @@ fn main() -> ExitCode {
     return ExitCode::SUCCESS;
   }
   if let Command::Agent(AgentCommand::Run(args)) = &cli.command
-    && let Some(error) = surface_conflict(args)
+    && let Some(error) = surface_conflict(args).or_else(|| incumbent_conflict(args))
   {
     error.exit();
   }
@@ -255,6 +319,7 @@ fn main() -> ExitCode {
   let outcome: Result<(), Box<dyn std::error::Error>> = match cli.command {
     Command::Agent(AgentCommand::Run(args)) => run(&args).map_err(Into::into),
     Command::Agent(AgentCommand::Report(args)) => report(&args).map_err(Into::into),
+    Command::Agent(AgentCommand::Rejudge(args)) => return rejudge(&args),
     Command::Agent(AgentCommand::Probe(args)) => probe(&args).map_err(Into::into),
     Command::Agent(AgentCommand::Surface(args)) => surface(&args).map_err(Into::into),
     Command::Agent(AgentCommand::Headroom(args)) => headroom(&args).map_err(Into::into),
@@ -273,6 +338,8 @@ fn main() -> ExitCode {
   }
 }
 
+const DEGRADED_EXIT: u8 = 3;
+
 fn surface_conflict(args: &RunArgs) -> Option<clap::Error> {
   (args.atlas_surface == AtlasSurface::Forced && args.atlas_preamble == PreambleVariant::Directed).then(|| {
     Cli::command().error(
@@ -280,6 +347,74 @@ fn surface_conflict(args: &RunArgs) -> Option<clap::Error> {
       "--atlas-surface forced runs the atlas arm with its own forced preamble, so it cannot be combined with --atlas-preamble directed",
     )
   })
+}
+
+fn incumbent_conflict(args: &RunArgs) -> Option<clap::Error> {
+  if args.condition.contains(&Condition::Incumbent) {
+    return None;
+  }
+  let given: Vec<&str> = [
+    ("--serena-bin", args.serena_bin.is_some()),
+    ("--serena-hooks-bin", args.serena_hooks_bin.is_some()),
+    ("--graphify-bin", args.graphify_bin.is_some()),
+    ("--serena-home-template", args.serena_home_template.is_some()),
+  ]
+  .into_iter()
+  .filter_map(|(flag, set)| set.then_some(flag))
+  .collect();
+  (!given.is_empty()).then(|| {
+    Cli::command().error(
+      ErrorKind::ArgumentConflict,
+      match given.len() {
+        1 => format!("{} configures the incumbent arm, so it needs --condition incumbent", given[0]),
+        _ => format!("{} configure the incumbent arm, so they need --condition incumbent", given.join(", ")),
+      },
+    )
+  })
+}
+
+fn incumbent_request(args: &RunArgs) -> IncumbentRequest {
+  let defaults = IncumbentRequest::default();
+  IncumbentRequest {
+    serena: args.serena_bin.clone().unwrap_or(defaults.serena),
+    serena_hooks: args.serena_hooks_bin.clone().unwrap_or(defaults.serena_hooks),
+    graphify: args.graphify_bin.clone().unwrap_or(defaults.graphify),
+    home_template: args.serena_home_template.clone(),
+  }
+}
+
+fn incumbent_tools(args: &RunArgs, cache_dir: &Path) -> Result<IncumbentTools, AgentError> {
+  IncumbentTools::resolve(
+    &incumbent_request(args),
+    std::env::var_os("PATH").as_deref(),
+    cache_dir,
+    Duration::from_secs(args.atlas_timeout_secs),
+  )
+}
+
+fn incumbent_note(args: &RunArgs, tasks_dir: &Path) -> String {
+  let cache_dir = match &args.eval_home {
+    Some(path) => EvalHome::new(path).clone_cache(),
+    None => EvalHome::of_tasks(tasks_dir).map_or_else(|_| PathBuf::from("<eval-home>/runs/.cache"), |home| home.clone_cache()),
+  };
+  match incumbent_tools(args, &cache_dir) {
+    Ok(tools) => {
+      let record = tools.record();
+      format!(
+        "incumbent (Serena + graphify): only the MCP server `serena start-mcp-server --context=claude-code --project-from-cwd` ({}, {}) and its four hooks ({}), with a per-run SERENA_HOME whose language_servers link to {}; graphify ({}, {}) graphs of `.` and every apps/* and packages/* directory with source, built AST-only per task on first use and cached under {}; one `serena project index` warm-up runs before any session; appended instructions version {} (blake3 {})",
+        record.serena_bin,
+        record.serena_version.as_deref().unwrap_or("version unknown"),
+        record.serena_hooks_bin,
+        record.language_servers,
+        record.graphify_bin,
+        record.graphify_version.as_deref().unwrap_or("version unknown"),
+        cache_dir.join("graphify").display(),
+        record.instructions_version,
+        record.instructions_blake3
+      )
+    }
+    Err(error) => format!("incumbent runs would fail at batch start: {error}"),
+  }
 }
 
 fn repo_root(explicit: Option<&Path>) -> Result<PathBuf, AgentError> {
@@ -360,6 +495,9 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
         "atlas surface forced: atlas sessions get --tools Read,Edit,Write,Bash, `catl mcp --tools core`, the forced preamble and a PreToolUse guard (`atlas-eval agent bash-guard`) refusing Bash search and read commands; before any session the guard answers a self-check and one probe session must list exactly those tools and see a Bash grep refused, so --no-probe is refused; baseline sessions and the judge are unchanged".to_owned(),
       );
     }
+    if conditions.contains(&Condition::Incumbent) {
+      notes.push(incumbent_note(args, &tasks_dir));
+    }
     if args.atlas_hooks && conditions.contains(&Condition::Atlas) {
       notes.push(
         "atlas hooks: each atlas session gets the hook groups `catl agents hooks --json --binary <catl> --home <session home>` prints, passed with --settings and --include-hook-events; before any session one hooked probe session (atlas flags, --max-turns 1) must report a UserPromptSubmit hook event, so --no-probe is refused; baseline sessions get none".to_owned(),
@@ -385,7 +523,9 @@ fn run(args: &RunArgs) -> Result<(), AgentError> {
   };
   agent::keep_private_untracked(&[&tasks_dir], &[home.root()])?;
   let atlas_surface = SurfaceSetting::resolve(args.atlas_surface)?;
-  let config = runner_config(args, repo_root, &home, atlas_bin, atlas_config, atlas_surface);
+  let incumbent = conditions.contains(&Condition::Incumbent).then(|| incumbent_tools(args, &home.clone_cache())).transpose()?;
+  let mut config = runner_config(args, repo_root, &home, atlas_bin, atlas_config, atlas_surface);
+  config.incumbent = incumbent;
   let manifest = agent::run_batch(&config, &tasks, planned)?;
   tracing::info!(
     batch = %config.batch_dir.display(),
@@ -433,14 +573,16 @@ fn runner_config(
     atlas_config,
     atlas_hooks: args.atlas_hooks,
     atlas_surface,
+    incumbent: None,
   }
 }
 
 fn report(args: &ReportArgs) -> Result<(), AgentError> {
   let (batch, records) = agent::load_runs(&args.runs)?;
   agent::ensure_single_preamble(batch.as_ref(), &records)?;
+  agent::ensure_single_incumbent(batch.as_ref(), &records)?;
   let previous: Option<AgentReport> = args.compare.as_deref().map(agent::read_json).transpose()?;
-  let report = agent::build_report(batch.as_ref(), &records, previous.as_ref());
+  let report = agent::build_split_report(batch.as_ref(), &records, previous.as_ref(), &args.held_out);
   let date = batch.as_ref().map_or_else(agent::today_utc, |batch| batch.environment.date.clone());
   let base = agent::batch_report_base(std::slice::from_ref(&args.runs), &[], args.out.as_deref(), &date, "agent")?;
   let (markdown, json) = agent::write_report(&report, &base)?;
@@ -449,14 +591,72 @@ fn report(args: &ReportArgs) -> Result<(), AgentError> {
 }
 
 fn headroom_tasks(args: &HeadroomArgs) -> Result<PathBuf, AgentError> {
-  if let Some(path) = &args.tasks {
-    return Ok(path.clone());
+  batch_tasks(args.tasks.as_deref(), args.runs.first().map(PathBuf::as_path), args.repo_root.as_deref())
+}
+
+fn batch_tasks(explicit: Option<&Path>, batch: Option<&Path>, explicit_root: Option<&Path>) -> Result<PathBuf, AgentError> {
+  if let Some(path) = explicit {
+    return Ok(path.to_owned());
   }
-  let beside_runs = args.runs.first().and_then(|batch| EvalHome::of_batch(batch).ok()).map(|home| home.tasks());
-  match beside_runs.filter(|tasks| args.repo_root.is_none() && tasks.is_dir()) {
+  let beside_runs = batch.and_then(|batch| EvalHome::of_batch(batch).ok()).map(|home| home.tasks());
+  match beside_runs.filter(|tasks| explicit_root.is_none() && tasks.is_dir()) {
     Some(tasks) => Ok(tasks),
-    None => Ok(repo_root(args.repo_root.as_deref())?.join("eval").join("tasks")),
+    None => Ok(repo_root(explicit_root)?.join("eval").join("tasks")),
   }
+}
+
+fn rejudge(args: &RejudgeArgs) -> ExitCode {
+  match rejudge_batch(args) {
+    Ok(summary) if summary.still_failed.is_empty() => ExitCode::SUCCESS,
+    Ok(_) => ExitCode::from(DEGRADED_EXIT),
+    Err(error @ AgentError::JudgeSettingConflict { .. }) => Cli::command().error(ErrorKind::ArgumentConflict, error.to_string()).exit(),
+    Err(error) => {
+      tracing::error!(%error, "atlas-eval failed");
+      ExitCode::FAILURE
+    }
+  }
+}
+
+fn rejudge_batch(args: &RejudgeArgs) -> Result<agent::RejudgeSummary, AgentError> {
+  let claude = agent::rejudge_claude(
+    agent::recorded_environment(&args.runs)?.as_ref(),
+    &agent::JudgeSettings {
+      binary: &args.claude_bin,
+      judge_model: args.judge_model.as_deref(),
+      config_isolation: args.claude_config,
+    },
+  )?;
+  let tasks_dirs = match args.tasks.is_empty() {
+    true => vec![batch_tasks(None, Some(&args.runs), args.repo_root.as_deref())?],
+    false => args.tasks.clone(),
+  };
+  let mut tasks = Vec::new();
+  for dir in &tasks_dirs {
+    tasks.extend(agent::load_tasks(dir, &[])?);
+  }
+  let summary = agent::rejudge(&agent::RejudgeRequest {
+    batch_dir: &args.runs,
+    tasks: &tasks,
+    only: &args.only,
+    all: args.all,
+    claude: &claude,
+  })?;
+  for failure in &summary.still_failed {
+    tracing::warn!(%failure, "the judge failed again");
+  }
+  for skipped in &summary.skipped {
+    tracing::warn!(%skipped, "not rejudged");
+  }
+  tracing::info!(
+    judge_model = claude.judge_model,
+    rubrics = summary.rubrics,
+    reviews = summary.reviews,
+    still_failed = summary.still_failed.len(),
+    skipped = summary.skipped.len(),
+    spent_usd = summary.spent_usd,
+    "rejudged; run `atlas-eval agent report --runs <batch>` to aggregate again"
+  );
+  Ok(summary)
 }
 
 fn headroom(args: &HeadroomArgs) -> Result<(), AgentError> {
@@ -471,7 +671,7 @@ fn headroom(args: &HeadroomArgs) -> Result<(), AgentError> {
 fn noise(args: &NoiseArgs) -> Result<(), AgentError> {
   let compared: Vec<&Path> = args.ab_report.iter().map(PathBuf::as_path).collect();
   let base = agent::batch_report_base(&args.runs, &compared, args.out.as_deref(), &agent::today_utc(), "noise-floor")?;
-  let report = agent::load_noise(&args.runs, &args.ab_report, repo_root(args.repo_root.as_deref()).ok().as_deref())?;
+  let report = agent::load_noise(&args.runs, &args.ab_report, repo_root(args.repo_root.as_deref()).ok().as_deref(), &args.held_out)?;
   let (markdown, json) = agent::write_noise(&report, &base)?;
   tracing::info!(markdown = %markdown.display(), json = %json.display(), metrics = report.metrics.len(), "noise-floor report written");
   Ok(())
@@ -628,6 +828,45 @@ mod tests {
     assert_eq!((resolved.preamble, resolved.atlas_surface.surface()), (PreambleVariant::Forced, AtlasSurface::Forced));
     assert_eq!(config(&[]).preamble, PreambleVariant::Standard);
     assert!(Cli::try_parse_from(["atlas-eval", "agent", "run", "--atlas-preamble", "forced"]).is_err());
+  }
+
+  #[test]
+  fn should_refuse_incumbent_flags_as_a_usage_error_unless_the_incumbent_arm_runs() {
+    let error = incumbent_conflict(&run_args(&["--serena-bin", "/opt/serena", "--graphify-bin", "/opt/graphify"])).unwrap();
+    assert_eq!((error.kind(), error.exit_code()), (ErrorKind::ArgumentConflict, 2));
+    assert!(
+      error
+        .to_string()
+        .contains("--serena-bin, --graphify-bin configure the incumbent arm, so they need --condition incumbent"),
+      "{error}"
+    );
+    let single = incumbent_conflict(&run_args(&["--graphify-bin", "/opt/graphify"])).unwrap().to_string();
+    assert!(
+      single.contains("--graphify-bin configures the incumbent arm, so it needs --condition incumbent"),
+      "{single}"
+    );
+    assert!(incumbent_conflict(&run_args(&["--condition", "incumbent", "--serena-bin", "/opt/serena"])).is_none());
+    assert!(incumbent_conflict(&run_args(&[])).is_none());
+    assert_eq!(run_args(&[]).condition, vec![Condition::Baseline, Condition::Atlas]);
+    let request = incumbent_request(&run_args(&["--condition", "incumbent", "--serena-home-template", "/templates/serena"]));
+    assert_eq!(
+      request,
+      IncumbentRequest {
+        serena: PathBuf::from("serena"),
+        serena_hooks: PathBuf::from("serena-hooks"),
+        graphify: PathBuf::from("graphify"),
+        home_template: Some(PathBuf::from("/templates/serena")),
+      }
+    );
+  }
+
+  #[test]
+  fn should_take_held_out_tasks_for_the_report() {
+    let cli = Cli::try_parse_from(["atlas-eval", "agent", "report", "--runs", "/b", "--held-out", "t09", "t10"]).unwrap();
+    let Command::Agent(AgentCommand::Report(args)) = cli.command else {
+      panic!("not a report");
+    };
+    assert_eq!(args.held_out, vec!["t09", "t10"]);
   }
 
   #[test]

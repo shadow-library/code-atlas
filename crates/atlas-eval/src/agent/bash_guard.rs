@@ -137,7 +137,7 @@ fn is_guard_denial(stdout: &str) -> bool {
   decision["permissionDecision"] == DENY && decision["permissionDecisionReason"] == BASH_GUARD_REASON
 }
 
-fn shell_quote(text: &str) -> String {
+pub(super) fn shell_quote(text: &str) -> String {
   let plain = !text.is_empty() && text.chars().all(|c| c.is_ascii_alphanumeric() || "/._-+:@,=".contains(c));
   if plain {
     return text.to_owned();

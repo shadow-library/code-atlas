@@ -38,6 +38,7 @@ pub(super) fn run_record(task: &str, condition: Condition, index: u32, total: To
     atlas_config_blake3: None,
     atlas_hooks: None,
     atlas_surface: AtlasSurface::Standard,
+    incumbent: None,
     args: [
       "--mcp-config",
       &format!("{scratch}/mcp.json"),

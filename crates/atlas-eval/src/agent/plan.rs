@@ -4,6 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+use super::incumbent::{INCUMBENT_INSTRUCTIONS_VERSION, incumbent_instructions_digest};
 use super::spec::LoadedTask;
 
 pub const STANDARD_PREAMBLE: &str = "A Code Atlas MCP server is available with tools for repository knowledge (context, search, impact, tests-for, explain). \
@@ -17,6 +18,7 @@ pub const FORCED_PREAMBLE: &str = "A Code Atlas MCP server is available with too
 In this session Grep and Glob are not available and Bash search or read commands (grep, rg, find, ls, cat, head, tail, sed, awk) are refused: \
 find code with atlas_search or atlas_context, list a file's symbols with atlas_symbol mode=outline, and open files with Read. \
 Relations tagged [heuristic]/[inferred] are leads to verify.";
+pub const INCUMBENT_LABEL: &str = "Serena + graphify";
 const FORCED_SURFACE_DESCRIPTION: &str = "forced (tools Bash, Edit, Read, Write; MCP core; Bash search guard)";
 const CORE_TOOL_PROFILE: &str = "core";
 
@@ -130,23 +132,62 @@ const ASSUMED_JUDGE_OUTPUT: f64 = 1_500.0;
 pub enum Condition {
   Baseline,
   Atlas,
+  Incumbent,
 }
 
 impl Condition {
   pub const ALL: [Condition; 2] = [Condition::Baseline, Condition::Atlas];
+  pub const EVERY: [Condition; 3] = [Condition::Baseline, Condition::Atlas, Condition::Incumbent];
 
   pub fn as_str(self) -> &'static str {
     match self {
       Self::Baseline => "baseline",
       Self::Atlas => "atlas",
+      Self::Incumbent => "incumbent",
+    }
+  }
+
+  pub fn label(self) -> &'static str {
+    match self {
+      Self::Baseline | Self::Atlas => self.as_str(),
+      Self::Incumbent => INCUMBENT_LABEL,
+    }
+  }
+
+  pub fn arm(self) -> char {
+    match self {
+      Self::Baseline => 'A',
+      Self::Incumbent => 'B',
+      Self::Atlas => 'C',
     }
   }
 
   pub fn prompt(self, preamble: PreambleVariant, task_prompt: &str) -> String {
     match self {
-      Self::Baseline => task_prompt.to_owned(),
+      Self::Baseline | Self::Incumbent => task_prompt.to_owned(),
       Self::Atlas => format!("{}\n\n{task_prompt}", preamble.text()),
     }
+  }
+}
+
+pub const CONDITION_PAIRS: [(Condition, Condition); 3] = [
+  (Condition::Incumbent, Condition::Atlas),
+  (Condition::Baseline, Condition::Atlas),
+  (Condition::Baseline, Condition::Incumbent),
+];
+
+pub fn arm_legend(present: &[Condition]) -> String {
+  let mut arms = present.to_vec();
+  arms.sort_by_key(|condition| condition.arm());
+  let named: Vec<String> = arms.iter().map(|condition| format!("{} = {}", condition.arm(), condition.label())).collect();
+  named.join(", ")
+}
+
+pub fn pair_label(first: Condition, second: Condition) -> String {
+  let label = format!("{} vs {}", second.arm(), first.arm());
+  match (first, second) {
+    (Condition::Incumbent, Condition::Atlas) => format!("{label} (verdict)"),
+    _ => label,
   }
 }
 
@@ -264,7 +305,7 @@ pub fn estimate_run_cost(model: &str, judge_model: Option<&str>, max_turns: u32,
       + per_million(ASSUMED_CACHE_WRITE_PER_TURN, price.cache_write)
       + per_million(ASSUMED_CACHE_READ_PER_TURN, price.cache_read));
   let judge_calls = match condition {
-    Condition::Baseline => 1.0,
+    Condition::Baseline | Condition::Incumbent => 1.0,
     Condition::Atlas => 2.0,
   };
   let judge_usd = match judge_model {
@@ -295,6 +336,13 @@ pub fn render_dry_run(context: &DryRunContext<'_>) -> String {
   let _ = writeln!(out, "model: {}  judge: {}", context.model, context.judge_model.unwrap_or("off"));
   if context.runs.iter().any(|run| run.condition == Condition::Atlas) {
     let _ = writeln!(out, "atlas preamble: {} (version {})", context.preamble, context.preamble.version());
+  }
+  if context.runs.iter().any(|run| run.condition == Condition::Incumbent) {
+    let _ = writeln!(
+      out,
+      "incumbent: {INCUMBENT_LABEL} (instructions version {INCUMBENT_INSTRUCTIONS_VERSION}, blake3 {})",
+      incumbent_instructions_digest()
+    );
   }
   let _ = writeln!(out, "order  run_id                                   max_turns  timeout_min  est_usd");
   let mut total: Option<f64> = Some(0.0);
@@ -402,6 +450,40 @@ mod tests {
       ]
     );
     assert_eq!(first.iter().map(|run| run.order).collect::<Vec<_>>(), (0..8).collect::<Vec<_>>());
+  }
+
+  #[test]
+  fn should_keep_the_default_conditions_and_name_the_incumbent_arm() {
+    assert_eq!(Condition::ALL, [Condition::Baseline, Condition::Atlas]);
+    let named: Vec<(&str, &str, char)> = Condition::EVERY.iter().map(|condition| (condition.as_str(), condition.label(), condition.arm())).collect();
+    assert_eq!(named, vec![("baseline", "baseline", 'A'), ("atlas", "atlas", 'C'), ("incumbent", "Serena + graphify", 'B')]);
+    assert_eq!(Condition::Incumbent.prompt(PreambleVariant::Directed, "Fix it."), "Fix it.");
+    let labels: Vec<String> = CONDITION_PAIRS.iter().map(|(first, second)| pair_label(*first, *second)).collect();
+    assert_eq!(labels, vec!["C vs B (verdict)", "C vs A", "B vs A"]);
+    assert_eq!(arm_legend(&Condition::EVERY), "A = baseline, B = Serena + graphify, C = atlas");
+    assert_eq!(arm_legend(&[Condition::Atlas, Condition::Baseline]), "A = baseline, C = atlas");
+    let tasks = [task("t1")];
+    let runs = plan_runs(&tasks, &[Condition::Incumbent], 1, 1);
+    assert_eq!(runs[0].run_id, "t1.incumbent.r0");
+    let rendered = render_dry_run(&DryRunContext {
+      tasks: &tasks,
+      runs: &runs,
+      model: "claude-haiku-4-5",
+      judge_model: Some("claude-sonnet-5-5"),
+      seed: 1,
+      parallel: 1,
+      budget_usd: None,
+      preamble: PreambleVariant::Standard,
+      notes: &[],
+    });
+    assert!(rendered.contains(&format!(
+      "incumbent: Serena + graphify (instructions version 2, blake3 {})\n",
+      incumbent_instructions_digest()
+    )));
+    assert!(!rendered.contains("atlas preamble"));
+    let one_judge = estimate_run_cost("claude-haiku-4-5", Some("claude-sonnet-5-5"), 10, Condition::Incumbent).unwrap();
+    let baseline = estimate_run_cost("claude-haiku-4-5", Some("claude-sonnet-5-5"), 10, Condition::Baseline).unwrap();
+    assert_eq!(one_judge, baseline);
   }
 
   #[test]

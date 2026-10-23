@@ -5,8 +5,10 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::claude::{ATLAS_TOOL_PREFIX, ClaudeConfig, EMPTY_MCP_CONFIG, host_env, judge_invocation};
+use super::claude::{ATLAS_TOOL_PREFIX, ClaudeConfig, EMPTY_MCP_CONFIG, SERENA_TOOL_PREFIX, host_env, judge_invocation};
+use super::metrics::Metrics;
 use super::process::{ProcessExit, run_captured, tail};
+use super::transcript::Transcript;
 use super::validation::SuiteResult;
 
 pub const JUDGE_PROMPT_VERSION: u32 = 1;
@@ -16,6 +18,10 @@ const MAX_ATLAS_EXCERPT_BYTES: usize = 4 * 1024;
 const MAX_ATLAS_EXCERPTS: usize = 12;
 const JUDGE_TIMEOUT: Duration = Duration::from_secs(600);
 const NEUTRAL_TOOL_NAME: &str = "knowledge tool";
+const RUBRIC_DIR: &str = "judge";
+const REVIEW_DIR: &str = "atlas-judge";
+const BLINDED_TOOL_PREFIXES: [&str; 2] = [ATLAS_TOOL_PREFIX, SERENA_TOOL_PREFIX];
+const TOOL_DIRS: [&str; 3] = ["graphify-out", ".serena", ".code-atlas"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JudgeInput<'a> {
@@ -125,15 +131,23 @@ fn review_schema() -> Value {
 pub fn blind(text: &str) -> String {
   let mut blinded = String::with_capacity(text.len());
   let mut rest = text;
-  while let Some(index) = rest.find(ATLAS_TOOL_PREFIX) {
+  while let Some((index, prefix)) = BLINDED_TOOL_PREFIXES
+    .iter()
+    .filter_map(|prefix| rest.find(prefix).map(|index| (index, *prefix)))
+    .min_by_key(|(index, _)| *index)
+  {
     blinded.push_str(&rest[..index]);
     blinded.push_str(NEUTRAL_TOOL_NAME);
-    let after = &rest[index + ATLAS_TOOL_PREFIX.len()..];
+    let after = &rest[index + prefix.len()..];
     let name_length = after.find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-')).unwrap_or(after.len());
     rest = &after[name_length..];
   }
   blinded.push_str(rest);
   blinded
+}
+
+fn tool_owned(path: &str) -> bool {
+  path.split('/').any(|segment| TOOL_DIRS.contains(&segment))
 }
 
 pub fn blinded_prompt(input: &JudgeInput<'_>) -> String {
@@ -155,7 +169,7 @@ pub fn blinded_prompt(input: &JudgeInput<'_>) -> String {
     task = input.task_prompt.trim(),
     validation = suite_summary(input.validation),
     regression = suite_summary(input.regression),
-    read = bullet_list(input.files_read),
+    read = bullet_list(&input.files_read.iter().filter(|path| !tool_owned(path)).cloned().collect::<Vec<_>>()),
     changed = bullet_list(input.files_changed),
   );
   blind(&text)
@@ -220,7 +234,43 @@ pub fn prompt_hash(prompt: &str) -> String {
   blake3::hash(prompt.as_bytes()).to_hex()[..16].to_owned()
 }
 
+pub fn judge_rubric(config: &ClaudeConfig, task_prompt: &str, diff: &str, validation: &SuiteResult, regression: &SuiteResult, metrics: &Metrics, run_dir: &Path) -> JudgeOutcome {
+  let prompt = blinded_prompt(&JudgeInput {
+    task_prompt,
+    diff,
+    validation,
+    regression,
+    files_read: &metrics.reads.files,
+    files_changed: &metrics.relevance.files_changed,
+  });
+  run_judge(config, JudgeKind::BlindedRubric, &prompt, &run_dir.join(RUBRIC_DIR))
+}
+
+pub fn judge_atlas_review(config: &ClaudeConfig, task_prompt: &str, transcript: &Transcript, diff: &str, run_dir: &Path) -> JudgeOutcome {
+  let excerpts: Vec<(String, String, String)> = transcript
+    .tool_calls
+    .iter()
+    .filter(|call| call.name.starts_with(ATLAS_TOOL_PREFIX))
+    .map(|call| {
+      let response = call.result.as_ref().map(|result| result.text.clone()).unwrap_or_default();
+      (call.name.trim_start_matches(ATLAS_TOOL_PREFIX).to_owned(), call.input.to_string(), response)
+    })
+    .collect();
+  if excerpts.is_empty() {
+    return JudgeOutcome::Skipped {
+      reason: "the session made no Code Atlas calls".to_owned(),
+    };
+  }
+  let prompt = atlas_review_prompt(task_prompt, &excerpts, diff);
+  run_judge(config, JudgeKind::AtlasReview, &prompt, &run_dir.join(REVIEW_DIR))
+}
+
 pub fn run_judge(config: &ClaudeConfig, kind: JudgeKind, prompt: &str, work_dir: &Path) -> JudgeOutcome {
+  let work_dir = match std::path::absolute(work_dir) {
+    Ok(path) => path,
+    Err(error) => return JudgeOutcome::Failed { reason: error.to_string() },
+  };
+  let work_dir = work_dir.as_path();
   if let Err(error) = fs::create_dir_all(work_dir) {
     return JudgeOutcome::Failed { reason: error.to_string() };
   }
@@ -330,6 +380,36 @@ mod tests {
     assert!(!prompt.contains("mcp__"));
     assert!(!prompt.to_lowercase().contains("baseline"));
     assert!(!prompt.contains("Code Atlas"));
+  }
+
+  #[test]
+  fn should_hide_which_knowledge_tool_and_its_output_files_a_session_used() {
+    let validation = suite();
+    let read = [
+      "src/orders.ts",
+      "graphify-out/GRAPH_REPORT.md",
+      "apps/acme-api/graphify-out/graph.json",
+      ".serena/project.yml",
+      ".code-atlas/state.json",
+      "mcp__serena__find_symbol",
+    ]
+    .map(str::to_owned);
+    let prompt = blinded_prompt(&JudgeInput {
+      task_prompt: "Cancel orders",
+      diff: "+ cancel",
+      validation: &validation,
+      regression: &SuiteResult::default(),
+      files_read: &read,
+      files_changed: &["src/orders.ts".to_owned()],
+    });
+    assert!(
+      prompt.contains("## Files the agent read\n- src/orders.ts\n- knowledge tool\n\n## Files the agent changed"),
+      "{prompt}"
+    );
+    assert_eq!(
+      blind("mcp__serena__replace_symbol_body then mcp__code-atlas__atlas_edit"),
+      "knowledge tool then knowledge tool"
+    );
   }
 
   #[test]

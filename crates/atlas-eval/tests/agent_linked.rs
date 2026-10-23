@@ -142,6 +142,7 @@ impl Fixture {
       atlas_config: None,
       atlas_hooks: false,
       atlas_surface: SurfaceSetting::Standard,
+      incumbent: None,
     }
   }
 }

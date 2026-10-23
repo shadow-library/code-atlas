@@ -3,10 +3,11 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::bash_guard::denied_by_bash_guard;
+use super::incumbent::serena_edit;
+use super::metrics::refused_by_hook;
 use super::transcript::{ToolCall, Transcript};
 
-const PATH_FIELDS: [&str; 4] = ["file_path", "path", "pattern", "notebook_path"];
+const PATH_FIELDS: [&str; 5] = ["file_path", "path", "pattern", "notebook_path", "relative_path"];
 const HOME_TOOLCHAIN_DIRS: [&str; 7] = [".cargo", ".rustup", ".nvm", ".npm", ".volta", ".bun", ".node-gyp"];
 const SYSTEM_PREFIXES: [&str; 8] = ["/usr", "/bin", "/sbin", "/opt/homebrew", "/dev", "/Library/Developer", "/Applications/Xcode.app", "/System"];
 const SCRATCH_PREFIX: &str = "ae-";
@@ -122,7 +123,7 @@ impl AccessPolicy {
 
 pub fn out_of_tree_accesses(transcript: &Transcript, policy: &AccessPolicy) -> Vec<OutOfTreeAccess> {
   let mut accesses: Vec<OutOfTreeAccess> = Vec::new();
-  for call in transcript.tool_calls.iter().filter(|call| !denied_by_bash_guard(call)) {
+  for call in transcript.tool_calls.iter().filter(|call| !refused_by_hook(call)) {
     let bash_writes = match call.name.as_str() {
       "Bash" => call.input_str("command").map(bash_write_targets).unwrap_or_default(),
       _ => BTreeSet::new(),
@@ -134,7 +135,7 @@ pub fn out_of_tree_accesses(transcript: &Transcript, policy: &AccessPolicy) -> V
       if policy.within_tree(&path) || policy.allowed_system_path(&path) {
         continue;
       }
-      let kind = match WRITE_TOOLS.contains(&call.name.as_str()) || bash_writes.contains(&raw) {
+      let kind = match WRITE_TOOLS.contains(&call.name.as_str()) || serena_edit(&call.name) || bash_writes.contains(&raw) {
         true => LinkedAccess::Write,
         false => LinkedAccess::Read,
       };
@@ -354,6 +355,49 @@ mod tests {
     assert!(!contaminated(&out_of_tree_accesses(&session(0..1), &policy)));
     assert!(contaminated(&out_of_tree_accesses(&session(1..2), &policy)));
     assert!(contaminated(&out_of_tree_accesses(&session(2..3), &policy)));
+  }
+
+  #[test]
+  fn should_classify_serena_calls_by_their_path_arguments_and_skip_reads_its_hook_refused() {
+    let mut refused = call("Read", json!({"file_path": "/var/tmp/T/ae-111/linked-hold/apps/web/b.ts"}));
+    refused.result = Some(ToolResult {
+      text: "Too many consecutive read calls of files without using symbolic tools. You can continue using read now if needed, the counter was reset.".to_owned(),
+      is_error: true,
+      ..ToolResult::default()
+    });
+    let transcript = Transcript {
+      tool_calls: vec![
+        call(
+          "mcp__serena__find_symbol",
+          json!({"name_path_pattern": "createClient", "relative_path": "../linked-view/apps/web/src/client.ts"}),
+        ),
+        call("mcp__serena__get_symbols_overview", json!({"relative_path": "src/orders.ts"})),
+        call(
+          "mcp__serena__replace_content",
+          json!({"relative_path": "../linked-view/apps/web/src/client.ts", "needle": "a", "repl": "b"}),
+        ),
+        call(
+          "mcp__serena__find_referencing_symbols",
+          json!({"name_path": "a", "relative_path": "/var/tmp/T/ae-111/linked-hold/apps/web/a.ts"}),
+        ),
+        call("mcp__serena__replace_symbol_body", json!({"name_path": "a", "relative_path": "src/orders.ts", "body": "x"})),
+        refused,
+      ],
+      ..Transcript::default()
+    };
+    let summary: Vec<(String, String, Option<Contamination>, Option<LinkedAccess>)> = out_of_tree_accesses(&transcript, &linked_policy(LinkedReads::Allowed))
+      .into_iter()
+      .map(|access| (access.tool, access.path, access.contamination, access.linked))
+      .collect();
+    let tainted = Some(Contamination::LinkedPath);
+    assert_eq!(
+      summary,
+      vec![
+        linked_row("mcp__serena__find_symbol", "/linked-view/apps/web/src/client.ts", None, Some(LinkedAccess::Read)),
+        linked_row("mcp__serena__replace_content", "/linked-view/apps/web/src/client.ts", tainted, Some(LinkedAccess::Write)),
+        linked_row("mcp__serena__find_referencing_symbols", "/linked-hold/apps/web/a.ts", tainted, Some(LinkedAccess::Read)),
+      ]
+    );
   }
 
   #[test]

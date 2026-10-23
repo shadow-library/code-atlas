@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 use super::access::OutOfTreeAccess;
 use super::bash::analyze_bash;
 use super::bash_guard::denied_by_bash_guard;
-use super::claude::ATLAS_TOOL_PREFIX;
+use super::claude::{ATLAS_TOOL_PREFIX, SERENA_TOOL_PREFIX};
 use super::hooks::{HookMetrics, hook_metrics};
+use super::incumbent::{denied_by_serena_hook, serena_edit};
 use super::spec::{GroundTruth, LinkedSpec};
 use super::transcript::{TokenUsage, ToolCall, Transcript};
 
@@ -20,6 +21,9 @@ const ATLAS_CONTEXT_TOOL: &str = "atlas_context";
 const ATLAS_SYMBOL_TOOL: &str = "atlas_symbol";
 const SOURCE_MODE: &str = "source";
 const OMITTED: &str = "OMITTED";
+const GRAPHIFY_PROGRAM: &str = "graphify";
+const GRAPH_REPORT: &str = "graphify-out/GRAPH_REPORT.md";
+const COMMAND_SEPARATORS: [&str; 5] = ["&&", "||", ";", "|", "\n"];
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TokenMetrics {
@@ -99,6 +103,70 @@ pub struct Metrics {
   pub atlas_surface_denials: Option<u64>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub linked: Option<LinkedMetrics>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub incumbent: Option<IncumbentMetrics>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IncumbentMetrics {
+  pub serena_calls: BTreeMap<String, u64>,
+  pub graphify_calls: u64,
+  pub serena_bytes: u64,
+  pub graphify_bytes: u64,
+  #[serde(default)]
+  pub graphify_report_reads: u64,
+  pub hook_denials: u64,
+}
+
+impl IncumbentMetrics {
+  pub fn serena_total(&self) -> u64 {
+    self.serena_calls.values().sum()
+  }
+}
+
+pub fn refused_by_hook(call: &ToolCall) -> bool {
+  denied_by_bash_guard(call) || call.result.as_ref().is_some_and(denied_by_serena_hook)
+}
+
+pub fn incumbent_metrics(transcript: &Transcript) -> IncumbentMetrics {
+  let mut metrics = IncumbentMetrics::default();
+  for call in &transcript.tool_calls {
+    if call.result.as_ref().is_some_and(denied_by_serena_hook) {
+      metrics.hook_denials += 1;
+      continue;
+    }
+    metrics.graphify_report_reads += u64::from(reads_graph_report(call));
+    if let Some(tool) = call.name.strip_prefix(SERENA_TOOL_PREFIX) {
+      *metrics.serena_calls.entry(tool.to_owned()).or_default() += 1;
+      metrics.serena_bytes += call.result_bytes();
+    } else if call.name == "Bash" && call.input_str("command").is_some_and(runs_graphify) {
+      metrics.graphify_calls += 1;
+      metrics.graphify_bytes += call.result_bytes();
+    }
+  }
+  metrics
+}
+
+fn reads_graph_report(call: &ToolCall) -> bool {
+  let targets = match call.name.as_str() {
+    "Read" => call.input_str("file_path").map(str::to_owned).into_iter().collect(),
+    "Bash" => analyze_bash(call.input_str("command").unwrap_or_default()).read_files,
+    _ => Vec::new(),
+  };
+  targets.iter().any(|target| target == GRAPH_REPORT || target.ends_with(&format!("/{GRAPH_REPORT}")))
+}
+
+fn runs_graphify(command: &str) -> bool {
+  let mut segments = vec![command];
+  for separator in COMMAND_SEPARATORS {
+    segments = segments.into_iter().flat_map(|segment| segment.split(separator)).collect();
+  }
+  segments.iter().any(|segment| {
+    segment
+      .split_whitespace()
+      .find(|word| !word.contains('='))
+      .is_some_and(|program| program == GRAPHIFY_PROGRAM || program.ends_with(&format!("/{GRAPHIFY_PROGRAM}")))
+  })
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -226,7 +294,7 @@ pub fn compute_metrics(input: &MetricsInput<'_>) -> Metrics {
       first_edit_ms: transcript
         .tool_calls
         .iter()
-        .find(|call| EDIT_TOOLS.contains(&call.name.as_str()))
+        .find(|call| EDIT_TOOLS.contains(&call.name.as_str()) || serena_edit(&call.name))
         .and_then(|call| call.elapsed_ms),
       session_ms: transcript.result.as_ref().and_then(|result| result.duration_ms),
       wall_ms: input.wall_ms,
@@ -239,13 +307,14 @@ pub fn compute_metrics(input: &MetricsInput<'_>) -> Metrics {
     hooks: hook_metrics(transcript),
     atlas_surface_denials: None,
     linked: None,
+    incumbent: None,
   }
 }
 
 pub fn linked_metrics(transcript: &Transcript, input: &LinkedInput<'_>) -> LinkedMetrics {
   let mut read = BTreeSet::new();
   let mut source_calls = 0;
-  for call in transcript.tool_calls.iter().filter(|call| !denied_by_bash_guard(call)) {
+  for call in transcript.tool_calls.iter().filter(|call| !refused_by_hook(call)) {
     if let Some(tool) = call.name.strip_prefix(ATLAS_TOOL_PREFIX) {
       let reads_source = tool == ATLAS_CONTEXT_TOOL || (tool == ATLAS_SYMBOL_TOOL && call.input_str("mode") == Some(SOURCE_MODE));
       let text = call.result.as_ref().map(|result| result.text.as_str()).unwrap_or_default();
@@ -282,7 +351,7 @@ fn tool_metrics(transcript: &Transcript) -> ToolMetrics {
   for call in &transcript.tool_calls {
     *metrics.by_name.entry(call.name.clone()).or_default() += 1;
     metrics.total += 1;
-    if denied_by_bash_guard(call) {
+    if refused_by_hook(call) {
       continue;
     }
     metrics.errors += u64::from(call.result.as_ref().is_some_and(|result| result.is_error));
@@ -293,12 +362,14 @@ fn tool_metrics(transcript: &Transcript) -> ToolMetrics {
 }
 
 fn absorb_read(call: &ToolCall, roots: &[PathBuf], relevant: &BTreeSet<String>, ledger: &mut ReadLedger) {
+  if refused_by_hook(call) {
+    return;
+  }
   let targets: Vec<String> = match call.name.as_str() {
     "Read" => {
       ledger.read_calls += 1;
       call.input_str("file_path").map(str::to_owned).into_iter().collect()
     }
-    "Bash" if denied_by_bash_guard(call) => return,
     "Bash" => {
       let analysis = analyze_bash(call.input_str("command").unwrap_or_default());
       ledger.unparsed += u64::from(analysis.unparsed_reads);
@@ -637,6 +708,72 @@ mod tests {
     );
     assert_eq!(metrics.atlas_surface_denials, None);
     assert_eq!(serde_json::to_value(&metrics).unwrap().get("atlas_surface_denials"), None);
+  }
+
+  #[test]
+  fn should_count_serena_and_graphify_calls_and_skip_reads_the_serena_hook_refused() {
+    let transcript = Transcript::parse(include_str!("../../tests/fixtures/incumbent-transcript.jsonl"), &[]);
+    assert_eq!(
+      incumbent_metrics(&transcript),
+      IncumbentMetrics {
+        serena_calls: BTreeMap::from([("find_symbol".to_owned(), 1), ("get_symbols_overview".to_owned(), 1), ("replace_symbol_body".to_owned(), 1)]),
+        graphify_calls: 2,
+        serena_bytes: 20 + 13 + 2,
+        graphify_bytes: 17 + 25,
+        graphify_report_reads: 0,
+        hook_denials: 1,
+      }
+    );
+    let metrics = compute_metrics(&MetricsInput {
+      transcript: &transcript,
+      view: None,
+      tree: Path::new("/eval/runs/r/tree"),
+      ground_truth: &GroundTruth::default(),
+      changed_files: &BTreeSet::new(),
+      wall_ms: None,
+    });
+    assert_eq!(metrics.reads.files, vec!["src/users/user.entity.ts"]);
+    assert_eq!((metrics.reads.read_calls, metrics.reads.bytes), (1, 22));
+    assert_eq!((metrics.tools.total, metrics.tools.errors), (7, 0));
+    assert_eq!(metrics.incumbent, None);
+    let timed = Transcript::parse(
+      include_str!("../../tests/fixtures/incumbent-transcript.jsonl"),
+      &[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150],
+    );
+    let first_edit = compute_metrics(&MetricsInput {
+      transcript: &timed,
+      view: None,
+      tree: Path::new("/eval/runs/r/tree"),
+      ground_truth: &GroundTruth::default(),
+      changed_files: &BTreeSet::new(),
+      wall_ms: None,
+    })
+    .timing
+    .first_edit_ms;
+    assert_eq!(first_edit, Some(110));
+  }
+
+  #[test]
+  fn should_count_reads_of_the_graph_report_through_read_and_bash() {
+    let transcript = Transcript {
+      tool_calls: vec![
+        call("Read", json!({"file_path": "/runs/r/tree/graphify-out/GRAPH_REPORT.md"}), "# report", 1),
+        call("Bash", json!({"command": "cat graphify-out/GRAPH_REPORT.md"}), "# report", 2),
+        call("Bash", json!({"command": "head -40 apps/acme-api/graphify-out/GRAPH_REPORT.md"}), "# report", 3),
+        call("Read", json!({"file_path": "/runs/r/tree/graphify-out/graph.json"}), "{}", 4),
+      ],
+      ..Transcript::default()
+    };
+    assert_eq!(incumbent_metrics(&transcript).graphify_report_reads, 3);
+  }
+
+  #[test]
+  fn should_recognise_graphify_in_any_command_of_a_bash_line() {
+    assert!(runs_graphify("graphify query \"orders\""));
+    assert!(runs_graphify("cd apps/acme-api && graphify explain Orders"));
+    assert!(runs_graphify("GRAPHIFY_NO_TIPS=1 /opt/bin/graphify update ."));
+    assert!(!runs_graphify("cat graphify-out/GRAPH_REPORT.md"));
+    assert!(!runs_graphify("echo graphify"));
   }
 
   #[test]

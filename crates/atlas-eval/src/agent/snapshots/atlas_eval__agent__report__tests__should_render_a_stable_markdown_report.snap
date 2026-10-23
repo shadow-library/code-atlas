@@ -72,6 +72,52 @@ Only tasks with scored, uncontaminated runs in both conditions are aggregated (0
 | wall_ms | 60000 | 60000 |
 | atlas_index_ms | – | 1200 |
 
+## Pairwise differences
+
+Each column is the mean, over the tasks scored in both arms, of the second arm's per-task mean minus the first arm's (A = baseline, C = atlas). A difference is evidence only outside the noise bound `agent noise` computes from two batches of one condition.
+
+| metric | C vs A: atlas − baseline (1 tasks) |
+|---|---|
+| hidden_tests_pass | -0.5 (**worse**) |
+| regressions | 0 (equal) |
+| judge_correctness | -0.5 (**worse**) |
+| judge_completeness | -0.5 (**worse**) |
+| must_change_coverage | 0 (equal) |
+| must_consider_coverage | 0 (equal) |
+| judge_architectural_consistency | -0.5 (**worse**) |
+| judge_appropriate_reuse | -0.5 (**worse**) |
+| judge_blast_radius_handling | -0.5 (**worse**) |
+| total_tokens | -25000 (better) |
+| input_tokens | -2500 (better) |
+| output_tokens | -2500 (better) |
+| cache_read_tokens | -17500 (better) |
+| cache_creation_tokens | -2500 (better) |
+| cost_usd | 0 (equal) |
+| num_turns | 0 (equal) |
+| tool_calls | 0 (equal) |
+| search_calls | 0 (equal) |
+| files_read | -4.5 (better) |
+| irrelevant_files_read | 0 (equal) |
+| relevant_files_missed | 0 (equal) |
+| bytes_read | 0 (equal) |
+| lines_read | 0 (equal) |
+| unparsed_bash_reads | 0 |
+| atlas_calls | 0 |
+| atlas_bytes | 0 |
+| information_density | 0 (equal) |
+| first_edit_ms | 0 (equal) |
+| session_ms | 0 (equal) |
+| wall_ms | 0 (equal) |
+
+## Cost per session
+
+Reported session cost of the scored runs of the paired tasks; the judge is not included.
+
+| arm | sessions | mean | median |
+|---|---|---|---|
+| baseline | 2 | $0.5000 | $0.5000 |
+| atlas | 2 | $0.5000 | $0.5000 |
+
 ## Per task
 
 ### t00-smoke

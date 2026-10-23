@@ -9,6 +9,8 @@ pub const DEFAULT_SESSION_MODEL: &str = "claude-sonnet-5-5";
 pub const DEFAULT_JUDGE_MODEL: &str = "claude-sonnet-5-5";
 pub const ATLAS_SERVER_NAME: &str = "code-atlas";
 pub const ATLAS_TOOL_PREFIX: &str = "mcp__code-atlas__";
+pub const SERENA_SERVER_NAME: &str = "serena";
+pub const SERENA_TOOL_PREFIX: &str = "mcp__serena__";
 pub const BASE_TOOLS: [&str; 6] = ["Read", "Edit", "Write", "Glob", "Grep", "Bash"];
 pub const FORCED_TOOLS: [&str; 4] = ["Read", "Edit", "Write", "Bash"];
 pub const CORE_ATLAS_TOOLS: [&str; 6] = ["atlas_context", "atlas_search", "atlas_symbol", "atlas_impact", "atlas_edit", "atlas_status"];
@@ -48,6 +50,7 @@ pub enum HookWiring {
 pub enum SessionTools {
   Baseline,
   Atlas(AtlasSurface),
+  Incumbent,
 }
 
 impl SessionTools {
@@ -55,20 +58,23 @@ impl SessionTools {
     match condition {
       Condition::Baseline => Self::Baseline,
       Condition::Atlas => Self::Atlas(surface),
+      Condition::Incumbent => Self::Incumbent,
     }
   }
 
   pub fn builtin(self) -> &'static [&'static str] {
     match self {
       Self::Atlas(AtlasSurface::Forced) => &FORCED_TOOLS,
-      Self::Baseline | Self::Atlas(AtlasSurface::Standard) => &BASE_TOOLS,
+      Self::Baseline | Self::Incumbent | Self::Atlas(AtlasSurface::Standard) => &BASE_TOOLS,
     }
   }
 
   pub fn allowed(self) -> Vec<String> {
     let mut tools: Vec<String> = self.builtin().iter().map(|tool| (*tool).to_owned()).collect();
-    if let Self::Atlas(_) = self {
-      tools.push(format!("mcp__{ATLAS_SERVER_NAME}"));
+    match self {
+      Self::Baseline => {}
+      Self::Atlas(_) => tools.push(format!("mcp__{ATLAS_SERVER_NAME}")),
+      Self::Incumbent => tools.push(format!("mcp__{SERENA_SERVER_NAME}")),
     }
     tools
   }
@@ -175,7 +181,10 @@ pub fn session_invocation(config: &ClaudeConfig, request: &SessionRequest, host_
   args.push("-p".to_owned());
   args.push(request.prompt.clone());
   let mut env = session_env(config.config_isolation, &request.config_dir, host_env);
-  env.extend(request.tree_env.iter().cloned());
+  for (key, value) in &request.tree_env {
+    env.retain(|(existing, _)| existing != key);
+    env.push((key.clone(), value.clone()));
+  }
   Invocation {
     program: config.binary.clone(),
     args,
@@ -426,6 +435,58 @@ mod tests {
       ]
     );
     assert_eq!(standard.env, invocation.env);
+  }
+
+  #[test]
+  fn should_give_an_incumbent_session_the_serena_server_its_hooks_and_the_appended_instructions_only() {
+    let instructions = format_project_instructions(&[("CLAUDE.md", "Use 2 spaces.".to_owned())]);
+    let baseline = SessionRequest {
+      project_instructions: instructions.clone(),
+      ..request(false)
+    };
+    let incumbent = SessionRequest {
+      tools: SessionTools::Incumbent,
+      project_instructions: instructions.map(|text| format!("{text}\n## graphify\n\nRules.")),
+      hooks: HookWiring::Installed {
+        settings: PathBuf::from("/runs/r1/incumbent-hooks.json"),
+      },
+      ..baseline.clone()
+    };
+    let baseline = session_invocation(&config(ConfigIsolation::User), &baseline, &host());
+    let incumbent = session_invocation(&config(ConfigIsolation::User), &incumbent, &host());
+    let position = incumbent.args.iter().position(|arg| arg == "--verbose").unwrap() + 1;
+    assert_eq!(
+      &incumbent.args[position..position + 3],
+      &["--include-hook-events", "--settings", "/runs/r1/incumbent-hooks.json"].map(str::to_owned)
+    );
+    let mut without_hooks = incumbent.args.clone();
+    without_hooks.drain(position..position + 3);
+    let differing: Vec<(&String, &String)> = baseline.args.iter().zip(&without_hooks).filter(|(left, right)| left != right).collect();
+    assert_eq!(
+      differing,
+      vec![
+        (&"Read,Edit,Write,Glob,Grep,Bash".to_owned(), &"Read,Edit,Write,Glob,Grep,Bash,mcp__serena".to_owned()),
+        (
+          &"# Project instructions\n\nThe repository you are working in ships the following instructions for coding agents.\n\n## CLAUDE.md\n\nUse 2 spaces.\n".to_owned(),
+          &"# Project instructions\n\nThe repository you are working in ships the following instructions for coding agents.\n\n## CLAUDE.md\n\nUse 2 spaces.\n\n## graphify\n\nRules.".to_owned()
+        ),
+      ]
+    );
+    assert_eq!(SessionTools::of(Condition::Incumbent, AtlasSurface::Forced), SessionTools::Incumbent);
+    assert_eq!(SessionTools::Incumbent.builtin(), &BASE_TOOLS);
+    assert_eq!(baseline.env, incumbent.env);
+  }
+
+  #[test]
+  fn should_let_a_tree_variable_replace_the_passed_through_one_instead_of_doubling_it() {
+    let with_path = SessionRequest {
+      tree_env: vec![("PATH".to_owned(), "/runs/r1/incumbent-bin:/bin".to_owned())],
+      ..request(false)
+    };
+    let invocation = session_invocation(&config(ConfigIsolation::User), &with_path, &host());
+    let paths: Vec<&(String, String)> = invocation.env.iter().filter(|(key, _)| key == "PATH").collect();
+    assert_eq!(paths, vec![&("PATH".to_owned(), "/runs/r1/incumbent-bin:/bin".to_owned())]);
+    assert_eq!(invocation.env.last().unwrap().0, "PATH");
   }
 
   #[test]

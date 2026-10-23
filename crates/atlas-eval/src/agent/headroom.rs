@@ -181,6 +181,7 @@ pub fn group_of(record: &RunRecord) -> String {
   match record.manifest.condition {
     Condition::Baseline => BASELINE_GROUP.to_owned(),
     Condition::Atlas => format!("atlas ({})", record.manifest.preamble_variant.unwrap_or_default()),
+    Condition::Incumbent => Condition::Incumbent.as_str().to_owned(),
   }
 }
 

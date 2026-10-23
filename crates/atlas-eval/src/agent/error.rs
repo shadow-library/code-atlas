@@ -50,6 +50,18 @@ pub enum AgentError {
     "scored atlas run(s) {runs} of this batch were produced under atlas surface {recorded}, this invocation uses {expected}; rerun them under one surface or use a new batch"
   )]
   AtlasSurfaceMismatch { runs: String, recorded: String, expected: String },
+  #[error("incumbent arm (Serena + graphify): {reason}")]
+  IncumbentUnavailable { reason: String },
+  #[error(
+    "scored incumbent run(s) {runs} of this batch were produced with other Serena, graphify or instructions ({recorded}) than this invocation ({expected}); rerun them under one setup or use a new batch"
+  )]
+  IncumbentMismatch { runs: String, recorded: String, expected: String },
+  #[error("batch mixes incumbent setups ({0}); runs under different Serena, graphify or instructions are not comparable, rerun them under one")]
+  MixedIncumbent(String),
+  #[error("{0} is in use by another atlas-eval process (its batch lock is held); wait for it to finish")]
+  BatchInProgress(PathBuf),
+  #[error("{flag} {given} differs from the {recorded} the batch was judged with; a rejudge uses the batch's judge settings")]
+  JudgeSettingConflict { flag: String, given: String, recorded: String },
   #[error("invalid argument: {0}")]
   InvalidArgument(String),
   #[error("`{path}` reaches outside the tree through the symbolic link `{link}`; a task may only edit files of its own tree")]

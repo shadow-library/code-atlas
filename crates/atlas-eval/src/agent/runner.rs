@@ -15,13 +15,16 @@ use super::atlas_cli::{AtlasCli, RepoGlobs};
 use super::atlas_config::AtlasConfig;
 use super::bash_guard::{bash_guard_denials, check_bash_guard};
 use super::claude::{
-  ATLAS_SERVER_NAME, ATLAS_TOOL_PREFIX, ClaudeConfig, EMPTY_MCP_CONFIG, HookWiring, SessionRequest, SessionTools, host_env, project_instructions, session_invocation,
+  ATLAS_SERVER_NAME, ClaudeConfig, EMPTY_MCP_CONFIG, HookWiring, SERENA_SERVER_NAME, SessionRequest, SessionTools, host_env, project_instructions, session_invocation,
 };
 use super::diff::{Diff, FileChange};
 use super::error::{AgentError, AgentResult};
+use super::graphify::{GraphBuild, Graphify, ensure_graphs, exclude_tool_dirs, install_graphs};
 use super::hooks::{AtlasHooks, AtlasHooksRecord, USER_PROMPT_SUBMIT, hook_metrics, session_settings};
-use super::judge::{JudgeInput, JudgeKind, JudgeOutcome, atlas_review_prompt, blinded_prompt, run_judge};
-use super::metrics::{LinkedInput, LinkedRestore, Metrics, MetricsInput, compute_metrics, linked_metrics};
+use super::incumbent::{INCUMBENT_HOOKS_FILE, IncumbentRecord, IncumbentRun, IncumbentTools, incumbent_instructions, incumbent_instructions_digest};
+use super::incumbent_probe::{INCUMBENT_PROBE_DIR, INCUMBENT_PROBE_FILE, IncumbentProbe, IncumbentProbeRequest, incumbent_hooks_problem, run_incumbent_probe};
+use super::judge::{JudgeOutcome, judge_atlas_review, judge_rubric};
+use super::metrics::{LinkedInput, LinkedRestore, Metrics, MetricsInput, compute_metrics, incumbent_metrics, linked_metrics};
 use super::plan::{AtlasSurface, Condition, PlannedRun, PreambleVariant, model_price, today_utc};
 use super::probe::{HookedProbe, HookedProbeRequest, ProbeReport, default_user_claude_md, run_hooked_probe, run_probe};
 use super::process::{ProcessExit, run_captured, run_streaming};
@@ -29,6 +32,7 @@ use super::record::{
   ATLAS_REVIEW_FILE, BASE_DIR, BASE_FILE, BATCH_FILE, BaseCheck, BatchManifest, CostSource, Coverage, DIFF_FILE, DuplicationCheck, Environment, HiddenTests, METRICS_FILE,
   OFFSETS_FILE, RUN_FILE, RunManifest, RunStatus, SCORE_FILE, Score, SessionOutcome, TRANSCRIPT_FILE, read_json, write_json,
 };
+use super::report::HELD_OUT_CATEGORY;
 use super::reuse::{analyze_source, duplication_findings, new_functions, reuse_references, same_name_as_targets};
 use super::spec::{LinkedSpec, LoadedTask, SESSION_REPO};
 use super::transcript::{TokenUsage, Transcript};
@@ -50,6 +54,14 @@ const HOOKED_PROBE_DIR: &str = "hooks";
 const FORCED_PROBE_PROJECT: &str = "_probe/forced";
 const FORCED_PROBE_SOURCE: (&str, &str) = ("probe.ts", "export const probe = \"ATLAS-EVAL-GUARD-PROBE\";\n");
 const CARGO_TARGET: &str = "cargo-target";
+const BATCH_LOCK_FILE: &str = ".batch.lock";
+const BATCH_LOCK_GRACE: Duration = Duration::from_secs(5);
+const BATCH_LOCK_POLL: Duration = Duration::from_millis(25);
+const INCUMBENT_WARM_UP: &str = "_incumbent/warm-up";
+const GRAPH_BUILD_DIR: &str = "graphify-build";
+const INCUMBENT_GRAPHIFY_STAGE: &str = "incumbent-graphify";
+const INCUMBENT_SERENA_STAGE: &str = "incumbent-serena";
+const INCUMBENT_HOOKS_STAGE: &str = "incumbent-hooks";
 const INDEX_DATA_SUFFIXES: [&str; 6] = [".db", ".db-wal", ".db-shm", ".sqlite", ".sqlite-wal", ".sqlite-shm"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
@@ -117,6 +129,7 @@ pub struct RunnerConfig {
   pub atlas_config: Option<AtlasConfig>,
   pub atlas_hooks: bool,
   pub atlas_surface: SurfaceSetting,
+  pub incumbent: Option<IncumbentTools>,
 }
 
 struct RunContext<'a> {
@@ -156,11 +169,43 @@ pub fn environment(config: &RunnerConfig) -> Environment {
     atlas_surface: config.atlas_surface.surface(),
     probe: None,
     linked_paths: BTreeMap::new(),
+    incumbent: None,
+  }
+}
+
+pub fn absolute_config(config: &RunnerConfig) -> AgentResult<RunnerConfig> {
+  let absolute = |path: &Path| std::path::absolute(path).map_err(|error| AgentError::io(path, error));
+  let mut resolved = config.clone();
+  resolved.repo_root = absolute(&config.repo_root)?;
+  resolved.eval_home = absolute(&config.eval_home)?;
+  resolved.batch_dir = absolute(&config.batch_dir)?;
+  resolved.tree_root = absolute(&config.tree_root)?;
+  resolved.cache_dir = absolute(&config.cache_dir)?;
+  if config.claude.binary.components().count() > 1 {
+    resolved.claude.binary = absolute(&config.claude.binary)?;
+  }
+  Ok(resolved)
+}
+
+pub fn lock_batch(batch_dir: &Path) -> AgentResult<fs::File> {
+  fs::create_dir_all(batch_dir).map_err(|error| AgentError::io(batch_dir, error))?;
+  let path = batch_dir.join(BATCH_LOCK_FILE);
+  let file = fs::File::create(&path).map_err(|error| AgentError::io(&path, error))?;
+  let deadline = std::time::Instant::now() + BATCH_LOCK_GRACE;
+  loop {
+    match file.try_lock() {
+      Ok(()) => return Ok(file),
+      // A child forked by another thread holds every open descriptor until it execs, so a lock this process just released can look held for a moment.
+      Err(fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => thread::sleep(BATCH_LOCK_POLL),
+      Err(fs::TryLockError::WouldBlock) => return Err(AgentError::BatchInProgress(batch_dir.to_owned())),
+      Err(fs::TryLockError::Error(error)) => return Err(AgentError::io(&path, error)),
+    }
   }
 }
 
 pub fn run_batch(config: &RunnerConfig, tasks: &[LoadedTask], planned: Vec<PlannedRun>) -> AgentResult<BatchManifest> {
-  fs::create_dir_all(&config.batch_dir).map_err(|error| AgentError::io(&config.batch_dir, error))?;
+  let config = &absolute_config(config)?;
+  let _lock = lock_batch(&config.batch_dir)?;
   ensure_same_atlas_config(config, &planned)?;
   ensure_surface_preamble(config)?;
   ensure_same_surface(config, &planned)?;
@@ -170,6 +215,8 @@ pub fn run_batch(config: &RunnerConfig, tasks: &[LoadedTask], planned: Vec<Plann
   let hooks = expected_hooks(config, &planned)?;
   ensure_same_hooks(config, &planned, hooks.as_ref())?;
   let bash_guard = checked_bash_guard(config, &planned)?;
+  let incumbent = planned_incumbent(config, &planned)?;
+  ensure_same_incumbent(config, &planned, incumbent)?;
   let mut environment = environment(config);
   if planned.iter().any(|run| run.condition == Condition::Atlas) {
     environment.atlas_hooks = hooks.clone();
@@ -178,6 +225,15 @@ pub fn run_batch(config: &RunnerConfig, tasks: &[LoadedTask], planned: Vec<Plann
     environment.atlas_hooks = recorded.as_ref().and_then(|recorded| recorded.atlas_hooks.clone());
     environment.atlas_surface = recorded.map_or(AtlasSurface::Standard, |recorded| recorded.atlas_surface);
   }
+  let recorded = recorded_batch(config)?;
+  environment.incumbent = match incumbent {
+    Some(tools) => Some(warmed_incumbent(config, tools)?),
+    None => recorded.as_ref().and_then(|recorded| recorded.environment.incumbent.clone()),
+  };
+  let incumbent_probe_cost = match incumbent {
+    Some(tools) => incumbent_probe(config, tools)?.cost_usd.unwrap_or(0.0),
+    None => 0.0,
+  };
   if config.probe {
     environment.probe = Some(probe(config)?);
   }
@@ -212,7 +268,7 @@ pub fn run_batch(config: &RunnerConfig, tasks: &[LoadedTask], planned: Vec<Plann
     bases.insert(task.spec.id.clone(), base_check(config, task, &source, &strip)?);
     sources.insert(task.spec.id.clone(), (source, strip));
   }
-  let initial_spent = environment.probe.as_ref().and_then(|probe| probe.cost_usd).unwrap_or(0.0) + hooked_probe_cost;
+  let initial_spent = environment.probe.as_ref().and_then(|probe| probe.cost_usd).unwrap_or(0.0) + hooked_probe_cost + incumbent_probe_cost;
   let queue = Mutex::new(planned.iter().cloned().collect::<VecDeque<_>>());
   let spent = Mutex::new(initial_spent);
   let skipped = Mutex::new(Vec::new());
@@ -276,9 +332,112 @@ pub fn run_batch(config: &RunnerConfig, tasks: &[LoadedTask], planned: Vec<Plann
       .filter(|task| !task.spec.drop_instruction_sections.is_empty())
       .map(|task| (task.spec.id.clone(), task.spec.drop_instruction_sections.clone()))
       .collect(),
+    held_out: held_out(tasks, recorded.as_ref()),
   };
   write_json(&config.batch_dir.join(BATCH_FILE), &manifest)?;
   Ok(manifest)
+}
+
+fn planned_incumbent<'a>(config: &'a RunnerConfig, planned: &[PlannedRun]) -> AgentResult<Option<&'a IncumbentTools>> {
+  if !planned.iter().any(|run| run.condition == Condition::Incumbent) {
+    return Ok(None);
+  }
+  config.incumbent.as_ref().map(Some).ok_or_else(|| AgentError::IncumbentUnavailable {
+    reason: "incumbent runs are planned but no Serena and graphify binaries were resolved".to_owned(),
+  })
+}
+
+fn held_out(tasks: &[LoadedTask], recorded: Option<&BatchManifest>) -> Vec<String> {
+  let declared = tasks
+    .iter()
+    .filter(|task| task.spec.category.iter().any(|category| category == HELD_OUT_CATEGORY))
+    .map(|task| task.spec.id.clone());
+  let earlier = recorded.map(|recorded| recorded.held_out.clone()).unwrap_or_default();
+  let union: BTreeSet<String> = declared.chain(earlier).collect();
+  union.into_iter().collect()
+}
+
+fn recorded_batch(config: &RunnerConfig) -> AgentResult<Option<BatchManifest>> {
+  let path = config.batch_dir.join(BATCH_FILE);
+  path.is_file().then(|| read_json::<BatchManifest>(&path)).transpose()
+}
+
+fn ensure_same_incumbent(config: &RunnerConfig, planned: &[PlannedRun], tools: Option<&IncumbentTools>) -> AgentResult<()> {
+  let Some(tools) = tools else {
+    return Ok(());
+  };
+  let expected = tools.setup();
+  let mut differing = Vec::new();
+  let mut recorded = BTreeSet::new();
+  for run in planned.iter().filter(|run| run.condition == Condition::Incumbent) {
+    let dir = config.batch_dir.join(&run.run_id);
+    if !dir.join(SCORE_FILE).is_file() {
+      continue;
+    }
+    let manifest: RunManifest = read_json(&dir.join(RUN_FILE))?;
+    let setup = manifest.incumbent.as_ref().map_or_else(|| "none".to_owned(), IncumbentRun::setup);
+    if setup != expected {
+      recorded.insert(setup);
+      differing.push(run.run_id.clone());
+    }
+  }
+  if differing.is_empty() {
+    return Ok(());
+  }
+  Err(AgentError::IncumbentMismatch {
+    runs: differing.join(", "),
+    recorded: recorded.into_iter().collect::<Vec<_>>().join("; "),
+    expected,
+  })
+}
+
+fn incumbent_probe(config: &RunnerConfig, tools: &IncumbentTools) -> AgentResult<IncumbentProbe> {
+  if !config.probe {
+    return Err(AgentError::IncumbentUnavailable {
+      reason: "a probe session must show that Claude Code runs the Serena hooks under the eval flags before any incumbent session; drop --no-probe".to_owned(),
+    });
+  }
+  let out_dir = config.batch_dir.join(PROBE_DIR).join(INCUMBENT_PROBE_DIR);
+  if let Ok(probe) = read_json::<IncumbentProbe>(&out_dir.join(INCUMBENT_PROBE_FILE))
+    && probe.tools_blake3 == tools.probe_key()
+    && probe.problem(&out_dir).is_none()
+  {
+    return Ok(probe);
+  }
+  remove_dir(&out_dir)?;
+  fs::create_dir_all(&out_dir).map_err(|error| AgentError::io(&out_dir, error))?;
+  let scratch = isolated_scratch(config, &format!("{PROBE_DIR}/{INCUMBENT_PROBE_DIR}"))?;
+  let probe = incumbent_session_env(tools, &scratch).and_then(|tree_env| {
+    run_incumbent_probe(&IncumbentProbeRequest {
+      tools,
+      claude: &config.claude,
+      out_dir: &out_dir,
+      scratch: &scratch,
+      tree_env,
+    })
+  });
+  release_scratch(config, &scratch);
+  let probe = probe?;
+  match probe.problem(&out_dir) {
+    Some(reason) => Err(AgentError::IncumbentUnavailable { reason }),
+    None => Ok(probe),
+  }
+}
+
+fn incumbent_session_env(tools: &IncumbentTools, scratch: &Path) -> AgentResult<Vec<(String, String)>> {
+  let mut env = tree_env(scratch);
+  if let Some(path) = tools.session_path(scratch, std::env::var_os("PATH").as_deref())? {
+    env.push(("PATH".to_owned(), path));
+  }
+  Ok(env)
+}
+
+fn warmed_incumbent(config: &RunnerConfig, tools: &IncumbentTools) -> AgentResult<IncumbentRecord> {
+  let scratch = isolated_scratch(config, INCUMBENT_WARM_UP)?;
+  let warmed = tools.warm_up(&scratch);
+  release_scratch(config, &scratch);
+  warmed?;
+  Ok(tools.record())
 }
 
 fn validate_atlas_config(config: &RunnerConfig, atlas_config: &AtlasConfig) -> AgentResult<()> {
@@ -723,6 +882,7 @@ fn execute_run(context: &RunContext<'_>) -> AgentResult<f64> {
     atlas_config_blake3: context.config.atlas_config.as_ref().map(AtlasConfig::digest),
     atlas_hooks: None,
     atlas_surface: if is_atlas { surface } else { AtlasSurface::Standard },
+    incumbent: None,
     args: Vec::new(),
     env_names: Vec::new(),
     atlas_project: None,
@@ -809,6 +969,7 @@ fn score_session(context: &RunContext<'_>, scratch: &Path, tree: &Path, base_sha
     wall_ms: manifest.wall_ms,
   });
   metrics.out_of_tree_accesses = accesses;
+  metrics.incumbent = (context.planned.condition == Condition::Incumbent).then(|| incumbent_metrics(&session));
   metrics.contaminated = contaminated(&metrics.out_of_tree_accesses);
   if manifest.atlas_surface == AtlasSurface::Forced {
     metrics.atlas_surface_denials = Some(bash_guard_denials(&session));
@@ -881,7 +1042,7 @@ fn access_policy(context: &RunContext<'_>, scratch: &Path, tree: &Path, session:
       hold: with_canonical(&linked.hold),
       view: with_canonical(&linked.view),
       view_reads: match context.planned.condition {
-        Condition::Atlas => LinkedReads::Allowed,
+        Condition::Atlas | Condition::Incumbent => LinkedReads::Allowed,
         Condition::Baseline => LinkedReads::Contaminating,
       },
     }),
@@ -933,11 +1094,64 @@ fn prepare_tree(context: &RunContext<'_>, scratch: &Path, manifest: &mut RunMani
       install_settings(context, &atlas, scratch, manifest).map_err(|error| (ATLAS_HOOKS_STAGE, error))?;
       atlas.mcp_config(&project, context.config.atlas_surface.surface().mcp_tool_profile()).to_string()
     }
+    Condition::Incumbent => prepare_incumbent(context, scratch, tree, manifest)?,
   };
   for path in [mcp_path, context.dir.join("mcp.json")] {
     fs::write(&path, &mcp_config).map_err(|error| ("mcp-config", AgentError::io(&path, error)))?;
   }
   Ok(base_sha)
+}
+
+fn prepare_incumbent(context: &RunContext<'_>, scratch: &Path, tree: &Path, manifest: &mut RunManifest) -> Result<String, (&'static str, AgentError)> {
+  let config = context.config;
+  let tools = config.incumbent.as_ref().ok_or_else(|| {
+    (
+      INCUMBENT_SERENA_STAGE,
+      AgentError::IncumbentUnavailable {
+        reason: "no Serena and graphify binaries were resolved for this batch".to_owned(),
+      },
+    )
+  })?;
+  if let Some(linked) = LinkedLayout::of(context.task, scratch) {
+    linked
+      .materialize_view(context.task, context.source, context.strip)
+      .map_err(|error| ("linked-view", error))?;
+  }
+  let graphify = Graphify {
+    binary: tools.graphify.clone(),
+    timeout: tools.timeout,
+  };
+  let work = scratch.join(GRAPH_BUILD_DIR);
+  let graphs = ensure_graphs(&GraphBuild {
+    graphify: &graphify,
+    graphify_version: tools.graphify_version.as_deref(),
+    task: context.task,
+    source: context.source,
+    strip: context.strip,
+    cache_dir: &config.cache_dir,
+    work: &work,
+  });
+  remove_dir(&work).map_err(|error| (INCUMBENT_GRAPHIFY_STAGE, error))?;
+  let graphs = graphs.map_err(|error| (INCUMBENT_GRAPHIFY_STAGE, error))?;
+  install_graphs(&graphs, tree).map_err(|error| (INCUMBENT_GRAPHIFY_STAGE, error))?;
+  let excluded = exclude_tool_dirs(tree, &graphs.set.roots).map_err(|error| (INCUMBENT_GRAPHIFY_STAGE, error))?;
+  let home = tools.serena_home(scratch).map_err(|error| (INCUMBENT_SERENA_STAGE, error))?;
+  let settings = tools.hook_settings(&home).to_string();
+  for path in [scratch.join(INCUMBENT_HOOKS_FILE), context.dir.join(INCUMBENT_HOOKS_FILE)] {
+    fs::write(&path, &settings).map_err(|error| (INCUMBENT_SERENA_STAGE, AgentError::io(&path, error)))?;
+  }
+  manifest.incumbent = Some(IncumbentRun {
+    serena_version: tools.serena_version.clone(),
+    graphify_version: tools.graphify_version.clone(),
+    graph_key: graphs.set.key.clone(),
+    graph_roots: graphs.set.roots.clone(),
+    graph_build_ms: if graphs.built_now { graphs.set.build_ms } else { 0 },
+    graph_nodes: graphs.set.nodes,
+    graph_edges: graphs.set.edges,
+    excluded,
+    instructions_blake3: incumbent_instructions_digest(),
+  });
+  Ok(tools.mcp_config(&home).to_string())
 }
 
 fn tree_env(scratch: &Path) -> Vec<(String, String)> {
@@ -992,22 +1206,29 @@ fn run_session(context: &RunContext<'_>, scratch: &Path, tree: &Path, manifest: 
   let spec = &context.task.spec;
   let instructions = project_instructions(tree);
   manifest.project_instructions = instructions.as_ref().map(|(_, names)| names.clone()).unwrap_or_default();
+  let condition = context.planned.condition;
+  let incumbent = (condition == Condition::Incumbent).then(|| {
+    let linked = LinkedLayout::of(context.task, scratch);
+    incumbent_instructions(linked.as_ref().map(|linked| (linked.spec.repo.as_str(), linked.view.as_path())))
+  });
+  let system_prompt = match (instructions.map(|(text, _)| text), incumbent) {
+    (Some(project), Some(incumbent)) => Some(format!("{project}\n{incumbent}")),
+    (project, incumbent) => project.or(incumbent),
+  };
+  let session_env = match context.config.incumbent.as_ref().filter(|_| condition == Condition::Incumbent) {
+    Some(tools) => incumbent_session_env(tools, scratch)?,
+    None => tree_env(scratch),
+  };
   let request = SessionRequest {
-    prompt: context.planned.condition.prompt(context.config.preamble, &spec.prompt),
+    prompt: condition.prompt(context.config.preamble, &spec.prompt),
     tree: tree.to_owned(),
     mcp_config: scratch.join("mcp.json"),
     max_turns: spec.max_turns,
-    tools: SessionTools::of(context.planned.condition, manifest.atlas_surface),
+    tools: SessionTools::of(condition, manifest.atlas_surface),
     config_dir: scratch.join("claude-config"),
-    project_instructions: instructions.map(|(text, _)| text),
-    tree_env: tree_env(scratch),
-    hooks: if manifest.atlas_hooks.is_some() || manifest.atlas_surface == AtlasSurface::Forced {
-      HookWiring::Installed {
-        settings: scratch.join(ATLAS_HOOKS_FILE),
-      }
-    } else {
-      HookWiring::Unchanged
-    },
+    project_instructions: system_prompt,
+    tree_env: session_env,
+    hooks: session_hooks(condition, manifest, scratch),
   };
   let invocation = session_invocation(&context.config.claude, &request, &host_env());
   manifest.args = invocation.args.clone();
@@ -1026,9 +1247,14 @@ fn run_session(context: &RunContext<'_>, scratch: &Path, tree: &Path, manifest: 
   manifest.session_cost_usd = session_cost;
   manifest.cost_source = cost_source;
   manifest.cost_usd = session_cost.unwrap_or(0.0);
-  let problem = atlas_server_problem(context.planned.condition, &transcript)
-    .map(|reason| ("atlas-mcp", reason))
-    .or_else(|| hooks_problem(manifest.atlas_hooks.as_ref(), &transcript).map(|reason| (ATLAS_HOOKS_STAGE, reason)));
+  let problem = mcp_server_problem(condition, &transcript)
+    .or_else(|| hooks_problem(manifest.atlas_hooks.as_ref(), &transcript).map(|reason| (ATLAS_HOOKS_STAGE, reason)))
+    .or_else(|| {
+      (condition == Condition::Incumbent)
+        .then(|| incumbent_hooks_problem(&transcript))
+        .flatten()
+        .map(|reason| (INCUMBENT_HOOKS_STAGE, reason))
+    });
   manifest.status = match problem {
     Some((stage, reason)) => RunStatus::SetupFailed { stage: stage.to_owned(), reason },
     None => RunStatus::Completed {
@@ -1039,16 +1265,33 @@ fn run_session(context: &RunContext<'_>, scratch: &Path, tree: &Path, manifest: 
   Ok(transcript)
 }
 
-fn atlas_server_problem(condition: Condition, transcript: &Transcript) -> Option<String> {
-  if condition != Condition::Atlas {
-    return None;
+fn session_hooks(condition: Condition, manifest: &RunManifest, scratch: &Path) -> HookWiring {
+  if condition == Condition::Incumbent {
+    return HookWiring::Installed {
+      settings: scratch.join(INCUMBENT_HOOKS_FILE),
+    };
   }
+  if manifest.atlas_hooks.is_some() || manifest.atlas_surface == AtlasSurface::Forced {
+    return HookWiring::Installed {
+      settings: scratch.join(ATLAS_HOOKS_FILE),
+    };
+  }
+  HookWiring::Unchanged
+}
+
+fn mcp_server_problem(condition: Condition, transcript: &Transcript) -> Option<(&'static str, String)> {
+  let (stage, name) = match condition {
+    Condition::Baseline => return None,
+    Condition::Atlas => ("atlas-mcp", ATLAS_SERVER_NAME),
+    Condition::Incumbent => ("incumbent-mcp", SERENA_SERVER_NAME),
+  };
   let servers = transcript.init.as_ref().map(|init| init.mcp_servers.as_slice()).unwrap_or_default();
-  match servers.iter().find(|server| server.name == ATLAS_SERVER_NAME) {
-    Some(server) if server.status == "connected" => None,
-    Some(server) => Some(format!("the {ATLAS_SERVER_NAME} MCP server reported status `{}`", server.status)),
-    None => Some(format!("the session did not list the {ATLAS_SERVER_NAME} MCP server")),
-  }
+  let reason = match servers.iter().find(|server| server.name == name) {
+    Some(server) if server.status == "connected" => return None,
+    Some(server) => format!("the {name} MCP server reported status `{}`", server.status),
+    None => format!("the session did not list the {name} MCP server"),
+  };
+  Some((stage, reason))
 }
 
 fn hooks_problem(installed: Option<&AtlasHooksRecord>, transcript: &Transcript) -> Option<String> {
@@ -1169,15 +1412,7 @@ fn judge_run(context: &RunContext<'_>, diff: &str, validation: &SuiteResult, reg
       reason: "judge disabled".to_owned(),
     };
   }
-  let prompt = blinded_prompt(&JudgeInput {
-    task_prompt: &context.task.spec.prompt,
-    diff,
-    validation,
-    regression,
-    files_read: &metrics.reads.files,
-    files_changed: &metrics.relevance.files_changed,
-  });
-  run_judge(&context.config.claude, JudgeKind::BlindedRubric, &prompt, &context.dir.join("judge"))
+  judge_rubric(&context.config.claude, &context.task.spec.prompt, diff, validation, regression, metrics, &context.dir)
 }
 
 fn review_atlas(context: &RunContext<'_>, transcript: &Transcript, diff: &str) -> JudgeOutcome {
@@ -1186,22 +1421,7 @@ fn review_atlas(context: &RunContext<'_>, transcript: &Transcript, diff: &str) -
       reason: "judge disabled".to_owned(),
     };
   }
-  let excerpts: Vec<(String, String, String)> = transcript
-    .tool_calls
-    .iter()
-    .filter(|call| call.name.starts_with(ATLAS_TOOL_PREFIX))
-    .map(|call| {
-      let response = call.result.as_ref().map(|result| result.text.clone()).unwrap_or_default();
-      (call.name.trim_start_matches(ATLAS_TOOL_PREFIX).to_owned(), call.input.to_string(), response)
-    })
-    .collect();
-  if excerpts.is_empty() {
-    return JudgeOutcome::Skipped {
-      reason: "the session made no Code Atlas calls".to_owned(),
-    };
-  }
-  let prompt = atlas_review_prompt(&context.task.spec.prompt, &excerpts, diff);
-  run_judge(&context.config.claude, JudgeKind::AtlasReview, &prompt, &context.dir.join("atlas-judge"))
+  judge_atlas_review(&context.config.claude, &context.task.spec.prompt, transcript, diff, &context.dir)
 }
 
 struct Outcomes {
