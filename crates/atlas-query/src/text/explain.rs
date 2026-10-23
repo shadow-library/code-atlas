@@ -1,6 +1,6 @@
 use crate::model::AttrView;
-use crate::queries::{AssertionView, ExplainAnswer};
-use crate::text::{RenderText, TextOut, entity_head, entity_line, snippet};
+use crate::queries::{AssertionView, ExplainAnswer, PathAnswer};
+use crate::text::{RenderText, TextOut, caveats, entity_head, entity_line, snippet};
 
 fn assertions(out: &mut TextOut, assertions: &[AssertionView]) {
   out.line(0, format!("assertions ({})", assertions.len()));
@@ -73,5 +73,22 @@ impl RenderText for ExplainAnswer {
         assertions(out, owned);
       }
     }
+  }
+}
+
+impl RenderText for PathAnswer {
+  fn render_text(&self, out: &mut TextOut) {
+    let between = format!("{} and {}", entity_line(&self.from), entity_line(&self.to));
+    let Some(cost) = self.cost else {
+      out.line(0, format!("no path within {} hops between {between} ({} entities visited)", self.max_depth, self.visited));
+      caveats(out, &self.caveats);
+      return;
+    };
+    out.line(0, format!("path between {between}: {} hops, cost {cost}", self.steps.len()));
+    out.line(1, entity_line(&self.from));
+    for step in &self.steps {
+      out.line(1, format!("{} {} ({})", step.relation.phrase, entity_line(&step.entity), step.relation.certainty.tag));
+    }
+    caveats(out, &self.caveats);
   }
 }

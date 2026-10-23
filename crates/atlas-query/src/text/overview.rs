@@ -1,4 +1,4 @@
-use crate::queries::OverviewAnswer;
+use crate::queries::{OverviewAnswer, RepoDocs};
 use crate::text::{RenderText, TextOut, counted, entity_line};
 
 const PACKAGES_SHOWN: usize = 15;
@@ -116,6 +116,37 @@ impl RenderText for OverviewAnswer {
     out.line(0, "health");
     for line in &self.health {
       out.line(1, line);
+    }
+    if let Some(docs) = &self.docs {
+      doc_map(out, docs);
+    }
+  }
+}
+
+fn doc_map(out: &mut TextOut, repos: &[RepoDocs]) {
+  out.line(0, "docs");
+  for repo in repos {
+    out.line(
+      1,
+      format!(
+        "{}: {}, {} ({} stale)",
+        repo.repo,
+        counted(repo.docs.len() + repo.more_docs, "mapped doc"),
+        counted(repo.notes, "note"),
+        repo.stale_notes
+      ),
+    );
+    for doc in &repo.docs {
+      out.line(2, &doc.path);
+      for heading in &doc.headings {
+        out.line(3, heading);
+      }
+      if doc.more_headings > 0 {
+        out.line(3, format!("{} more headings", doc.more_headings));
+      }
+    }
+    if repo.more_docs > 0 {
+      out.line(2, format!("{} more docs under docs/", repo.more_docs));
     }
   }
 }

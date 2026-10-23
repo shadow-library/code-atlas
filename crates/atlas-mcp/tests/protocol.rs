@@ -5,7 +5,7 @@ use std::fs;
 use atlas_core::Certainty;
 use atlas_mcp::guidance::{self, TOOLS, ToolProfile};
 use atlas_project::{Registry, RepoSpec, ToolsSetting};
-use common::{ACME_REPOS, Harness, start, start_configured, start_counterpart_corpus, start_limited, start_watching, start_with, text_of};
+use common::{ACME_REPOS, Harness, start, start_configured, start_counterpart_corpus, start_docs_corpus, start_limited, start_watching, start_with, text_of};
 use serde_json::{Value, json};
 
 #[tokio::test]
@@ -170,6 +170,79 @@ async fn should_list_the_counterparts_of_a_file_target_in_atlas_impact_and_none_
   let symbol: Value = serde_json::from_str(&symbol).unwrap();
   assert_eq!(symbol["answer"]["outcome"], "found");
   assert_eq!(symbol["answer"].get("counterparts"), None);
+  harness.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn should_fuse_doc_sections_into_atlas_search_and_answer_only_docs_for_kind_doc() {
+  let harness = start_docs_corpus().await;
+
+  let fused: Value = serde_json::from_str(&harness.text("atlas_search", json!({ "query": "backoff", "format": "json" })).await).unwrap();
+  let only: Value = serde_json::from_str(&harness.text("atlas_search", json!({ "query": "backoff", "kind": "doc", "format": "json" })).await).unwrap();
+  let coded: Value = serde_json::from_str(&harness.text("atlas_search", json!({ "query": "backoff", "kind": "function", "format": "json" })).await).unwrap();
+  let listed: Value = serde_json::from_str(&harness.text("atlas_search", json!({ "query": "backoff", "kind": "function,doc", "format": "json" })).await).unwrap();
+  let refused = harness.failure("atlas_search", json!({ "query": "backoff", "kind": "function,Docs" })).await;
+
+  let docs = |answer: &Value| -> Vec<(String, u64)> {
+    answer["answer"]["docs"]
+      .as_array()
+      .map(|docs| docs.iter().map(|doc| (doc["path"].as_str().unwrap().to_owned(), doc["rank"].as_u64().unwrap())).collect())
+      .unwrap_or_default()
+  };
+  assert_eq!(docs(&fused), [("README.md".to_owned(), 2), (".code-atlas/notes/retries.md".to_owned(), 4)]);
+  assert_eq!(fused["answer"]["docs"][0]["kind"], "doc");
+  assert_eq!(docs(&only), [("README.md".to_owned(), 1), (".code-atlas/notes/retries.md".to_owned(), 2)]);
+  assert_eq!(only["answer"]["strong"], json!([]));
+  assert_eq!(docs(&coded), []);
+  assert_eq!(docs(&listed), docs(&fused));
+  assert!(
+    refused
+      .contains("unknown kind \"Docs\"; kinds are snake_case, e.g. function, class, api_endpoint, or doc for repository docs and notes, alone or in a list such as function,doc"),
+    "{refused}"
+  );
+  harness.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn should_list_notes_and_doc_sections_in_atlas_symbol_and_atlas_impact_only_when_some_mention_the_target() {
+  let harness = start_docs_corpus().await;
+
+  let symbol = harness.text("atlas_symbol", json!({ "target": "backoffDelay" })).await;
+  let quiet = harness.text("atlas_symbol", json!({ "target": "ShelfOptions" })).await;
+  let impact = harness.text("atlas_impact", json!({ "targets": ["shelf-web:src/lib/backoff.ts"] })).await;
+
+  assert!(
+    symbol.ends_with(
+      "NOTES (1 of 1): notes anchored to it\n  shelf-web:.code-atlas/notes/retries.md > Retry budget [unstamped] on backoffDelay\nDOCS (1 of 1): doc sections that mention it\n  shelf-web:README.md:5 > Shelf web > Retries [heuristic 0.70]\n"
+    ),
+    "{symbol}"
+  );
+  assert!(!quiet.contains("NOTES") && !quiet.contains("DOCS"), "{quiet}");
+  assert!(
+    impact.contains("NOTES (1 of 1): notes anchored to it\n  shelf-web:.code-atlas/notes/retries.md > Retry budget [unstamped] on backoffDelay\n"),
+    "{impact}"
+  );
+  assert!(
+    impact.contains("DOCS (1 of 1): doc sections that mention it\n  shelf-web:README.md:5 > Shelf web > Retries [heuristic 0.70]\n"),
+    "{impact}"
+  );
+  harness.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn should_answer_the_path_between_two_targets_with_atlas_explain_to() {
+  let harness = start_docs_corpus().await;
+
+  let path = harness.text("atlas_explain", json!({ "target": "loadWithBackoff", "to": "ShelfClient" })).await;
+  let provenance = harness.text("atlas_explain", json!({ "target": "loadWithBackoff" })).await;
+
+  assert!(
+    path.ends_with(
+      "path between loadWithBackoff function shelf-web:src/lib/backoff.ts:7 and ShelfClient class shelf-web:src/lib/shelf-client.ts:10: 2 hops, cost 2\n  loadWithBackoff function shelf-web:src/lib/backoff.ts:7\n  calls createShelfClient function shelf-web:src/lib/shelf-client.ts:6 ([resolved])\n  instantiates ShelfClient class shelf-web:src/lib/shelf-client.ts:10 ([resolved])\n"
+    ),
+    "{path}"
+  );
+  assert!(!provenance.contains("path between"), "{provenance}");
   harness.stop().await.unwrap();
 }
 

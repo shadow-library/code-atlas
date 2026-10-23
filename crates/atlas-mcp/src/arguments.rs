@@ -42,14 +42,14 @@ arguments!(ContextArgs {
   budget: Option<usize>,
   #[schemars(description = "Symbols, files or keys to anchor the pack on")]
   seeds: Option<Vec<String>>,
-  #[schemars(description = "Files or symbols you already hold: they anchor the pack but are not listed again")]
+  #[schemars(description = "Files or symbols you hold: they anchor the pack, unlisted")]
   known: Option<Vec<String>>,
 });
 
 arguments!(SearchArgs {
   #[schemars(description = "Words, a phrase or an identifier")]
   query: String,
-  #[schemars(description = "Only this entity kind, e.g. function, class, api_endpoint")]
+  #[schemars(description = "Only this entity kind, e.g. function, class, api_endpoint, doc")]
   kind: Option<String>,
   #[schemars(description = "One repo, or a directory: repo:dir or dir")]
   repo: Option<String>,
@@ -156,6 +156,12 @@ arguments!(TargetArgs {
   target: String,
 });
 
+arguments!(ExplainArgs {
+  #[schemars(description = "Name (UsersService.findOne), [repo:]path[:line], 'GET /users/{id}' or full key")]
+  target: String,
+  to: Option<String>,
+});
+
 arguments!(ApiArgs {
   #[schemars(description = "Restrict to one repo of the project")]
   repo: Option<String>,
@@ -189,7 +195,7 @@ arguments!(PatternsArgs {
 arguments!(NoArgs {});
 
 arguments!(StatusArgs {
-  #[schemars(description = "Also list index changes in runs newer than this run id (0 = recent runs)")]
+  #[schemars(description = "Also list index changes after this run id (0 = recent runs)")]
   since_run: Option<i64>,
 });
 
@@ -272,6 +278,31 @@ pub(crate) fn context_lines(value: Option<u32>) -> Result<u32, ToolError> {
     return Ok(value);
   }
   Err(ToolError::invalid(format!("context_lines must be at most {MAX_CONTEXT_LINES}, got {value}")))
+}
+
+pub(crate) const DOC_KIND: &str = "doc";
+
+pub(crate) struct SearchKinds {
+  pub kinds: Vec<EntityKind>,
+  pub docs: bool,
+}
+
+pub(crate) fn search_kinds(value: Option<&str>) -> Result<SearchKinds, ToolError> {
+  let Some(value) = value else {
+    return Ok(SearchKinds { kinds: Vec::new(), docs: true });
+  };
+  let mut found = SearchKinds { kinds: Vec::new(), docs: false };
+  for part in value.split(',').map(str::trim).filter(|part| !part.is_empty()) {
+    match part {
+      DOC_KIND => found.docs = true,
+      kind => found.kinds.push(kind.parse::<EntityKind>().map_err(|_| {
+        ToolError::invalid(format!(
+          "unknown kind {kind:?}; kinds are snake_case, e.g. function, class, api_endpoint, or doc for repository docs and notes, alone or in a list such as function,doc"
+        ))
+      })?),
+    }
+  }
+  Ok(found)
 }
 
 pub(crate) fn kinds(value: Option<&str>) -> Result<Vec<EntityKind>, ToolError> {
@@ -383,6 +414,7 @@ pub(crate) fn symbol_plan(args: SymbolArgs) -> Result<SymbolPlan, ToolError> {
       takes(&subject, &["target"], &["body"], &given)?;
       let mut request = SymbolRequest::new(required("target", args.target)?);
       request.body = args.body.unwrap_or(false);
+      request.docs = true;
       Ok(SymbolPlan::Info(request))
     }
     SymbolMode::Find => {

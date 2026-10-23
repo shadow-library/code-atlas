@@ -86,6 +86,9 @@ pub enum EditOperation {
   Apply {
     plan_id: String,
   },
+  StampNotes {
+    files: Vec<String>,
+  },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,6 +117,7 @@ pub enum OperationView {
   SafeDelete { target: String },
   ReplaceContent { path: String },
   ReplaceInFiles { pattern: String },
+  StampNotes { files: Vec<String> },
 }
 
 impl fmt::Display for OperationView {
@@ -126,6 +130,7 @@ impl fmt::Display for OperationView {
       Self::SafeDelete { target } => write!(formatter, "safe_delete {target}"),
       Self::ReplaceContent { path } => write!(formatter, "replace_content {path}"),
       Self::ReplaceInFiles { pattern } => write!(formatter, "replace_in_files {pattern:?}"),
+      Self::StampNotes { files } => write!(formatter, "stamp_notes {}", files.join(" ")),
     }
   }
 }
@@ -406,6 +411,7 @@ impl IdeService {
         },
         dry_run,
       ),
+      EditOperation::StampNotes { files } => self.stamp_notes(files, dry_run),
       EditOperation::Apply { plan_id } => match dry_run {
         true => Err(IdeError::InvalidRequest(
           "operation apply has no dry run; the plan was shown by the dry run that made it".to_owned(),

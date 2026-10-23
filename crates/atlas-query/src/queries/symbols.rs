@@ -398,6 +398,18 @@ fn named(graph: &Graph<'_, '_>, pattern: &NamePath) -> QueryResult<Vec<Entity>> 
   })
 }
 
+pub(crate) fn symbols_named(graph: &Graph<'_, '_>, text: &str) -> QueryResult<Vec<Entity>> {
+  let Ok(pattern) = NamePath::parse(text) else { return Ok(Vec::new()) };
+  let mut found = named(graph, &pattern)?;
+  if let Some(literal) = pattern.literal_fallback().filter(|_| found.is_empty()) {
+    found = named(graph, &literal)?;
+  }
+  found.retain(|entity| !is_test_block(entity));
+  found.sort_by(source_order);
+  found.dedup_by_key(|entity| entity.id);
+  Ok(found)
+}
+
 fn name_path_candidates(graph: &Graph<'_, '_>, pattern: &NamePath, text: &str) -> QueryResult<(Vec<Entity>, String)> {
   let spec = TargetSpec::Name {
     qualifier: pattern.qualifier().to_vec(),

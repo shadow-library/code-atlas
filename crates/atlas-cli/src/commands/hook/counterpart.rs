@@ -20,10 +20,10 @@ const MAX_NOTE_CHARS: usize = 1_200;
 const NOTE_SHARED_SHOWN: usize = 2;
 const HOOK_MIN_CONFIDENCE: f32 = 0.6;
 
-struct Touched {
-  session: String,
-  cwd: PathBuf,
-  file: PathBuf,
+pub(super) struct Touched {
+  pub session: String,
+  pub cwd: PathBuf,
+  pub file: PathBuf,
 }
 
 struct Job<Seen> {
@@ -155,7 +155,7 @@ where
   Some(json!({ "hookSpecificOutput": { "hookEventName": POST_TOOL_USE, "additionalContext": note } }))
 }
 
-fn touched(event: &Value) -> Option<Touched> {
+pub(super) fn touched(event: &Value) -> Option<Touched> {
   (event.get("hook_event_name")?.as_str()? == POST_TOOL_USE).then_some(())?;
   let file = PathBuf::from(event.get("tool_input")?.get("file_path")?.as_str()?);
   let cwd = PathBuf::from(event.get("cwd")?.as_str()?);
@@ -174,7 +174,7 @@ fn screen(file: &Path) -> Result<(), Silence> {
   }
 }
 
-fn locate(project: &Project, file: &Path) -> Option<(String, String)> {
+pub(super) fn locate(project: &Project, file: &Path) -> Option<(String, String)> {
   let file = fs::canonicalize(file).ok()?;
   project
     .repos

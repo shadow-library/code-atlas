@@ -10,6 +10,7 @@ use crate::error::{QueryError, QueryResult};
 use crate::graph::{Graph, certainty_value};
 use crate::model::{Caveat, CertaintyTag, EntityRef, Hop, Listing, Response, short_name};
 use crate::policy::{Policy, hedge};
+use crate::queries::NotePointer;
 use crate::queries::common::{file_entity, first_line, is_test};
 use crate::queries::reuse::access;
 use crate::queries::search::{lexical_hits, query_words, unstemmed};
@@ -155,6 +156,7 @@ pub struct ContextRequest {
   pub depth: u32,
   pub explain: bool,
   pub min_confidence: Option<f32>,
+  pub notes: bool,
 }
 
 impl ContextRequest {
@@ -167,6 +169,7 @@ impl ContextRequest {
       depth: DEFAULT_CONTEXT_DEPTH,
       explain: false,
       min_confidence: None,
+      notes: true,
     }
   }
 }
@@ -283,6 +286,8 @@ pub struct ContextAnswer {
   pub estimated_tokens: usize,
   pub must_read: Vec<ContextItem>,
   pub skim: Vec<ContextItem>,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  pub notes: Vec<NotePointer>,
   pub patterns: Vec<ContextItem>,
   pub reuse: Vec<ContextItem>,
   pub impact: Vec<ContextItem>,
@@ -669,6 +674,7 @@ impl QueryEngine {
       estimated_tokens: 0,
       must_read: Vec::new(),
       skim: Vec::new(),
+      notes: Vec::new(),
       patterns: Vec::new(),
       reuse: Vec::new(),
       impact: Vec::new(),
@@ -851,10 +857,21 @@ impl QueryEngine {
     answer.tests = tests;
     answer.summaries = [test_summary, impact_summary, uncertain_summary].into_iter().flatten().collect();
     answer.set_omitted(&omitted);
+    if request.notes && !answer.must_read.is_empty() {
+      let items: Vec<EntityId> = answer.must_read.iter().filter_map(|item| item.entity.entity_id().ok()).collect();
+      let pointers = self.read(policy, |graph| self.note_pointers_for(graph, &items))?;
+      for pointer in pointers {
+        answer.notes.push(pointer);
+        if pack_chars(&answer) > budget {
+          answer.notes.pop();
+          break;
+        }
+      }
+    }
     used = pack_chars(&answer);
     for item in skim_candidates {
       let entry = code_item_of(&item);
-      let cost = title_chars(SKIM, answer.skim.len()) + rendered_chars(|out| skim_item(out, &entry));
+      let cost = title_chars(SKIM, answer.skim.len() + answer.notes.len()) + rendered_chars(|out| skim_item(out, &entry));
       if used + cost + omission_growth(&omitted, OmissionReason::Budget) <= budget {
         used += cost;
         excerpts.extend(PlannedExcerpt::of(Section::Skim, answer.skim.len(), &item.node, &terms));

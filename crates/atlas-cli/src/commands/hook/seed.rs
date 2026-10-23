@@ -555,6 +555,7 @@ mod tests {
       estimated_tokens: 0,
       must_read,
       skim,
+      notes: Vec::new(),
       patterns: Vec::new(),
       reuse: Vec::new(),
       impact: Vec::new(),

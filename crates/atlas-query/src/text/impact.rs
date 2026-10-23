@@ -1,5 +1,6 @@
 use crate::queries::{ImpactAnswer, ImpactGroup};
 use crate::text::counterparts::counterparts_section;
+use crate::text::docs::pointer_sections;
 use crate::text::{RenderText, TextOut, caveats, entity_line, path_text};
 
 fn group(out: &mut TextOut, title: &str, group: &ImpactGroup) {
@@ -44,6 +45,7 @@ impl RenderText for ImpactAnswer {
     group(out, "relevant tests", &self.tests);
     group(out, "config and env", &self.config);
     counterparts_section(out, &self.counterparts);
+    pointer_sections(out, &self.doc_pointers);
     out.line(0, format!("unresolved risk ({})", self.unresolved_risk.len()));
     if !self.unresolved_risk.is_empty() {
       let mut nested = TextOut::default();

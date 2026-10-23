@@ -24,7 +24,7 @@ use crate::state::{
   DIRTY_BLOB, EngineMeta, EngineState, RepoHealth, SCIP_BLOB, SCIP_BLOB_VERSION, ScipMeta, all_skipped, load_state, project_fingerprint, read_project_fingerprint,
   write_project_fingerprint, write_skipped,
 };
-use crate::watch::WatchSignals;
+use crate::watch::{WatchSignals, WatchState};
 
 const INTERRUPTED_RUN_SCAN: usize = 100;
 const INDEX_TRIGGERS: [&str; 3] = ["barrier", "index", WRITE_TRIGGER];
@@ -239,6 +239,17 @@ impl Engine {
       FreshnessReport::Fresh(header) | FreshnessReport::Degraded { header, .. } => header.duration = arrived.elapsed(),
     }
     Ok(report)
+  }
+
+  pub fn healthy_watch_events(&self) -> Option<u64> {
+    match self.watch.state() {
+      WatchState::Healthy { .. } => Some(self.watch.events()),
+      WatchState::Off | WatchState::Unhealthy { .. } | WatchState::Dead { .. } => None,
+    }
+  }
+
+  pub fn full_scan_interval(&self) -> Duration {
+    self.options.full_scan_interval
   }
 
   #[doc(hidden)]

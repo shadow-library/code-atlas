@@ -5,8 +5,8 @@ use std::time::Instant;
 use atlas_engine::Engine;
 use atlas_ide::EditStatus;
 use atlas_query::{
-  ApiRequest, ChangesRequest, ContextRequest, ExplainRequest, ImpactRequest, PatternsRequest, QueryEngine, SearchRequest, SearchRestriction, Targeted, TestsForRequest,
-  TraverseRequest, UnusedRequest,
+  ApiRequest, ChangesRequest, ContextRequest, DocResults, ExplainRequest, ImpactRequest, PathRequest, PatternsRequest, QueryEngine, SearchRequest, SearchRestriction, Targeted,
+  TestsForRequest, TraverseRequest, UnusedRequest,
 };
 use rmcp::ErrorData;
 use rmcp::handler::server::router::tool::ToolRouter;
@@ -18,8 +18,8 @@ use rmcp::transport::IntoTransport;
 use rmcp::{RoleServer, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 
 use crate::arguments::{
-  self, ApiArgs, ContextArgs, EditArgs, Format, ImpactArgs, NoArgs, PatternsArgs, SearchArgs, SimilarArgs, SimilarPlan, StatusArgs, SymbolArgs, SymbolPlan, TargetArgs,
-  TraverseArgs, UnusedArgs,
+  self, ApiArgs, ContextArgs, EditArgs, ExplainArgs, Format, ImpactArgs, NoArgs, PatternsArgs, SearchArgs, SimilarArgs, SimilarPlan, StatusArgs, SymbolArgs, SymbolPlan,
+  TargetArgs, TraverseArgs, UnusedArgs,
 };
 use crate::descriptions as text;
 use crate::error::{McpError, ToolError};
@@ -277,7 +277,13 @@ impl AtlasServer {
         arguments::non_empty("query", &args.query)?;
         let scope = search_scope(shared, args.repo.as_deref())?;
         let mut request = SearchRequest::new(args.query);
-        request.kinds = arguments::kinds(args.kind.as_deref())?;
+        let kinds = arguments::search_kinds(args.kind.as_deref())?;
+        request.docs = match (kinds.docs, kinds.kinds.is_empty()) {
+          (false, _) => DocResults::Off,
+          (true, true) if args.kind.is_some() => DocResults::Only,
+          (true, _) => DocResults::Fused,
+        };
+        request.kinds = kinds.kinds;
         if let Some(scope) = scope {
           request.repo = Some(scope.repo);
           request.path_prefix = scope.path_prefix;
@@ -386,6 +392,7 @@ impl AtlasServer {
         let mut request = ImpactRequest::new(args.targets);
         request.depth = arguments::depth(args.depth, request.depth)?;
         request.counterparts = true;
+        request.docs = true;
         render::targeted(query(shared), &query(shared).impact(&request)?, args.format.unwrap_or_default())
       })
       .await
@@ -459,11 +466,18 @@ impl AtlasServer {
   }
 
   #[tool(name = "atlas_explain", description = text::EXPLAIN, annotations(read_only_hint = true))]
-  async fn explain(&self, Parameters(args): Parameters<TargetArgs>) -> CallToolResult {
+  async fn explain(&self, Parameters(args): Parameters<ExplainArgs>) -> CallToolResult {
     self
       .call("atlas_explain", args.format, move |shared| {
         arguments::non_empty("target", &args.target)?;
-        render::targeted(query(shared), &query(shared).explain(&ExplainRequest::new(args.target))?, args.format.unwrap_or_default())
+        let format = args.format.unwrap_or_default();
+        match args.to {
+          Some(to) => {
+            arguments::non_empty("to", &to)?;
+            render::targeted(query(shared), &query(shared).path(&PathRequest::new(args.target, to))?, format)
+          }
+          None => render::targeted(query(shared), &query(shared).explain(&ExplainRequest::new(args.target))?, format),
+        }
       })
       .await
   }

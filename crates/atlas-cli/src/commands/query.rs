@@ -4,14 +4,15 @@ use std::path::Path;
 use atlas_core::Language;
 use atlas_project::{Binding, Project};
 use atlas_query::{
-  ApiRequest, ChangesRequest, ContextRequest, CounterpartsRequest, ExplainRequest, ImpactRequest, PatternsRequest, QueryEngine, ReadRequest, RenderText, Response, SearchRequest,
-  SimilarRequest, SymbolRequest, TargetFilter, Targeted, TestsForRequest, TraversalKind, TraverseRequest, UnusedRequest, render_json, render_text,
+  ApiRequest, ChangesRequest, ContextRequest, CounterpartsRequest, DEFAULT_DOCS_LIMIT, DocsRequest, ExplainRequest, ImpactRequest, NotesRequest, PathRequest, PatternsRequest,
+  QueryEngine, ReadRequest, RenderText, Response, SearchRequest, SimilarRequest, SymbolRequest, TargetFilter, Targeted, TestsForRequest, TraversalKind, TraverseRequest,
+  UnusedRequest, render_json, render_text,
 };
 use serde::Serialize;
 
 use crate::cli::{
-  ApiArgs, ChangesArgs, CodeLanguage, ContextArgs, CounterpartsArgs, ExplainArgs, ImpactArgs, PatternsArgs, QueryCommand, ReadArgs, SearchArgs, SimilarArgs, StatusArgs,
-  SymbolArgs, TargetFilterArgs, TestsForArgs, TraverseArgs, UnusedArgs,
+  ApiArgs, ChangesArgs, CodeLanguage, ContextArgs, CounterpartsArgs, DocsArgs, ExplainArgs, ImpactArgs, NotesCommand, PathArgs, PatternsArgs, QueryCommand, ReadArgs, SearchArgs,
+  SimilarArgs, StatusArgs, SymbolArgs, TargetFilterArgs, TestsForArgs, TraverseArgs, UnusedArgs,
 };
 use crate::commands::{overlays, read_input};
 use crate::context::Context;
@@ -47,7 +48,7 @@ pub fn run(ctx: &Context, command: QueryCommand) -> CliResult<Outcome> {
   match command {
     QueryCommand::Overview(args) => {
       let (query, _) = open(ctx)?;
-      finish(query.overview()?, args.common.json)
+      finish(query.overview_with(args.docs)?, args.common.json)
     }
     QueryCommand::Search(args) => search(ctx, args),
     QueryCommand::Symbol(args) => symbol(ctx, args),
@@ -58,6 +59,8 @@ pub fn run(ctx: &Context, command: QueryCommand) -> CliResult<Outcome> {
     QueryCommand::Impact(args) => impact(ctx, args),
     QueryCommand::TestsFor(args) => tests_for(ctx, args),
     QueryCommand::Counterparts(args) => counterparts(ctx, args),
+    QueryCommand::Docs(args) => docs(ctx, args),
+    QueryCommand::Path(args) => path(ctx, args),
     QueryCommand::Api(args) => api(ctx, args),
     QueryCommand::Similar(args) => similar(ctx, args),
     QueryCommand::Unused(args) => unused(ctx, args),
@@ -162,6 +165,52 @@ fn counterparts(ctx: &Context, args: CounterpartsArgs) -> CliResult<Outcome> {
     Outcome::Complete if none => Outcome::Unresolved,
     outcome => outcome,
   })
+}
+
+fn docs(ctx: &Context, args: DocsArgs) -> CliResult<Outcome> {
+  let (query, _) = open(ctx)?;
+  let request = DocsRequest {
+    query: args.query,
+    target: args.about,
+    notes_only: args.notes,
+    limit: args.limit.unwrap_or(DEFAULT_DOCS_LIMIT),
+  };
+  let response = query.docs(&request)?;
+  let none = matches!(&response.answer, Targeted::Found(answer) if answer.sections.is_empty());
+  Ok(match finish_targeted(response, args.common.json)? {
+    Outcome::Complete if none => Outcome::Unresolved,
+    outcome => outcome,
+  })
+}
+
+fn path(ctx: &Context, args: PathArgs) -> CliResult<Outcome> {
+  let (query, _) = open(ctx)?;
+  let mut request = PathRequest::new(args.from, args.to);
+  request.filter = target_filter(&args.filter);
+  if let Some(max_depth) = args.max_depth {
+    request.max_depth = max_depth;
+  }
+  let response = query.path(&request)?;
+  let none = matches!(&response.answer, Targeted::Found(answer) if !answer.found());
+  Ok(match finish_targeted(response, args.common.json)? {
+    Outcome::Complete if none => Outcome::Unresolved,
+    outcome => outcome,
+  })
+}
+
+pub fn notes(ctx: &Context, command: NotesCommand) -> CliResult<Outcome> {
+  match command {
+    NotesCommand::List(args) => {
+      let (query, _) = open(ctx)?;
+      let response = query.notes(&NotesRequest { stale_only: args.stale })?;
+      let none = response.answer.notes.is_empty();
+      Ok(match finish(response, args.common.json)? {
+        Outcome::Complete if none => Outcome::Unresolved,
+        outcome => outcome,
+      })
+    }
+    NotesCommand::Stamp(args) => crate::commands::edit::stamp_notes(ctx, args),
+  }
 }
 
 fn api(ctx: &Context, args: ApiArgs) -> CliResult<Outcome> {

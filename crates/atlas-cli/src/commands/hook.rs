@@ -1,4 +1,5 @@
 mod counterpart;
+mod notes;
 mod seed;
 
 use std::fs::{self, OpenOptions};
@@ -20,6 +21,7 @@ const PRE_TOOL_USE: &str = "PreToolUse";
 const REMINDED_DIR: &str = "reminded";
 const SEEDED_DIR: &str = "seeded";
 const COUNTERPART_DIR: &str = "counterpart";
+const NOTES_DIR: &str = "notes";
 const TIME_LIMIT: Duration = Duration::from_secs(3);
 const WAIT_MARGIN: Duration = Duration::from_millis(250);
 const MARKER_LIFETIME: Duration = Duration::from_secs(7 * 24 * 60 * 60);
@@ -56,6 +58,7 @@ pub fn run(ctx: &Context, hook: HookName) -> CliResult<Outcome> {
     ),
     HookName::Seed => seed::seed(&ctx.home, ctx.project.as_deref(), &event, &markers_in(ctx.home.hook_state_dir().join(SEEDED_DIR))),
     HookName::Counterpart => counterpart::counterpart(&ctx.home, ctx.project.as_deref(), &event, markers_in(ctx.home.hook_state_dir().join(COUNTERPART_DIR))),
+    HookName::Notes => notes::notes(&ctx.home, ctx.project.as_deref(), &event, markers_in(ctx.home.hook_state_dir().join(NOTES_DIR))),
   };
   if let Some(answer) = answer {
     emit_line(answer.to_string())?;

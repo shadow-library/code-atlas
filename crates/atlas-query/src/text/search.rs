@@ -1,4 +1,5 @@
 use crate::queries::{SearchAnswer, SearchHitView};
+use crate::text::docs::fused_section_lines;
 use crate::text::{RenderText, TextOut, caveats, entity_line};
 
 fn hits(out: &mut TextOut, title: &str, hits: &[SearchHitView]) {
@@ -26,6 +27,12 @@ impl RenderText for SearchAnswer {
     hits(out, "exact name", &self.exact_name);
     hits(out, "strong", &self.strong);
     hits(out, "related", &self.related);
+    if !self.docs.is_empty() {
+      out.line(0, format!("docs and notes ({})", self.docs.len()));
+      for section in &self.docs {
+        fused_section_lines(out, 1, section);
+      }
+    }
     if !self.structurally_similar.is_empty() {
       out.line(0, format!("structurally similar ({})", self.structurally_similar.len()));
       for hit in &self.structurally_similar {

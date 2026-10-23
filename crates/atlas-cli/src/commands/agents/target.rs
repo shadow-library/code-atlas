@@ -26,6 +26,11 @@ const COUNTERPART_HOOKS: Slot = Slot {
   inner: "PostToolUse",
   ours: claude::is_our_counterpart_group,
 };
+const NOTES_HOOKS: Slot = Slot {
+  outer: "hooks",
+  inner: "PostToolUse",
+  ours: claude::is_our_notes_group,
+};
 const PERMISSIONS: Slot = Slot {
   outer: "permissions",
   inner: "allow",
@@ -300,6 +305,10 @@ impl Target {
       Self::Hooks {
         event: HookEvent::PostToolUse, ..
       } => &COUNTERPART_HOOKS,
+      Self::Hooks {
+        event: HookEvent::PostToolUseNotes,
+        ..
+      } => &NOTES_HOOKS,
       _ => &REMIND_HOOKS,
     }
   }

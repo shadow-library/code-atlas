@@ -1,4 +1,5 @@
 use atlas_core::{EdgeKind, Entity, Visibility};
+use atlas_project::DocScope;
 use serde::Serialize;
 
 use crate::QueryEngine;
@@ -7,6 +8,7 @@ use crate::error::QueryResult;
 use crate::graph::Graph;
 use crate::model::{CertaintyTag, EntityRef, Response, Targeted};
 use crate::policy::{Direction, Policy};
+use crate::queries::DocPointers;
 use crate::queries::common::{first_line, resolve_one};
 use crate::queries::tests_for::direct_tests;
 use crate::target::TargetFilter;
@@ -16,6 +18,7 @@ pub struct SymbolRequest {
   pub target: String,
   pub filter: TargetFilter,
   pub body: bool,
+  pub docs: bool,
 }
 
 impl SymbolRequest {
@@ -24,6 +27,7 @@ impl SymbolRequest {
       target: target.into(),
       filter: TargetFilter::default(),
       body: false,
+      docs: false,
     }
   }
 }
@@ -54,6 +58,8 @@ pub struct SymbolAnswer {
   pub parent: Option<EntityRef>,
   pub counts: SymbolCounts,
   pub body: Option<Snippet>,
+  #[serde(skip_serializing_if = "DocPointers::is_empty")]
+  pub doc_pointers: DocPointers,
 }
 
 impl QueryEngine {
@@ -64,7 +70,11 @@ impl QueryEngine {
         Ok(entity) => entity,
         Err(outcome) => return Ok(outcome),
       };
-      describe(graph, &entity).map(Targeted::Found)
+      let mut answer = describe(graph, &entity)?;
+      if request.docs {
+        answer.doc_pointers = self.doc_pointers(graph, std::slice::from_ref(&entity), DocScope::All)?;
+      }
+      Ok(Targeted::Found(answer))
     })?;
     let answer = match (answer, request.body) {
       (Targeted::Found(mut found), true) => {
@@ -103,6 +113,7 @@ fn describe(graph: &Graph<'_, '_>, entity: &Entity) -> QueryResult<SymbolAnswer>
       children: graph.children(entity.id)?.len(),
     },
     body: None,
+    doc_pointers: DocPointers::default(),
   })
 }
 

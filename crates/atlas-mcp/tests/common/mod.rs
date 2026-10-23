@@ -72,6 +72,16 @@ pub async fn start_counterpart_corpus() -> Harness {
   serve(scratch, home, AtlasServer::open(&options).unwrap()).await
 }
 
+pub async fn start_docs_corpus() -> Harness {
+  let scratch = tempfile::tempdir().unwrap();
+  let home = AtlasHome::rooted_at(scratch.path().join("home"));
+  let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../atlas-query/tests/docs-corpus");
+  let specs = vec![RepoSpec::new(materialise_from(scratch.path(), &corpus, "shelf-web")).named("shelf-web")];
+  Registry::load(&home).unwrap().create_project("shelf", specs).unwrap();
+  let options = ServeOptions::new(home.clone(), scratch.path()).with_project("shelf");
+  serve(scratch, home, AtlasServer::open(&options).unwrap()).await
+}
+
 pub async fn start(repos: &[&str]) -> Harness {
   launch(repos, false, None::<fn(&str)>, None).await
 }

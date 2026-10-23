@@ -3,11 +3,11 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use atlas_core::RunId;
-use atlas_edit::{Disposition, EditError, EditScope, FileTarget, OccurrenceId, Pattern, ReplaceContent, ReplaceInFiles, SkipReason, TextPlan};
-use atlas_query::{Freshness, Response};
+use atlas_edit::{Disposition, EditError, EditScope, FileEdits, FileTarget, OccurrenceId, Pattern, ReplaceContent, ReplaceInFiles, SkipReason, TextEdit, TextPlan};
+use atlas_query::{Freshness, NoteStamp, Response};
 
 use super::plans::{PlanDraft, PlanGuard};
-use super::{DryRunReason, EditOutcome, OperationView, REPLACE_IN_FILES_NOTE, changed_files, planning_error, respond};
+use super::{DryRunReason, EditOutcome, EditStatus, OperationView, REPLACE_IN_FILES_NOTE, changed_files, planning_error, respond};
 use crate::error::{IdeError, IdeResult};
 use crate::service::{IdeService, guard};
 use crate::target::{ProjectFiles, read_text};
@@ -91,6 +91,66 @@ impl IdeService {
         format!("{total} matches; this call was a dry run because it named neither occurrences nor expected_count ({REPLACE_IN_FILES_NOTE})"),
       );
     }
+    Ok(response)
+  }
+
+  pub(crate) fn stamp_notes(&self, specs: &[String], dry_run: bool) -> IdeResult<Response<EditOutcome>> {
+    let operation = OperationView::StampNotes { files: specs.to_vec() };
+    let files = self.files();
+    let freshness = self.query.fresh()?;
+    let project = self.query.engine().project();
+    let scope = EditScope::new(&project)?;
+    let mut planned = TextPlan::default();
+    let mut missing = Vec::new();
+    for spec in specs {
+      let file = files.locate_spec(spec)?;
+      let target = FileTarget::new(file.repo.clone(), file.path.clone());
+      let located = match scope.locate(&target) {
+        Ok(located) => located,
+        Err(refusal) => return respond(freshness, planning_error(&operation, EditError::OutOfScope { refused: vec![refusal] })?),
+      };
+      let (text, hash) = match read_text(&located.absolute) {
+        Ok(read) => read,
+        Err(reason) => return respond(freshness, EditOutcome::refused(operation, format!("{target}: {reason}; nothing was written"))),
+      };
+      let edits = match self.query.note_stamp(&file.repo, &file.path, &text)?.answer {
+        NoteStamp::Refused { reason } => return respond(freshness, EditOutcome::refused(operation, reason)),
+        NoteStamp::Edits { edits, missing: gone } => {
+          missing.extend(
+            gone
+              .into_iter()
+              .map(|anchor| format!("{target}: anchor {anchor} no longer resolves, so it was not stamped")),
+          );
+          edits
+        }
+      };
+      if edits.is_empty() {
+        continue;
+      }
+      let edits: Vec<TextEdit> = edits
+        .into_iter()
+        .map(|edit| match edit.start == edit.end {
+          true => TextEdit::insert(edit.start, edit.text),
+          false => TextEdit::replace(edit.start..edit.end, edit.text),
+        })
+        .collect();
+      planned.diffs.push(atlas_edit::file_diff(&target, &text, &edits, &[]).map_err(EditError::from)?);
+      planned.plan.files.push(FileEdits::new(target, hash, edits));
+    }
+    if planned.plan.files.is_empty() {
+      let mut outcome = match missing.is_empty() {
+        true => EditOutcome::new(operation, EditStatus::Applied),
+        false => EditOutcome::refused(operation, format!("{}; nothing was written", missing.join("; "))),
+      };
+      if missing.is_empty() {
+        outcome
+          .caveats
+          .push("every anchor already carries the hash of its current code; nothing was written".to_owned());
+      }
+      return respond(freshness, outcome);
+    }
+    let mut response = self.conclude_text(freshness, &files, operation, planned, dry_run.then_some(DryRunReason::Requested))?;
+    response.answer.caveats.extend(missing);
     Ok(response)
   }
 

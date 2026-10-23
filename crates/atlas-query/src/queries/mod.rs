@@ -2,6 +2,7 @@ mod api;
 pub(crate) mod common;
 mod context;
 mod counterparts;
+mod docs;
 mod explain;
 mod graph_references;
 mod hierarchy;
@@ -9,6 +10,7 @@ mod impact;
 mod inferred_links;
 mod name_path;
 mod overview;
+mod path;
 mod patterns;
 mod positions;
 mod reuse;
@@ -26,12 +28,18 @@ mod unused;
 pub use api::*;
 pub use context::*;
 pub use counterparts::*;
+pub use docs::{
+  AnchorStatus, AnchorView, AnchoredNote, DEFAULT_DOCS_LIMIT, DocKind, DocOutline, DocPointer, DocPointers, DocSection, DocsAnswer, DocsRequest, FileNotesAnswer, FileNotesRequest,
+  MentionView, NoteExcerpt, NotePointer, NoteStamp, NoteState, NoteView, NotesAnswer, NotesRequest, RepoDocs, StampEdit,
+};
+pub(crate) use docs::{DocCache, DocFusion};
 pub use explain::*;
 pub use graph_references::*;
 pub use hierarchy::*;
 pub use impact::*;
 pub use name_path::{Anchor, NameMatch, NamePath};
 pub use overview::*;
+pub use path::*;
 pub use patterns::*;
 pub use positions::*;
 pub use search::*;

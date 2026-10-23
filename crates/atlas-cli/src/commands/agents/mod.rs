@@ -493,6 +493,7 @@ fn hook_events(settings: &AgentsSettings) -> Vec<HookEvent> {
     (ClaudeHook::Remind, HookEvent::PreToolUse),
     (ClaudeHook::Seed, HookEvent::UserPromptSubmit),
     (ClaudeHook::Counterpart, HookEvent::PostToolUse),
+    (ClaudeHook::Notes, HookEvent::PostToolUseNotes),
   ]
   .into_iter()
   .filter(|(hook, _)| settings.claude.hooks.contains(hook))
@@ -504,10 +505,13 @@ fn hooks(ctx: &Context, args: AgentsHooksArgs) -> CliResult<Outcome> {
   let settings = ctx.registry()?.user_config().agents();
   let binary = args.binary.unwrap_or_else(|| settings.binary.clone());
   let home = args.home.map(OsString::from).or_else(|| std::env::var_os(HOME_VAR).filter(|value| !value.is_empty()));
-  let groups: serde_json::Map<String, Value> = hook_events(&settings)
-    .into_iter()
-    .map(|event| (event.name().to_owned(), Value::Array(claude::hook_groups(event, &binary, home.as_deref()))))
-    .collect();
+  let mut groups = serde_json::Map::new();
+  for event in hook_events(&settings) {
+    let entry = groups.entry(event.name().to_owned()).or_insert_with(|| Value::Array(Vec::new()));
+    if let Value::Array(entries) = entry {
+      entries.extend(claude::hook_groups(event, &binary, home.as_deref()));
+    }
+  }
   if args.json {
     emit_json(&Value::Object(groups))?;
     return Ok(Outcome::Complete);

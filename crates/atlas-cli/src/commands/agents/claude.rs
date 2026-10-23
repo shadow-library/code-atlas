@@ -20,6 +20,7 @@ const READ_TOOL_MATCHER: &str = "Read";
 const REMIND_SUFFIX: &str = "hook remind";
 const SEED_SUFFIX: &str = "hook seed";
 const COUNTERPART_SUFFIX: &str = "hook counterpart";
+const NOTES_SUFFIX: &str = "hook notes";
 const NEVER_FAIL: &str = " || true";
 pub(super) const HOME_VAR: &str = "CODE_ATLAS_HOME";
 
@@ -29,6 +30,8 @@ pub(crate) enum HookEvent {
   PreToolUse,
   UserPromptSubmit,
   PostToolUse,
+  #[serde(rename = "PostToolUse:notes")]
+  PostToolUseNotes,
 }
 
 impl HookEvent {
@@ -36,7 +39,7 @@ impl HookEvent {
     match self {
       Self::PreToolUse => "PreToolUse",
       Self::UserPromptSubmit => "UserPromptSubmit",
-      Self::PostToolUse => "PostToolUse",
+      Self::PostToolUse | Self::PostToolUseNotes => "PostToolUse",
     }
   }
 
@@ -49,6 +52,7 @@ impl HookEvent {
       Self::PreToolUse => REMIND_SUFFIX,
       Self::UserPromptSubmit => SEED_SUFFIX,
       Self::PostToolUse => COUNTERPART_SUFFIX,
+      Self::PostToolUseNotes => NOTES_SUFFIX,
     }
   }
 }
@@ -108,7 +112,7 @@ pub(super) fn hook_groups(event: HookEvent, binary: &str, home: Option<&OsStr>) 
   match event {
     HookEvent::PreToolUse => vec![json!({ "matcher": SEARCH_TOOLS_MATCHER, "hooks": hooks })],
     HookEvent::UserPromptSubmit => vec![json!({ "hooks": hooks })],
-    HookEvent::PostToolUse => vec![json!({ "matcher": READ_TOOL_MATCHER, "hooks": hooks })],
+    HookEvent::PostToolUse | HookEvent::PostToolUseNotes => vec![json!({ "matcher": READ_TOOL_MATCHER, "hooks": hooks })],
   }
 }
 
@@ -122,6 +126,10 @@ pub(super) fn is_our_seed_group(group: &Value) -> bool {
 
 pub(super) fn is_our_counterpart_group(group: &Value) -> bool {
   is_our_hook_group(HookEvent::PostToolUse, group)
+}
+
+pub(super) fn is_our_notes_group(group: &Value) -> bool {
+  is_our_hook_group(HookEvent::PostToolUseNotes, group)
 }
 
 fn is_our_hook_group(event: HookEvent, group: &Value) -> bool {
@@ -283,6 +291,20 @@ mod tests {
     assert!(groups.iter().all(is_our_counterpart_group));
     assert!(!groups.iter().any(is_our_remind_group) && !groups.iter().any(is_our_seed_group));
     assert!(!hook_groups(HookEvent::PreToolUse, "catl", None).iter().any(is_our_counterpart_group));
+  }
+
+  #[test]
+  fn should_render_a_notes_hook_on_reads_next_to_the_counterpart_hook_without_claiming_it() {
+    let groups = hook_groups(HookEvent::PostToolUseNotes, "catl", None);
+    assert_eq!(
+      groups,
+      [json!({"matcher": "Read", "hooks": [{"type": "command", "command": "catl hook notes || true", "timeout": 10}]})]
+    );
+    assert!(groups.iter().all(is_our_notes_group));
+    assert!(!groups.iter().any(is_our_counterpart_group));
+    assert!(!hook_groups(HookEvent::PostToolUse, "catl", None).iter().any(is_our_notes_group));
+    assert_eq!(HookEvent::PostToolUseNotes.name(), "PostToolUse");
+    assert_eq!(serde_json::to_value(HookEvent::PostToolUseNotes).unwrap(), json!("PostToolUse:notes"));
   }
 
   #[test]

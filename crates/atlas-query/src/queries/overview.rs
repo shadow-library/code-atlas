@@ -9,6 +9,7 @@ use crate::error::QueryResult;
 use crate::graph::Graph;
 use crate::model::{AttrView, CertaintyTag, EntityRef, Response, non_authoritative};
 use crate::policy::Policy;
+use crate::queries::RepoDocs;
 use crate::queries::common::{attr_str, attribute_names, is_router_relative, superseded_fragments};
 use crate::queries::patterns::{PatternTopic, instances};
 
@@ -79,10 +80,16 @@ pub struct OverviewAnswer {
   pub events: Vec<EventSummary>,
   pub patterns: Vec<String>,
   pub health: Vec<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub docs: Option<Vec<RepoDocs>>,
 }
 
 impl QueryEngine {
   pub fn overview(&self) -> QueryResult<Response<OverviewAnswer>> {
+    self.overview_with(false)
+  }
+
+  pub fn overview_with(&self, docs: bool) -> QueryResult<Response<OverviewAnswer>> {
     let freshness = self.barrier()?;
     let status = self.engine().status()?;
     let project = self.engine().project().name.to_string();
@@ -114,6 +121,7 @@ impl QueryEngine {
         events: events(graph)?,
         patterns: patterns(graph)?,
         health: Vec::new(),
+        docs: docs.then(|| self.doc_map(graph)).transpose()?,
       })
     })?;
     let mut health = vec![format!(

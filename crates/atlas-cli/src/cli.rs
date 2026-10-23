@@ -72,6 +72,12 @@ pub enum Command {
   TestsFor(TestsForArgs),
   #[command(about = "Shortcut for `query counterparts`")]
   Counterparts(CounterpartsArgs),
+  #[command(about = "Shortcut for `query docs`")]
+  Docs(DocsArgs),
+  #[command(about = "Shortcut for `query path`")]
+  Path(PathArgs),
+  #[command(subcommand, about = "List the notes under .code-atlas/notes/ with their status, or stamp them with the code they are about")]
+  Notes(NotesCommand),
   #[command(about = "Find symbols by name path in the graph")]
   Find(FindArgs),
   #[command(about = "List the symbols of a file from the index (--source lsp for the exact language-server outline)")]
@@ -349,6 +355,10 @@ pub enum QueryCommand {
   TestsFor(TestsForArgs),
   #[command(about = "Files in other repos or apps that share a file's rare string values and keys, with what only they hold")]
   Counterparts(CounterpartsArgs),
+  #[command(about = "Sections of repository docs and notes that match words or mention a target")]
+  Docs(DocsArgs),
+  #[command(about = "The cheapest path between two targets over graph edges, hops weighted by certainty")]
+  Path(PathArgs),
   Api(ApiArgs),
   Similar(SimilarArgs),
   Unused(UnusedArgs),
@@ -367,6 +377,8 @@ pub struct QueryCommon {
 
 #[derive(Debug, Args)]
 pub struct OverviewArgs {
+  #[arg(long, help = "Append each repo's README and docs/ headings and its notes count")]
+  pub docs: bool,
   #[command(flatten)]
   pub common: QueryCommon,
 }
@@ -468,6 +480,57 @@ pub struct CounterpartsArgs {
   pub filter: TargetFilterArgs,
   #[command(flatten)]
   pub common: QueryCommon,
+}
+
+#[derive(Debug, Args)]
+#[command(group(ArgGroup::new("docs_subject").required(true).multiple(true).args(["query", "about"])))]
+pub struct DocsArgs {
+  #[arg(help = "Words to rank sections by")]
+  pub query: Option<String>,
+  #[arg(long, value_name = "TARGET", help = "Only sections that mention this symbol or file (for a file, any symbol in it)")]
+  pub about: Option<String>,
+  #[arg(long, help = "Only notes under .code-atlas/notes/")]
+  pub notes: bool,
+  #[arg(long)]
+  pub limit: Option<usize>,
+  #[command(flatten)]
+  pub common: QueryCommon,
+}
+
+#[derive(Debug, Args)]
+pub struct PathArgs {
+  pub from: String,
+  pub to: String,
+  #[arg(long, value_name = "HOPS", help = "Longest path searched, 1-12 (default 6)")]
+  pub max_depth: Option<u32>,
+  #[command(flatten)]
+  pub filter: TargetFilterArgs,
+  #[command(flatten)]
+  pub common: QueryCommon,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum NotesCommand {
+  #[command(about = "Each note with the status of its anchors: current, stale (the code changed since stamping), unstamped or missing")]
+  List(NotesListArgs),
+  #[command(about = "Record the hash of the code each anchor names in the note's frontmatter (adds the frontmatter from its mentions when missing)")]
+  Stamp(NotesStampArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct NotesListArgs {
+  #[arg(long, help = "Only notes with a stale or missing anchor")]
+  pub stale: bool,
+  #[command(flatten)]
+  pub common: QueryCommon,
+}
+
+#[derive(Debug, Args)]
+pub struct NotesStampArgs {
+  #[arg(required = true, value_name = "NOTE", help = "Note files: a path, or [repo:]path inside a repo")]
+  pub files: Vec<String>,
+  #[command(flatten)]
+  pub output: EditOutput,
 }
 
 #[derive(Debug, Args)]
@@ -949,6 +1012,7 @@ pub enum HookName {
   Remind,
   Seed,
   Counterpart,
+  Notes,
 }
 
 #[derive(Debug, Args)]

@@ -4,7 +4,7 @@ use std::path::Path;
 use atlas_ide::{CrossRepo, EditOperation, EditOutcome, EditRequest, EditStatus, EditView, IdePlan};
 use atlas_query::{Response, render_json, render_text};
 
-use crate::cli::{ApplyArgs, CrossRepoArg, EditCommand, EditOutput, RenameArgs, ReplaceArgs, ReplaceInFilesArgs, SafeDeleteArgs, SymbolEditArgs};
+use crate::cli::{ApplyArgs, CrossRepoArg, EditCommand, EditOutput, NotesStampArgs, RenameArgs, ReplaceArgs, ReplaceInFilesArgs, SafeDeleteArgs, SymbolEditArgs};
 use crate::commands::ide::OneShot;
 use crate::commands::read_input;
 use crate::context::Context;
@@ -29,6 +29,26 @@ fn dispatch(ctx: &Context, command: EditCommand) -> CliResult<Outcome> {
     EditCommand::Replace(args) => replace(ctx, args),
     EditCommand::ReplaceInFiles(args) => replace_in_files(ctx, args),
   }
+}
+
+pub fn stamp_notes(ctx: &Context, args: NotesStampArgs) -> CliResult<Outcome> {
+  stamp(ctx, args).map_err(CliError::for_edit)
+}
+
+fn stamp(ctx: &Context, args: NotesStampArgs) -> CliResult<Outcome> {
+  if let Some(refusal) = ctx.bound()?.binding.edit_refusal() {
+    return Err(CliError::EditOutsideIndexedCheckout(refusal));
+  }
+  let cwd = std::env::current_dir().map_err(|source| CliError::io("read", "the working directory", source))?;
+  let files = args
+    .files
+    .into_iter()
+    .map(|file| match cwd.join(&file) {
+      local if Path::new(&file).is_relative() && local.is_file() => local.display().to_string(),
+      _ => file,
+    })
+    .collect();
+  submit(ctx, EditOperation::StampNotes { files }, &args.output)
 }
 
 fn replacement(text: Option<String>, text_file: Option<String>) -> CliResult<String> {

@@ -122,12 +122,12 @@ const fn clause(needs: &'static [&'static str], text: &'static str) -> Clause {
 
 type Rule = &'static [&'static [Clause]];
 
-const INTRO: &str = "Code Atlas answers questions about ONE indexed project (a group of repos) from a knowledge graph kept up to date with the working tree.";
+const INTRO: &str = "Code Atlas answers questions about ONE indexed project (a group of repos) from a knowledge graph kept current with the working tree.";
 
-const RULES: [Rule; 8] = [
+const RULES: [Rule; 9] = [
   &[&[clause(
     &["atlas_context"],
-    "Start a task with atlas_context: a ranked pack of the code to read. A Code Atlas seed in your context is a short list from that pack: read what it names first, and call atlas_context for bodies and more.",
+    "Start a task with atlas_context: a ranked pack of the code to read. A Code Atlas seed in your context is the top of that pack: read what it names first; atlas_context adds bodies and more.",
   )]],
   &[&[
     clause(
@@ -160,13 +160,10 @@ const RULES: [Rule; 8] = [
   ],
   &[&[clause(
     &[],
-    "Untagged entities and [resolved]/[syntactic]/[compiler]/[declared] relations are reliable but not exhaustive: read the caveats, and an empty result is not proof of absence. [heuristic] and [inferred] relations are leads: verify them in the source before relying on them. A tag after an entity name tags the entity; one in parentheses or in a `verb target [tag]` step tags the relation.",
+    "Untagged entities and [resolved]/[syntactic]/[compiler]/[declared] relations are reliable but not exhaustive: read the caveats; an empty result is not proof of absence. [heuristic] and [inferred] relations are leads: verify them in the source. A tag after an entity name tags the entity; one in parentheses or in a `verb target [tag]` step tags the relation.",
   )]],
   &[
-    &[clause(
-      &[],
-      "An answer starting with DEGRADED came from an index that could not be fully refreshed: verify it against the files.",
-    )],
+    &[clause(&[], "An answer starting with DEGRADED came from a possibly stale index: verify it in the files.")],
     &[clause(&["atlas_explain"], "atlas_explain shows the evidence of a relation.")],
   ],
   &[&[
@@ -174,6 +171,10 @@ const RULES: [Rule; 8] = [
     clause(&[], "After editing, re-query; there is no reindex tool."),
   ]],
   &[&[clause(&["atlas_search"], "If a target is not found or is ambiguous, use atlas_search.")]],
+  &[&[clause(
+    &["atlas_search"],
+    "To leave knowledge for later sessions, write a note in `.code-atlas/notes/` naming the code in backticks, then run `catl notes stamp <file>`.",
+  )]],
 ];
 
 pub const REMINDER: &str = "This repository is indexed by Code Atlas (the code-atlas MCP server). atlas_search finds where a name, text or structure lives across every repo of the project, atlas_symbol answers definitions and references, and atlas_context ranks the code to read for a task; one of them may answer this faster and more completely than a text search. This reminder appears once per session.";

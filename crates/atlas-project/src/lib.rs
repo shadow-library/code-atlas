@@ -2,6 +2,7 @@ mod binding;
 mod changes;
 mod config;
 mod discovery;
+mod doc_discovery;
 mod document;
 mod error;
 mod globs;
@@ -19,6 +20,7 @@ pub use config::{
   ResolvedMcp, ToolsSetting, UserConfig, WorktreeMode, WorktreeSettings, resolve_mcp,
 };
 pub use discovery::*;
+pub use doc_discovery::*;
 pub use error::*;
 pub use globs::PathGlobs;
 pub use home::*;

@@ -10,6 +10,7 @@ use crate::freshness::Freshness;
 use crate::graph::Graph;
 use crate::model::{Caveat, Location, MacroGapScope, ProblemFile, Targeted, UnresolvedSite, short_name};
 use crate::policy::Policy;
+use crate::queries::DocCache;
 
 const RISK_SITES_SHOWN: usize = 5;
 const PROBLEM_FILES_SHOWN: usize = 5;
@@ -19,6 +20,7 @@ pub struct QueryEngine {
   engine: Arc<Engine>,
   barrier: Barrier,
   problems: Mutex<Option<CachedProblems>>,
+  docs: Mutex<DocCache>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +40,7 @@ impl QueryEngine {
       engine,
       barrier: Barrier::Enforced,
       problems: Mutex::new(None),
+      docs: Mutex::new(DocCache::default()),
     }
   }
 
@@ -47,11 +50,16 @@ impl QueryEngine {
       engine,
       barrier: Barrier::Skipped,
       problems: Mutex::new(None),
+      docs: Mutex::new(DocCache::default()),
     }
   }
 
   pub fn engine(&self) -> &Arc<Engine> {
     &self.engine
+  }
+
+  pub(crate) fn doc_cache(&self) -> &Mutex<DocCache> {
+    &self.docs
   }
 
   pub(crate) fn barrier(&self) -> QueryResult<Freshness> {

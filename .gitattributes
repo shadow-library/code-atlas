@@ -4,3 +4,4 @@ crates/*/tests/hangs/** -text
 crates/*/tests/family-corpus/** -text
 crates/*/tests/counterpart-corpus/** -text
 vendor/** -text
+crates/*/tests/docs-corpus/** -text

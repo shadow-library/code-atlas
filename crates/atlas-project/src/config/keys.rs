@@ -420,7 +420,7 @@ fn choice(value: &Value, options: &[&str]) -> Result<(), String> {
   }
 }
 
-const CLAUDE_HOOKS: [&str; 4] = ["auto-approve", "remind", "seed", "counterpart"];
+const CLAUDE_HOOKS: [&str; 5] = ["auto-approve", "remind", "seed", "counterpart", "notes"];
 
 fn check_hooks(value: &Value) -> Result<(), String> {
   let hooks = as_words(value)?;
@@ -599,7 +599,7 @@ mod tests {
     assert_eq!(check("agents.claude.hooks", hooks(&[])), Ok(()));
     assert_eq!(
       check("agents.claude.hooks", hooks(&["activate"])),
-      Err("expected hooks from auto-approve, remind, seed, counterpart".to_owned())
+      Err("expected hooks from auto-approve, remind, seed, counterpart, notes".to_owned())
     );
     assert_eq!(check("agents.claude.hooks", hooks(&["remind", "remind"])), Err("each hook may be listed once".to_owned()));
     assert_eq!(check("hooks.seed_budget", Value::Integer(1_200)), Ok(()));

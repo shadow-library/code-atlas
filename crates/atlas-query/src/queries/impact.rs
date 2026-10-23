@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use atlas_core::{EdgeKind, Entity, EntityId, EntityKey, EntityKind};
-use atlas_project::Project;
+use atlas_project::{DocScope, Project};
 use serde::Serialize;
 
 use crate::QueryEngine;
@@ -11,6 +11,7 @@ use crate::error::QueryResult;
 use crate::graph::{Graph, Reached, Step, WalkSpec};
 use crate::model::{Caveat, EntityRef, Hop, MacroGapScope, Response, Targeted};
 use crate::policy::{Direction, Policy};
+use crate::queries::DocPointers;
 use crate::queries::common::{MAX_NODES, file_entity, file_symbols, is_test, package_key, resolve_one};
 use crate::queries::counterparts::{Counterpart, counterparts_of};
 use crate::queries::inferred_links::{LinkEnd, LinkScan, inferred_links};
@@ -30,6 +31,7 @@ pub struct ImpactRequest {
   pub min_confidence: Option<f32>,
   pub max_nodes: usize,
   pub counterparts: bool,
+  pub docs: bool,
 }
 
 impl ImpactRequest {
@@ -42,6 +44,7 @@ impl ImpactRequest {
       min_confidence: None,
       max_nodes: MAX_NODES,
       counterparts: false,
+      docs: false,
     }
   }
 }
@@ -92,6 +95,8 @@ pub struct ImpactAnswer {
   pub config: ImpactGroup,
   #[serde(skip_serializing_if = "Vec::is_empty")]
   pub counterparts: Vec<Counterpart>,
+  #[serde(skip_serializing_if = "DocPointers::is_empty")]
+  pub doc_pointers: DocPointers,
   pub unresolved_risk: Vec<Caveat>,
   pub caveats: Vec<Caveat>,
 }
@@ -152,6 +157,9 @@ impl QueryEngine {
       let mut answer = impact(graph, &targets, request)?;
       if request.counterparts {
         answer.counterparts = file_counterparts(graph, &project, &targets)?;
+      }
+      if request.docs {
+        answer.doc_pointers = self.doc_pointers(graph, &targets, DocScope::All)?;
       }
       Ok(Targeted::Found(answer))
     })?;
@@ -369,6 +377,7 @@ fn impact(graph: &Graph<'_, '_>, targets: &[Entity], request: &ImpactRequest) ->
     tests: take(Bucket::Test),
     config: group(config, request.limit),
     counterparts: Vec::new(),
+    doc_pointers: DocPointers::default(),
     unresolved_risk: risk,
     caveats,
   })

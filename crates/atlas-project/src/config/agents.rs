@@ -26,6 +26,7 @@ pub enum ClaudeHook {
   Remind,
   Seed,
   Counterpart,
+  Notes,
 }
 
 impl ClaudeHook {
@@ -35,6 +36,7 @@ impl ClaudeHook {
       Self::Remind => "remind",
       Self::Seed => "seed",
       Self::Counterpart => "counterpart",
+      Self::Notes => "notes",
     }
   }
 
@@ -44,6 +46,7 @@ impl ClaudeHook {
       "remind" => Some(Self::Remind),
       "seed" => Some(Self::Seed),
       "counterpart" => Some(Self::Counterpart),
+      "notes" => Some(Self::Notes),
       _ => None,
     }
   }
@@ -153,7 +156,7 @@ mod tests {
   #[test]
   fn should_read_every_agents_key_from_config_toml() {
     let settings = agents(
-      "[agents]\nbinary = \"/opt/bin/catl\"\nguidance = \"local\"\n[agents.claude]\nenabled = true\nscope = \"local\"\nhooks = [\"counterpart\", \"seed\", \"remind\", \"auto-approve\"]\n[agents.codex]\nenabled = false\n",
+      "[agents]\nbinary = \"/opt/bin/catl\"\nguidance = \"local\"\n[agents.claude]\nenabled = true\nscope = \"local\"\nhooks = [\"notes\", \"counterpart\", \"seed\", \"remind\", \"auto-approve\"]\n[agents.codex]\nenabled = false\n",
     );
     assert_eq!(
       settings,
@@ -163,7 +166,7 @@ mod tests {
         claude: ClaudeAgent {
           enabled: true,
           scope: ClaudeScope::Local,
-          hooks: vec![ClaudeHook::AutoApprove, ClaudeHook::Remind, ClaudeHook::Seed, ClaudeHook::Counterpart],
+          hooks: vec![ClaudeHook::AutoApprove, ClaudeHook::Remind, ClaudeHook::Seed, ClaudeHook::Counterpart, ClaudeHook::Notes],
           hooks_source: HooksSource::ConfigFile,
         },
         codex: CodexAgent { enabled: false },

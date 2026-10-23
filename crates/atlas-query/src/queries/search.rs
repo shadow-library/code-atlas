@@ -12,6 +12,7 @@ use crate::graph::Graph;
 use crate::model::{Caveat, CertaintyTag, EntityRef, Response};
 use crate::policy::{InferredAdmission, Policy};
 use crate::queries::common::{first_line, is_test};
+use crate::queries::{DocFusion, DocSection};
 
 const DEFAULT_SEARCH_LIMIT: usize = 10;
 const STRONG_FRACTION: f64 = 0.6;
@@ -31,6 +32,15 @@ pub struct SearchRequest {
   pub path_prefix: Option<String>,
   pub limit: usize,
   pub include_stale: bool,
+  pub docs: DocResults,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DocResults {
+  #[default]
+  Off,
+  Fused,
+  Only,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +67,7 @@ impl SearchRequest {
       path_prefix: None,
       limit: DEFAULT_SEARCH_LIMIT,
       include_stale: false,
+      docs: DocResults::Off,
     }
   }
 }
@@ -99,6 +110,8 @@ pub struct SearchAnswer {
   pub related: Vec<SearchHitView>,
   pub structurally_similar: Vec<StructuralHit>,
   pub inferred_capabilities: Vec<InferredHit>,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  pub docs: Vec<DocSection>,
   pub caveats: Vec<Caveat>,
 }
 
@@ -110,7 +123,26 @@ impl QueryEngine {
       min_confidence: 0.0,
       include_stale: request.include_stale,
     };
-    let answer = self.read(policy, |graph| search(graph, &index, request))?;
+    let answer = self.read(policy, |graph| -> QueryResult<SearchAnswer> {
+      let mut answer = match request.docs {
+        DocResults::Only => SearchAnswer::empty(request),
+        DocResults::Off | DocResults::Fused => search(graph, &index, request)?,
+      };
+      if request.docs != DocResults::Off {
+        let fusion = match request.docs {
+          DocResults::Only => DocFusion::Only,
+          DocResults::Off | DocResults::Fused => DocFusion::Fused,
+        };
+        let mut hits = self.doc_hits(graph, &request.text, fusion, DOC_CANDIDATES)?;
+        hits.retain(|section| {
+          let in_repo = request.repo.as_deref().is_none_or(|repo| section.repo == repo);
+          in_repo && request.path_prefix.as_deref().is_none_or(|prefix| section.path.starts_with(prefix))
+        });
+        hits.truncate(request.limit.max(1));
+        answer.fuse(hits, request.limit, request.docs);
+      }
+      Ok(answer)
+    })?;
     Ok(Response { freshness, answer })
   }
 
@@ -152,6 +184,71 @@ impl QueryEngine {
       }),
       _ => None,
     })
+  }
+}
+
+const RRF_K: f64 = 60.0;
+const DOC_CANDIDATES: usize = 50;
+const MAX_FUSED_DOCS: usize = 3;
+const OMITTED_HITS_NOTE: &str = "more lexical hits omitted (raise limit)";
+
+impl SearchAnswer {
+  fn empty(request: &SearchRequest) -> Self {
+    Self {
+      query: request.text.clone(),
+      scope: None,
+      total_hits: 0,
+      exact_name: Vec::new(),
+      strong: Vec::new(),
+      related: Vec::new(),
+      structurally_similar: Vec::new(),
+      inferred_capabilities: Vec::new(),
+      docs: Vec::new(),
+      caveats: Vec::new(),
+    }
+  }
+
+  fn fuse(&mut self, hits: Vec<DocSection>, limit: usize, mode: DocResults) {
+    let cap = match mode {
+      DocResults::Only => limit,
+      DocResults::Off | DocResults::Fused => MAX_FUSED_DOCS,
+    };
+    let code = self.exact_name.len() + self.strong.len() + self.related.len();
+    let rrf = |rank: usize| 1.0 / (RRF_K + rank as f64 + 1.0);
+    let (mut code_taken, mut docs) = (0, Vec::new());
+    let mut hits = hits.into_iter();
+    let mut next = hits.next();
+    for position in 1..=limit {
+      let code_score = (code_taken < code).then(|| rrf(code_taken));
+      let doc_score = next.as_ref().filter(|_| docs.len() < cap).map(|_| rrf(docs.len()));
+      match (code_score, doc_score) {
+        (Some(code_score), Some(doc_score)) if doc_score <= code_score => code_taken += 1,
+        (Some(_), None) => code_taken += 1,
+        (_, Some(_)) => {
+          if let Some(mut hit) = next.take() {
+            hit.rank = Some(position);
+            docs.push(hit);
+          }
+          next = hits.next();
+        }
+        (None, None) => break,
+      }
+    }
+    let shown_before = code;
+    let mut remaining = code_taken;
+    for group in [&mut self.exact_name, &mut self.strong, &mut self.related] {
+      group.truncate(remaining);
+      remaining -= group.len();
+    }
+    self.docs = docs;
+    if code_taken < shown_before {
+      self
+        .caveats
+        .retain(|caveat| !matches!(caveat, Caveat::Note { message } if message.ends_with(OMITTED_HITS_NOTE)));
+      self.caveats.push(Caveat::Note {
+        message: format!("{} {OMITTED_HITS_NOTE}", self.total_hits - code_taken),
+      });
+    }
   }
 }
 
@@ -400,7 +497,7 @@ fn search(graph: &Graph<'_, '_>, index: &SimilarityIndex, request: &SearchReques
   }
   if total_hits > exact_name.len() + strong.len() + related.len() {
     caveats.push(Caveat::Note {
-      message: format!("{} more lexical hits omitted (raise limit)", total_hits - exact_name.len() - strong.len() - related.len()),
+      message: format!("{} {OMITTED_HITS_NOTE}", total_hits - exact_name.len() - strong.len() - related.len()),
     });
   }
   Ok(SearchAnswer {
@@ -415,6 +512,7 @@ fn search(graph: &Graph<'_, '_>, index: &SimilarityIndex, request: &SearchReques
     related,
     structurally_similar,
     inferred_capabilities,
+    docs: Vec::new(),
     caveats,
   })
 }

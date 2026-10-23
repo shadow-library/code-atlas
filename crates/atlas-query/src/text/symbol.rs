@@ -1,4 +1,5 @@
 use crate::queries::{RelationCount, SymbolAnswer};
+use crate::text::docs::pointer_sections;
 use crate::text::{RenderText, TextOut, entity_head, entity_line, snippet};
 
 fn count(label: &str, count: RelationCount) -> String {
@@ -41,5 +42,6 @@ impl RenderText for SymbolAnswer {
       out.line(1, "body:");
       snippet(out, 2, body);
     }
+    pointer_sections(out, &self.doc_pointers);
   }
 }

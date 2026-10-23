@@ -961,3 +961,44 @@ fn should_write_the_counterpart_group_only_when_listed_record_its_event_and_remo
   assert!(stdout(&turned_off).contains("settings.json#hooks.PostToolUse: removed"), "{}", stdout(&turned_off));
   assert_eq!(sandbox.json("atlas/claude/settings.json")["hooks"]["PostToolUse"], json!([foreign_post]));
 }
+
+#[test]
+fn should_write_the_notes_group_next_to_the_counterpart_group_and_remove_only_its_own() {
+  let sandbox = Sandbox::new();
+  let work = sandbox.path("work");
+  sandbox.config("[agents.claude]\nhooks = [\"auto-approve\", \"counterpart\", \"notes\"]\n");
+
+  let synced = sandbox.run(&work, &["agents", "sync", "--agent", "claude", "--yes"]);
+
+  assert_ok(&synced);
+  assert_eq!(hook_kinds(&sandbox), ["registration -", "permissions -", "hooks PostToolUse", "hooks PostToolUse:notes"]);
+  let home = sandbox.path("atlas").display().to_string();
+  let group = |hook: &str| json!({"matcher": "Read", "hooks": [{"type": "command", "command": format!("CODE_ATLAS_HOME={home} catl hook {hook} || true"), "timeout": 10}]});
+  assert_eq!(
+    sandbox.json("atlas/claude/settings.json")["hooks"]["PostToolUse"],
+    json!([group("counterpart"), group("notes")])
+  );
+  let printed = sandbox.run(&work, &["agents", "hooks", "--json"]);
+  assert_eq!(
+    serde_json::from_str::<Value>(&stdout(&printed)).unwrap(),
+    json!({"PostToolUse": [group("counterpart"), group("notes")]})
+  );
+
+  let resynced = sandbox.run(&work, &["agents", "sync", "--agent", "claude", "--yes"]);
+  let status = sandbox.run(&work, &["agents", "status"]);
+  assert_ok(&resynced);
+  assert!(
+    !stdout(&resynced).contains("PostToolUse: created") && !stdout(&resynced).contains("PostToolUse: changed"),
+    "{}",
+    stdout(&resynced)
+  );
+  assert_ok(&status);
+  assert_eq!(stdout(&status).matches("settings.json#hooks.PostToolUse: ok").count(), 2, "{}", stdout(&status));
+
+  sandbox.config("[agents.claude]\nhooks = [\"auto-approve\", \"counterpart\"]\n");
+  let turned_off = sandbox.run(&work, &["agents", "sync", "--agent", "claude", "--yes"]);
+
+  assert_ok(&turned_off);
+  assert_eq!(sandbox.json("atlas/claude/settings.json")["hooks"]["PostToolUse"], json!([group("counterpart")]));
+  assert_eq!(hook_kinds(&sandbox), ["registration -", "permissions -", "hooks PostToolUse"]);
+}

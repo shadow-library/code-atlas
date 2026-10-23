@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use crate::engine::Snippet;
 use crate::model::Listing;
-use crate::queries::{ContextAnswer, ContextItem, LineRange, OmissionReason, OmittedItem, RangeBasis, SectionSummary};
+use crate::queries::{ContextAnswer, ContextItem, LineRange, NotePointer, OmissionReason, OmittedItem, RangeBasis, SectionSummary};
+use crate::text::docs::note_pointer_line;
 use crate::text::{RenderText, TextOut, caveats, entity_head, snippet};
 
 pub(crate) const MUST_READ: &str = "MUST READ";
@@ -56,6 +57,24 @@ fn section(out: &mut TextOut, title: &str, items: &[ContextItem], summaries: &[S
   for item in items {
     render(out, item);
   }
+  summary_lines(out, title, summaries);
+}
+
+fn skim_section(out: &mut TextOut, items: &[ContextItem], notes: &[NotePointer], summaries: &[SectionSummary]) {
+  if items.is_empty() && notes.is_empty() {
+    return;
+  }
+  section_title(out, SKIM, items.len() + notes.len());
+  for item in items {
+    skim_item(out, item);
+  }
+  for note in notes {
+    out.line(1, format!("note {}", note_pointer_line(note)));
+  }
+  summary_lines(out, SKIM, summaries);
+}
+
+fn summary_lines(out: &mut TextOut, title: &str, summaries: &[SectionSummary]) {
   for summary in summaries.iter().filter(|summary| summary.section == title) {
     let repos: Vec<String> = summary.by_repo.iter().map(|(repo, count)| format!("{repo} {count}")).collect();
     out.line(
@@ -158,7 +177,7 @@ impl RenderText for ContextAnswer {
     out.line(0, format!("context for {:?} (~{} of {} tokens)", self.task, self.estimated_tokens, self.budget));
     let summaries = &self.summaries;
     section(out, MUST_READ, &self.must_read, summaries, must_read_item);
-    section(out, SKIM, &self.skim, summaries, skim_item);
+    skim_section(out, &self.skim, &self.notes, summaries);
     section(out, PATTERN, &self.patterns, summaries, mention_item);
     section(out, REUSE, &self.reuse, summaries, mention_item);
     section(out, IMPACT, &self.impact, summaries, mention_item);
