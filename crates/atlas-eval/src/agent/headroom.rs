@@ -15,7 +15,7 @@ use super::spec::{GroundTruth, LoadedTask, RepoSource, load_tasks};
 use super::touch::{FileTouches, Ordinal, Presence, SessionTouches, TouchDiagnostics, TouchEvent, session_touches};
 use super::transcript::Transcript;
 use super::tree_index::TreeIndex;
-use super::workspace::{StripPlan, TreeSource, materialize_task};
+use super::workspace::{StripPlan, TreeSource, materialize_session_tree};
 
 pub const WITHIN_LIMITS: [u32; 4] = [1, 2, 3, 5];
 const EARLY_READ_TURN: u32 = 2;
@@ -667,7 +667,7 @@ fn base_contents(record: &RunRecord, task: &LoadedTask) -> AgentResult<BTreeMap<
   let scratch = tempfile::tempdir().map_err(|error| AgentError::io(std::env::temp_dir(), error))?;
   let tree = scratch.path().join("tree");
   let overridden = matches!(record.manifest.source, TreeSource::Directory { .. });
-  materialize_task(task, &record.manifest.source, &tree, &StripPlan::for_task(task, overridden))?;
+  materialize_session_tree(task, &record.manifest.source, &tree, &StripPlan::for_task(task, overridden))?;
   let mut contents = BTreeMap::new();
   read_tree(&tree, "", &mut contents)?;
   Ok(contents)

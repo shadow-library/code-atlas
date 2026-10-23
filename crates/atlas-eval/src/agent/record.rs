@@ -246,6 +246,8 @@ pub struct Environment {
   #[serde(default, skip_serializing_if = "AtlasSurface::is_standard")]
   pub atlas_surface: AtlasSurface,
   pub probe: Option<ProbeReport>,
+  #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+  pub linked_paths: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

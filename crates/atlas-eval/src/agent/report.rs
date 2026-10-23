@@ -9,7 +9,7 @@ use super::access::OutOfTreeAccess;
 use super::error::{AgentError, AgentResult};
 use super::hooks::{AtlasHooksRecord, HookMetrics, PRE_TOOL_USE, USER_PROMPT_SUBMIT};
 use super::judge::JudgeOutcome;
-use super::metrics::Metrics;
+use super::metrics::{LinkedMetrics, Metrics};
 use super::plan::{AtlasSurface, Condition, PreambleVariant};
 use super::record::{
   BATCH_FILE, BatchManifest, CostSource, Environment, METRICS_FILE, RUN_FILE, RunManifest, RunStatus, SCORE_FILE, Score, SessionOutcome, SetupStageKind, TRANSCRIPT_FILE,
@@ -80,6 +80,13 @@ fn count(value: u64) -> f64 {
 fn hook_count(record: &RunRecord, event: &str, field: fn(&HookMetrics) -> u64) -> Option<f64> {
   record.manifest.atlas_hooks.as_ref().filter(|hooks| hooks.installs(event))?;
   metrics_of(record).map(|metrics| count(field(&metrics.hooks)))
+}
+
+fn linked_count(record: &RunRecord, field: fn(&LinkedMetrics) -> u64) -> Option<f64> {
+  if record.manifest.condition == Condition::Baseline {
+    return None;
+  }
+  metrics_of(record)?.linked.as_ref().map(|linked| count(field(linked)))
 }
 
 pub(super) const METRICS: &[MetricDef] = &[
@@ -297,6 +304,18 @@ pub(super) const METRICS: &[MetricDef] = &[
     extract: |record| metrics_of(record)?.atlas_surface_denials.map(count),
   },
   MetricDef {
+    name: "linked_reads",
+    group: MetricGroup::TokensAndContext,
+    better: Better::Neutral,
+    extract: |record| linked_count(record, |linked| linked.linked_reads),
+  },
+  MetricDef {
+    name: "linked_source_calls",
+    group: MetricGroup::TokensAndContext,
+    better: Better::Neutral,
+    extract: |record| linked_count(record, |linked| linked.linked_source_calls),
+  },
+  MetricDef {
     name: "information_density",
     group: MetricGroup::TokensAndContext,
     better: Better::Higher,
@@ -413,6 +432,8 @@ pub struct ContaminatedRun {
   pub task_id: String,
   pub condition: Condition,
   pub accesses: Vec<OutOfTreeAccess>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub linked_writes: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -569,6 +590,11 @@ fn contaminated_runs(records: &[RunRecord]) -> Vec<ContaminatedRun> {
         .metrics
         .iter()
         .flat_map(|metrics| metrics.out_of_tree_accesses.iter().filter(|access| access.contamination.is_some()).cloned())
+        .collect(),
+      linked_writes: record
+        .metrics
+        .iter()
+        .flat_map(|metrics| metrics.linked.iter().flat_map(|linked| linked.linked_writes.iter().cloned()))
         .collect(),
     })
     .collect()
@@ -869,10 +895,15 @@ fn render_contamination(out: &mut String, report: &AgentReport) {
   let _ = writeln!(out, "## Contaminated runs (excluded from all statistics)\n");
   let _ = writeln!(
     out,
-    "These sessions reached the repository, the eval home or another run's scratch directory, so they may have seen hidden tests, ground truth or the other condition.\n"
+    "These sessions reached the repository, the eval home or another run's scratch directory, so they may have seen hidden tests, ground truth or the other condition, or reached the linked paths hidden from their tree (any access in a baseline run; a read of the held copy or any write, seen in the transcript or as a changed file, in an atlas run).\n"
   );
   for run in &report.contaminated_runs {
-    let paths: Vec<String> = run.accesses.iter().map(|access| format!("{} `{}`", access.tool, access.path)).collect();
+    let paths: Vec<String> = run
+      .accesses
+      .iter()
+      .map(|access| format!("{} `{}`", access.tool, access.path))
+      .chain(run.linked_writes.iter().map(|path| format!("changed `{path}`")))
+      .collect();
     let _ = writeln!(out, "- `{}` ({}): {}", run.run_id, run.condition, paths.join(", "));
   }
   out.push('\n');
@@ -928,9 +959,13 @@ fn render_environment(out: &mut String, report: &AgentReport) {
     .map(|record| ("atlas config", format!("blake3 {}: {}", record.blake3, record.files.join(", "))));
   let atlas_hooks = ("atlas hooks", environment.atlas_hooks.as_ref().map_or_else(|| "off".to_owned(), AtlasHooksRecord::describe));
   let atlas_surface = (environment.atlas_surface == AtlasSurface::Forced).then(|| ("atlas surface", environment.atlas_surface.describe().to_owned()));
+  let linked = (!environment.linked_paths.is_empty()).then(|| {
+    let tasks: Vec<String> = environment.linked_paths.iter().map(|(task, paths)| format!("{task}: {}", paths.join(", "))).collect();
+    ("linked", tasks.join("; "))
+  });
   let _ = writeln!(out, "| key | value |");
   let _ = writeln!(out, "|---|---|");
-  for (key, value) in rows.into_iter().chain(atlas_config).chain([atlas_hooks]).chain(atlas_surface) {
+  for (key, value) in rows.into_iter().chain(atlas_config).chain([atlas_hooks]).chain(atlas_surface).chain(linked) {
     let _ = writeln!(out, "| {key} | {value} |");
   }
   out.push('\n');
@@ -1224,6 +1259,7 @@ mod tests {
         atlas_hooks: None,
         atlas_surface: AtlasSurface::Standard,
         probe: None,
+        linked_paths: BTreeMap::new(),
       },
       tasks: vec!["t00-smoke".to_owned()],
       truths: Vec::new(),
@@ -1286,13 +1322,19 @@ mod tests {
           tool: "Read".to_owned(),
           path: "/repo/eval/tasks/t00-smoke/hidden/check.mjs".to_owned(),
           contamination: Some(super::super::access::Contamination::EvalHome),
+          linked: None,
         },
         OutOfTreeAccess {
           tool: "Bash".to_owned(),
           path: "/etc/hosts".to_owned(),
           contamination: None,
+          linked: None,
         },
       ];
+      metrics.linked = Some(LinkedMetrics {
+        linked_writes: vec!["linked-view/apps/acme-web/src/a.ts".to_owned()],
+        ..LinkedMetrics::default()
+      });
     }
     runs.push(leaked);
     let report = build_report(None, &runs, None);
@@ -1304,9 +1346,10 @@ mod tests {
     assert_eq!(report.contaminated_runs.len(), 1);
     assert_eq!(report.contaminated_runs[0].run_id, "t00-smoke.baseline.r2");
     assert_eq!(report.contaminated_runs[0].accesses.len(), 1);
+    assert_eq!(report.contaminated_runs[0].linked_writes, vec!["linked-view/apps/acme-web/src/a.ts"]);
     let markdown = render_markdown(&report);
     assert!(markdown.contains("## Contaminated runs (excluded from all statistics)"));
-    assert!(markdown.contains("- `t00-smoke.baseline.r2` (baseline): Read `/repo/eval/tasks/t00-smoke/hidden/check.mjs`"));
+    assert!(markdown.contains("- `t00-smoke.baseline.r2` (baseline): Read `/repo/eval/tasks/t00-smoke/hidden/check.mjs`, changed `linked-view/apps/acme-web/src/a.ts`\n"));
     assert!(markdown.contains("(1 contaminated runs excluded)"));
   }
 
@@ -1409,6 +1452,38 @@ mod tests {
     assert!(markdown.contains("| atlas_surface_denials | – | 3 (2–4, n=2 of 3) |\n"), "{markdown}");
     let standard = render_markdown(&build_report(Some(&batch()), &records(), None));
     assert!(!standard.contains("atlas surface") && !standard.contains("atlas_surface_denials"));
+  }
+
+  #[test]
+  fn should_report_linked_paths_and_linked_counts_for_atlas_runs_only() {
+    let mut linked = batch();
+    linked.environment.linked_paths = BTreeMap::from([("t00-smoke".to_owned(), vec!["apps/acme-web".to_owned(), "packages/acme-ui".to_owned()])]);
+    let mut runs = records();
+    for (run, (reads, source_calls)) in runs
+      .iter_mut()
+      .filter(|run| run.manifest.task_id == "t00-smoke")
+      .zip([(4, 0), (6, 0), (1, 3), (3, 5), (9, 9)])
+    {
+      if let Some(metrics) = run.metrics.as_mut() {
+        metrics.linked = Some(LinkedMetrics {
+          linked_reads: reads,
+          linked_source_calls: source_calls,
+          ..LinkedMetrics::default()
+        });
+      }
+    }
+    let markdown = render_markdown(&build_report(Some(&linked), &runs, None));
+    assert!(
+      markdown.contains("| atlas hooks | off |\n| linked | t00-smoke: apps/acme-web, packages/acme-ui |\n"),
+      "{markdown}"
+    );
+    assert!(markdown.contains("| linked_reads | – | 2 |\n| linked_source_calls | – | 4 |\n"), "{markdown}");
+    assert!(
+      markdown.contains("| linked_reads | – | 2 (1–3, n=2 of 3) |\n| linked_source_calls | – | 4 (3–5, n=2 of 3) |\n"),
+      "{markdown}"
+    );
+    let standard = render_markdown(&build_report(Some(&batch()), &records(), None));
+    assert!(!standard.contains("| linked"), "{standard}");
   }
 
   #[test]

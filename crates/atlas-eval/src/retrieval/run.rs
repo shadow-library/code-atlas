@@ -25,7 +25,7 @@ use super::report::{
   VariantOutcome, VariantResult,
 };
 use super::score::{BaseFile, PackCost, Retrieved, YIELD_BUDGETS, budget_yield, score_files, score_rename_sites, score_reuse, tree_path};
-use crate::agent::{AtlasConfig, LoadedTask, RenameSpec, StripPlan, atlas_config_mismatch, atlas_repos, load_tasks, materialize_task, resolve_source};
+use crate::agent::{AtlasConfig, LinkedLayout, LinkedSpec, LoadedTask, RenameSpec, StripPlan, atlas_config_mismatch, atlas_repos, load_tasks, materialize_task, resolve_source};
 use crate::quality::{DryRunError, DryRunRequest, RenameOptions, dry_run_rename, observe, overlap, rename_settings};
 
 pub const MAX_SIMILAR_SEEDS: usize = 5;
@@ -171,6 +171,22 @@ struct Indexed {
   query: QueryEngine,
   prefixes: BTreeMap<String, String>,
   tree: PathBuf,
+  linked: Option<LinkedIndex>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LinkedIndex {
+  spec: LinkedSpec,
+  root: PathBuf,
+}
+
+impl Indexed {
+  fn source_file(&self, path: &str) -> PathBuf {
+    match self.linked.as_ref().filter(|linked| linked.spec.contains(path)) {
+      Some(linked) => linked.root.join(path),
+      None => self.tree.join(path),
+    }
+  }
 }
 
 fn evaluate_task(task: &LoadedTask, options: &RetrievalOptions) -> Result<TaskRetrieval, StageFailure> {
@@ -180,30 +196,39 @@ fn evaluate_task(task: &LoadedTask, options: &RetrievalOptions) -> Result<TaskRe
   let scratch = Scratch::create(options.work_dir.join(format!("{SCRATCH_PREFIX}{unique}-{}", &digest[..12]))).at("scratch")?;
   let tree = scratch.dir.join("tree");
   let source = resolve_source(task, &options.repo_root, None, &options.cache_dir).at("source")?;
-  materialize_task(task, &source, &tree, &StripPlan::for_task(task, false)).at("materialize")?;
-  let indexed = index(task, &scratch.dir, &tree, options.atlas_config.as_ref().map(|seeded| &seeded.config)).at("index")?;
+  let strip = StripPlan::for_task(task, false);
+  materialize_task(task, &source, &tree, &strip).at("materialize")?;
+  let linked = LinkedLayout::of(task, &scratch.dir);
+  if let Some(linked) = &linked {
+    linked.materialize_view(task, &source, &strip).at("materialize")?;
+    linked.hide(&tree).at("materialize")?;
+  }
+  let indexed = index(task, &scratch.dir, &tree, linked.as_ref(), options.atlas_config.as_ref().map(|seeded| &seeded.config)).at("index")?;
   let (index, files) = index_summary(&indexed).at("index")?;
   query_task(task, &indexed, index, &files, &recorded).at("query")
 }
 
-fn index(task: &LoadedTask, scratch: &Path, tree: &Path, atlas_config: Option<&AtlasConfig>) -> RetrievalResult<Indexed> {
+fn index(task: &LoadedTask, scratch: &Path, tree: &Path, linked: Option<&LinkedLayout<'_>>, atlas_config: Option<&AtlasConfig>) -> RetrievalResult<Indexed> {
   let root = scratch.join("home");
   if let Some(atlas_config) = atlas_config {
     atlas_config.apply(&root)?;
   }
   let home = AtlasHome::rooted_at(root);
   let mut registry = Registry::load(&home)?;
-  let specs = atlas_repos(task, tree).into_iter().map(RepoSpec::new).collect();
+  let mut specs: Vec<RepoSpec> = atlas_repos(task, tree).into_iter().map(RepoSpec::new).collect();
+  if let Some(layout) = linked {
+    let mut spec = RepoSpec::new(&layout.view).named(layout.spec.repo.clone());
+    spec.include = layout.spec.include_globs();
+    spec.exclude = layout.view_excludes()?;
+    specs.push(spec);
+  }
+  let linked = linked.map(|layout| LinkedIndex {
+    spec: layout.spec.clone(),
+    root: layout.view.clone(),
+  });
   let project = registry.create_project(PROJECT_NAME, specs)?.clone();
   let tree = tree.canonicalize().map_err(|error| RetrievalError::io(tree, error))?;
-  let prefixes = project
-    .repos
-    .iter()
-    .filter_map(|repo| {
-      let relative = repo.path.strip_prefix(&tree).ok()?.to_str()?.replace('\\', "/");
-      Some((repo.name.to_string(), relative))
-    })
-    .collect();
+  let prefixes = repo_prefixes(&project, &tree, linked.as_ref());
   let engine = Arc::new(Engine::open(&project, &home, EngineOptions::default())?);
   let query = QueryEngine::new(Arc::clone(&engine));
   Ok(Indexed {
@@ -212,7 +237,23 @@ fn index(task: &LoadedTask, scratch: &Path, tree: &Path, atlas_config: Option<&A
     query,
     prefixes,
     tree,
+    linked,
   })
+}
+
+fn repo_prefixes(project: &Project, tree: &Path, linked: Option<&LinkedIndex>) -> BTreeMap<String, String> {
+  let mut prefixes: BTreeMap<String, String> = project
+    .repos
+    .iter()
+    .filter_map(|repo| {
+      let relative = repo.path.strip_prefix(tree).ok()?.to_str()?.replace('\\', "/");
+      Some((repo.name.to_string(), relative))
+    })
+    .collect();
+  if let Some(linked) = linked {
+    prefixes.insert(linked.spec.repo.clone(), String::new());
+  }
+  prefixes
 }
 
 fn index_summary(indexed: &Indexed) -> RetrievalResult<(IndexSummary, BTreeSet<String>)> {
@@ -240,7 +281,7 @@ fn classify(indexed: &Indexed, files: &BTreeSet<String>, path: &str) -> BaseFile
   if files.contains(path) {
     return BaseFile::Indexed;
   }
-  match indexed.tree.join(path).is_file() {
+  match indexed.source_file(path).is_file() {
     true => BaseFile::Unindexable,
     false => BaseFile::Absent,
   }
@@ -293,7 +334,7 @@ fn task_line_gold(task: &LoadedTask, indexed: &Indexed, files: &BTreeSet<String>
   };
   let (gold, summary) = line_gold(&patch_files(&patch), |path| {
     let state = classify(indexed, files, path);
-    let lines = fs::read(indexed.tree.join(path)).map(|bytes| line_count(&bytes)).unwrap_or(0);
+    let lines = fs::read(indexed.source_file(path)).map(|bytes| line_count(&bytes)).unwrap_or(0);
     (state, lines)
   });
   (Some(gold), summary)
@@ -533,7 +574,7 @@ fn blast_radius(task: &LoadedTask, indexed: &Indexed, files: &BTreeSet<String>) 
   if changes.is_empty() {
     return unavailable(format!("{REFERENCE_PATCH} does not change `{definition}`"));
   }
-  let Some((repo, path)) = repo_location(&indexed.prefixes, definition) else {
+  let Some((repo, path)) = repo_location(&indexed.prefixes, indexed.linked.as_ref(), definition) else {
     return unavailable(format!("`{definition}` is outside every indexed repository"));
   };
   let seeds = seed_symbols(indexed, &repo, &path, &changes)?;
@@ -565,9 +606,13 @@ fn blast_radius(task: &LoadedTask, indexed: &Indexed, files: &BTreeSet<String>) 
   })
 }
 
-fn repo_location(prefixes: &BTreeMap<String, String>, file: &str) -> Option<(RepoName, RelPath)> {
+fn repo_location(prefixes: &BTreeMap<String, String>, linked: Option<&LinkedIndex>, file: &str) -> Option<(RepoName, RelPath)> {
+  if let Some(linked) = linked.filter(|linked| linked.spec.contains(file)) {
+    return Some((RepoName::new(&linked.spec.repo).ok()?, RelPath::new(file).ok()?));
+  }
   let (repo, prefix) = prefixes
     .iter()
+    .filter(|(repo, _)| linked.is_none_or(|linked| linked.spec.repo != **repo))
     .filter(|(_, prefix)| prefix.is_empty() || file.starts_with(&format!("{prefix}/")))
     .max_by_key(|(_, prefix)| prefix.len())?;
   let relative = match prefix.is_empty() {
@@ -635,5 +680,47 @@ fn product_revision(repo_root: &Path) -> Option<String> {
     Some(changes) if changes.is_empty() => Some(head),
     Some(_) => Some(format!("{head} with uncommitted product changes")),
     None => Some(format!("{head} (working tree state unknown)")),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn linked() -> LinkedIndex {
+    LinkedIndex {
+      spec: LinkedSpec {
+        paths: vec!["apps/acme-web".to_owned()],
+        patch: None,
+        repo: "web".to_owned(),
+      },
+      root: PathBuf::from("/s/linked-view"),
+    }
+  }
+
+  fn prefixes() -> BTreeMap<String, String> {
+    BTreeMap::from([("tree".to_owned(), String::new()), ("web".to_owned(), String::new())])
+  }
+
+  fn location(file: &str) -> Option<(String, String)> {
+    repo_location(&prefixes(), Some(&linked()), file).map(|(repo, path)| (repo.to_string(), path.to_string()))
+  }
+
+  #[test]
+  fn should_map_a_linked_file_to_the_linked_repo_and_back_to_the_same_tree_path() {
+    assert_eq!(
+      location("apps/acme-web/src/api/client.ts"),
+      Some(("web".to_owned(), "apps/acme-web/src/api/client.ts".to_owned()))
+    );
+    assert_eq!(location("apps/acme-api/src/main.ts"), Some(("tree".to_owned(), "apps/acme-api/src/main.ts".to_owned())));
+    assert_eq!(
+      location("apps/acme-web-legacy/main.ts"),
+      Some(("tree".to_owned(), "apps/acme-web-legacy/main.ts".to_owned()))
+    );
+    assert_eq!(
+      tree_path(&prefixes(), "web", "apps/acme-web/src/api/client.ts").as_deref(),
+      Some("apps/acme-web/src/api/client.ts")
+    );
+    assert_eq!(tree_path(&prefixes(), "tree", "apps/acme-api/src/main.ts").as_deref(), Some("apps/acme-api/src/main.ts"));
   }
 }

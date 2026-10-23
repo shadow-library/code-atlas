@@ -10,7 +10,7 @@ use super::headroom::read_tree;
 use super::provenance::candidate_terms;
 use super::record::write_json;
 use super::spec::{LoadedTask, PromptLeak};
-use super::workspace::{StripPlan, materialize_task, resolve_source};
+use super::workspace::{StripPlan, materialize_session_tree, resolve_source};
 
 pub const HANDED_MAX_FILES: usize = 3;
 
@@ -148,7 +148,7 @@ pub fn audit_leaks(tasks: &[LoadedTask], repo_root: &Path, cache_dir: &Path) -> 
     let scratch = tempfile::tempdir().map_err(|error| AgentError::io(std::env::temp_dir(), error))?;
     let tree = scratch.path().join("tree");
     let source = resolve_source(task, repo_root, None, cache_dir)?;
-    materialize_task(task, &source, &tree, &StripPlan::for_task(task, false))?;
+    materialize_session_tree(task, &source, &tree, &StripPlan::for_task(task, false))?;
     let mut contents = BTreeMap::new();
     read_tree(&tree, "", &mut contents)?;
     let instructions = project_instructions(&tree).map(|(text, _)| text);

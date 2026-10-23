@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -9,6 +10,10 @@ const PATH_FIELDS: [&str; 4] = ["file_path", "path", "pattern", "notebook_path"]
 const HOME_TOOLCHAIN_DIRS: [&str; 7] = [".cargo", ".rustup", ".nvm", ".npm", ".volta", ".bun", ".node-gyp"];
 const SYSTEM_PREFIXES: [&str; 8] = ["/usr", "/bin", "/sbin", "/opt/homebrew", "/dev", "/Library/Developer", "/Applications/Xcode.app", "/System"];
 const SCRATCH_PREFIX: &str = "ae-";
+const WRITE_TOOLS: [&str; 4] = ["Edit", "Write", "MultiEdit", "NotebookEdit"];
+const BASH_WRITE_PROGRAMS: [&str; 9] = ["rm", "rmdir", "mv", "touch", "mkdir", "tee", "truncate", "chmod", "chown"];
+const BASH_COPY_PROGRAMS: [&str; 4] = ["cp", "ln", "install", "rsync"];
+const BASH_WRAPPERS: [&str; 6] = ["sudo", "env", "command", "exec", "time", "nohup"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -17,6 +22,38 @@ pub enum Contamination {
   EvalHome,
   OtherRunScratch,
   TaskSource,
+  LinkedPath,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LinkedAccess {
+  Read,
+  Write,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkedReads {
+  Allowed,
+  Contaminating,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkedPolicy {
+  pub hold: Vec<PathBuf>,
+  pub view: Vec<PathBuf>,
+  pub view_reads: LinkedReads,
+}
+
+impl LinkedPolicy {
+  fn reads(&self, path: &Path) -> Option<LinkedReads> {
+    let under = |roots: &[PathBuf]| roots.iter().any(|root| path.starts_with(normalize(root)));
+    match (under(&self.hold), under(&self.view)) {
+      (true, _) => Some(LinkedReads::Contaminating),
+      (false, true) => Some(self.view_reads),
+      (false, false) => None,
+    }
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,6 +61,8 @@ pub struct OutOfTreeAccess {
   pub tool: String,
   pub path: String,
   pub contamination: Option<Contamination>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub linked: Option<LinkedAccess>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +74,7 @@ pub struct AccessPolicy {
   pub scratch_root: PathBuf,
   pub own_scratch: PathBuf,
   pub source_roots: Vec<PathBuf>,
+  pub linked: Option<LinkedPolicy>,
 }
 
 impl AccessPolicy {
@@ -50,7 +90,11 @@ impl AccessPolicy {
     home_toolchain || SYSTEM_PREFIXES.iter().any(|prefix| path.starts_with(prefix))
   }
 
-  fn contamination(&self, path: &Path) -> Option<Contamination> {
+  fn linked_reads(&self, path: &Path) -> Option<LinkedReads> {
+    self.linked.as_ref()?.reads(path)
+  }
+
+  fn contamination(&self, path: &Path, linked: Option<LinkedAccess>) -> Option<Contamination> {
     if path.starts_with(normalize(&self.eval_home)) {
       return Some(Contamination::EvalHome);
     }
@@ -59,6 +103,11 @@ impl AccessPolicy {
     }
     if self.source_roots.iter().any(|root| path.starts_with(normalize(root))) {
       return Some(Contamination::TaskSource);
+    }
+    match (linked, self.linked_reads(path)) {
+      (Some(LinkedAccess::Read), Some(LinkedReads::Allowed)) => return None,
+      (Some(_), _) => return Some(Contamination::LinkedPath),
+      (None, _) => {}
     }
     let scratch_root = normalize(&self.scratch_root);
     let own = normalize(&self.own_scratch);
@@ -74,6 +123,10 @@ impl AccessPolicy {
 pub fn out_of_tree_accesses(transcript: &Transcript, policy: &AccessPolicy) -> Vec<OutOfTreeAccess> {
   let mut accesses: Vec<OutOfTreeAccess> = Vec::new();
   for call in transcript.tool_calls.iter().filter(|call| !denied_by_bash_guard(call)) {
+    let bash_writes = match call.name.as_str() {
+      "Bash" => call.input_str("command").map(bash_write_targets).unwrap_or_default(),
+      _ => BTreeSet::new(),
+    };
     for raw in candidate_paths(call) {
       let Some(path) = resolve(&raw, policy) else {
         continue;
@@ -81,10 +134,16 @@ pub fn out_of_tree_accesses(transcript: &Transcript, policy: &AccessPolicy) -> V
       if policy.within_tree(&path) || policy.allowed_system_path(&path) {
         continue;
       }
+      let kind = match WRITE_TOOLS.contains(&call.name.as_str()) || bash_writes.contains(&raw) {
+        true => LinkedAccess::Write,
+        false => LinkedAccess::Read,
+      };
+      let linked = policy.linked_reads(&path).map(|_| kind);
       let access = OutOfTreeAccess {
         tool: call.name.clone(),
         path: path.display().to_string(),
-        contamination: policy.contamination(&path),
+        contamination: policy.contamination(&path, linked),
+        linked,
       };
       if !accesses.contains(&access) {
         accesses.push(access);
@@ -118,6 +177,60 @@ fn bash_paths(command: &str) -> Vec<String> {
     .filter(|token| looks_like_path(token))
     .map(str::to_owned)
     .collect()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Redirect {
+  None,
+  Output,
+  Input,
+}
+
+fn bash_write_targets(command: &str) -> BTreeSet<String> {
+  let mut targets = BTreeSet::new();
+  for segment in command.split(['\n', ';', '|', '&']) {
+    let mut words: Vec<String> = Vec::new();
+    let mut pending = Redirect::None;
+    for token in segment.split_whitespace().map(|token| token.trim_matches(|c| matches!(c, '(' | ')' | '`'))) {
+      match std::mem::replace(&mut pending, Redirect::None) {
+        Redirect::Output => {
+          targets.insert(clean_token(token));
+          continue;
+        }
+        Redirect::Input => continue,
+        Redirect::None => {}
+      }
+      if let Some((_, source)) = token.rsplit_once('<') {
+        pending = if source.is_empty() { Redirect::Input } else { Redirect::None };
+        continue;
+      }
+      match token.rsplit_once('>') {
+        Some((_, "")) => pending = Redirect::Output,
+        Some((_, target)) if !target.starts_with('&') => {
+          targets.insert(clean_token(target));
+        }
+        Some(_) => {}
+        None => words.push(clean_token(token)),
+      }
+    }
+    let mut words = words.into_iter().skip_while(|word| word.contains('=') || BASH_WRAPPERS.contains(&word.as_str()));
+    let Some(program) = words.next() else {
+      continue;
+    };
+    let flags: Vec<String> = words.clone().filter(|word| word.starts_with('-')).collect();
+    let operands: Vec<String> = words.filter(|word| !word.starts_with('-')).collect();
+    let in_place = program == "sed" && flags.iter().any(|flag| flag.starts_with("-i") || flag == "--in-place");
+    if BASH_WRITE_PROGRAMS.contains(&program.as_str()) || in_place {
+      targets.extend(operands);
+    } else if BASH_COPY_PROGRAMS.contains(&program.as_str()) {
+      targets.extend(operands.last().cloned());
+    }
+  }
+  targets
+}
+
+fn clean_token(token: &str) -> String {
+  token.trim_matches(|c| matches!(c, '\'' | '"' | ',')).to_owned()
 }
 
 fn looks_like_path(value: &str) -> bool {
@@ -167,7 +280,111 @@ mod tests {
       scratch_root: PathBuf::from("/var/tmp/T"),
       own_scratch: PathBuf::from("/var/tmp/T/ae-111"),
       source_roots: vec![PathBuf::from("/Users/dev/src/storefront"), PathBuf::from("/private/var/cache/clones/storefront.git")],
+      linked: None,
     }
+  }
+
+  fn linked_policy(view_reads: LinkedReads) -> AccessPolicy {
+    AccessPolicy {
+      linked: Some(LinkedPolicy {
+        hold: vec![PathBuf::from("/var/tmp/T/ae-111/linked-hold")],
+        view: vec![PathBuf::from("/var/tmp/T/ae-111/linked-view")],
+        view_reads,
+      }),
+      ..policy()
+    }
+  }
+
+  fn linked_session() -> Transcript {
+    Transcript {
+      tool_calls: vec![
+        call("Read", json!({"file_path": "/private/var/tmp/T/ae-111/linked-view/apps/web/src/client.ts"})),
+        call("Grep", json!({"pattern": "fetch", "path": "/var/tmp/T/ae-111/linked-hold/apps/web"})),
+        call("Edit", json!({"file_path": "/var/tmp/T/ae-111/linked-view/apps/web/src/client.ts"})),
+        call(
+          "Bash",
+          json!({"command": "cat /var/tmp/T/ae-111/linked-hold/apps/web/a.ts > /var/tmp/T/ae-111/linked-hold/apps/web/b.ts 2>&1"}),
+        ),
+        call(
+          "Bash",
+          json!({"command": "cd /var/tmp/T/ae-111/tree && cp /var/tmp/T/ae-111/linked-view/apps/web/c.ts /var/tmp/T/ae-111/linked-view/apps/web/d.ts"}),
+        ),
+        call("Bash", json!({"command": "sed -i '' 's/a/b/' /var/tmp/T/ae-111/linked-view/apps/web/e.ts"})),
+        call("Read", json!({"file_path": "/var/tmp/T/ae-111/mcp.json"})),
+      ],
+      ..Transcript::default()
+    }
+  }
+
+  fn linked_summary(policy: &AccessPolicy) -> Vec<(String, String, Option<Contamination>, Option<LinkedAccess>)> {
+    out_of_tree_accesses(&linked_session(), policy)
+      .into_iter()
+      .map(|access| (access.tool, access.path, access.contamination, access.linked))
+      .collect()
+  }
+
+  fn linked_row(tool: &str, path: &str, contamination: Option<Contamination>, linked: Option<LinkedAccess>) -> (String, String, Option<Contamination>, Option<LinkedAccess>) {
+    (tool.to_owned(), format!("/var/tmp/T/ae-111{path}"), contamination, linked)
+  }
+
+  #[test]
+  fn should_let_an_atlas_session_read_the_view_but_never_read_the_hold_or_write_either() {
+    let read = Some(LinkedAccess::Read);
+    let write = Some(LinkedAccess::Write);
+    let tainted = Some(Contamination::LinkedPath);
+    let policy = linked_policy(LinkedReads::Allowed);
+    assert_eq!(
+      linked_summary(&policy),
+      vec![
+        linked_row("Read", "/linked-view/apps/web/src/client.ts", None, read),
+        linked_row("Grep", "/linked-hold/apps/web", tainted, read),
+        linked_row("Edit", "/linked-view/apps/web/src/client.ts", tainted, write),
+        linked_row("Bash", "/linked-hold/apps/web/a.ts", tainted, read),
+        linked_row("Bash", "/linked-hold/apps/web/b.ts", tainted, write),
+        linked_row("Bash", "/linked-view/apps/web/c.ts", None, read),
+        linked_row("Bash", "/linked-view/apps/web/d.ts", tainted, write),
+        linked_row("Bash", "/linked-view/apps/web/e.ts", tainted, write),
+        linked_row("Read", "/mcp.json", None, None),
+      ]
+    );
+    let session = |range: std::ops::Range<usize>| Transcript {
+      tool_calls: linked_session().tool_calls[range].to_vec(),
+      ..Transcript::default()
+    };
+    assert!(!contaminated(&out_of_tree_accesses(&session(0..1), &policy)));
+    assert!(contaminated(&out_of_tree_accesses(&session(1..2), &policy)));
+    assert!(contaminated(&out_of_tree_accesses(&session(2..3), &policy)));
+  }
+
+  #[test]
+  fn should_mark_a_baseline_session_that_reads_or_writes_a_linked_path_contaminated() {
+    let read = Some(LinkedAccess::Read);
+    let write = Some(LinkedAccess::Write);
+    let tainted = Some(Contamination::LinkedPath);
+    let summary = linked_summary(&linked_policy(LinkedReads::Contaminating));
+    assert_eq!(
+      summary[..3],
+      [
+        linked_row("Read", "/linked-view/apps/web/src/client.ts", tainted, read),
+        linked_row("Grep", "/linked-hold/apps/web", tainted, read),
+        linked_row("Edit", "/linked-view/apps/web/src/client.ts", tainted, write),
+      ]
+    );
+    let reads_only = Transcript {
+      tool_calls: linked_session().tool_calls.into_iter().take(1).collect(),
+      ..Transcript::default()
+    };
+    assert!(contaminated(&out_of_tree_accesses(&reads_only, &linked_policy(LinkedReads::Contaminating))));
+    assert_eq!(linked_summary(&policy())[0], linked_row("Read", "/linked-view/apps/web/src/client.ts", None, None));
+  }
+
+  #[test]
+  fn should_find_redirect_and_file_command_targets_as_bash_writes() {
+    let targets = |command: &str| bash_write_targets(command).into_iter().collect::<Vec<_>>();
+    assert_eq!(targets("echo x >/a/b.ts && cat /a/c.ts 2>/dev/null"), vec!["/a/b.ts", "/dev/null"]);
+    assert_eq!(targets("FOO=1 rm -rf '/a/b' \"/a/c\"; tee -a /a/d < /a/e"), vec!["/a/b", "/a/c", "/a/d"]);
+    assert_eq!(targets("ln -s /a/b /a/c & mv /a/d /a/e"), vec!["/a/c", "/a/d", "/a/e"]);
+    assert_eq!(targets("sed -n 1,5p /a/b | grep x >> /a/out 2>&1"), vec!["/a/out"]);
   }
 
   #[test]
@@ -190,6 +407,7 @@ mod tests {
         tool: "Bash".to_owned(),
         path: "/Users/dev/src/code-atlas/eval/tasks/t01/hidden/x.rs".to_owned(),
         contamination: Some(Contamination::EvalHome),
+        linked: None,
       }]
     );
   }

@@ -24,12 +24,12 @@ impl<'a> SectionRef<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FinalLink {
+pub(super) enum FinalLink {
   Removable,
   Refused,
 }
 
-fn tree_path(tree: &Path, relative: &str, final_link: FinalLink) -> AgentResult<PathBuf> {
+pub(super) fn tree_path(tree: &Path, relative: &str, final_link: FinalLink) -> AgentResult<PathBuf> {
   let components: Vec<Component<'_>> = Path::new(relative).components().collect();
   let mut current = tree.to_owned();
   for (index, component) in components.iter().enumerate() {

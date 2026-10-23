@@ -77,6 +77,14 @@ impl AtlasCli {
     self.run(&args, cwd).map(|_| ())
   }
 
+  pub fn add_repo(&self, project: &str, root: &Path, name: &str, globs: &RepoGlobs, cwd: &Path) -> AgentResult<()> {
+    self.run(&add_repo_args(project, root, name, globs), cwd).map(|_| ())
+  }
+
+  pub fn set_repo_excludes(&self, project: &str, repo: &str, exclude: &[String], cwd: &Path) -> AgentResult<()> {
+    self.run(&set_repo_exclude_args(project, repo, exclude), cwd).map(|_| ())
+  }
+
   pub fn index(&self, project: &str, cwd: &Path) -> AgentResult<CapturedOutput> {
     self.run(&["index".to_owned(), "--project".to_owned(), project.to_owned()], cwd)
   }
@@ -176,6 +184,36 @@ impl AtlasCli {
   fn render(&self, args: &[String]) -> String {
     format!("{} {}", self.binary.display(), args.join(" "))
   }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RepoGlobs {
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
+}
+
+pub fn add_repo_args(project: &str, root: &Path, name: &str, globs: &RepoGlobs) -> Vec<String> {
+  let mut args = vec![
+    "project".to_owned(),
+    "add-repo".to_owned(),
+    project.to_owned(),
+    root.display().to_string(),
+    "--name".to_owned(),
+    name.to_owned(),
+  ];
+  args.extend(glob_args("--include", &globs.include));
+  args.extend(glob_args("--exclude", &globs.exclude));
+  args
+}
+
+pub fn set_repo_exclude_args(project: &str, repo: &str, exclude: &[String]) -> Vec<String> {
+  let mut args = ["project", "set-repo", project, repo].map(str::to_owned).to_vec();
+  args.extend(glob_args("--exclude", exclude));
+  args
+}
+
+fn glob_args<'a>(flag: &'a str, globs: &'a [String]) -> impl Iterator<Item = String> + 'a {
+  globs.iter().flat_map(move |glob| [flag.to_owned(), glob.clone()])
 }
 
 pub fn isolated_command(binary: &Path) -> Command {

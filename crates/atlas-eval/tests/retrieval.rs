@@ -353,3 +353,41 @@ fn should_put_the_invoker_builder_in_must_read_from_the_first_line_through_the_h
   assert_eq!(first_line.must_change.expected, ["corvid/packages/web/src/web-router.ts"]);
   assert_eq!(first_line.must_change.channels.must_read.recall, Some(1.0));
 }
+
+const LINKED_ORDERS_PATCH: &str = "diff --git a/acme-web/src/api/orders.ts b/acme-web/src/api/orders.ts
+new file mode 100644
+--- /dev/null
++++ b/acme-web/src/api/orders.ts
+@@ -0,0 +1,3 @@
++import { acme } from './client';
++
++export const cancelOrder = (id: string) => acme.request('POST', `/orders/${id}/cancel`);
+";
+
+#[test]
+fn should_index_linked_paths_from_the_view_and_score_linked_files_like_tree_files() {
+  let work = tempfile::tempdir().unwrap();
+  let tasks = work.path().join("tasks");
+  let dir = tasks.join("t95-linked");
+  std::fs::create_dir_all(&dir).unwrap();
+  let spec = format!(
+    "id = \"t95-linked\"\ntitle = \"Linked\"\nrepo = {{ fixture = \"acme\" }}\nbase_commit = \"{SMOKE_BASE_COMMIT}\"\nprompt = \"Add a cancel endpoint for orders that the web app calls.\"\n\
+timeout_minutes = 1\nmax_turns = 1\n\n[linked]\npaths = [\"acme-web\"]\npatch = \"linked.patch\"\nrepo = \"web\"\n\n[ground_truth]\n\
+relevant_files = [\"acme-web/src/api/orders.ts\", \"acme-web/src/api/client.ts\", \"acme-api/src/orders/orders.controller.ts\"]\n\
+must_change = [\"acme-api/src/orders/orders.controller.ts\"]\nmust_consider = [\"acme-web/src/api/orders.ts\"]\n"
+  );
+  std::fs::write(dir.join("task.toml"), spec).unwrap();
+  std::fs::write(dir.join("linked.patch"), LINKED_ORDERS_PATCH).unwrap();
+
+  let report = run_task(&work, tasks, "t95-linked");
+
+  let task = scored(&report);
+  assert_eq!(task.index.repos, vec!["tree", "web"]);
+  let full = only_query(task, QueryVariant::Full);
+  assert_eq!(
+    full.relevant_files.expected,
+    vec!["acme-web/src/api/orders.ts", "acme-web/src/api/client.ts", "acme-api/src/orders/orders.controller.ts"]
+  );
+  assert_eq!((full.relevant_files.absent_at_base.len(), full.relevant_files.unindexable.len()), (0, 0));
+  assert_eq!(full.must_consider.expected, vec!["acme-web/src/api/orders.ts"]);
+}

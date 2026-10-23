@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -6,9 +7,10 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use super::error::{AgentError, AgentResult};
+use super::linked_snapshot::LinkedSnapshot;
 use super::process::{ProcessExit, run_captured, tail};
-use super::spec::{HIDDEN_DIR, LoadedTask, RepoSource, hidden_destination};
-use super::tree_edit::{drop_sections, remove_paths};
+use super::spec::{HIDDEN_DIR, LinkedSpec, LoadedTask, RepoSource, anchored_glob, hidden_destination};
+use super::tree_edit::{FinalLink, drop_sections, remove_paths, tree_path};
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(600);
 const STRIPPED_ROOT_DIRS: [&str; 3] = ["eval", "scratch-pad", HIDDEN_DIR];
@@ -19,6 +21,9 @@ const COPY_EXCLUDED_DIRS: [&str; 3] = [".git", "target", "node_modules"];
 const LOCAL_EXCLUDES: &str = "target/\nnode_modules/\n.code-atlas/\n";
 const BASE_TAG: &str = "eval-base";
 const FIXED_DATE: &str = "2000-01-01T00:00:00Z";
+pub const LINKED_HOLD: &str = "linked-hold";
+pub const LINKED_VIEW: &str = "linked-view";
+pub const LINKED_CONFLICT: &str = "linked-conflict";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -140,6 +145,159 @@ pub fn materialize_task(task: &LoadedTask, source: &TreeSource, tree: &Path, pla
   }
   remove_paths(tree, &task.spec.strip)?;
   drop_sections(tree, &task.spec.drop_instruction_sections)
+}
+
+pub fn apply_linked_patch(task: &LoadedTask, tree: &Path) -> AgentResult<()> {
+  match task.linked_patch_file() {
+    Some(patch) => apply_patch(tree, &patch),
+    None => Ok(()),
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkedLayout<'a> {
+  pub spec: &'a LinkedSpec,
+  pub hold: PathBuf,
+  pub view: PathBuf,
+  pub conflict: PathBuf,
+}
+
+impl<'a> LinkedLayout<'a> {
+  pub fn of(task: &'a LoadedTask, scratch: &Path) -> Option<Self> {
+    let spec = task.spec.linked.as_ref()?;
+    Some(Self {
+      spec,
+      hold: scratch.join(LINKED_HOLD),
+      view: scratch.join(LINKED_VIEW),
+      conflict: scratch.join(LINKED_CONFLICT),
+    })
+  }
+
+  pub fn materialize_view(&self, task: &LoadedTask, source: &TreeSource, plan: &StripPlan) -> AgentResult<()> {
+    materialize_task(task, source, &self.view, plan)?;
+    apply_linked_patch(task, &self.view)
+  }
+
+  pub fn hide(&self, tree: &Path) -> AgentResult<()> {
+    for path in &self.spec.paths {
+      let from = tree_path(tree, path, FinalLink::Refused)?;
+      match fs::symlink_metadata(&from) {
+        Ok(kind) if kind.is_dir() => {}
+        Ok(_) => return Err(AgentError::InvalidArgument(format!("linked path `{path}` is not a directory of the tree"))),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+          return Err(AgentError::InvalidArgument(format!("linked path `{path}` does not exist in the tree")));
+        }
+        Err(error) => return Err(AgentError::io(&from, error)),
+      }
+      move_path(&from, &self.hold.join(path))?;
+      remove_empty_ancestors(tree, path)?;
+    }
+    Ok(())
+  }
+
+  pub fn restore(&self, tree: &Path) -> AgentResult<Restored> {
+    let mut restored = Restored::default();
+    for path in &self.spec.paths {
+      if let Some(occupied) = occupied_prefix(tree, path)? {
+        move_path(&tree.join(&occupied), &self.conflict.join(&occupied))?;
+        restored.conflicts.push(occupied);
+      }
+      let held = self.hold.join(path);
+      match fs::symlink_metadata(&held) {
+        Ok(kind) if kind.is_dir() => move_path(&held, &tree.join(path))?,
+        Ok(_) => restored.missing.push(path.clone()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => restored.missing.push(path.clone()),
+        Err(error) => return Err(AgentError::io(&held, error)),
+      }
+    }
+    Ok(restored)
+  }
+
+  pub fn snapshot(&self) -> LinkedSnapshot {
+    LinkedSnapshot::take(&[(LINKED_HOLD, &self.hold), (LINKED_VIEW, &self.view)])
+  }
+
+  pub fn view_excludes(&self) -> AgentResult<Vec<String>> {
+    let mut dirs: BTreeSet<String> = BTreeSet::from([String::new()]);
+    for path in &self.spec.paths {
+      let mut ancestor = Path::new(path).parent();
+      while let Some(dir) = ancestor.and_then(Path::to_str).filter(|dir| !dir.is_empty()) {
+        dirs.insert(dir.to_owned());
+        ancestor = Path::new(dir).parent();
+      }
+    }
+    let mut excludes = Vec::new();
+    for dir in &dirs {
+      let absolute = self.view.join(dir);
+      let entries = fs::read_dir(&absolute).map_err(|error| AgentError::io(&absolute, error))?;
+      let mut names = Vec::new();
+      for entry in entries {
+        let entry = entry.map_err(|error| AgentError::io(&absolute, error))?;
+        let is_dir = entry.file_type().map_err(|error| AgentError::io(entry.path(), error))?.is_dir();
+        if let Some(name) = entry.file_name().to_str().filter(|_| is_dir) {
+          names.push(if dir.is_empty() { name.to_owned() } else { format!("{dir}/{name}") });
+        }
+      }
+      names.sort();
+      excludes.extend(
+        names
+          .into_iter()
+          .filter(|relative| !self.spec.paths.contains(relative) && !self.spec.is_linked_ancestor(relative))
+          .map(|relative| anchored_glob(&relative)),
+      );
+    }
+    Ok(excludes)
+  }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Restored {
+  pub conflicts: Vec<String>,
+  pub missing: Vec<String>,
+}
+
+fn occupied_prefix(tree: &Path, path: &str) -> AgentResult<Option<String>> {
+  let segments: Vec<&str> = path.split('/').collect();
+  for depth in 1..=segments.len() {
+    let prefix = segments[..depth].join("/");
+    let target = tree.join(&prefix);
+    match fs::symlink_metadata(&target) {
+      Ok(kind) if kind.is_dir() && depth < segments.len() => {}
+      Ok(_) => return Ok(Some(prefix)),
+      Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+      Err(error) => return Err(AgentError::io(&target, error)),
+    }
+  }
+  Ok(None)
+}
+
+fn move_path(from: &Path, to: &Path) -> AgentResult<()> {
+  if let Some(parent) = to.parent() {
+    fs::create_dir_all(parent).map_err(|error| AgentError::io(parent, error))?;
+  }
+  fs::rename(from, to).map_err(|error| AgentError::io(from, error))
+}
+
+fn remove_empty_ancestors(tree: &Path, path: &str) -> AgentResult<()> {
+  let mut current = Path::new(path).parent();
+  while let Some(relative) = current.filter(|relative| !relative.as_os_str().is_empty()) {
+    let dir = tree.join(relative);
+    let mut entries = fs::read_dir(&dir).map_err(|error| AgentError::io(&dir, error))?;
+    if entries.next().is_some() {
+      return Ok(());
+    }
+    fs::remove_dir(&dir).map_err(|error| AgentError::io(&dir, error))?;
+    current = relative.parent();
+  }
+  Ok(())
+}
+
+pub fn materialize_session_tree(task: &LoadedTask, source: &TreeSource, tree: &Path, plan: &StripPlan) -> AgentResult<()> {
+  materialize_task(task, source, tree, plan)?;
+  match &task.spec.linked {
+    Some(linked) => remove_paths(tree, &linked.paths),
+    None => Ok(()),
+  }
 }
 
 pub fn local_source_path(source: &RepoSource, cache_dir: &Path) -> Option<PathBuf> {
@@ -288,9 +446,12 @@ pub fn init_base(tree: &Path) -> AgentResult<String> {
   Ok(git(tree, &["rev-parse", "HEAD"])?.trim().to_owned())
 }
 
-pub fn diff_against(tree: &Path, base: &str) -> AgentResult<String> {
+pub fn diff_against(tree: &Path, base: &str, excluded: &[String]) -> AgentResult<String> {
   git(tree, &["add", "--all"])?;
-  git(tree, &["diff", "--cached", "--no-color", "--no-ext-diff", "--find-renames", base])
+  let pathspecs: Vec<String> = excluded.iter().map(|path| format!(":(top,exclude,literal){path}")).collect();
+  let mut args = vec!["diff", "--cached", "--no-color", "--no-ext-diff", "--find-renames", base, "--", "."];
+  args.extend(pathspecs.iter().map(String::as_str));
+  git(tree, &args)
 }
 
 pub fn base_file(tree: &Path, base: &str, path: &str) -> Option<String> {
@@ -495,7 +656,7 @@ mod tests {
     apply_patch(&tree, &patch).unwrap();
     let base = init_base(&tree).unwrap();
     assert_eq!(base_file(&tree, &base, "src/lib.rs").as_deref(), Some("pub fn a() -> u8 { 1 }\n"));
-    assert_eq!(diff_against(&tree, &base).unwrap(), "");
+    assert_eq!(diff_against(&tree, &base, &[]).unwrap(), "");
   }
 
   fn task_with(extra: &str, patch: Option<&str>) -> (tempfile::TempDir, LoadedTask) {
@@ -537,6 +698,190 @@ mod tests {
       "{files:?}"
     );
     assert_eq!(fs::read_to_string(tree.join("AGENTS.md")).unwrap(), "# Agents\n\n## Style\n\nTwo spaces.\n");
+  }
+
+  fn linked_task(paths: &str) -> (tempfile::TempDir, LoadedTask) {
+    task_with(&format!("[linked]\npaths = {paths}\nrepo = \"web\""), None)
+  }
+
+  fn linked_tree(root: &Path) -> PathBuf {
+    let tree = root.join("tree");
+    write(&tree.join("package.json"), "{\"workspaces\": [\"apps/*\"]}\n");
+    write(&tree.join("apps/acme-api/src/main.ts"), "main();\n");
+    write(&tree.join("apps/acme-web/src/client.ts"), "export const base = '/api';\n");
+    write(&tree.join("packages/acme-ui/src/button.ts"), "export const button = 1;\n");
+    tree
+  }
+
+  #[test]
+  fn should_hide_linked_paths_from_the_base_commit_and_restore_them_after_the_session() {
+    let (_task_root, task) = linked_task(r#"["apps/acme-web", "packages/acme-ui"]"#);
+    let scratch = tempfile::tempdir().unwrap();
+    let tree = linked_tree(scratch.path());
+    let linked = LinkedLayout::of(&task, scratch.path()).unwrap();
+
+    linked.hide(&tree).unwrap();
+    let base = init_base(&tree).unwrap();
+
+    assert_eq!(files_under(&tree), vec!["apps/acme-api/src/main.ts", "package.json"]);
+    assert!(!tree.join("packages").exists(), "an ancestor emptied by the hide must go too");
+    assert_eq!(git(&tree, &["status", "--porcelain", "--ignored"]).unwrap(), "");
+    assert_eq!(fs::read_to_string(tree.join(".git/info/exclude")).unwrap(), "target/\nnode_modules/\n.code-atlas/\n");
+    assert_eq!(
+      files_under(&scratch.path().join(LINKED_HOLD)),
+      vec!["apps/acme-web/src/client.ts", "packages/acme-ui/src/button.ts"]
+    );
+
+    assert_eq!(linked.restore(&tree).unwrap(), Restored::default());
+    assert_eq!(
+      files_under(&tree),
+      vec!["apps/acme-api/src/main.ts", "apps/acme-web/src/client.ts", "package.json", "packages/acme-ui/src/button.ts"]
+    );
+    assert!(!scratch.path().join(LINKED_CONFLICT).exists());
+    assert_eq!(diff_against(&tree, &base, &linked.spec.paths).unwrap(), "");
+  }
+
+  #[test]
+  fn should_move_what_the_session_created_at_a_linked_path_aside_before_restoring() {
+    let (_task_root, task) = linked_task(r#"["apps/acme-web", "packages/acme-ui"]"#);
+    let scratch = tempfile::tempdir().unwrap();
+    let tree = linked_tree(scratch.path());
+    let linked = LinkedLayout::of(&task, scratch.path()).unwrap();
+    linked.hide(&tree).unwrap();
+    let base = init_base(&tree).unwrap();
+    write(&tree.join("apps/acme-web/src/client.ts"), "export const base = '/guessed';\n");
+    write(&tree.join("apps/acme-api/src/main.ts"), "main(1);\n");
+    write(&tree.join("packages"), "not a directory\n");
+
+    let diff = diff_against(&tree, &base, &linked.spec.paths).unwrap();
+    let restored = linked.restore(&tree).unwrap();
+
+    assert_eq!(
+      super::super::diff::Diff::parse(&diff).changed_files().into_iter().collect::<Vec<_>>(),
+      vec!["apps/acme-api/src/main.ts", "packages"]
+    );
+    assert_eq!(
+      restored,
+      Restored {
+        conflicts: vec!["apps/acme-web".to_owned(), "packages".to_owned()],
+        missing: Vec::new(),
+      }
+    );
+    assert_eq!(fs::read_to_string(tree.join("apps/acme-web/src/client.ts")).unwrap(), "export const base = '/api';\n");
+    assert_eq!(fs::read_to_string(tree.join("packages/acme-ui/src/button.ts")).unwrap(), "export const button = 1;\n");
+    assert_eq!(files_under(&scratch.path().join(LINKED_CONFLICT)), vec!["apps/acme-web/src/client.ts", "packages"]);
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn should_never_restore_through_a_symbolic_link_the_session_planted_on_the_way() {
+    let (_task_root, task) = linked_task(r#"["packages/acme-ui"]"#);
+    let scratch = tempfile::tempdir().unwrap();
+    let tree = linked_tree(scratch.path());
+    let outside = tempfile::tempdir().unwrap();
+    let linked = LinkedLayout::of(&task, scratch.path()).unwrap();
+    linked.hide(&tree).unwrap();
+    std::os::unix::fs::symlink(outside.path(), tree.join("packages")).unwrap();
+
+    assert_eq!(linked.restore(&tree).unwrap().conflicts, vec!["packages"]);
+
+    assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
+    assert!(fs::symlink_metadata(tree.join("packages")).unwrap().is_dir());
+    assert!(
+      fs::symlink_metadata(scratch.path().join(LINKED_CONFLICT).join("packages"))
+        .unwrap()
+        .file_type()
+        .is_symlink()
+    );
+  }
+
+  #[test]
+  fn should_report_a_linked_path_whose_held_copy_the_session_moved_away_instead_of_failing() {
+    let (_task_root, task) = linked_task(r#"["apps/acme-web", "packages/acme-ui"]"#);
+    let scratch = tempfile::tempdir().unwrap();
+    let tree = linked_tree(scratch.path());
+    let linked = LinkedLayout::of(&task, scratch.path()).unwrap();
+    linked.hide(&tree).unwrap();
+    fs::rename(linked.hold.join("apps/acme-web"), scratch.path().join("elsewhere")).unwrap();
+
+    assert_eq!(
+      linked.restore(&tree).unwrap(),
+      Restored {
+        conflicts: Vec::new(),
+        missing: vec!["apps/acme-web".to_owned()],
+      }
+    );
+    assert_eq!(files_under(&tree), vec!["apps/acme-api/src/main.ts", "package.json", "packages/acme-ui/src/button.ts"]);
+  }
+
+  #[test]
+  fn should_exclude_every_view_directory_beside_the_linked_paths_and_their_ancestors() {
+    let (_task_root, task) = linked_task(r#"["apps/acme-web", "packages/ui/acme-kit"]"#);
+    let scratch = tempfile::tempdir().unwrap();
+    let linked = LinkedLayout::of(&task, scratch.path()).unwrap();
+    for file in [
+      "package.json",
+      "tsconfig.base.json",
+      "apps/package.json",
+      "apps/acme-api/package.json",
+      "apps/acme-web/package.json",
+      "apps/acme-web/src/a.ts",
+      "apps/acme web[2]/package.json",
+      "packages/acme-shared/package.json",
+      "packages/ui/acme-kit/package.json",
+      "packages/ui/acme-theme/package.json",
+      "tools/gen/package.json",
+    ] {
+      write(&linked.view.join(file), "{}\n");
+    }
+
+    let excludes = linked.view_excludes().unwrap();
+
+    assert_eq!(
+      excludes,
+      vec!["/tools", "/apps/acme\\ web\\[2\\]", "/apps/acme-api", "/packages/acme-shared", "/packages/ui/acme-theme"]
+    );
+    let globs = atlas_project::PathGlobs::new(&excludes).unwrap();
+    assert!(globs.matches("apps/acme web[2]", true));
+    assert!(!globs.matches("apps/acme-web", true));
+    assert!(!globs.matches("packages/ui", true));
+  }
+
+  #[test]
+  fn should_refuse_to_hide_a_linked_path_the_tree_does_not_have() {
+    let (_task_root, task) = linked_task(r#"["apps/acme-admin"]"#);
+    let scratch = tempfile::tempdir().unwrap();
+    let tree = linked_tree(scratch.path());
+    let hidden = LinkedLayout::of(&task, scratch.path()).unwrap().hide(&tree);
+    assert!(
+      matches!(&hidden, Err(AgentError::InvalidArgument(reason)) if reason == "linked path `apps/acme-admin` does not exist in the tree"),
+      "{hidden:?}"
+    );
+  }
+
+  #[test]
+  fn should_build_the_view_from_the_same_source_with_the_shipped_patch_and_the_root_manifest() {
+    let repo = source_repo();
+    write(&repo.path().join("package.json"), "{}\n");
+    write(&repo.path().join("apps/acme-web/src/client.ts"), "export const base = '/api';\n");
+    let (_task_root, task) = task_with(
+      "[linked]\npaths = [\"apps/acme-web\"]\npatch = \"base.patch\"",
+      Some("--- a/apps/acme-web/src/client.ts\n+++ b/apps/acme-web/src/client.ts\n@@ -1 +1 @@\n-export const base = '/api';\n+export const base = '/api/v2';\n"),
+    );
+    let scratch = tempfile::tempdir().unwrap();
+    let linked = LinkedLayout::of(&task, scratch.path()).unwrap();
+
+    linked
+      .materialize_view(&task, &TreeSource::Directory { path: repo.path().to_owned() }, &plan(StripProfile::External))
+      .unwrap();
+
+    assert_eq!(linked.view, scratch.path().join(LINKED_VIEW));
+    assert_eq!(
+      fs::read_to_string(linked.view.join("apps/acme-web/src/client.ts")).unwrap(),
+      "export const base = '/api/v2';\n"
+    );
+    assert_eq!(fs::read_to_string(linked.view.join("package.json")).unwrap(), "{}\n");
+    assert!(!linked.view.join(".git").exists());
   }
 
   #[test]
@@ -619,7 +964,7 @@ mod tests {
     git(&tree, &["commit", "--quiet", "-am", "agent commit"]).unwrap();
     write(&tree.join("src/new.rs"), "fn c() {}\n");
     write(&tree.join("target/out.o"), "binary");
-    let diff = super::super::diff::Diff::parse(&diff_against(&tree, &base).unwrap());
+    let diff = super::super::diff::Diff::parse(&diff_against(&tree, &base, &[]).unwrap());
     assert_eq!(diff.changed_files().into_iter().collect::<Vec<_>>(), vec!["src/lib.rs", "src/new.rs"]);
     assert_eq!(base_file(&tree, &base, "src/lib.rs").as_deref(), Some("pub fn a() {}\n"));
   }

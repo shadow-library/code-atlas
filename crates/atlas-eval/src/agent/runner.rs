@@ -9,9 +9,9 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use super::access::{AccessPolicy, contaminated, out_of_tree_accesses};
+use super::access::{AccessPolicy, LinkedPolicy, LinkedReads, contaminated, out_of_tree_accesses};
 use super::accuracy::atlas_accuracy;
-use super::atlas_cli::AtlasCli;
+use super::atlas_cli::{AtlasCli, RepoGlobs};
 use super::atlas_config::AtlasConfig;
 use super::bash_guard::{bash_guard_denials, check_bash_guard};
 use super::claude::{
@@ -21,7 +21,7 @@ use super::diff::{Diff, FileChange};
 use super::error::{AgentError, AgentResult};
 use super::hooks::{AtlasHooks, AtlasHooksRecord, USER_PROMPT_SUBMIT, hook_metrics, session_settings};
 use super::judge::{JudgeInput, JudgeKind, JudgeOutcome, atlas_review_prompt, blinded_prompt, run_judge};
-use super::metrics::{Metrics, MetricsInput, compute_metrics};
+use super::metrics::{LinkedInput, LinkedRestore, Metrics, MetricsInput, compute_metrics, linked_metrics};
 use super::plan::{AtlasSurface, Condition, PlannedRun, PreambleVariant, model_price, today_utc};
 use super::probe::{HookedProbe, HookedProbeRequest, ProbeReport, default_user_claude_md, run_hooked_probe, run_probe};
 use super::process::{ProcessExit, run_captured, run_streaming};
@@ -30,11 +30,12 @@ use super::record::{
   OFFSETS_FILE, RUN_FILE, RunManifest, RunStatus, SCORE_FILE, Score, SessionOutcome, TRANSCRIPT_FILE, read_json, write_json,
 };
 use super::reuse::{analyze_source, duplication_findings, new_functions, reuse_references, same_name_as_targets};
-use super::spec::LoadedTask;
+use super::spec::{LinkedSpec, LoadedTask, SESSION_REPO};
 use super::transcript::{TokenUsage, Transcript};
 use super::validation::{SuiteResult, regressions, run_command, run_suite};
 use super::workspace::{
-  StripPlan, TreeSource, base_file, check_isolated_location, copy_hidden, diff_against, head_commit, init_base, local_source_path, materialize_task, resolve_source, scratch_dir,
+  LinkedLayout, Restored, StripPlan, TreeSource, apply_linked_patch, base_file, check_isolated_location, copy_hidden, diff_against, head_commit, init_base, local_source_path,
+  materialize_task, resolve_source, scratch_dir,
 };
 
 const MAX_TURNS_SUBTYPE: &str = "error_max_turns";
@@ -154,6 +155,7 @@ pub fn environment(config: &RunnerConfig) -> Environment {
     atlas_hooks: None,
     atlas_surface: config.atlas_surface.surface(),
     probe: None,
+    linked_paths: BTreeMap::new(),
   }
 }
 
@@ -198,6 +200,10 @@ pub fn run_batch(config: &RunnerConfig, tasks: &[LoadedTask], planned: Vec<Plann
       probe.atlas_surface_seen = hooked.surface_seen;
     }
   }
+  environment.linked_paths = tasks
+    .iter()
+    .filter_map(|task| Some((task.spec.id.clone(), task.spec.linked.as_ref()?.paths.clone())))
+    .collect();
   let mut sources = BTreeMap::new();
   let mut bases = BTreeMap::new();
   for task in tasks {
@@ -656,7 +662,16 @@ fn base_check(config: &RunnerConfig, task: &LoadedTask, source: &TreeSource, str
   let scratch = isolated_scratch(config, &format!("{BASE_DIR}/{}", task.spec.id))?;
   let tree = scratch.join("tree");
   let env = tree_env(&scratch);
-  build_base_tree(task, source, strip, &tree, &env, config.validation_timeout).map_err(|(_, error)| error)?;
+  build_base_tree(task, source, strip, &scratch, &env, config.validation_timeout).map_err(|(_, error)| error)?;
+  if let Some(linked) = LinkedLayout::of(task, &scratch) {
+    let restored = linked.restore(&tree)?;
+    if !restored.missing.is_empty() {
+      return Err(AgentError::InvalidArgument(format!(
+        "the held linked paths {:?} vanished before the base check restored them",
+        restored.missing
+      )));
+    }
+  }
   copy_hidden(task, &tree)?;
   let check = BaseCheck {
     task_id: task.spec.id.clone(),
@@ -748,28 +763,72 @@ fn execute_run(context: &RunContext<'_>) -> AgentResult<f64> {
 
 fn score_session(context: &RunContext<'_>, scratch: &Path, tree: &Path, base_sha: &str, manifest: &mut RunManifest) -> AgentResult<f64> {
   let dir = &context.dir;
+  let linked = LinkedLayout::of(context.task, scratch);
+  let held = linked.as_ref().map(LinkedLayout::snapshot);
   let session = run_session(context, scratch, tree, manifest)?;
-  let diff_text = diff_against(tree, base_sha)?;
+  let linked_writes = match (&linked, &held) {
+    (Some(linked), Some(held)) => held.changes(&linked.snapshot()),
+    _ => Vec::new(),
+  };
+  let accesses = out_of_tree_accesses(&session, &access_policy(context, scratch, tree, &session));
+  let excluded = linked.as_ref().map(|linked| linked.spec.paths.clone()).unwrap_or_default();
+  let diff_text = diff_against(tree, base_sha, &excluded)?;
   fs::write(dir.join(DIFF_FILE), &diff_text).map_err(|error| AgentError::io(dir.join(DIFF_FILE), error))?;
   let diff = Diff::parse(&diff_text);
   let duplication = duplication_check(context, scratch, tree, base_sha, &diff);
-  copy_hidden(context.task, tree)?;
+  let roots = linked.as_ref().map(linked_roots).unwrap_or_default();
+  let restored = match &linked {
+    Some(linked) => linked.restore(tree)?,
+    None => Restored::default(),
+  };
+  if !restored.conflicts.is_empty() {
+    tracing::warn!(run = context.planned.run_id, paths = ?restored.conflicts, "the session created files at linked paths; moved them aside before restoring the linked code");
+  }
   let spec = &context.task.spec;
   let env = tree_env(scratch);
-  let validation = run_suite(&spec.validation.commands, tree, &env, context.config.validation_timeout);
-  let regression = run_suite(&spec.validation.regression, tree, &env, context.config.validation_timeout);
+  let (validation, regression) = match restored.missing.is_empty() {
+    true => {
+      copy_hidden(context.task, tree)?;
+      (
+        run_suite(&spec.validation.commands, tree, &env, context.config.validation_timeout),
+        run_suite(&spec.validation.regression, tree, &env, context.config.validation_timeout),
+      )
+    }
+    false => {
+      tracing::warn!(run = context.planned.run_id, paths = ?restored.missing, "the session moved held linked paths away; validation does not run");
+      (SuiteResult::default(), SuiteResult::default())
+    }
+  };
   let changed = diff.changed_files();
   let mut metrics = compute_metrics(&MetricsInput {
     transcript: &session,
     tree,
+    view: linked.as_ref().map(|linked| linked.view.as_path()),
     ground_truth: &spec.ground_truth,
     changed_files: &changed,
     wall_ms: manifest.wall_ms,
   });
-  metrics.out_of_tree_accesses = out_of_tree_accesses(&session, &access_policy(context, scratch, tree, &session));
+  metrics.out_of_tree_accesses = accesses;
   metrics.contaminated = contaminated(&metrics.out_of_tree_accesses);
   if manifest.atlas_surface == AtlasSurface::Forced {
     metrics.atlas_surface_denials = Some(bash_guard_denials(&session));
+  }
+  if let Some(linked) = &linked {
+    let linked = linked_metrics(
+      &session,
+      &LinkedInput {
+        roots: &roots,
+        spec: linked.spec,
+        path_created: !restored.conflicts.is_empty(),
+        writes: linked_writes,
+        restore: match restored.missing.is_empty() {
+          true => LinkedRestore::Restored,
+          false => LinkedRestore::HoldMissing { paths: restored.missing },
+        },
+      },
+    );
+    metrics.contaminated |= linked.contaminates();
+    metrics.linked = Some(linked);
   }
   if metrics.contaminated {
     tracing::warn!(
@@ -818,13 +877,31 @@ fn access_policy(context: &RunContext<'_>, scratch: &Path, tree: &Path, session:
     scratch_root: config.tree_root.canonicalize().unwrap_or_else(|_| config.tree_root.clone()),
     own_scratch: scratch.canonicalize().unwrap_or_else(|_| scratch.to_owned()),
     source_roots: source_roots(context.task, context.source, &config.cache_dir),
+    linked: LinkedLayout::of(context.task, scratch).map(|linked| LinkedPolicy {
+      hold: with_canonical(&linked.hold),
+      view: with_canonical(&linked.view),
+      view_reads: match context.planned.condition {
+        Condition::Atlas => LinkedReads::Allowed,
+        Condition::Baseline => LinkedReads::Contaminating,
+      },
+    }),
   }
+}
+
+fn linked_roots(linked: &LinkedLayout<'_>) -> Vec<PathBuf> {
+  [&linked.hold, &linked.view].into_iter().flat_map(|root| with_canonical(root)).collect()
+}
+
+fn with_canonical(path: &Path) -> Vec<PathBuf> {
+  let mut paths = vec![path.to_owned()];
+  paths.extend(path.canonicalize().ok().filter(|canonical| canonical != path));
+  paths
 }
 
 fn prepare_tree(context: &RunContext<'_>, scratch: &Path, manifest: &mut RunManifest) -> Result<String, (&'static str, AgentError)> {
   let tree = &scratch.join("tree");
   manifest.tree = Some(tree.display().to_string());
-  let base_sha = build_base_tree(context.task, context.source, context.strip, tree, &tree_env(scratch), context.config.validation_timeout)?;
+  let base_sha = build_base_tree(context.task, context.source, context.strip, scratch, &tree_env(scratch), context.config.validation_timeout)?;
   manifest.base_sha = Some(base_sha.clone());
   let mcp_path = scratch.join("mcp.json");
   let mcp_config = match context.planned.condition {
@@ -836,6 +913,18 @@ fn prepare_tree(context: &RunContext<'_>, scratch: &Path, manifest: &mut RunMani
       atlas
         .project_create(&project, &atlas_repos(context.task, tree), tree)
         .map_err(|error| ("atlas-project", error))?;
+      if let Some(linked) = LinkedLayout::of(context.task, scratch) {
+        linked
+          .materialize_view(context.task, context.source, context.strip)
+          .map_err(|error| ("linked-view", error))?;
+        let filters = RepoGlobs {
+          include: linked.spec.include_globs(),
+          exclude: linked.view_excludes().map_err(|error| ("linked-view", error))?,
+        };
+        atlas
+          .add_repo(&project, &linked.view, &linked.spec.repo, &filters, tree)
+          .map_err(|error| ("atlas-project", error))?;
+      }
       let index = atlas.index(&project, tree).map_err(|error| ("atlas-index", error))?;
       let log = context.dir.join(ATLAS_INDEX_LOG);
       fs::write(&log, format!("{}\n--- stderr ---\n{}", index.stdout, index.stderr)).map_err(|error| ("atlas-index", AgentError::io(&log, error)))?;
@@ -859,12 +948,17 @@ fn build_base_tree(
   task: &LoadedTask,
   source: &TreeSource,
   strip: &StripPlan,
-  tree: &Path,
+  scratch: &Path,
   env: &[(String, String)],
   timeout: Duration,
 ) -> Result<String, (&'static str, AgentError)> {
+  let tree = &scratch.join("tree");
   materialize_task(task, source, tree, strip).map_err(|error| ("materialize", error))?;
+  apply_linked_patch(task, tree).map_err(|error| ("materialize", error))?;
   run_setup(&task.spec.setup, tree, env, timeout).map_err(|error| ("setup", error))?;
+  if let Some(linked) = LinkedLayout::of(task, scratch) {
+    linked.hide(tree).map_err(|error| ("linked-hide", error))?;
+  }
   init_base(tree).map_err(|error| ("git-base", error))
 }
 
@@ -1037,8 +1131,13 @@ fn duplication_check(context: &RunContext<'_>, scratch: &Path, tree: &Path, base
   };
   let atlas = AtlasCli::new(&context.config.atlas_bin, home, context.config.atlas_timeout);
   let project = format!("{}-post", project_name(&context.config.batch_dir, &context.planned.run_id));
+  let linked_excludes = context.task.spec.linked.as_ref().map(LinkedSpec::exclude_globs).unwrap_or_default();
   let indexed = atlas
     .project_create(&project, &atlas_repos(context.task, tree), tree)
+    .and_then(|()| match linked_excludes.is_empty() {
+      true => Ok(()),
+      false => atlas.set_repo_excludes(&project, SESSION_REPO, &linked_excludes, tree),
+    })
     .and_then(|()| atlas.index(&project, tree).map(|_| ()));
   if let Err(error) = indexed {
     return DuplicationCheck::Unavailable { reason: error.to_string() };

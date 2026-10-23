@@ -8,7 +8,7 @@ use super::bash::analyze_bash;
 use super::bash_guard::denied_by_bash_guard;
 use super::claude::ATLAS_TOOL_PREFIX;
 use super::hooks::{HookMetrics, hook_metrics};
-use super::spec::GroundTruth;
+use super::spec::{GroundTruth, LinkedSpec};
 use super::transcript::{TokenUsage, ToolCall, Transcript};
 
 const EDIT_TOOLS: [&str; 2] = ["Edit", "Write"];
@@ -16,6 +16,9 @@ const SEARCH_TOOLS: [&str; 2] = ["Grep", "Glob"];
 const SOURCE_EXTENSIONS: [&str; 12] = ["rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "toml", "json", "md", "yaml", "yml"];
 const ATLAS_SECTIONS: [&str; 7] = ["MUST READ", "SKIM", "REUSE CANDIDATES", "IMPACT", "TESTS", "OMITTED", "UNCERTAIN"];
 const MUST_READ: &str = "MUST READ";
+const ATLAS_CONTEXT_TOOL: &str = "atlas_context";
+const ATLAS_SYMBOL_TOOL: &str = "atlas_symbol";
+const SOURCE_MODE: &str = "source";
 const OMITTED: &str = "OMITTED";
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -94,11 +97,55 @@ pub struct Metrics {
   pub hooks: HookMetrics,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub atlas_surface_denials: Option<u64>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub linked: Option<LinkedMetrics>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LinkedMetrics {
+  pub linked_reads: u64,
+  pub linked_source_calls: u64,
+  pub linked_path_created: bool,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub linked_writes: Vec<String>,
+  #[serde(default, skip_serializing_if = "LinkedRestore::is_restored")]
+  pub restore: LinkedRestore,
+}
+
+impl LinkedMetrics {
+  pub fn contaminates(&self) -> bool {
+    !self.linked_writes.is_empty() || !self.restore.is_restored()
+  }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum LinkedRestore {
+  #[default]
+  Restored,
+  HoldMissing {
+    paths: Vec<String>,
+  },
+}
+
+impl LinkedRestore {
+  pub fn is_restored(&self) -> bool {
+    *self == Self::Restored
+  }
+}
+
+pub struct LinkedInput<'a> {
+  pub roots: &'a [PathBuf],
+  pub spec: &'a LinkedSpec,
+  pub path_created: bool,
+  pub writes: Vec<String>,
+  pub restore: LinkedRestore,
 }
 
 pub struct MetricsInput<'a> {
   pub transcript: &'a Transcript,
   pub tree: &'a Path,
+  pub view: Option<&'a Path>,
   pub ground_truth: &'a GroundTruth,
   pub changed_files: &'a BTreeSet<String>,
   pub wall_ms: Option<u64>,
@@ -118,7 +165,7 @@ struct ReadLedger {
 
 pub fn compute_metrics(input: &MetricsInput<'_>) -> Metrics {
   let transcript = input.transcript;
-  let roots = tree_roots(input.tree, transcript.init.as_ref().and_then(|init| init.cwd.as_deref()));
+  let roots = tree_roots(input.tree, input.view, transcript.init.as_ref().and_then(|init| init.cwd.as_deref()));
   let relevant: BTreeSet<String> = input.ground_truth.relevant_files.iter().cloned().collect();
   let mut reads = ReadLedger::default();
   let mut atlas = AtlasMetrics::default();
@@ -191,6 +238,42 @@ pub fn compute_metrics(input: &MetricsInput<'_>) -> Metrics {
     },
     hooks: hook_metrics(transcript),
     atlas_surface_denials: None,
+    linked: None,
+  }
+}
+
+pub fn linked_metrics(transcript: &Transcript, input: &LinkedInput<'_>) -> LinkedMetrics {
+  let mut read = BTreeSet::new();
+  let mut source_calls = 0;
+  for call in transcript.tool_calls.iter().filter(|call| !denied_by_bash_guard(call)) {
+    if let Some(tool) = call.name.strip_prefix(ATLAS_TOOL_PREFIX) {
+      let reads_source = tool == ATLAS_CONTEXT_TOOL || (tool == ATLAS_SYMBOL_TOOL && call.input_str("mode") == Some(SOURCE_MODE));
+      let text = call.result.as_ref().map(|result| result.text.as_str()).unwrap_or_default();
+      let names_linked = text
+        .lines()
+        .flat_map(locations_in)
+        .any(|location| location.repo.as_deref() == Some(input.spec.repo.as_str()));
+      source_calls += u64::from(reads_source && names_linked);
+      continue;
+    }
+    let targets = match call.name.as_str() {
+      "Read" => call.input_str("file_path").map(str::to_owned).into_iter().collect(),
+      "Bash" => analyze_bash(call.input_str("command").unwrap_or_default()).read_files,
+      _ => continue,
+    };
+    let linked = targets
+      .iter()
+      .filter(|target| Path::new(target).is_absolute())
+      .filter_map(|target| normalize_path(target, input.roots).ok())
+      .filter(|relative| input.spec.contains(relative));
+    read.extend(linked);
+  }
+  LinkedMetrics {
+    linked_reads: read.len() as u64,
+    linked_source_calls: source_calls,
+    linked_path_created: input.path_created,
+    linked_writes: input.writes.clone(),
+    restore: input.restore.clone(),
   }
 }
 
@@ -244,10 +327,11 @@ fn absorb_read(call: &ToolCall, roots: &[PathBuf], relevant: &BTreeSet<String>, 
   }
 }
 
-fn tree_roots(tree: &Path, reported_cwd: Option<&str>) -> Vec<PathBuf> {
-  let mut roots = vec![tree.to_owned()];
-  if let Ok(canonical) = tree.canonicalize() {
-    roots.push(canonical);
+fn tree_roots(tree: &Path, view: Option<&Path>, reported_cwd: Option<&str>) -> Vec<PathBuf> {
+  let mut roots = Vec::new();
+  for root in std::iter::once(tree).chain(view) {
+    roots.push(root.to_owned());
+    roots.extend(root.canonicalize().ok());
   }
   if let Some(cwd) = reported_cwd {
     roots.push(PathBuf::from(cwd));
@@ -465,6 +549,7 @@ mod tests {
     let transcript = transcript();
     let metrics = compute_metrics(&MetricsInput {
       transcript: &transcript,
+      view: None,
       tree: tree_path,
       ground_truth: &truth(),
       changed_files: &changed,
@@ -502,6 +587,7 @@ mod tests {
     let transcript = transcript();
     let metrics = compute_metrics(&MetricsInput {
       transcript: &transcript,
+      view: None,
       tree: tree.path(),
       ground_truth: &truth(),
       changed_files: &changed,
@@ -519,6 +605,7 @@ mod tests {
     let transcript = transcript();
     let metrics = compute_metrics(&MetricsInput {
       transcript: &transcript,
+      view: None,
       tree: tree.path(),
       ground_truth: &truth(),
       changed_files: &BTreeSet::new(),
@@ -536,6 +623,7 @@ mod tests {
     let transcript = Transcript::parse(include_str!("../../tests/fixtures/forced-transcript.jsonl"), &[]);
     let metrics = compute_metrics(&MetricsInput {
       transcript: &transcript,
+      view: None,
       tree: Path::new("/eval/runs/r/tree"),
       ground_truth: &GroundTruth::default(),
       changed_files: &BTreeSet::new(),
@@ -549,6 +637,115 @@ mod tests {
     );
     assert_eq!(metrics.atlas_surface_denials, None);
     assert_eq!(serde_json::to_value(&metrics).unwrap().get("atlas_surface_denials"), None);
+  }
+
+  #[test]
+  fn should_count_distinct_linked_files_read_and_atlas_calls_that_show_linked_source() {
+    let context = "MUST READ\n  web:apps/acme-web/src/api/client.ts:3 createClient [resolved]\n  tree:acme-api/src/main.ts:1 main\n";
+    let tree_only = "MUST READ\n  tree:acme-api/src/main.ts:1 main\n";
+    let source = "web:apps/acme-web/src/api/client.ts:3-9\nexport function createClient() {}\n";
+    let transcript = Transcript {
+      tool_calls: vec![
+        call("mcp__code-atlas__atlas_context", json!({"task": "x"}), context, 1),
+        call("mcp__code-atlas__atlas_context", json!({"task": "y"}), tree_only, 2),
+        call("mcp__code-atlas__atlas_symbol", json!({"symbol": "createClient", "mode": "source"}), source, 3),
+        call("mcp__code-atlas__atlas_symbol", json!({"symbol": "createClient", "mode": "outline"}), source, 4),
+        call("mcp__code-atlas__atlas_search", json!({"query": "client"}), source, 5),
+        call("Read", json!({"file_path": "/s/ae-1/linked-view/apps/acme-web/src/api/client.ts"}), "1\tx", 6),
+        call("Read", json!({"file_path": "/private/s/ae-1/linked-view/apps/acme-web/src/api/client.ts"}), "1\tx", 7),
+        call("Bash", json!({"command": "cd /s/ae-1/linked-hold && cat apps/acme-web/src/config.ts package.json"}), "x", 8),
+        call("Read", json!({"file_path": "/s/ae-1/linked-view/acme-api/src/main.ts"}), "1\tx", 9),
+        call("Read", json!({"file_path": "apps/acme-web/src/api/session.ts"}), "1\tx", 10),
+      ],
+      ..Transcript::default()
+    };
+    let spec = LinkedSpec {
+      paths: vec!["apps/acme-web".to_owned()],
+      patch: None,
+      repo: "web".to_owned(),
+    };
+    let roots = [
+      PathBuf::from("/s/ae-1/linked-hold"),
+      PathBuf::from("/s/ae-1/linked-view"),
+      PathBuf::from("/private/s/ae-1/linked-view"),
+    ];
+    let input = LinkedInput {
+      roots: &roots,
+      spec: &spec,
+      path_created: true,
+      writes: Vec::new(),
+      restore: LinkedRestore::Restored,
+    };
+    let metrics = linked_metrics(&transcript, &input);
+    assert_eq!(
+      metrics,
+      LinkedMetrics {
+        linked_reads: 2,
+        linked_source_calls: 2,
+        linked_path_created: true,
+        linked_writes: Vec::new(),
+        restore: LinkedRestore::Restored,
+      }
+    );
+    assert!(!metrics.contaminates());
+    assert_eq!(
+      serde_json::to_value(&metrics).unwrap(),
+      json!({"linked_reads": 2, "linked_source_calls": 2, "linked_path_created": true})
+    );
+    let truth = GroundTruth {
+      relevant_files: vec!["apps/acme-web/src/api/client.ts".to_owned()],
+      ..GroundTruth::default()
+    };
+    let unchanged = compute_metrics(&MetricsInput {
+      transcript: &transcript,
+      view: Some(Path::new("/s/ae-1/linked-view")),
+      tree: Path::new("/s/ae-1/tree"),
+      ground_truth: &truth,
+      changed_files: &BTreeSet::new(),
+      wall_ms: None,
+    });
+    assert_eq!(unchanged.relevance.relevant_read, vec!["apps/acme-web/src/api/client.ts"]);
+    assert_eq!(serde_json::to_value(&unchanged).unwrap().get("linked"), None);
+  }
+
+  #[test]
+  fn should_mark_linked_metrics_contaminating_when_the_session_changed_or_moved_the_linked_copies() {
+    let spec = LinkedSpec {
+      paths: vec!["apps/acme-web".to_owned()],
+      patch: None,
+      repo: "web".to_owned(),
+    };
+    let metrics = |writes: Vec<String>, restore: LinkedRestore| {
+      linked_metrics(
+        &Transcript::default(),
+        &LinkedInput {
+          roots: &[],
+          spec: &spec,
+          path_created: false,
+          writes,
+          restore,
+        },
+      )
+    };
+    let written = metrics(vec!["linked-view/apps/acme-web/src/a.ts".to_owned()], LinkedRestore::Restored);
+    let moved = metrics(
+      vec!["linked-hold/apps/acme-web".to_owned()],
+      LinkedRestore::HoldMissing {
+        paths: vec!["apps/acme-web".to_owned()],
+      },
+    );
+    assert!(written.contaminates());
+    assert!(moved.contaminates());
+    assert_eq!(
+      serde_json::to_value(&moved).unwrap(),
+      json!({
+        "linked_reads": 0,
+        "linked_source_calls": 0,
+        "linked_path_created": false,
+        "linked_writes": ["linked-hold/apps/acme-web"],
+        "restore": {"outcome": "hold_missing", "paths": ["apps/acme-web"]}
+      })
+    );
   }
 
   #[test]

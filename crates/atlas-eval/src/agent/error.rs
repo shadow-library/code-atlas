@@ -12,6 +12,12 @@ pub enum AgentError {
   },
   #[error("invalid task spec {path}: {reason}")]
   InvalidSpec { path: PathBuf, reason: String },
+  #[error("invalid [linked] table in task spec {path}: {source}")]
+  InvalidLinked {
+    path: PathBuf,
+    #[source]
+    source: LinkedSpecError,
+  },
   #[error("cannot parse {path}: {reason}")]
   Parse { path: PathBuf, reason: String },
   #[error("`{command}` failed: {detail}")]
@@ -50,6 +56,38 @@ pub enum AgentError {
   TreePathThroughSymlink { path: String, link: String },
   #[error("{count} task(s) declare a prompt_leak class that differs from the audit; see {}", report.display())]
   LeakClassMismatch { count: usize, report: PathBuf },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum LinkedSpecError {
+  #[error("`paths` must name at least one directory")]
+  NoPaths,
+  #[error("path `{0}` names the tree root; a linked path must be a directory below it")]
+  TreeRoot(String),
+  #[error("path `{0}` must be relative to the tree root, without `..`, `.` or empty segments")]
+  InvalidPath(String),
+  #[error("path `{0}` is listed twice")]
+  Duplicate(String),
+  #[error("path `{inner}` lies inside the linked path `{outer}`")]
+  Nested { outer: String, inner: String },
+  #[error("path `{path}` is or lies inside the strip path `{strip}`, which is removed before the linked paths are hidden")]
+  InsideStrip { path: String, strip: String },
+  #[error("`atlas_repos` ({}) cannot be combined with [linked] ({}): with linked paths the session tree is one Code Atlas repo", atlas_repos.join(", "), paths.join(", "))]
+  WithAtlasRepos { atlas_repos: Vec<String>, paths: Vec<String> },
+  #[error("must_change file `{file}` lies inside the linked path `{path}`, which the session cannot change")]
+  MustChangeLinked { file: String, path: String },
+  #[error("repo `{0}` is not a valid Code Atlas repository name")]
+  InvalidRepo(String),
+  #[error("repo `{0}` is the name of the session tree's own repository")]
+  ReservedRepo(String),
+  #[error("patch `{0}` must be a relative path inside the task directory, outside hidden/")]
+  PatchLocation(String),
+  #[error("patch `{0}` does not exist")]
+  PatchMissing(String),
+  #[error("patch `{0}` touches no file")]
+  PatchEmpty(String),
+  #[error("patch `{patch}` touches `{file}`, which lies under no linked path")]
+  PatchOutsidePaths { patch: String, file: String },
 }
 
 impl AgentError {

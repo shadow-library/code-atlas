@@ -1309,6 +1309,7 @@ mod tests {
       atlas_hooks: None,
       atlas_surface: AtlasSurface::Standard,
       probe: None,
+      linked_paths: BTreeMap::new(),
     }
   }
 
