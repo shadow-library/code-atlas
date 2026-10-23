@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 use tempfile::TempDir;
 
 pub const WAIT: Duration = Duration::from_secs(20);
+const REAL_SERVER_DIAGNOSTICS_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Default)]
 pub struct ScriptedLauncher {
@@ -73,6 +74,10 @@ impl Fixture {
   }
 
   pub fn copied(group: &str, repos: &[&str]) -> Self {
+    Self::copied_with(group, repos, |options| options)
+  }
+
+  pub fn copied_with(group: &str, repos: &[&str], adjust: impl FnOnce(IdeOptions) -> IdeOptions) -> Self {
     let scratch = tempfile::tempdir().unwrap();
     let configs = repos
       .iter()
@@ -82,7 +87,7 @@ impl Fixture {
         repo_config(name, root)
       })
       .collect();
-    Self::open(scratch, configs, settings())
+    Self::open_with(scratch, configs, settings(), adjust)
   }
 
   pub fn open(scratch: TempDir, repos: Vec<RepoConfig>, settings: IdeSettings) -> Self {
@@ -398,7 +403,10 @@ pub fn typescript_fixture(test: &str, group: &str, repos: &[&str]) -> Option<Fix
       return None;
     }
   };
-  let fixture = Fixture::copied(group, repos);
+  let fixture = Fixture::copied_with(group, repos, |options| IdeOptions {
+    diagnostics_timeout: REAL_SERVER_DIAGNOSTICS_TIMEOUT,
+    ..options
+  });
   fixture.launcher.set(
     ServerKind::TypeScript,
     LaunchSpec {
