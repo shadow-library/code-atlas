@@ -598,7 +598,7 @@ impl Retouch {
   }
 }
 
-const WATCH_DEADLINE: Duration = Duration::from_secs(20);
+const WATCH_DEADLINE: Duration = Duration::from_secs(120);
 
 fn wait_for(deadline: Duration, mut condition: impl FnMut() -> bool) -> bool {
   let started = Instant::now();

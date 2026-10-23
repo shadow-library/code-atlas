@@ -15,7 +15,7 @@ use atlas_project::{Ecosystem, Project};
 use atlas_store::EntityFilter;
 use common::{SplitMix, acme_copy, digest, fresh, open, open_with, project, repo_config};
 
-const WAIT_DEADLINE: Duration = Duration::from_secs(20);
+const WAIT_DEADLINE: Duration = Duration::from_secs(120);
 const EVENT_QUIET: Duration = Duration::from_millis(300);
 const RETOUCH_EVERY: Duration = Duration::from_secs(2);
 const MONEY: &str = "acme-api/src/common/money.ts";

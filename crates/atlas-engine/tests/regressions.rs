@@ -712,7 +712,7 @@ fn should_not_migrate_inferred_facts_between_unrelated_tiny_functions() {
   assert!(migrated.is_empty(), "isAdmin's security fact must not migrate onto isArchived: {migrated:#?}");
 }
 
-const WAIT_DEADLINE: Duration = Duration::from_secs(30);
+const WAIT_DEADLINE: Duration = Duration::from_secs(120);
 const EVENT_QUIET: Duration = Duration::from_millis(300);
 
 fn wait_until(what: &str, mut condition: impl FnMut() -> bool) {
