@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use atlas_core::{EdgeKind, Entity, EntityId, EntityKey, EntityKind};
+use atlas_project::Project;
 use serde::Serialize;
 
 use crate::QueryEngine;
@@ -11,6 +12,7 @@ use crate::graph::{Graph, Reached, Step, WalkSpec};
 use crate::model::{Caveat, EntityRef, Hop, MacroGapScope, Response, Targeted};
 use crate::policy::{Direction, Policy};
 use crate::queries::common::{MAX_NODES, file_entity, file_symbols, is_test, package_key, resolve_one};
+use crate::queries::counterparts::{Counterpart, counterparts_of};
 use crate::queries::inferred_links::{LinkEnd, LinkScan, inferred_links};
 use crate::queries::tests_for::is_mock_edge;
 use crate::queries::traverse::{dispatch_caveat, risk_name};
@@ -27,6 +29,7 @@ pub struct ImpactRequest {
   pub limit: usize,
   pub min_confidence: Option<f32>,
   pub max_nodes: usize,
+  pub counterparts: bool,
 }
 
 impl ImpactRequest {
@@ -38,6 +41,7 @@ impl ImpactRequest {
       limit: DEFAULT_GROUP_LIMIT,
       min_confidence: None,
       max_nodes: MAX_NODES,
+      counterparts: false,
     }
   }
 }
@@ -86,6 +90,8 @@ pub struct ImpactAnswer {
   pub repos: Vec<RepoImpact>,
   pub tests: ImpactGroup,
   pub config: ImpactGroup,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  pub counterparts: Vec<Counterpart>,
   pub unresolved_risk: Vec<Caveat>,
   pub caveats: Vec<Caveat>,
 }
@@ -134,6 +140,7 @@ impl QueryEngine {
   pub fn impact(&self, request: &ImpactRequest) -> QueryResult<Response<Targeted<ImpactAnswer>>> {
     let freshness = self.barrier()?;
     let policy = Policy::with_floor(request.min_confidence.unwrap_or(0.0));
+    let project = self.engine().project();
     let answer = self.read(policy, |graph| -> QueryResult<Targeted<ImpactAnswer>> {
       let mut targets = Vec::new();
       for spec in &request.targets {
@@ -142,11 +149,28 @@ impl QueryEngine {
           Err(outcome) => return Ok(outcome),
         }
       }
-      impact(graph, &targets, request).map(Targeted::Found)
+      let mut answer = impact(graph, &targets, request)?;
+      if request.counterparts {
+        answer.counterparts = file_counterparts(graph, &project, &targets)?;
+      }
+      Ok(Targeted::Found(answer))
     })?;
     let answer = self.with_problem_files(answer, freshness.run, |answer| &mut answer.caveats)?;
     Ok(Response { freshness, answer })
   }
+}
+
+fn file_counterparts(graph: &Graph<'_, '_>, project: &Project, targets: &[Entity]) -> QueryResult<Vec<Counterpart>> {
+  let mut found: Vec<Counterpart> = Vec::new();
+  for target in targets {
+    let EntityKey::File { repo, path } = &target.key else { continue };
+    for counterpart in counterparts_of(graph, project, repo, path)?.counterparts {
+      if !found.iter().any(|known| known.repo == counterpart.repo && known.path == counterpart.path) {
+        found.push(counterpart);
+      }
+    }
+  }
+  Ok(found)
 }
 
 fn seeds_of(graph: &Graph<'_, '_>, targets: &[Entity]) -> QueryResult<Vec<EntityId>> {
@@ -344,6 +368,7 @@ fn impact(graph: &Graph<'_, '_>, targets: &[Entity], request: &ImpactRequest) ->
     repos: affected,
     tests: take(Bucket::Test),
     config: group(config, request.limit),
+    counterparts: Vec::new(),
     unresolved_risk: risk,
     caveats,
   })

@@ -1,6 +1,7 @@
 mod api;
 pub(crate) mod common;
 mod context;
+mod counterparts;
 mod explain;
 mod graph_references;
 mod hierarchy;
@@ -24,6 +25,7 @@ mod unused;
 
 pub use api::*;
 pub use context::*;
+pub use counterparts::*;
 pub use explain::*;
 pub use graph_references::*;
 pub use hierarchy::*;

@@ -36,7 +36,7 @@ tree-sitter is vendored in `vendor/tree-sitter` with one patch (`vendor/tree-sit
 | Repo marker and repo layer | `.code-atlas.toml` in a repo (`project = "<name>"` pin, optional `[index]` and `[detect]` keys), pin written by `init` |
 | Bench corpora | `<data dir>/bench-corpora/` |
 | Agent wiring record | `<data dir>/wiring.json` (what `agents sync` wrote; `wiring.json.lock` while it runs) |
-| Hook state | `<data dir>/hooks/reminded/` (one empty file per session the `remind` hook answered; dropped after 7 days) |
+| Hook state | `<data dir>/hooks/reminded/`, `seeded/` and `counterpart/` (one empty file per session a hook answered, or for `counterpart` per session and noted file and per session, file and index generation answered without a note; dropped after 7 days) |
 
 The command is `catl`. The home directories, `CODE_ATLAS_HOME`, the `.code-atlas.toml` marker and the MCP server name keep the project name `code-atlas`.
 
@@ -94,13 +94,13 @@ Global flags: `-p, --project <NAME>`, `--log-level <FILTER>` (overrides `RUST_LO
 | `edit replace-in-files --pattern P (--text T \| --text-file F) [--regex] [--include G]... [--exclude G]... [--occurrence ID]... [--expected-count N]` | text edit across files; a dry run unless `--occurrence` or `--expected-count` is given |
 | `edit apply <PLAN.json> [--json]` | apply a plan file written by `--dry-run --plan-out` |
 | `lsp check [--json]` | start each language server once and report discovery, versions, readiness time and workspace health |
-| `search`, `impact`, `context`, `callers`, `callees`, `symbol`, `api`, `explain`, `read`, `tests-for` | shortcuts for the same `query` subcommands (none for `similar`, `unused`, `patterns`, `changes`, `overview`, `dependents`, `dependencies`) |
+| `search`, `impact`, `context`, `callers`, `callees`, `symbol`, `api`, `explain`, `read`, `tests-for`, `counterparts` | shortcuts for the same `query` subcommands (none for `similar`, `unused`, `patterns`, `changes`, `overview`, `dependents`, `dependencies`) |
 | `agents sync [--agent claude\|codex]... [--scope user\|local\|project] [--repo PATH]... [--dry-run] [--force] [--migrate] [-y]` | wire Claude Code and Codex as `config.toml [agents]` asks (`catl mcp --watch`, no fixed project), plus hooks and guidance, and record it in `wiring.json`; refuses to overwrite entries changed since (exit 2) unless `--force`; see [agent integration](agent-integration.md#wiring-agents-agents-sync) |
 | `agents status [--json]` | each recorded entry as `ok`, `changed`, `removed` or `unreadable`; exits 3 on drift |
 | `agents unsync [--agent A]... [--scope S] [--repo PATH]... [--dry-run] [--force] [-y]` | remove exactly what `agents sync` recorded |
 | `agents hooks [--binary CMD] [--home DIR] [--json]` | print the Claude Code hook groups `agents sync` would write for the hooks `config.toml` enables, by event; writes nothing |
 | `connect claude [--scope project\|user] [-y]` | the earlier per-repo wiring, unchanged: project scope (default) writes `.mcp.json` with `catl mcp --project <p> --watch`, user scope registers this binary's absolute path; both add the guidance block; recorded in `wiring.json` but no permission rules or hooks |
-| `hook remind`, `hook seed` | answer a Claude Code `PreToolUse` (`remind`) or `UserPromptSubmit` (`seed`: a context pack for the prompt, only from an index that needs no run, within 3 s; it never indexes) hook from the JSON on stdin (written by `agents sync`); exits 0 whatever happens, including an unknown hook name; see [agent integration](agent-integration.md#permission-rules-and-hooks-claude-code) |
+| `hook remind`, `hook seed`, `hook counterpart` | answer a Claude Code `PreToolUse` (`remind`), `UserPromptSubmit` (`seed`: a context pack for the prompt, only from an index that needs no run, within 3 s; it never indexes) or `PostToolUse` on `Read` (`counterpart`: the files in other repos or packages that share a read file's contract values, at `[heuristic 0.60]` or above, under the same rules) hook from the JSON on stdin (written by `agents sync`); exits 0 whatever happens, including an unknown hook name; see [agent integration](agent-integration.md#permission-rules-and-hooks-claude-code) |
 | `mcp [--watch] [--tools PROFILE]` | serve MCP on stdio for the project of `-p` or the working directory; where no project resolves it serves only `atlas_status`, which explains how to register the repo. `--tools` (`core`, `read-only`, `full` or `name,name`) overrides `[mcp] tools`; see [tool profiles](agent-integration.md#tool-profiles) |
 | `debug run <ID>`, `debug explain-context <TASK>`, `debug dump-file <REPO:PATH>` | per-run phase timings and counts, context scoring, raw facts of a file |
 | `doctor [--lsp]` | check home, `config.toml`, registry, the project resolution trace, ignored configuration values, a user-scope Claude Code entry that still pins `--project`, repos, database integrity, index lock, `rust-analyzer`, `typescript-language-server` discovery (one line per candidate), TypeScript 7 repos, `npx`, `claude`, SQLite build, the `[mcp] tools` profile `catl mcp` would serve (FAIL when it would refuse to start); `--lsp` also starts each language server and reports its health (slow) |
@@ -113,6 +113,7 @@ Every query accepts `--json`. Other flags are per command (`catl query <command>
 | `symbol` | `--body`, `--kind`, `--repo` |
 | `callers`, `callees`, `dependents`, `dependencies`, `impact` | `--depth`, `--limit`, `--min-confidence`, `--kind`, `--repo`; `callers` and `callees` also `--via-http` |
 | `tests-for` | `--limit`, `--min-confidence`, `--kind`, `--repo` |
+| `counterparts` | `--kind`, `--repo`; exits 4 when the file has no counterpart |
 | `api` | `--repo`, `--endpoint "GET /x"`, `--limit`, `--min-confidence` |
 | `similar` | target, `--snippet FILE:START-END` or `--code FILE\|- --language rust\|ts\|tsx\|js` (draft code), `--limit`, `--threshold`, `--include-stale`, `--kind`, `--repo` |
 | `unused` | `--kind`, `--repo`, `--limit` |
@@ -202,7 +203,7 @@ guidance = "auto"                  # "auto" | "none" | "local" (CLAUDE.local.md,
 [agents.claude]
 enabled = true
 scope = "user"                     # "user" | "local" | "project" (.mcp.json, committed)
-hooks = ["auto-approve", "seed"]   # "auto-approve": permissions.allow for the read-only tools of [mcp] tools; "seed": a context pack next to each prompt; "remind": once-per-session nudge on grep; [] for none
+hooks = ["auto-approve", "seed"]   # "auto-approve": permissions.allow for the read-only tools of [mcp] tools; "seed": a context pack next to each prompt; "remind": once-per-session nudge on grep; "counterpart": files in other repos or packages sharing a read file's contract values; [] for none
 
 [agents.codex]
 enabled = true                     # only when $CODEX_HOME or ~/.codex exists

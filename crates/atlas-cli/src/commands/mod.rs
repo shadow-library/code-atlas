@@ -46,6 +46,7 @@ pub fn run(project: Option<String>, command: Command) -> CliResult<Outcome> {
     Command::Explain(args) => query::run(&ctx, QueryCommand::Explain(args)),
     Command::Read(args) => query::run(&ctx, QueryCommand::Read(args)),
     Command::TestsFor(args) => query::run(&ctx, QueryCommand::TestsFor(args)),
+    Command::Counterparts(args) => query::run(&ctx, QueryCommand::Counterparts(args)),
     Command::Find(args) => ide::find(&ctx, args),
     Command::Outline(args) => ide::outline(&ctx, args),
     Command::Refs(args) => ide::refs(&ctx, args),

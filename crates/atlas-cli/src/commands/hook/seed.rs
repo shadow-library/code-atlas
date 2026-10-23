@@ -12,11 +12,10 @@ use atlas_query::{ContextAnswer, ContextItem, ContextRequest, FreshnessState, Qu
 use atlas_store::StoreOptions;
 use serde_json::{Value, json};
 
+use super::{SessionMarkers, TIME_LIMIT, WAIT_MARGIN};
 use crate::commands::mcp::tool_profile;
 
 const USER_PROMPT_SUBMIT: &str = "UserPromptSubmit";
-const TIME_LIMIT: Duration = Duration::from_secs(3);
-const WAIT_MARGIN: Duration = Duration::from_millis(250);
 const CHARS_PER_TOKEN: usize = 4;
 const MAX_CONTEXT_CHARS: usize = 9_000;
 const GATE_ITEMS: usize = 3;
@@ -80,11 +79,6 @@ impl Silence {
       Self::Failed(reason) => format!("failed: {reason}"),
     }
   }
-}
-
-pub(super) struct SessionMarkers<Seen, Claim> {
-  pub seen: Seen,
-  pub claim: Claim,
 }
 
 pub(super) fn seed(home: &AtlasHome, project: Option<&str>, event: &Value, markers: &SessionMarkers<impl Fn(&str) -> bool, impl Fn(&str) -> bool>) -> Option<Value> {

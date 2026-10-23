@@ -21,6 +21,11 @@ const SEED_HOOKS: Slot = Slot {
   inner: "UserPromptSubmit",
   ours: claude::is_our_seed_group,
 };
+const COUNTERPART_HOOKS: Slot = Slot {
+  outer: "hooks",
+  inner: "PostToolUse",
+  ours: claude::is_our_counterpart_group,
+};
 const PERMISSIONS: Slot = Slot {
   outer: "permissions",
   inner: "allow",
@@ -292,6 +297,9 @@ impl Target {
         event: HookEvent::UserPromptSubmit,
         ..
       } => &SEED_HOOKS,
+      Self::Hooks {
+        event: HookEvent::PostToolUse, ..
+      } => &COUNTERPART_HOOKS,
       _ => &REMIND_HOOKS,
     }
   }

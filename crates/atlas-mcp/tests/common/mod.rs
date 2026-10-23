@@ -45,14 +45,31 @@ pub fn repo_path(scratch: &Path, repo: &str) -> PathBuf {
 }
 
 pub fn materialise(scratch: &Path, group: &str, repo: &str) -> PathBuf {
+  materialise_from(scratch, &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures").join(group), repo)
+}
+
+fn materialise_from(scratch: &Path, source: &Path, repo: &str) -> PathBuf {
   let target = repo_path(scratch, repo);
-  copy_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures").join(group).join(repo), &target);
+  copy_dir(&source.join(repo), &target);
   target
 }
 
 pub fn register(scratch: &Path, home: &AtlasHome, project: &str, group: &str, repos: &[&str]) {
   let specs = repos.iter().map(|repo| RepoSpec::new(materialise(scratch, group, repo)).named(*repo)).collect();
   Registry::load(home).unwrap().create_project(project, specs).unwrap();
+}
+
+pub async fn start_counterpart_corpus() -> Harness {
+  let scratch = tempfile::tempdir().unwrap();
+  let home = AtlasHome::rooted_at(scratch.path().join("home"));
+  let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../atlas-query/tests/counterpart-corpus");
+  let specs = ["notes-web", "notes-server"]
+    .iter()
+    .map(|repo| RepoSpec::new(materialise_from(scratch.path(), &corpus, repo)).named(*repo))
+    .collect();
+  Registry::load(&home).unwrap().create_project("notes", specs).unwrap();
+  let options = ServeOptions::new(home.clone(), scratch.path()).with_project("notes");
+  serve(scratch, home, AtlasServer::open(&options).unwrap()).await
 }
 
 pub async fn start(repos: &[&str]) -> Harness {
@@ -99,6 +116,10 @@ async fn launch_configured(
     Some(hook) => AtlasServer::open_with_query_hook(&options, hook).unwrap(),
     None => AtlasServer::open(&options).unwrap(),
   };
+  serve(scratch, home, server).await
+}
+
+async fn serve(scratch: TempDir, home: AtlasHome, server: AtlasServer) -> Harness {
   let (server_io, client_io) = tokio::io::duplex(1 << 20);
   let (shutdown, signal) = oneshot::channel::<()>();
   let task = tokio::spawn(server.clone().run(server_io, async move {

@@ -221,9 +221,11 @@ impl Engine {
   }
 
   pub fn persisted_generation(&self) -> EngineResult<Option<RunId>> {
-    self
-      .store
-      .read(|tx| -> EngineResult<Option<RunId>> { Ok(EngineMeta::read(tx)?.and_then(|meta| meta.generation).map(RunId)) })
+    Self::persisted_generation_in(&self.store)
+  }
+
+  pub fn persisted_generation_in(store: &Store) -> EngineResult<Option<RunId>> {
+    store.read(|tx| -> EngineResult<Option<RunId>> { Ok(EngineMeta::read(tx)?.and_then(|meta| meta.generation).map(RunId)) })
   }
 
   pub fn index_run_in_progress(&self) -> EngineResult<bool> {

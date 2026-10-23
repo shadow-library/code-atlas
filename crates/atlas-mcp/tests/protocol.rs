@@ -5,7 +5,7 @@ use std::fs;
 use atlas_core::Certainty;
 use atlas_mcp::guidance::{self, TOOLS, ToolProfile};
 use atlas_project::{Registry, RepoSpec, ToolsSetting};
-use common::{ACME_REPOS, Harness, start, start_configured, start_limited, start_watching, start_with, text_of};
+use common::{ACME_REPOS, Harness, start, start_configured, start_counterpart_corpus, start_limited, start_watching, start_with, text_of};
 use serde_json::{Value, json};
 
 #[tokio::test]
@@ -140,6 +140,36 @@ async fn should_report_the_blast_radius_across_repos_with_atlas_impact() {
   assert!(text.starts_with("fresh run="), "{text}");
   assert!(text.contains("acme-api"), "{text}");
   assert!(text.contains("UsersController.findOne"), "{text}");
+  harness.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn should_list_the_counterparts_of_a_file_target_in_atlas_impact_and_none_for_a_symbol() {
+  let harness = start_counterpart_corpus().await;
+  let root = common::repo_path(harness.scratch.path(), "notes-server");
+
+  let file = harness.text("atlas_impact", json!({ "targets": ["notes-web:src/ops/op-switch.ts"] })).await;
+  let json_text = harness
+    .text("atlas_impact", json!({ "targets": ["notes-web:src/ops/op-switch.ts"], "format": "json" }))
+    .await;
+  let symbol = harness.text("atlas_impact", json!({ "targets": ["pinNote"], "format": "json" })).await;
+
+  let section: Vec<&str> = file.lines().skip_while(|line| !line.starts_with("COUNTERPARTS")).take(4).collect();
+  assert_eq!(
+    section,
+    [
+      "COUNTERPARTS (1): files in other repos or packages that share contract values with it",
+      "  notes-server:src/ops/op-specs.ts [heuristic 0.44] score=31.45",
+      &format!("    file: {}", root.join("src/ops/op-specs.ts").display()),
+      "    shared values (14), rarest: 'draft_slug', 'revision_mark', 'section_anchor', 'page.archive_draft', 'page.create_draft'",
+    ]
+  );
+  let document: Value = serde_json::from_str(&json_text).unwrap();
+  assert_eq!(document["answer"]["counterparts"][0]["path"], "src/ops/op-specs.ts");
+  assert_eq!(document["answer"]["counterparts"][0]["certainty"]["tag"], "[heuristic 0.44]");
+  let symbol: Value = serde_json::from_str(&symbol).unwrap();
+  assert_eq!(symbol["answer"]["outcome"], "found");
+  assert_eq!(symbol["answer"].get("counterparts"), None);
   harness.stop().await.unwrap();
 }
 

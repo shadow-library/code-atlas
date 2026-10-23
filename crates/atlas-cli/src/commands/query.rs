@@ -4,14 +4,14 @@ use std::path::Path;
 use atlas_core::Language;
 use atlas_project::{Binding, Project};
 use atlas_query::{
-  ApiRequest, ChangesRequest, ContextRequest, ExplainRequest, ImpactRequest, PatternsRequest, QueryEngine, ReadRequest, RenderText, Response, SearchRequest, SimilarRequest,
-  SymbolRequest, TargetFilter, Targeted, TestsForRequest, TraversalKind, TraverseRequest, UnusedRequest, render_json, render_text,
+  ApiRequest, ChangesRequest, ContextRequest, CounterpartsRequest, ExplainRequest, ImpactRequest, PatternsRequest, QueryEngine, ReadRequest, RenderText, Response, SearchRequest,
+  SimilarRequest, SymbolRequest, TargetFilter, Targeted, TestsForRequest, TraversalKind, TraverseRequest, UnusedRequest, render_json, render_text,
 };
 use serde::Serialize;
 
 use crate::cli::{
-  ApiArgs, ChangesArgs, CodeLanguage, ContextArgs, ExplainArgs, ImpactArgs, PatternsArgs, QueryCommand, ReadArgs, SearchArgs, SimilarArgs, StatusArgs, SymbolArgs,
-  TargetFilterArgs, TestsForArgs, TraverseArgs, UnusedArgs,
+  ApiArgs, ChangesArgs, CodeLanguage, ContextArgs, CounterpartsArgs, ExplainArgs, ImpactArgs, PatternsArgs, QueryCommand, ReadArgs, SearchArgs, SimilarArgs, StatusArgs,
+  SymbolArgs, TargetFilterArgs, TestsForArgs, TraverseArgs, UnusedArgs,
 };
 use crate::commands::{overlays, read_input};
 use crate::context::Context;
@@ -57,6 +57,7 @@ pub fn run(ctx: &Context, command: QueryCommand) -> CliResult<Outcome> {
     QueryCommand::Dependencies(args) => traverse(ctx, TraversalKind::Dependencies, args, false),
     QueryCommand::Impact(args) => impact(ctx, args),
     QueryCommand::TestsFor(args) => tests_for(ctx, args),
+    QueryCommand::Counterparts(args) => counterparts(ctx, args),
     QueryCommand::Api(args) => api(ctx, args),
     QueryCommand::Similar(args) => similar(ctx, args),
     QueryCommand::Unused(args) => unused(ctx, args),
@@ -149,6 +150,18 @@ fn tests_for(ctx: &Context, args: TestsForArgs) -> CliResult<Outcome> {
     request.limit = limit;
   }
   finish_targeted(query.tests_for(&request)?, args.common.json)
+}
+
+fn counterparts(ctx: &Context, args: CounterpartsArgs) -> CliResult<Outcome> {
+  let (query, _) = open(ctx)?;
+  let mut request = CounterpartsRequest::new(args.target);
+  request.filter = target_filter(&args.filter);
+  let response = query.counterparts(&request)?;
+  let none = matches!(&response.answer, Targeted::Found(answer) if answer.counterparts.is_empty());
+  Ok(match finish_targeted(response, args.common.json)? {
+    Outcome::Complete if none => Outcome::Unresolved,
+    outcome => outcome,
+  })
 }
 
 fn api(ctx: &Context, args: ApiArgs) -> CliResult<Outcome> {

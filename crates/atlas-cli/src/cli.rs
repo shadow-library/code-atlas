@@ -70,6 +70,8 @@ pub enum Command {
   Read(ReadArgs),
   #[command(name = "tests-for", about = "Shortcut for `query tests-for`")]
   TestsFor(TestsForArgs),
+  #[command(about = "Shortcut for `query counterparts`")]
+  Counterparts(CounterpartsArgs),
   #[command(about = "Find symbols by name path in the graph")]
   Find(FindArgs),
   #[command(about = "List the symbols of a file from the index (--source lsp for the exact language-server outline)")]
@@ -345,6 +347,8 @@ pub enum QueryCommand {
   Dependencies(TraverseArgs),
   Impact(ImpactArgs),
   TestsFor(TestsForArgs),
+  #[command(about = "Files in other repos or apps that share a file's rare string values and keys, with what only they hold")]
+  Counterparts(CounterpartsArgs),
   Api(ApiArgs),
   Similar(SimilarArgs),
   Unused(UnusedArgs),
@@ -450,6 +454,16 @@ pub struct TestsForArgs {
   pub limit: Option<usize>,
   #[arg(long, value_parser = parse_confidence)]
   pub min_confidence: Option<f32>,
+  #[command(flatten)]
+  pub filter: TargetFilterArgs,
+  #[command(flatten)]
+  pub common: QueryCommon,
+}
+
+#[derive(Debug, Args)]
+pub struct CounterpartsArgs {
+  #[arg(help = "A file ([repo:]path) or a symbol, whose file is used")]
+  pub target: String,
   #[command(flatten)]
   pub filter: TargetFilterArgs,
   #[command(flatten)]
@@ -934,6 +948,7 @@ pub struct AgentsUnsyncArgs {
 pub enum HookName {
   Remind,
   Seed,
+  Counterpart,
 }
 
 #[derive(Debug, Args)]

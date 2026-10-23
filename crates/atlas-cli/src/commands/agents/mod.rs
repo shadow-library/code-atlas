@@ -489,11 +489,15 @@ fn claude_wiring(
 }
 
 fn hook_events(settings: &AgentsSettings) -> Vec<HookEvent> {
-  [(ClaudeHook::Remind, HookEvent::PreToolUse), (ClaudeHook::Seed, HookEvent::UserPromptSubmit)]
-    .into_iter()
-    .filter(|(hook, _)| settings.claude.hooks.contains(hook))
-    .map(|(_, event)| event)
-    .collect()
+  [
+    (ClaudeHook::Remind, HookEvent::PreToolUse),
+    (ClaudeHook::Seed, HookEvent::UserPromptSubmit),
+    (ClaudeHook::Counterpart, HookEvent::PostToolUse),
+  ]
+  .into_iter()
+  .filter(|(hook, _)| settings.claude.hooks.contains(hook))
+  .map(|(_, event)| event)
+  .collect()
 }
 
 fn hooks(ctx: &Context, args: AgentsHooksArgs) -> CliResult<Outcome> {

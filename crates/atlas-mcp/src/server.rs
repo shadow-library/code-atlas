@@ -385,6 +385,7 @@ impl AtlasServer {
         }
         let mut request = ImpactRequest::new(args.targets);
         request.depth = arguments::depth(args.depth, request.depth)?;
+        request.counterparts = true;
         render::targeted(query(shared), &query(shared).impact(&request)?, args.format.unwrap_or_default())
       })
       .await

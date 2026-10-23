@@ -13,7 +13,10 @@ pub(crate) const SYMBOL: &str = concat!(
 pub(crate) const CALLERS: &str = "Who calls a function or method, grouped by repo, up to depth hops; via_http adds HTTP callers in other repos. Unlike grep it resolves imports and methods. Misses dynamic and macro-generated calls (see the caveats).";
 pub(crate) const CALLEES: &str =
   "What a function or method calls, grouped by repo, up to depth hops; via_http follows HTTP calls into other repos. Misses dynamic and macro-generated calls (see the caveats).";
-pub(crate) const IMPACT: &str = "Blast radius of changing targets: dependents (direct and transitive, by repo), endpoints, cross-repo consumers, tests and config, each with the path that explains it. Use before changing shared code. Unresolved references can hide dependents (see the caveats).";
+pub(crate) const IMPACT: &str = concat!(
+  "Blast radius of changing targets: dependents (direct, transitive, by repo), endpoints, cross-repo consumers, tests, config and, for a file, ",
+  "files in other repos or packages sharing contract values, each with why. Use before changing shared code. Unresolved refs can hide dependents."
+);
 pub(crate) const TESTS_FOR: &str = "Tests that reach a target: directly, through the call graph or by file-coverage heuristics. Use to choose tests to run. When none reaches a method, a labelled fallback lists tests calling a method of that name on an untyped value: not proof of coverage.";
 pub(crate) const API: &str = "HTTP endpoints with handlers, consumers in other repos and auth schemes supported vs used. Routes come only from NestJS, Express, axum and declared route families, so a missing route is not proof of absence.";
 pub(crate) const SIMILAR: &str = "Near-duplicates of a symbol (target), of a line range inside an indexed symbol (snippet) or of unsaved code (code + language), with consumers, tests and a likely shared home; give exactly one. Use before adding a helper. Matches are leads, not proof of equivalence.";

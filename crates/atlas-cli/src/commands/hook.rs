@@ -1,3 +1,4 @@
+mod counterpart;
 mod seed;
 
 use std::fs::{self, OpenOptions};
@@ -18,8 +19,24 @@ const MAX_INPUT_BYTES: u64 = 4 * 1024 * 1024;
 const PRE_TOOL_USE: &str = "PreToolUse";
 const REMINDED_DIR: &str = "reminded";
 const SEEDED_DIR: &str = "seeded";
+const COUNTERPART_DIR: &str = "counterpart";
+const TIME_LIMIT: Duration = Duration::from_secs(3);
+const WAIT_MARGIN: Duration = Duration::from_millis(250);
 const MARKER_LIFETIME: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 const SEARCH_PROGRAMS: [&str; 6] = ["grep", "egrep", "fgrep", "rg", "ag", "ack"];
+
+struct SessionMarkers<Seen, Claim> {
+  seen: Seen,
+  claim: Claim,
+}
+
+fn markers_in(directory: PathBuf) -> SessionMarkers<impl Fn(&str) -> bool + Send + 'static, impl Fn(&str) -> bool> {
+  let seen_in = directory.clone();
+  SessionMarkers {
+    seen: move |key: &str| marker_path(&seen_in, key).exists(),
+    claim: move |key: &str| first_in_session(&directory, key),
+  }
+}
 
 pub fn run(ctx: &Context, hook: HookName) -> CliResult<Outcome> {
   let mut input = String::new();
@@ -37,14 +54,8 @@ pub fn run(ctx: &Context, hook: HookName) -> CliResult<Outcome> {
       |cwd| in_project(ctx, cwd),
       |session| first_in_session(&ctx.home.hook_state_dir().join(REMINDED_DIR), session),
     ),
-    HookName::Seed => {
-      let directory = ctx.home.hook_state_dir().join(SEEDED_DIR);
-      let markers = seed::SessionMarkers {
-        seen: |session: &str| marker_path(&directory, session).exists(),
-        claim: |session: &str| first_in_session(&directory, session),
-      };
-      seed::seed(&ctx.home, ctx.project.as_deref(), &event, &markers)
-    }
+    HookName::Seed => seed::seed(&ctx.home, ctx.project.as_deref(), &event, &markers_in(ctx.home.hook_state_dir().join(SEEDED_DIR))),
+    HookName::Counterpart => counterpart::counterpart(&ctx.home, ctx.project.as_deref(), &event, markers_in(ctx.home.hook_state_dir().join(COUNTERPART_DIR))),
   };
   if let Some(answer) = answer {
     emit_line(answer.to_string())?;

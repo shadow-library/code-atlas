@@ -924,3 +924,40 @@ fn should_refuse_a_seed_group_it_did_not_write_and_delete_a_local_settings_file_
   );
   assert_eq!(read_json(&other.join(".claude/settings.local.json")), hand_written);
 }
+
+#[test]
+fn should_write_the_counterpart_group_only_when_listed_record_its_event_and_remove_only_its_own() {
+  let sandbox = Sandbox::new();
+  let work = sandbox.path("work");
+  let foreign_post = json!({"matcher": "Edit", "hooks": [{"type": "command", "command": "format-on-save"}]});
+  fs::write(
+    sandbox.path("atlas/claude/settings.json"),
+    json!({"hooks": {"PostToolUse": [foreign_post.clone()]}}).to_string(),
+  )
+  .unwrap();
+  sandbox.config("[agents.claude]\nhooks = [\"auto-approve\"]\n");
+  assert_ok(&sandbox.run(&work, &["agents", "sync", "--agent", "claude", "--yes"]));
+  assert_eq!(hook_kinds(&sandbox), ["registration -", "permissions -"]);
+
+  sandbox.config("[agents.claude]\nhooks = [\"auto-approve\", \"counterpart\"]\n");
+  let synced = sandbox.run(&work, &["agents", "sync", "--agent", "claude", "--yes"]);
+
+  assert_ok(&synced);
+  assert!(stdout(&synced).contains("settings.json#hooks.PostToolUse: created"), "{}", stdout(&synced));
+  assert_eq!(sandbox.json("atlas/data/wiring.json")["version"], 2);
+  assert_eq!(hook_kinds(&sandbox), ["registration -", "permissions -", "hooks PostToolUse"]);
+  let command = format!("CODE_ATLAS_HOME={} catl hook counterpart || true", sandbox.path("atlas").display());
+  let ours = json!({"matcher": "Read", "hooks": [{"type": "command", "command": command, "timeout": 10}]});
+  assert_eq!(
+    sandbox.json("atlas/claude/settings.json")["hooks"]["PostToolUse"],
+    json!([foreign_post.clone(), ours.clone()])
+  );
+  let printed = sandbox.run(&work, &["agents", "hooks", "--json"]);
+  assert_eq!(serde_json::from_str::<Value>(&stdout(&printed)).unwrap(), json!({"PostToolUse": [ours]}));
+
+  sandbox.config("[agents.claude]\nhooks = [\"auto-approve\"]\n");
+  let turned_off = sandbox.run(&work, &["agents", "sync", "--agent", "claude", "--yes"]);
+  assert_ok(&turned_off);
+  assert!(stdout(&turned_off).contains("settings.json#hooks.PostToolUse: removed"), "{}", stdout(&turned_off));
+  assert_eq!(sandbox.json("atlas/claude/settings.json")["hooks"]["PostToolUse"], json!([foreign_post]));
+}

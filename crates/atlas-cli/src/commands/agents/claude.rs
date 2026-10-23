@@ -16,8 +16,10 @@ const SETTINGS_FILE: &str = "settings.json";
 const LOCAL_SETTINGS_FILE: &str = "settings.local.json";
 const HOOK_TIMEOUT_SECS: u64 = 10;
 const SEARCH_TOOLS_MATCHER: &str = "Grep|Glob|Bash";
+const READ_TOOL_MATCHER: &str = "Read";
 const REMIND_SUFFIX: &str = "hook remind";
 const SEED_SUFFIX: &str = "hook seed";
+const COUNTERPART_SUFFIX: &str = "hook counterpart";
 const NEVER_FAIL: &str = " || true";
 pub(super) const HOME_VAR: &str = "CODE_ATLAS_HOME";
 
@@ -26,6 +28,7 @@ pub(crate) enum HookEvent {
   #[default]
   PreToolUse,
   UserPromptSubmit,
+  PostToolUse,
 }
 
 impl HookEvent {
@@ -33,6 +36,7 @@ impl HookEvent {
     match self {
       Self::PreToolUse => "PreToolUse",
       Self::UserPromptSubmit => "UserPromptSubmit",
+      Self::PostToolUse => "PostToolUse",
     }
   }
 
@@ -44,6 +48,7 @@ impl HookEvent {
     match self {
       Self::PreToolUse => REMIND_SUFFIX,
       Self::UserPromptSubmit => SEED_SUFFIX,
+      Self::PostToolUse => COUNTERPART_SUFFIX,
     }
   }
 }
@@ -103,6 +108,7 @@ pub(super) fn hook_groups(event: HookEvent, binary: &str, home: Option<&OsStr>) 
   match event {
     HookEvent::PreToolUse => vec![json!({ "matcher": SEARCH_TOOLS_MATCHER, "hooks": hooks })],
     HookEvent::UserPromptSubmit => vec![json!({ "hooks": hooks })],
+    HookEvent::PostToolUse => vec![json!({ "matcher": READ_TOOL_MATCHER, "hooks": hooks })],
   }
 }
 
@@ -112,6 +118,10 @@ pub(super) fn is_our_remind_group(group: &Value) -> bool {
 
 pub(super) fn is_our_seed_group(group: &Value) -> bool {
   is_our_hook_group(HookEvent::UserPromptSubmit, group)
+}
+
+pub(super) fn is_our_counterpart_group(group: &Value) -> bool {
+  is_our_hook_group(HookEvent::PostToolUse, group)
 }
 
 fn is_our_hook_group(event: HookEvent, group: &Value) -> bool {
@@ -261,6 +271,18 @@ mod tests {
     assert!(groups.iter().all(is_our_seed_group));
     assert!(!groups.iter().any(is_our_remind_group));
     assert!(!hook_groups(HookEvent::PreToolUse, "catl", None).iter().any(is_our_seed_group));
+  }
+
+  #[test]
+  fn should_render_a_counterpart_hook_on_reads_that_can_never_fail() {
+    let groups = hook_groups(HookEvent::PostToolUse, "catl", Some(OsStr::new("/iso")));
+    assert_eq!(
+      groups,
+      [json!({"matcher": "Read", "hooks": [{"type": "command", "command": "CODE_ATLAS_HOME=/iso catl hook counterpart || true", "timeout": 10}]})]
+    );
+    assert!(groups.iter().all(is_our_counterpart_group));
+    assert!(!groups.iter().any(is_our_remind_group) && !groups.iter().any(is_our_seed_group));
+    assert!(!hook_groups(HookEvent::PreToolUse, "catl", None).iter().any(is_our_counterpart_group));
   }
 
   #[test]
