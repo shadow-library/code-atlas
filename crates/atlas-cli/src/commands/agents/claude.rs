@@ -17,10 +17,13 @@ const LOCAL_SETTINGS_FILE: &str = "settings.local.json";
 const HOOK_TIMEOUT_SECS: u64 = 10;
 const SEARCH_TOOLS_MATCHER: &str = "Grep|Glob|Bash";
 const READ_TOOL_MATCHER: &str = "Read";
+const WRITE_TOOLS_MATCHER: &str = "Write|Edit|MultiEdit";
 const REMIND_SUFFIX: &str = "hook remind";
 const SEED_SUFFIX: &str = "hook seed";
 const COUNTERPART_SUFFIX: &str = "hook counterpart";
 const NOTES_SUFFIX: &str = "hook notes";
+const REUSE_SUFFIX: &str = "hook reuse";
+const ALSO_CHANGE_SUFFIX: &str = "hook also-change";
 const NEVER_FAIL: &str = " || true";
 pub(super) const HOME_VAR: &str = "CODE_ATLAS_HOME";
 
@@ -32,14 +35,18 @@ pub(crate) enum HookEvent {
   PostToolUse,
   #[serde(rename = "PostToolUse:notes")]
   PostToolUseNotes,
+  #[serde(rename = "PreToolUse:reuse")]
+  PreToolUseReuse,
+  #[serde(rename = "PostToolUse:also-change")]
+  PostToolUseAlsoChange,
 }
 
 impl HookEvent {
   pub(super) fn name(self) -> &'static str {
     match self {
-      Self::PreToolUse => "PreToolUse",
+      Self::PreToolUse | Self::PreToolUseReuse => "PreToolUse",
       Self::UserPromptSubmit => "UserPromptSubmit",
-      Self::PostToolUse | Self::PostToolUseNotes => "PostToolUse",
+      Self::PostToolUse | Self::PostToolUseNotes | Self::PostToolUseAlsoChange => "PostToolUse",
     }
   }
 
@@ -53,6 +60,8 @@ impl HookEvent {
       Self::UserPromptSubmit => SEED_SUFFIX,
       Self::PostToolUse => COUNTERPART_SUFFIX,
       Self::PostToolUseNotes => NOTES_SUFFIX,
+      Self::PreToolUseReuse => REUSE_SUFFIX,
+      Self::PostToolUseAlsoChange => ALSO_CHANGE_SUFFIX,
     }
   }
 }
@@ -113,6 +122,7 @@ pub(super) fn hook_groups(event: HookEvent, binary: &str, home: Option<&OsStr>) 
     HookEvent::PreToolUse => vec![json!({ "matcher": SEARCH_TOOLS_MATCHER, "hooks": hooks })],
     HookEvent::UserPromptSubmit => vec![json!({ "hooks": hooks })],
     HookEvent::PostToolUse | HookEvent::PostToolUseNotes => vec![json!({ "matcher": READ_TOOL_MATCHER, "hooks": hooks })],
+    HookEvent::PreToolUseReuse | HookEvent::PostToolUseAlsoChange => vec![json!({ "matcher": WRITE_TOOLS_MATCHER, "hooks": hooks })],
   }
 }
 
@@ -130,6 +140,14 @@ pub(super) fn is_our_counterpart_group(group: &Value) -> bool {
 
 pub(super) fn is_our_notes_group(group: &Value) -> bool {
   is_our_hook_group(HookEvent::PostToolUseNotes, group)
+}
+
+pub(super) fn is_our_reuse_group(group: &Value) -> bool {
+  is_our_hook_group(HookEvent::PreToolUseReuse, group)
+}
+
+pub(super) fn is_our_also_change_group(group: &Value) -> bool {
+  is_our_hook_group(HookEvent::PostToolUseAlsoChange, group)
 }
 
 fn is_our_hook_group(event: HookEvent, group: &Value) -> bool {
@@ -305,6 +323,26 @@ mod tests {
     assert!(!hook_groups(HookEvent::PostToolUse, "catl", None).iter().any(is_our_notes_group));
     assert_eq!(HookEvent::PostToolUseNotes.name(), "PostToolUse");
     assert_eq!(serde_json::to_value(HookEvent::PostToolUseNotes).unwrap(), json!("PostToolUse:notes"));
+  }
+
+  #[test]
+  fn should_render_the_reuse_and_also_change_hooks_on_writes_each_recorded_under_its_own_event() {
+    let reuse = hook_groups(HookEvent::PreToolUseReuse, "catl", None);
+    let also = hook_groups(HookEvent::PostToolUseAlsoChange, "catl", Some(OsStr::new("/iso")));
+    assert_eq!(
+      reuse,
+      [json!({"matcher": "Write|Edit|MultiEdit", "hooks": [{"type": "command", "command": "catl hook reuse || true", "timeout": 10}]})]
+    );
+    assert_eq!(
+      also,
+      [json!({"matcher": "Write|Edit|MultiEdit", "hooks": [{"type": "command", "command": "CODE_ATLAS_HOME=/iso catl hook also-change || true", "timeout": 10}]})]
+    );
+    assert!(reuse.iter().all(is_our_reuse_group) && also.iter().all(is_our_also_change_group));
+    assert!(!reuse.iter().any(is_our_remind_group) && !also.iter().any(is_our_counterpart_group) && !also.iter().any(is_our_notes_group));
+    assert!(!hook_groups(HookEvent::PreToolUse, "catl", None).iter().any(is_our_reuse_group));
+    assert_eq!((HookEvent::PreToolUseReuse.name(), HookEvent::PostToolUseAlsoChange.name()), ("PreToolUse", "PostToolUse"));
+    assert_eq!(serde_json::to_value(HookEvent::PreToolUseReuse).unwrap(), json!("PreToolUse:reuse"));
+    assert_eq!(serde_json::to_value(HookEvent::PostToolUseAlsoChange).unwrap(), json!("PostToolUse:also-change"));
   }
 
   #[test]

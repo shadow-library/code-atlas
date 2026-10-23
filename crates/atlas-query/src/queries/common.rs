@@ -1,8 +1,11 @@
-use atlas_core::{ATTR_ATTRIBUTES, ATTR_PARAMS, ATTR_TEST, AttributeFact, EdgeKind, Entity, EntityId, EntityKey, EntityKind, LanguageFamily, PackageEcosystem, ParamFact, RelPath};
+use atlas_core::{
+  ATTR_ATTRIBUTES, ATTR_PARAMS, ATTR_TEST, AttributeFact, EdgeKind, Entity, EntityId, EntityKey, EntityKind, LanguageFamily, PackageEcosystem, ParamFact, RelPath, RepoName,
+};
+use atlas_project::{Project, RepoConfig};
 use atlas_store::EdgeEnd;
 
 use crate::QueryEngine;
-use crate::error::QueryResult;
+use crate::error::{QueryError, QueryResult};
 use crate::graph::Graph;
 use crate::model::{Caveat, Targeted};
 use crate::target::{TargetFilter, resolve};
@@ -128,4 +131,28 @@ pub(crate) fn file_symbols(graph: &Graph<'_, '_>, entity: &Entity) -> QueryResul
     .map(|symbol| symbol.id)
     .collect();
   Ok(Some(symbols))
+}
+
+pub(crate) fn locate_file(project: &Project, spec: &str) -> QueryResult<(RepoName, RelPath)> {
+  let spec = spec.trim();
+  let invalid = |path: &str| QueryError::invalid(format!("invalid file path {path:?}"));
+  if let Some((repo, path)) = spec.split_once(':')
+    && let Some(config) = project.repos.iter().find(|config| config.name.as_str() == repo)
+  {
+    return Ok((config.name.clone(), RelPath::new(path).map_err(|_| invalid(path))?));
+  }
+  let path = RelPath::new(spec).map_err(|_| invalid(spec))?;
+  let holding: Vec<&RepoConfig> = project.repos.iter().filter(|config| config.path.join(path.as_str()).exists()).collect();
+  match (holding.as_slice(), project.repos.as_slice()) {
+    ([only], _) => Ok((only.name.clone(), path)),
+    ([], [only]) => Ok((only.name.clone(), path)),
+    ([], _) => Err(QueryError::invalid(format!("no repo of this project holds {spec}; name the file as repo:path"))),
+    (several, _) => {
+      let names: Vec<&str> = several.iter().map(|config| config.name.as_str()).collect();
+      Err(QueryError::invalid(format!(
+        "{spec} is in several repos ({}); name the file as repo:path",
+        names.join(", ")
+      )))
+    }
+  }
 }

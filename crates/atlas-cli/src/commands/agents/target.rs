@@ -31,6 +31,16 @@ const NOTES_HOOKS: Slot = Slot {
   inner: "PostToolUse",
   ours: claude::is_our_notes_group,
 };
+const REUSE_HOOKS: Slot = Slot {
+  outer: "hooks",
+  inner: "PreToolUse",
+  ours: claude::is_our_reuse_group,
+};
+const ALSO_CHANGE_HOOKS: Slot = Slot {
+  outer: "hooks",
+  inner: "PostToolUse",
+  ours: claude::is_our_also_change_group,
+};
 const PERMISSIONS: Slot = Slot {
   outer: "permissions",
   inner: "allow",
@@ -309,6 +319,14 @@ impl Target {
         event: HookEvent::PostToolUseNotes,
         ..
       } => &NOTES_HOOKS,
+      Self::Hooks {
+        event: HookEvent::PreToolUseReuse,
+        ..
+      } => &REUSE_HOOKS,
+      Self::Hooks {
+        event: HookEvent::PostToolUseAlsoChange,
+        ..
+      } => &ALSO_CHANGE_HOOKS,
       _ => &REMIND_HOOKS,
     }
   }

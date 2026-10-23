@@ -1,3 +1,4 @@
+mod also_change;
 mod api;
 pub(crate) mod common;
 mod context;
@@ -14,6 +15,7 @@ mod path;
 mod patterns;
 mod positions;
 mod reuse;
+mod reuse_check;
 mod search;
 mod similar;
 mod status;
@@ -25,6 +27,7 @@ mod textual;
 mod traverse;
 mod unused;
 
+pub use also_change::{AlsoChangeAnswer, AlsoChangeFile, AlsoChangeRequest, DEFAULT_ALSO_CHANGE_LIMIT};
 pub use api::*;
 pub use context::*;
 pub use counterparts::*;
@@ -42,6 +45,7 @@ pub use overview::*;
 pub use path::*;
 pub use patterns::*;
 pub use positions::*;
+pub use reuse_check::{IndexState, ReuseAnswer, ReuseCandidate, ReuseReason, ReuseRequest, ReuseUnit, UnitStatus};
 pub use search::*;
 pub use similar::*;
 pub use status::*;

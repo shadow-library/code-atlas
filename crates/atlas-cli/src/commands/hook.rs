@@ -1,5 +1,8 @@
+mod also_change;
 mod counterpart;
+mod edits;
 mod notes;
+mod reuse;
 mod seed;
 
 use std::fs::{self, OpenOptions};
@@ -22,6 +25,8 @@ const REMINDED_DIR: &str = "reminded";
 const SEEDED_DIR: &str = "seeded";
 const COUNTERPART_DIR: &str = "counterpart";
 const NOTES_DIR: &str = "notes";
+const REUSE_DIR: &str = "reuse";
+const ALSO_CHANGE_DIR: &str = "also-change";
 const TIME_LIMIT: Duration = Duration::from_secs(3);
 const WAIT_MARGIN: Duration = Duration::from_millis(250);
 const MARKER_LIFETIME: Duration = Duration::from_secs(7 * 24 * 60 * 60);
@@ -32,7 +37,7 @@ struct SessionMarkers<Seen, Claim> {
   claim: Claim,
 }
 
-fn markers_in(directory: PathBuf) -> SessionMarkers<impl Fn(&str) -> bool + Send + 'static, impl Fn(&str) -> bool> {
+fn markers_in(directory: PathBuf) -> SessionMarkers<impl Fn(&str) -> bool + Send + 'static, impl Fn(&str) -> bool + Send + Sync + 'static> {
   let seen_in = directory.clone();
   SessionMarkers {
     seen: move |key: &str| marker_path(&seen_in, key).exists(),
@@ -59,6 +64,8 @@ pub fn run(ctx: &Context, hook: HookName) -> CliResult<Outcome> {
     HookName::Seed => seed::seed(&ctx.home, ctx.project.as_deref(), &event, &markers_in(ctx.home.hook_state_dir().join(SEEDED_DIR))),
     HookName::Counterpart => counterpart::counterpart(&ctx.home, ctx.project.as_deref(), &event, markers_in(ctx.home.hook_state_dir().join(COUNTERPART_DIR))),
     HookName::Notes => notes::notes(&ctx.home, ctx.project.as_deref(), &event, markers_in(ctx.home.hook_state_dir().join(NOTES_DIR))),
+    HookName::Reuse => reuse::reuse(&ctx.home, ctx.project.as_deref(), &event, markers_in(ctx.home.hook_state_dir().join(REUSE_DIR))),
+    HookName::AlsoChange => also_change::also_change(&ctx.home, ctx.project.as_deref(), &event, markers_in(ctx.home.hook_state_dir().join(ALSO_CHANGE_DIR))),
   };
   if let Some(answer) = answer {
     emit_line(answer.to_string())?;

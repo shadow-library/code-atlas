@@ -144,7 +144,7 @@ async fn should_report_the_blast_radius_across_repos_with_atlas_impact() {
 }
 
 #[tokio::test]
-async fn should_list_the_counterparts_of_a_file_target_in_atlas_impact_and_none_for_a_symbol() {
+async fn should_list_the_counterparts_of_a_file_target_in_atlas_impact_and_none_for_a_symbol_without_an_also_change_section() {
   let harness = start_counterpart_corpus().await;
   let root = common::repo_path(harness.scratch.path(), "notes-server");
 
@@ -167,9 +167,12 @@ async fn should_list_the_counterparts_of_a_file_target_in_atlas_impact_and_none_
   let document: Value = serde_json::from_str(&json_text).unwrap();
   assert_eq!(document["answer"]["counterparts"][0]["path"], "src/ops/op-specs.ts");
   assert_eq!(document["answer"]["counterparts"][0]["certainty"]["tag"], "[heuristic 0.44]");
+  assert!(!file.contains("ALSO CHANGE"), "{file}");
+  assert_eq!(document["answer"].get("also_change"), None);
   let symbol: Value = serde_json::from_str(&symbol).unwrap();
   assert_eq!(symbol["answer"]["outcome"], "found");
   assert_eq!(symbol["answer"].get("counterparts"), None);
+  assert_eq!(symbol["answer"].get("also_change"), None);
   harness.stop().await.unwrap();
 }
 

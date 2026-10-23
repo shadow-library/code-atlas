@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use atlas_core::{Certainty, Confidence, EdgeKind, Entity, EntityKey, EntityKind, LanguageFamily, Owner, RelPath, RepoName};
+use atlas_core::{Certainty, Confidence, EdgeKind, Entity, EntityId, EntityKey, EntityKind, LanguageFamily, Owner, RelPath, RepoName};
 use atlas_project::Project;
 use atlas_store::{EntityFilter, FileRecord};
 use rayon::prelude::*;
@@ -193,19 +193,20 @@ pub fn may_have_counterparts(file_name: &str) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct PackagePlace {
+pub(crate) struct PackagePlace {
+  pub(crate) id: EntityId,
   dir: String,
   app: bool,
 }
 
 #[derive(Debug, Default)]
-struct PackageIndex {
+pub(crate) struct PackageIndex {
   places: BTreeMap<RepoName, Vec<PackagePlace>>,
 }
 
 impl PackageIndex {
-  fn load(graph: &Graph<'_, '_>) -> QueryResult<Self> {
-    let mut found: BTreeMap<RepoName, BTreeMap<String, bool>> = BTreeMap::new();
+  pub(crate) fn load(graph: &Graph<'_, '_>) -> QueryResult<Self> {
+    let mut found: BTreeMap<RepoName, BTreeMap<String, (EntityId, bool)>> = BTreeMap::new();
     for package in graph.tx().entities_by_kind(&EntityKind::Package, &EntityFilter::default())? {
       let app = !graph.links_out(package.id, &[EdgeKind::PartOfApp])?.is_empty();
       for assertion in graph.tx().entity_assertions(package.id)? {
@@ -214,13 +215,13 @@ impl PackageIndex {
           continue;
         }
         let dir = path.as_str().rsplit_once('/').map_or("", |(dir, _)| dir).to_owned();
-        *found.entry(repo).or_default().entry(dir).or_default() |= app;
+        found.entry(repo).or_default().entry(dir).or_insert((package.id, false)).1 |= app;
       }
     }
     let places = found
       .into_iter()
       .map(|(repo, dirs)| {
-        let mut places: Vec<PackagePlace> = dirs.into_iter().map(|(dir, app)| PackagePlace { dir, app }).collect();
+        let mut places: Vec<PackagePlace> = dirs.into_iter().map(|(dir, (id, app))| PackagePlace { id, dir, app }).collect();
         places.sort_by(|left, right| right.dir.len().cmp(&left.dir.len()).then_with(|| left.dir.cmp(&right.dir)));
         (repo, places)
       })
@@ -228,7 +229,7 @@ impl PackageIndex {
     Ok(Self { places })
   }
 
-  fn nearest(&self, repo: &RepoName, path: &str) -> Option<&PackagePlace> {
+  pub(crate) fn nearest(&self, repo: &RepoName, path: &str) -> Option<&PackagePlace> {
     self.places.get(repo)?.iter().find(|place| contains(&place.dir, path))
   }
 
@@ -626,7 +627,11 @@ mod tests {
   }
 
   fn package(dir: &str, app: bool) -> PackagePlace {
-    PackagePlace { dir: dir.to_owned(), app }
+    PackagePlace {
+      id: EntityId::from_i64(0),
+      dir: dir.to_owned(),
+      app,
+    }
   }
 
   #[test]

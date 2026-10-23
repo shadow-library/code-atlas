@@ -8,7 +8,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use atlas_core::{Certainty, Confidence, ContentHash, EdgeKind, Entity, EntityKind, Evidence, Freshness, Owner, ParseBudget, Producer, RelPath, RepoName, Span};
-use atlas_engine::{BarrierMode, Engine, EngineOptions, FailedFile, FaultInjection, FreshnessReport, IndexMode, REFRESH_DEFERRED, ScanKind, ScipLag};
+use atlas_engine::{BarrierMode, Engine, EngineOptions, FailedFile, FaultInjection, FreshnessReport, IndexMode, REFRESH_DEFERRED, ScanKind, ScipLag, deferred_for_changed_files};
 use atlas_project::Project;
 use atlas_store::{EdgeFilter, EntityFilter, FreshnessPolicy, InferredQuery, NewInferredFact, RunStatus};
 use common::edits::replace_word;
@@ -532,6 +532,13 @@ fn should_wait_for_another_process_holding_the_index_lock_and_reuse_its_work() {
   assert_eq!(first.similarity().len(), second.similarity().len());
 }
 
+fn degraded_reason(report: &FreshnessReport) -> String {
+  match report {
+    FreshnessReport::Degraded { reason, .. } => reason.clone(),
+    FreshnessReport::Fresh(_) => String::new(),
+  }
+}
+
 fn deferred_reason(report: &FreshnessReport) -> Option<&str> {
   match report {
     FreshnessReport::Degraded { reason, failed_files, .. } if failed_files.is_empty() => reason.strip_prefix(&format!("{REFRESH_DEFERRED}: ")),
@@ -553,6 +560,7 @@ fn should_never_run_an_index_in_check_only_mode_and_answer_fresh_only_from_a_cle
   let never_indexed = open_with(&project, &home, check_only.clone());
   let report = never_indexed.ensure_fresh().unwrap();
   assert_eq!(deferred_reason(&report), Some("the project has never been indexed"), "{report:?}");
+  assert!(!deferred_for_changed_files(&degraded_reason(&report)));
   assert_eq!((report.header().run, report.header().last_run), (None, None));
   assert_eq!(run_count(&never_indexed), 0);
   drop(never_indexed);
@@ -572,6 +580,8 @@ fn should_never_run_an_index_in_check_only_mode_and_answer_fresh_only_from_a_cle
   append(&tree.join("acme-sdk/src/money.ts"), "\nexport function first() {\n  return 1;\n}\n");
   let report = engine.ensure_fresh().unwrap();
   assert_eq!(deferred_reason(&report), Some("1 file changed since the last index run"), "{report:?}");
+  assert!(deferred_for_changed_files(&degraded_reason(&report)));
+  assert!(!deferred_for_changed_files("1 file changed since the last index run"));
   assert_eq!(run_count(&engine), indexed);
   assert!(named(&engine, "first", "acme-sdk").is_empty());
 

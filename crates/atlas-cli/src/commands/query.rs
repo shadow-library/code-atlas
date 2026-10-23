@@ -4,15 +4,15 @@ use std::path::Path;
 use atlas_core::Language;
 use atlas_project::{Binding, Project};
 use atlas_query::{
-  ApiRequest, ChangesRequest, ContextRequest, CounterpartsRequest, DEFAULT_DOCS_LIMIT, DocsRequest, ExplainRequest, ImpactRequest, NotesRequest, PathRequest, PatternsRequest,
-  QueryEngine, ReadRequest, RenderText, Response, SearchRequest, SimilarRequest, SymbolRequest, TargetFilter, Targeted, TestsForRequest, TraversalKind, TraverseRequest,
-  UnusedRequest, render_json, render_text,
+  AlsoChangeRequest, ApiRequest, ChangesRequest, ContextRequest, CounterpartsRequest, DEFAULT_DOCS_LIMIT, DocsRequest, ExplainRequest, ImpactRequest, NotesRequest, PathRequest,
+  PatternsRequest, QueryEngine, ReadRequest, RenderText, Response, ReuseRequest, SearchRequest, SimilarRequest, SymbolRequest, TargetFilter, Targeted, TestsForRequest,
+  TraversalKind, TraverseRequest, UnusedRequest, render_json, render_text,
 };
 use serde::Serialize;
 
 use crate::cli::{
-  ApiArgs, ChangesArgs, CodeLanguage, ContextArgs, CounterpartsArgs, DocsArgs, ExplainArgs, ImpactArgs, NotesCommand, PathArgs, PatternsArgs, QueryCommand, ReadArgs, SearchArgs,
-  SimilarArgs, StatusArgs, SymbolArgs, TargetFilterArgs, TestsForArgs, TraverseArgs, UnusedArgs,
+  AlsoChangeArgs, ApiArgs, ChangesArgs, CodeLanguage, ContextArgs, CounterpartsArgs, DocsArgs, ExplainArgs, ImpactArgs, NotesCommand, PathArgs, PatternsArgs, QueryCommand,
+  ReadArgs, ReuseCheckArgs, SearchArgs, SimilarArgs, StatusArgs, SymbolArgs, TargetFilterArgs, TestsForArgs, TraverseArgs, UnusedArgs,
 };
 use crate::commands::{overlays, read_input};
 use crate::context::Context;
@@ -61,6 +61,8 @@ pub fn run(ctx: &Context, command: QueryCommand) -> CliResult<Outcome> {
     QueryCommand::Counterparts(args) => counterparts(ctx, args),
     QueryCommand::Docs(args) => docs(ctx, args),
     QueryCommand::Path(args) => path(ctx, args),
+    QueryCommand::ReuseCheck(args) => reuse_check(ctx, args),
+    QueryCommand::AlsoChange(args) => also_change(ctx, args),
     QueryCommand::Api(args) => api(ctx, args),
     QueryCommand::Similar(args) => similar(ctx, args),
     QueryCommand::Unused(args) => unused(ctx, args),
@@ -165,6 +167,51 @@ fn counterparts(ctx: &Context, args: CounterpartsArgs) -> CliResult<Outcome> {
     Outcome::Complete if none => Outcome::Unresolved,
     outcome => outcome,
   })
+}
+
+fn reuse_check(ctx: &Context, args: ReuseCheckArgs) -> CliResult<Outcome> {
+  let (query, project) = open(ctx)?;
+  let text = match args.stdin {
+    true => Some(read_input("-")?),
+    false => None,
+  };
+  let request = ReuseRequest {
+    repo_path: file_spec(&args.file, &ctx.cwd, &project),
+    text,
+    lines: args.lines,
+  };
+  let response = query.reuse_check(&request)?;
+  let none = response.answer.candidates() == 0;
+  Ok(match finish(response, args.common.json)? {
+    Outcome::Complete if none => Outcome::Unresolved,
+    outcome => outcome,
+  })
+}
+
+fn also_change(ctx: &Context, args: AlsoChangeArgs) -> CliResult<Outcome> {
+  let (query, project) = open(ctx)?;
+  let mut request = AlsoChangeRequest::new(args.files.iter().map(|file| file_spec(file, &ctx.cwd, &project)));
+  if let Some(limit) = args.limit {
+    request.limit = limit;
+  }
+  let response = query.also_change(&request)?;
+  let none = response.answer.files.is_empty();
+  Ok(match finish(response, args.common.json)? {
+    Outcome::Complete if none => Outcome::Unresolved,
+    outcome => outcome,
+  })
+}
+
+fn file_spec(raw: &str, cwd: &Path, project: &Project) -> String {
+  let on_disk = repo_relative(raw, cwd, project).or_else(|| {
+    let path = cwd.join(raw);
+    let parent = fs::canonicalize(path.parent()?).ok()?;
+    repo_relative_of(&parent.join(path.file_name()?), project)
+  });
+  match on_disk {
+    Some((repo, path)) => format!("{repo}:{path}"),
+    None => raw.to_owned(),
+  }
 }
 
 fn docs(ctx: &Context, args: DocsArgs) -> CliResult<Outcome> {
@@ -369,6 +416,10 @@ fn snippet_target(raw: &str, cwd: &Path, project: &Project) -> CliResult<String>
 
 fn repo_relative(location: &str, cwd: &Path, project: &Project) -> Option<(String, String)> {
   let canonical = fs::canonicalize(cwd.join(location)).ok().filter(|path| path.is_file())?;
+  repo_relative_of(&canonical, project)
+}
+
+fn repo_relative_of(canonical: &Path, project: &Project) -> Option<(String, String)> {
   let (repo, relative) = project
     .repos
     .iter()

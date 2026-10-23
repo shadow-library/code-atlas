@@ -1002,3 +1002,53 @@ fn should_write_the_notes_group_next_to_the_counterpart_group_and_remove_only_it
   assert_eq!(sandbox.json("atlas/claude/settings.json")["hooks"]["PostToolUse"], json!([group("counterpart")]));
   assert_eq!(hook_kinds(&sandbox), ["registration -", "permissions -", "hooks PostToolUse"]);
 }
+
+#[test]
+fn should_write_the_reuse_and_also_change_groups_on_writes_next_to_the_others_and_remove_only_their_own() {
+  let sandbox = Sandbox::new();
+  let work = sandbox.path("work");
+  sandbox.config("[agents.claude]\nhooks = [\"auto-approve\", \"remind\", \"counterpart\", \"reuse\", \"also-change\"]\n");
+
+  let synced = sandbox.run(&work, &["agents", "sync", "--agent", "claude", "--yes"]);
+
+  assert_ok(&synced);
+  assert_eq!(
+    hook_kinds(&sandbox),
+    [
+      "registration -",
+      "permissions -",
+      "hooks -",
+      "hooks PostToolUse",
+      "hooks PreToolUse:reuse",
+      "hooks PostToolUse:also-change"
+    ]
+  );
+  let home = sandbox.path("atlas").display().to_string();
+  let group =
+    |matcher: &str, hook: &str| json!({"matcher": matcher, "hooks": [{"type": "command", "command": format!("CODE_ATLAS_HOME={home} catl hook {hook} || true"), "timeout": 10}]});
+  let settings = sandbox.json("atlas/claude/settings.json");
+  assert_eq!(
+    settings["hooks"]["PreToolUse"],
+    json!([group("Grep|Glob|Bash", "remind"), group("Write|Edit|MultiEdit", "reuse")])
+  );
+  assert_eq!(
+    settings["hooks"]["PostToolUse"],
+    json!([group("Read", "counterpart"), group("Write|Edit|MultiEdit", "also-change")])
+  );
+  let resynced = sandbox.run(&work, &["agents", "sync", "--agent", "claude", "--yes"]);
+  assert_ok(&resynced);
+  assert!(
+    !stdout(&resynced).contains(": created") && !stdout(&resynced).contains(": changed"),
+    "{}",
+    stdout(&resynced)
+  );
+
+  sandbox.config("[agents.claude]\nhooks = [\"auto-approve\", \"remind\", \"counterpart\"]\n");
+  let turned_off = sandbox.run(&work, &["agents", "sync", "--agent", "claude", "--yes"]);
+
+  assert_ok(&turned_off);
+  let settings = sandbox.json("atlas/claude/settings.json");
+  assert_eq!(settings["hooks"]["PreToolUse"], json!([group("Grep|Glob|Bash", "remind")]));
+  assert_eq!(settings["hooks"]["PostToolUse"], json!([group("Read", "counterpart")]));
+  assert_eq!(hook_kinds(&sandbox), ["registration -", "permissions -", "hooks -", "hooks PostToolUse"]);
+}

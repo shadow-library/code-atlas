@@ -1,3 +1,4 @@
+mod also_change;
 mod api;
 pub(crate) mod context;
 mod counterparts;
@@ -6,6 +7,7 @@ mod explain;
 mod impact;
 mod overview;
 mod patterns;
+mod reuse_check;
 mod search;
 mod similar;
 mod status;

@@ -494,6 +494,8 @@ fn hook_events(settings: &AgentsSettings) -> Vec<HookEvent> {
     (ClaudeHook::Seed, HookEvent::UserPromptSubmit),
     (ClaudeHook::Counterpart, HookEvent::PostToolUse),
     (ClaudeHook::Notes, HookEvent::PostToolUseNotes),
+    (ClaudeHook::Reuse, HookEvent::PreToolUseReuse),
+    (ClaudeHook::AlsoChange, HookEvent::PostToolUseAlsoChange),
   ]
   .into_iter()
   .filter(|(hook, _)| settings.claude.hooks.contains(hook))

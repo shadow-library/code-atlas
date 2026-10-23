@@ -76,6 +76,10 @@ pub enum Command {
   Docs(DocsArgs),
   #[command(about = "Shortcut for `query path`")]
   Path(PathArgs),
+  #[command(name = "reuse-check", about = "Shortcut for `query reuse-check`")]
+  ReuseCheck(ReuseCheckArgs),
+  #[command(name = "also-change", about = "Shortcut for `query also-change`")]
+  AlsoChange(AlsoChangeArgs),
   #[command(subcommand, about = "List the notes under .code-atlas/notes/ with their status, or stamp them with the code they are about")]
   Notes(NotesCommand),
   #[command(about = "Find symbols by name path in the graph")]
@@ -359,6 +363,10 @@ pub enum QueryCommand {
   Docs(DocsArgs),
   #[command(about = "The cheapest path between two targets over graph edges, hops weighted by certainty")]
   Path(PathArgs),
+  #[command(about = "Existing functions that look like the new or changed functions of a file, or of text about to be written to it")]
+  ReuseCheck(ReuseCheckArgs),
+  #[command(about = "Other files close to changed files in the graph, ranked as leads for what else to change")]
+  AlsoChange(AlsoChangeArgs),
   Api(ApiArgs),
   Similar(SimilarArgs),
   Unused(UnusedArgs),
@@ -507,6 +515,38 @@ pub struct PathArgs {
   pub filter: TargetFilterArgs,
   #[command(flatten)]
   pub common: QueryCommon,
+}
+
+#[derive(Debug, Args)]
+pub struct ReuseCheckArgs {
+  #[arg(help = "The file ([repo:]path, or a path on disk) the code belongs to")]
+  pub file: String,
+  #[arg(long, value_name = "A-B", value_parser = parse_line_range, help = "Only functions overlapping these lines")]
+  pub lines: Option<(u32, u32)>,
+  #[arg(long, help = "Check the text on stdin, as the new content of the file, against the file on disk")]
+  pub stdin: bool,
+  #[command(flatten)]
+  pub common: QueryCommon,
+}
+
+#[derive(Debug, Args)]
+pub struct AlsoChangeArgs {
+  #[arg(required = true, help = "The changed files ([repo:]path, or paths on disk)")]
+  pub files: Vec<String>,
+  #[arg(long)]
+  pub limit: Option<usize>,
+  #[command(flatten)]
+  pub common: QueryCommon,
+}
+
+fn parse_line_range(raw: &str) -> Result<(u32, u32), String> {
+  let invalid = || format!("expected a line range A-B with 1 <= A <= B, got {raw:?}");
+  let (start, end) = raw.split_once('-').ok_or_else(invalid)?;
+  let (start, end) = (start.trim().parse::<u32>().map_err(|_| invalid())?, end.trim().parse::<u32>().map_err(|_| invalid())?);
+  match start >= 1 && start <= end {
+    true => Ok((start, end)),
+    false => Err(invalid()),
+  }
 }
 
 #[derive(Debug, Subcommand)]
@@ -1013,6 +1053,8 @@ pub enum HookName {
   Seed,
   Counterpart,
   Notes,
+  Reuse,
+  AlsoChange,
 }
 
 #[derive(Debug, Args)]

@@ -49,6 +49,8 @@ pub fn run(project: Option<String>, command: Command) -> CliResult<Outcome> {
     Command::Counterparts(args) => query::run(&ctx, QueryCommand::Counterparts(args)),
     Command::Docs(args) => query::run(&ctx, QueryCommand::Docs(args)),
     Command::Path(args) => query::run(&ctx, QueryCommand::Path(args)),
+    Command::ReuseCheck(args) => query::run(&ctx, QueryCommand::ReuseCheck(args)),
+    Command::AlsoChange(args) => query::run(&ctx, QueryCommand::AlsoChange(args)),
     Command::Notes(command) => query::notes(&ctx, command),
     Command::Find(args) => ide::find(&ctx, args),
     Command::Outline(args) => ide::outline(&ctx, args),

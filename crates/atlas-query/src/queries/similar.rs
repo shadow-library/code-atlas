@@ -239,7 +239,7 @@ fn wrap_fragment(language: Language, text: &str) -> String {
   }
 }
 
-fn analyse_text(query: &QueryEngine, language: Language, text: &str) -> QueryResult<FileFacts> {
+pub(crate) fn analyse_text(query: &QueryEngine, language: Language, text: &str) -> QueryResult<FileFacts> {
   query.engine().analyze_text(language, text).map_err(|error| match error {
     EngineError::Core(CoreError::UnsupportedPath(_)) => QueryError::invalid(format!("no analyzer for language {language}")),
     other => QueryError::from(other),
@@ -403,7 +403,7 @@ fn analyse_draft(query: &QueryEngine, code: &CodeQuery, min_tokens: usize) -> Qu
   })
 }
 
-fn top_level_callables(facts: &FileFacts) -> Vec<&SymbolFact> {
+pub(crate) fn top_level_callables(facts: &FileFacts) -> Vec<&SymbolFact> {
   let nested_in_callable = |symbol: &SymbolFact| {
     let mut parent = symbol.parent;
     while let Some(id) = parent {

@@ -27,6 +27,8 @@ pub enum ClaudeHook {
   Seed,
   Counterpart,
   Notes,
+  Reuse,
+  AlsoChange,
 }
 
 impl ClaudeHook {
@@ -37,6 +39,8 @@ impl ClaudeHook {
       Self::Seed => "seed",
       Self::Counterpart => "counterpart",
       Self::Notes => "notes",
+      Self::Reuse => "reuse",
+      Self::AlsoChange => "also-change",
     }
   }
 
@@ -47,6 +51,8 @@ impl ClaudeHook {
       "seed" => Some(Self::Seed),
       "counterpart" => Some(Self::Counterpart),
       "notes" => Some(Self::Notes),
+      "reuse" => Some(Self::Reuse),
+      "also-change" => Some(Self::AlsoChange),
       _ => None,
     }
   }
@@ -156,7 +162,7 @@ mod tests {
   #[test]
   fn should_read_every_agents_key_from_config_toml() {
     let settings = agents(
-      "[agents]\nbinary = \"/opt/bin/catl\"\nguidance = \"local\"\n[agents.claude]\nenabled = true\nscope = \"local\"\nhooks = [\"notes\", \"counterpart\", \"seed\", \"remind\", \"auto-approve\"]\n[agents.codex]\nenabled = false\n",
+      "[agents]\nbinary = \"/opt/bin/catl\"\nguidance = \"local\"\n[agents.claude]\nenabled = true\nscope = \"local\"\nhooks = [\"also-change\", \"reuse\", \"notes\", \"counterpart\", \"seed\", \"remind\", \"auto-approve\"]\n[agents.codex]\nenabled = false\n",
     );
     assert_eq!(
       settings,
@@ -166,7 +172,15 @@ mod tests {
         claude: ClaudeAgent {
           enabled: true,
           scope: ClaudeScope::Local,
-          hooks: vec![ClaudeHook::AutoApprove, ClaudeHook::Remind, ClaudeHook::Seed, ClaudeHook::Counterpart, ClaudeHook::Notes],
+          hooks: vec![
+            ClaudeHook::AutoApprove,
+            ClaudeHook::Remind,
+            ClaudeHook::Seed,
+            ClaudeHook::Counterpart,
+            ClaudeHook::Notes,
+            ClaudeHook::Reuse,
+            ClaudeHook::AlsoChange,
+          ],
           hooks_source: HooksSource::ConfigFile,
         },
         codex: CodexAgent { enabled: false },

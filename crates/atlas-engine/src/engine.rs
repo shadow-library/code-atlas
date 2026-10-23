@@ -33,6 +33,14 @@ const FORCE_REHASH_MTIME_NS: i64 = i64::MIN;
 pub(crate) const PROJECT_CHANGED: &str = "project configuration changed; reopen the engine";
 const BARRIER_SKIPPED: &str = "the freshness barrier was skipped (benchmark only); the answer may be stale";
 pub const REFRESH_DEFERRED: &str = "refresh left to another caller, the index may be stale";
+const CHANGED_SINCE_INDEX: &str = "changed since the last index run";
+
+pub fn deferred_for_changed_files(reason: &str) -> bool {
+  reason
+    .strip_prefix(REFRESH_DEFERRED)
+    .and_then(|rest| rest.strip_prefix(": "))
+    .is_some_and(|why| why.ends_with(CHANGED_SINCE_INDEX))
+}
 
 pub(crate) struct Inner {
   pub state: EngineState,
@@ -462,9 +470,9 @@ impl Engine {
       }
     }
     Some(match changed {
-      0 => "the working tree changed since the last index run".to_owned(),
-      1 => "1 file changed since the last index run".to_owned(),
-      changed => format!("{changed} files changed since the last index run"),
+      0 => format!("the working tree {CHANGED_SINCE_INDEX}"),
+      1 => format!("1 file {CHANGED_SINCE_INDEX}"),
+      changed => format!("{changed} files {CHANGED_SINCE_INDEX}"),
     })
   }
 
