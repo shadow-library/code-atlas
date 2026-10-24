@@ -177,7 +177,28 @@ const RULES: [Rule; 9] = [
   )]],
 ];
 
-pub const REMINDER: &str = "This repository is indexed by Code Atlas (the code-atlas MCP server). atlas_search finds where a name, text or structure lives across every repo of the project, atlas_symbol answers definitions and references, and atlas_context ranks the code to read for a task; one of them may answer this faster and more completely than a text search. This reminder appears once per session.";
+const REMINDER_TOOLS: [(&str, &str); 3] = [
+  ("atlas_search", "finds where a name, text or structure lives across every repo of the project"),
+  ("atlas_symbol", "answers definitions and references"),
+  ("atlas_context", "ranks the code to read for a task"),
+];
+
+pub fn reminder(profile: &ToolProfile) -> Option<String> {
+  let mut offered: Vec<String> = REMINDER_TOOLS
+    .iter()
+    .filter(|(tool, _)| profile.contains(tool))
+    .map(|(tool, offers)| format!("{tool} {offers}"))
+    .collect();
+  let last = offered.pop()?;
+  let (subject, tools) = match offered.as_slice() {
+    [] => ("it", last),
+    [first] => ("one of them", format!("{first} and {last}")),
+    init => ("one of them", format!("{}, and {last}", init.join(", "))),
+  };
+  Some(format!(
+    "This repository is indexed by Code Atlas (the {SERVER_NAME} MCP server). {tools}; {subject} may answer this faster and more completely than a text search. This reminder appears once per session."
+  ))
+}
 
 pub const SEED_INTRO: &str = "Code Atlas seed: a short ranked list of the indexed code most relevant to this prompt, from an index that is up to date with the working tree. Read what it names before searching; [heuristic n], [inferred n] and UNCERTAIN mark leads to verify in the source.";
 
@@ -338,6 +359,44 @@ mod tests {
     );
     assert_eq!(seed_footer(&profile(ToolsSetting::Only(vec!["atlas_status".to_owned()]))), None);
     assert!(named_tools(SEED_INTRO).is_empty());
+  }
+
+  #[test]
+  fn should_render_the_full_reminder_exactly() {
+    assert_eq!(
+      reminder(&ToolProfile::full()).as_deref(),
+      Some(
+        "This repository is indexed by Code Atlas (the code-atlas MCP server). atlas_search finds where a name, text or structure lives across every repo of the project, atlas_symbol answers definitions and references, and atlas_context ranks the code to read for a task; one of them may answer this faster and more completely than a text search. This reminder appears once per session."
+      )
+    );
+  }
+
+  #[test]
+  fn should_render_the_reminder_for_one_or_two_tools_and_none_without_them() {
+    assert_eq!(
+      reminder(&profile(ToolsSetting::Only(vec!["atlas_symbol".to_owned(), "atlas_status".to_owned()]))).as_deref(),
+      Some(
+        "This repository is indexed by Code Atlas (the code-atlas MCP server). atlas_symbol answers definitions and references; it may answer this faster and more completely than a text search. This reminder appears once per session."
+      )
+    );
+    assert_eq!(
+      reminder(&profile(ToolsSetting::Only(vec!["atlas_context".to_owned(), "atlas_search".to_owned()]))).as_deref(),
+      Some(
+        "This repository is indexed by Code Atlas (the code-atlas MCP server). atlas_search finds where a name, text or structure lives across every repo of the project and atlas_context ranks the code to read for a task; one of them may answer this faster and more completely than a text search. This reminder appears once per session."
+      )
+    );
+    assert_eq!(reminder(&profile(ToolsSetting::Only(vec!["atlas_status".to_owned(), "atlas_impact".to_owned()]))), None);
+  }
+
+  #[test]
+  fn should_name_in_the_reminder_only_tools_of_the_profile() {
+    let custom = profile(ToolsSetting::Only(vec!["atlas_search".to_owned(), "atlas_status".to_owned()]));
+    for profile in built_in_profiles().into_iter().chain([custom]) {
+      let text = reminder(&profile).unwrap();
+      for tool in named_tools(&text) {
+        assert!(profile.contains(tool), "{} names {tool}: {text}", profile.name());
+      }
+    }
   }
 
   #[test]

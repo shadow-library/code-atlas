@@ -10,11 +10,12 @@ use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use atlas_mcp::guidance::REMINDER;
-use atlas_project::Registry;
+use atlas_mcp::guidance::reminder;
+use atlas_project::{ConfigEnv, McpFlags, Registry, resolve_mcp};
 use serde_json::{Value, json};
 
 use crate::cli::HookName;
+use crate::commands::mcp::tool_profile;
 use crate::context::Context;
 use crate::error::CliResult;
 use crate::output::{Outcome, emit_line};
@@ -58,7 +59,7 @@ pub fn run(ctx: &Context, hook: HookName) -> CliResult<Outcome> {
   let answer = match hook {
     HookName::Remind => remind(
       &event,
-      |cwd| in_project(ctx, cwd),
+      |cwd| project_reminder(ctx, cwd),
       |session| first_in_session(&ctx.home.hook_state_dir().join(REMINDED_DIR), session),
     ),
     HookName::Seed => seed::seed(&ctx.home, ctx.project.as_deref(), &event, &markers_in(ctx.home.hook_state_dir().join(SEEDED_DIR))),
@@ -78,7 +79,7 @@ fn pre_tool_use(event: &Value) -> Option<&str> {
   event.get("tool_name")?.as_str()
 }
 
-fn remind(event: &Value, in_project: impl Fn(&Path) -> bool, first_in_session: impl Fn(&str) -> bool) -> Option<Value> {
+fn remind(event: &Value, reminder_in: impl Fn(&Path) -> Option<String>, first_in_session: impl Fn(&str) -> bool) -> Option<Value> {
   let tool = pre_tool_use(event)?;
   let searching = match tool {
     "Grep" | "Glob" => true,
@@ -94,7 +95,8 @@ fn remind(event: &Value, in_project: impl Fn(&Path) -> bool, first_in_session: i
   }
   let cwd = event.get("cwd").and_then(Value::as_str).map(PathBuf::from)?;
   let session = event.get("session_id").and_then(Value::as_str).filter(|session| !session.is_empty())?;
-  (in_project(&cwd) && first_in_session(session)).then(|| json!({ "hookSpecificOutput": { "hookEventName": PRE_TOOL_USE, "additionalContext": REMINDER } }))
+  let reminder = reminder_in(&cwd)?;
+  first_in_session(session).then(|| json!({ "hookSpecificOutput": { "hookEventName": PRE_TOOL_USE, "additionalContext": reminder } }))
 }
 
 fn searches_text(command: &str) -> bool {
@@ -108,8 +110,16 @@ fn searches_text(command: &str) -> bool {
     })
 }
 
-fn in_project(ctx: &Context, cwd: &Path) -> bool {
-  Registry::load(&ctx.home).is_ok_and(|registry| registry.resolve(cwd, None).is_ok())
+fn project_reminder(ctx: &Context, cwd: &Path) -> Option<String> {
+  let registry = Registry::load(&ctx.home).ok()?;
+  registry.resolve(cwd, None).ok()?;
+  match tool_profile(&resolve_mcp(registry.user_config(), &ConfigEnv::default(), McpFlags::default())) {
+    Ok(profile) => reminder(&profile),
+    Err(error) => {
+      tracing::debug!(error = %error, "cannot resolve the tool profile for the reminder");
+      None
+    }
+  }
 }
 
 fn first_in_session(directory: &Path, session: &str) -> bool {
@@ -167,13 +177,24 @@ mod tests {
   fn should_remind_on_text_searches_inside_a_project_once_per_session_without_deciding_anything() {
     let reminded = std::cell::Cell::new(false);
     let once = |_: &str| !reminded.replace(true);
-    let answer = remind(&event("Grep", json!({"pattern": "x"})), |_| true, once);
-    assert_eq!(answer, Some(json!({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": REMINDER}})));
-    assert_eq!(remind(&event("Glob", json!({"pattern": "**/*.rs"})), |_| true, once), None);
-    assert_eq!(remind(&event("Grep", json!({})), |_| false, |_| true), None);
-    assert_eq!(remind(&event("Read", json!({})), |_| true, |_| true), None);
-    assert_eq!(remind(&event("Bash", json!({"command": "cargo test"})), |_| true, |_| true), None);
-    assert!(remind(&event("Bash", json!({"command": "cd src && rg -n foo"})), |_| true, |_| true).is_some());
+    let text = |_: &Path| Some("Use the index.".to_owned());
+    let answer = remind(&event("Grep", json!({"pattern": "x"})), text, once);
+    assert_eq!(
+      answer,
+      Some(json!({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": "Use the index."}}))
+    );
+    assert_eq!(remind(&event("Glob", json!({"pattern": "**/*.rs"})), text, once), None);
+    assert_eq!(remind(&event("Grep", json!({})), |_| None, |_| true), None);
+    assert_eq!(remind(&event("Read", json!({})), text, |_| true), None);
+    assert_eq!(remind(&event("Bash", json!({"command": "cargo test"})), text, |_| true), None);
+    assert!(remind(&event("Bash", json!({"command": "cd src && rg -n foo"})), text, |_| true).is_some());
+  }
+
+  #[test]
+  fn should_keep_the_session_unclaimed_when_there_is_no_reminder_to_give() {
+    let claimed = std::cell::Cell::new(false);
+    let answer = remind(&event("Grep", json!({"pattern": "x"})), |_| None, |_| !claimed.replace(true));
+    assert_eq!((answer, claimed.get()), (None, false));
   }
 
   #[test]

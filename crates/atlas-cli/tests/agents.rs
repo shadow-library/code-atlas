@@ -428,12 +428,44 @@ fn should_remind_once_per_session_and_only_inside_a_registered_project() {
   let other_session = sandbox.hook(&repo, "remind", &hook_input("Glob", "session-b", &repo, json!({"pattern": "**/*.rs"})));
   let unregistered = sandbox.hook(&outside, "remind", &hook_input("Grep", "session-c", &outside, json!({"pattern": "x"})));
 
-  let reminder = json!({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": atlas_mcp::guidance::REMINDER}});
+  let full = "This repository is indexed by Code Atlas (the code-atlas MCP server). atlas_search finds where a name, text or structure lives across every repo of the project, atlas_symbol answers definitions and references, and atlas_context ranks the code to read for a task; one of them may answer this faster and more completely than a text search. This reminder appears once per session.";
+  let reminder = json!({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": full}});
   assert_eq!(serde_json::from_str::<Value>(&stdout(&first)).unwrap(), reminder);
   assert_eq!(stdout(&second), "");
   assert_eq!(serde_json::from_str::<Value>(&stdout(&other_session)).unwrap(), reminder);
   assert_eq!(stdout(&unregistered), "");
   for output in [&first, &second, &other_session, &unregistered] {
+    assert_ok(output);
+  }
+}
+
+#[test]
+fn should_remind_only_of_the_tools_the_configured_profile_serves() {
+  let sandbox = Sandbox::new();
+  let repo = sandbox.repo("solo");
+
+  sandbox.config("[mcp]\ntools = [\"atlas_search\", \"atlas_symbol\", \"atlas_status\"]\n");
+  let listed = sandbox.hook(&repo, "remind", &hook_input("Grep", "session-a", &repo, json!({"pattern": "answer"})));
+  sandbox.config("[mcp]\ntools = [\"atlas_status\"]\n");
+  let status_only = sandbox.hook(&repo, "remind", &hook_input("Grep", "session-b", &repo, json!({"pattern": "answer"})));
+  sandbox.config("[mcp]\ntools = [\"atlas_unknown\"]\n");
+  let invalid = sandbox.hook(&repo, "remind", &hook_input("Grep", "session-b", &repo, json!({"pattern": "answer"})));
+  sandbox.config("[mcp]\ntools = [\"atlas_search\"]\n");
+  let after_silence = sandbox.hook(&repo, "remind", &hook_input("Grep", "session-b", &repo, json!({"pattern": "answer"})));
+
+  let reminder = "This repository is indexed by Code Atlas (the code-atlas MCP server). atlas_search finds where a name, text or structure lives across every repo of the project and atlas_symbol answers definitions and references; one of them may answer this faster and more completely than a text search. This reminder appears once per session.";
+  assert_eq!(
+    serde_json::from_str::<Value>(&stdout(&listed)).unwrap(),
+    json!({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": reminder}})
+  );
+  for silent in [&status_only, &invalid] {
+    assert_eq!((code(silent), stdout(silent), stderr(silent)), (0, String::new(), String::new()));
+  }
+  assert_eq!(
+    serde_json::from_str::<Value>(&stdout(&after_silence)).unwrap()["hookSpecificOutput"]["additionalContext"],
+    "This repository is indexed by Code Atlas (the code-atlas MCP server). atlas_search finds where a name, text or structure lives across every repo of the project; it may answer this faster and more completely than a text search. This reminder appears once per session."
+  );
+  for output in [&listed, &after_silence] {
     assert_ok(output);
   }
 }

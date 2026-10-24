@@ -146,7 +146,7 @@ async fn should_report_the_blast_radius_across_repos_with_atlas_impact() {
 #[tokio::test]
 async fn should_list_the_counterparts_of_a_file_target_in_atlas_impact_and_none_for_a_symbol_without_an_also_change_section() {
   let harness = start_counterpart_corpus().await;
-  let root = common::repo_path(harness.scratch.path(), "notes-server");
+  let root = std::fs::canonicalize(common::repo_path(harness.scratch.path(), "notes-server")).unwrap();
 
   let file = harness.text("atlas_impact", json!({ "targets": ["notes-web:src/ops/op-switch.ts"] })).await;
   let json_text = harness

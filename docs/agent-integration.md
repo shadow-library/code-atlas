@@ -194,7 +194,7 @@ catl connect claude [--scope project|user] [-y]   # the earlier per-repo command
   { "matcher": "Grep|Glob|Bash", "hooks": [{ "type": "command", "command": "CODE_ATLAS_HOME=/iso catl hook remind || true", "timeout": 10 }] }
   ```
 
-  (`CODE_ATLAS_HOME=...` only when it is set while syncing.) It answers a `Grep` or `Glob` call, or a `Bash` command that runs `grep`, `rg`, `ag`, `ack` or `git grep`, in a directory of a registered project with `{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"..."}}`: a note that `atlas_search`, `atlas_symbol` or `atlas_context` may answer faster. It makes no permission decision, so the tool runs as usual, and it fires at most once per `session_id` (state in `<data dir>/hooks/reminded/`, entries older than 7 days are dropped).
+  (`CODE_ATLAS_HOME=...` only when it is set while syncing.) It answers a `Grep` or `Glob` call, or a `Bash` command that runs `grep`, `rg`, `ag`, `ack` or `git grep`, in a directory of a registered project with `{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"..."}}`: a note naming whichever of `atlas_search`, `atlas_symbol` and `atlas_context` the `[mcp] tools` profile of `config.toml` serves, as faster than a text search. A profile with none of them, or an invalid setting, gives no note. It makes no permission decision, so the tool runs as usual, and it fires at most once per `session_id` (state in `<data dir>/hooks/reminded/`, entries older than 7 days are dropped).
 
 - `seed` is a `UserPromptSubmit` hook (that event takes no matcher), on by default:
 
