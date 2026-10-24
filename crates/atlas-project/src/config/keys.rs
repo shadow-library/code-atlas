@@ -31,7 +31,7 @@ pub(crate) struct KeySpec {
   pub(crate) kind: ValueKind,
 }
 
-pub(crate) const SEED_BUDGET_RANGE: std::ops::RangeInclusive<u64> = 200..=2_000;
+pub(crate) const SEED_BUDGET_RANGE: std::ops::RangeInclusive<u64> = 150..=2_000;
 
 const fn key(name: &'static str, class: KeyClass, kind: ValueKind) -> KeySpec {
   KeySpec { name, class, kind }
@@ -602,8 +602,10 @@ mod tests {
       Err("expected hooks from auto-approve, remind, seed, counterpart, notes, reuse, also-change".to_owned())
     );
     assert_eq!(check("agents.claude.hooks", hooks(&["remind", "remind"])), Err("each hook may be listed once".to_owned()));
+    assert_eq!(check("hooks.seed_budget", Value::Integer(150)), Ok(()));
     assert_eq!(check("hooks.seed_budget", Value::Integer(1_200)), Ok(()));
-    assert_eq!(check("hooks.seed_budget", Value::Integer(100)), Err("expected 200 to 2000 tokens".to_owned()));
-    assert_eq!(check("hooks.seed_budget", Value::Integer(2_001)), Err("expected 200 to 2000 tokens".to_owned()));
+    assert_eq!(check("hooks.seed_budget", Value::Integer(2_000)), Ok(()));
+    assert_eq!(check("hooks.seed_budget", Value::Integer(149)), Err("expected 150 to 2000 tokens".to_owned()));
+    assert_eq!(check("hooks.seed_budget", Value::Integer(2_001)), Err("expected 150 to 2000 tokens".to_owned()));
   }
 }

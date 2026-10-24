@@ -1,7 +1,7 @@
 use super::keys::SEED_BUDGET_RANGE;
 use super::user::UserConfig;
 
-const DEFAULT_SEED_BUDGET: usize = 1_200;
+const DEFAULT_SEED_BUDGET: usize = 299;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HookSettings {
@@ -48,14 +48,15 @@ mod tests {
   }
 
   #[test]
-  fn should_default_to_a_seed_of_about_1200_tokens() {
-    assert_eq!(hooks(""), Ok(HookSettings { seed_budget: 1_200 }));
+  fn should_default_to_a_seed_of_299_tokens() {
+    assert_eq!(hooks(""), Ok(HookSettings { seed_budget: 299 }));
   }
 
   #[test]
   fn should_read_the_seed_budget_and_reject_one_out_of_range() {
-    assert_eq!(hooks("[hooks]\nseed_budget = 600\n"), Ok(HookSettings { seed_budget: 600 }));
+    assert_eq!(hooks("[hooks]\nseed_budget = 150\n"), Ok(HookSettings { seed_budget: 150 }));
+    assert_eq!(hooks("[hooks]\nseed_budget = 1200\n"), Ok(HookSettings { seed_budget: 1_200 }));
     let error = hooks("[hooks]\nseed_budget = 50000\n").unwrap_err();
-    assert!(error.ends_with("hooks.seed_budget: expected 200 to 2000 tokens"), "{error}");
+    assert!(error.ends_with("hooks.seed_budget: expected 150 to 2000 tokens"), "{error}");
   }
 }

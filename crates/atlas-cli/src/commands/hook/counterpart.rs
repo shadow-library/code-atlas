@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use super::{SessionMarkers, TIME_LIMIT, WAIT_MARGIN};
 
 const POST_TOOL_USE: &str = "PostToolUse";
-const MAX_NOTE_CHARS: usize = 1_200;
+const MAX_NOTE_CHARS: usize = 1_199;
 const NOTE_SHARED_SHOWN: usize = 2;
 const HOOK_MIN_CONFIDENCE: f32 = 0.6;
 
@@ -459,6 +459,20 @@ mod tests {
     assert!(long.chars().count() <= MAX_NOTE_CHARS, "{}", long.chars().count());
     assert!(long.ends_with("Read those files before changing what this one sends, reads or names."), "{long}");
     assert!(long.contains("      7  'page.op_0'"), "{long}");
+  }
+
+  #[test]
+  fn should_drop_the_group_that_would_bring_the_note_to_1200_characters() {
+    let padded = |padding: usize| {
+      let mut server = counterpart("server", 1, 0.72);
+      server.only_there[0].text = format!("'page.op_0': {{ required: {{ field_0: 'string' }}, optional: {{}} }}, {}", "x".repeat(padding));
+      note(&answer(vec![server])).unwrap()
+    };
+    assert_eq!(padded(771).chars().count(), 1_199);
+    assert_eq!(
+      padded(772),
+      "Code Atlas [heuristic 0.72]: a linked repo holds the other side of web:src/ops/op-switch.ts (14 shared values such as 'draft_slug', 'revision_mark'):\n  server:src/ops/op-specs.ts — /w/server/src/ops/op-specs.ts\n    most shared in SPECS 6-20\nRead that file before changing what this one sends, reads or names."
+    );
   }
 
   #[test]

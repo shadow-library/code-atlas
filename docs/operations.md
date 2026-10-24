@@ -219,7 +219,7 @@ mode = "overlay"                   # "overlay" | "main" (main checkout, edits re
 gc_after_days = 14                 # remove overlays unused this long
 
 [hooks]
-seed_budget = 1200                 # tokens of the seed `catl hook seed` adds to a prompt (200 to 2000)
+seed_budget = 299                  # tokens of the seed `catl hook seed` adds to a prompt (150 to 2000; above 299 the 1,199-character cap applies)
 ```
 
 ```toml

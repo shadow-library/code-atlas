@@ -213,7 +213,7 @@ catl connect claude [--scope project|user] [-y]   # the earlier per-repo command
   More from the code-atlas MCP server: atlas_context (a fuller pack with bodies), atlas_symbol (definitions, references and source), atlas_impact (what a change affects).
   ```
 
-  The pack is the one the CLI's `context` builds for the prompt with its default budget (6,000 tokens); an MCP `atlas_context` call defaults to 4,000, so its MUST READ list can be shorter than the seed's. The seed lists its MUST READ (`Read first:`), SKIM (`Also relevant:`) and TESTS (`Tests:`) items in rank order, each with its `repo:path:line-range` and why it is there, the way `atlas_context` prints them but without bodies. The list stops at `[hooks] seed_budget` tokens (default 1,200, 200 to 2,000, characters / 4, never more than 9,000 characters, under Claude Code's 10,000-character cap). The bodies of MUST READ items are still read, because their size decides which items are MUST READ; skipping them would make the seed differ from the pack `context` returns at that budget. The last line names only the tools of the configured [profile](#tool-profiles) (resolved from `config.toml`, like `sync`), and is left out when the profile has none of them.
+  The pack is the one the CLI's `context` builds for the prompt with its default budget (6,000 tokens); an MCP `atlas_context` call defaults to 4,000, so its MUST READ list can be shorter than the seed's. The seed lists its MUST READ (`Read first:`), SKIM (`Also relevant:`) and TESTS (`Tests:`) items in rank order, each with its `repo:path:line-range` and why it is there, the way `atlas_context` prints them but without bodies. The list stops at `[hooks] seed_budget` tokens (default 299, 150 to 2,000, characters / 4, never more than 1,199 characters, so budgets above 299 add nothing; a seed whose first item does not fit is not sent, and no item is cut). The bodies of MUST READ items are still read, because their size decides which items are MUST READ; skipping them would make the seed differ from the pack `context` returns at that budget. The last line names only the tools of the configured [profile](#tool-profiles) (resolved from `config.toml`, like `sync`), and is left out when the profile has none of them.
 
   On a probe on this repository (11 code and 12 chatter prompts from the review, 10 written beforehand for this check, each sent as the first prompt of a session and as a follow-up, 54 cases), it seeded 10 of the 27 code cases and none of the 27 chatter cases: every plain-English follow-up stays silent by design, and the plain first prompts about features this repository does not have (`migrate session storage to redis`) found nothing related.
 
@@ -256,7 +256,7 @@ catl connect claude [--scope project|user] [-y]   # the earlier per-repo command
   { "matcher": "Read", "hooks": [{ "type": "command", "command": "CODE_ATLAS_HOME=/iso catl hook counterpart || true", "timeout": 10 }] }
   ```
 
-  Right after the agent reads a file (`tool_input.file_path`) of a repo of the project, it adds the file's [counterparts](#mcp-tools) at `[heuristic 0.60]` or above as `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"..."}}`, in at most 1,200 characters and naming no tool:
+  Right after the agent reads a file (`tool_input.file_path`) of a repo of the project, it adds the file's [counterparts](#mcp-tools) at `[heuristic 0.60]` or above as `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"..."}}`, in at most 1,199 characters and naming no tool:
 
   ```text
   Code Atlas [heuristic 0.64]: a linked repo holds the other side of notes-web:src/sync/sync-jobs.ts (28 shared values such as 'conflict_hint', 'outline_cursor'):
@@ -276,7 +276,7 @@ catl connect claude [--scope project|user] [-y]   # the earlier per-repo command
   { "matcher": "Read", "hooks": [{ "type": "command", "command": "CODE_ATLAS_HOME=/iso catl hook notes || true", "timeout": 10 }] }
   ```
 
-  Right after the agent reads a file that a [note](#docs-and-notes) is anchored to (an anchor on the file or on a symbol in it), it adds each such note's path on disk, the heading of every section that mentions the anchored code (the note's first section when none does), its status and the first 400 characters of that section, in at most 1,200 characters and naming no tool:
+  Right after the agent reads a file that a [note](#docs-and-notes) is anchored to (an anchor on the file or on a symbol in it), it adds each such note's path on disk, the heading of every section that mentions the anchored code (the note's first section when none does), its status and the first 400 characters of that section, in at most 1,199 characters and naming no tool:
 
   ```text
   Code Atlas: notes earlier sessions left about web:src/lib/backoff.ts:

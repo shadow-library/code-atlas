@@ -14,7 +14,7 @@ use super::counterpart::{locate, touched};
 use super::{SessionMarkers, TIME_LIMIT, WAIT_MARGIN};
 
 const POST_TOOL_USE: &str = "PostToolUse";
-const MAX_NOTE_CHARS: usize = 1_200;
+const MAX_NOTE_CHARS: usize = 1_199;
 const STALE_WORDING: &str = "stale: the code changed after this note was written";
 const FOOTER: &str = "Read the note before changing the code it describes; a stale note may describe code that is gone.";
 
@@ -358,6 +358,22 @@ mod tests {
     let text = note(&answer(notes)).unwrap();
     assert!(text.chars().count() <= MAX_NOTE_CHARS, "{}", text.chars().count());
     assert_eq!(text.matches("Retry budget [current]").count(), 2);
+  }
+
+  #[test]
+  fn should_drop_the_note_that_would_bring_the_text_to_1200_characters() {
+    let pair = |padding: usize| {
+      note(&answer(vec![
+        anchored(NoteState::Current, false, "x"),
+        anchored(NoteState::Current, false, &"y".repeat(padding)),
+      ]))
+      .unwrap()
+    };
+    assert_eq!(pair(827).chars().count(), 1_199);
+    assert_eq!(
+      pair(828),
+      "Code Atlas: notes earlier sessions left about web:src/lib/backoff.ts:\n  web:.code-atlas/notes/retries.md — /w/web/.code-atlas/notes/retries.md\n    Retry budget [current]: x\nRead the note before changing the code it describes; a stale note may describe code that is gone."
+    );
   }
 
   #[test]

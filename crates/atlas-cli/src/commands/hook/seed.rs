@@ -17,7 +17,7 @@ use crate::commands::mcp::tool_profile;
 
 const USER_PROMPT_SUBMIT: &str = "UserPromptSubmit";
 const CHARS_PER_TOKEN: usize = 4;
-const MAX_CONTEXT_CHARS: usize = 9_000;
+const MAX_CONTEXT_CHARS: usize = 1_199;
 const GATE_ITEMS: usize = 3;
 const GATE_TERMS: usize = 2;
 const MIN_PROMPT_CHARS: usize = 16;
@@ -362,9 +362,13 @@ fn render(answer: &ContextAnswer, budget_tokens: usize, profile: &ToolProfile) -
 
 #[cfg(test)]
 mod tests {
-  use atlas_project::ToolsSetting;
+  use atlas_project::{HookSettings, ToolsSetting};
 
   use super::*;
+
+  fn default_budget() -> usize {
+    HookSettings::default().seed_budget
+  }
 
   #[test]
   fn should_read_only_user_prompt_events_with_a_prompt_and_an_absolute_cwd() {
@@ -580,9 +584,9 @@ mod tests {
       "{SEED_INTRO}\nRead first:\n- findOne function r:src/users.ts:31-35  why: named in the task\nAlso relevant:\n- toCents function r:src/money.ts:1-7  why: called by findOne [resolved]\n{}",
       seed_footer(&full).unwrap()
     );
-    assert_eq!(render(&pack, 1_200, &full).as_deref(), Some(expected.as_str()));
+    assert_eq!(render(&pack, default_budget(), &full).as_deref(), Some(expected.as_str()));
     let status_only = ToolProfile::from_setting(&ToolsSetting::Only(vec!["atlas_status".to_owned()])).unwrap();
-    assert!(!render(&pack, 1_200, &status_only).unwrap().contains("atlas_"));
+    assert!(!render(&pack, default_budget(), &status_only).unwrap().contains("atlas_"));
   }
 
   #[test]
@@ -598,6 +602,24 @@ mod tests {
     )
     .unwrap();
     assert!(largest.len() <= MAX_CONTEXT_CHARS, "{}", largest.len());
-    assert_eq!(render(&answer(Vec::new(), Vec::new()), 1_200, &ToolProfile::full()), None);
+    assert_eq!(render(&answer(Vec::new(), Vec::new()), default_budget(), &ToolProfile::full()), None);
+  }
+
+  #[test]
+  fn should_keep_the_default_budget_seed_under_1200_characters_and_never_truncate_an_item() {
+    let reason = "called by Ledger::reconcile_pending_transfers through Ledger::settle_batch [resolved]; also reads the quarterly ledger snapshot";
+    let long = |index: usize| item(&format!("Ledger::settle_overdue_transfer_{index}"), "src/ledger/settlement.rs", (100, 240), reason);
+    let pack = answer((0..40).map(long).collect(), (40..80).map(long).collect());
+    let seed = render(&pack, default_budget(), &ToolProfile::full()).unwrap();
+    assert_eq!(seed.chars().count(), 1_080);
+    let listed: Vec<&str> = seed
+      .lines()
+      .filter_map(|line| line.strip_prefix("- Ledger::settle_overdue_transfer_"))
+      .map(|rest| rest.split(' ').next().unwrap_or(rest))
+      .collect();
+    assert_eq!(listed, ["0", "1", "2"]);
+    assert!(seed.ends_with(&seed_footer(&ToolProfile::full()).unwrap()), "{seed}");
+    let oversized = item("Ledger::settle", "src/ledger/settlement.rs", (1, 9), &"x".repeat(1_199));
+    assert_eq!(render(&answer(vec![oversized, long(0)], Vec::new()), default_budget(), &ToolProfile::full()), None);
   }
 }

@@ -201,7 +201,7 @@ Read that file before changing what this one sends, reads or names.",
     serde_json::from_str::<Value>(&stdout(&first)).unwrap(),
     json!({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": note}})
   );
-  assert!(note.chars().count() <= 1_200);
+  assert!(note.chars().count() <= 1_199);
   assert_eq!((code(&again), stdout(&again)), (0, String::new()));
   assert!(stderr(&again).contains("reason=this file was already noted in this session"), "{}", stderr(&again));
   assert_eq!(stdout(&other_session), stdout(&first));
